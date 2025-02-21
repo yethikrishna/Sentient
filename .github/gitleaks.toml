@@ -1,0 +1,15 @@
+# 🚨 Ensure .env.template Variables Are Empty
+[[rules]]
+id = "env-template-check"
+description = "Ensure .env.template variables are not filled"
+regex = '''(?i)^[A-Z0-9_]+=\s*["']?.+["']?$'''
+path = '''\.env\.template$'''
+tags = ["env", "secrets"]
+
+# 🚨 Ensure Python os.environ Variables Are Empty
+[[rules]]
+id = "python-os-env-check"
+description = "Ensure Python os.environ variables are not assigned non-empty values"
+regex = '''os\.environ\[[\'"][A-Z0-9_]+[\'"]\]\s*=\s*["'][^"']+["']'''
+path = '''.*\.py$'''
+tags = ["python", "secrets"]

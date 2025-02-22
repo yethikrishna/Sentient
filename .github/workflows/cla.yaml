@@ -31,3 +31,5 @@ jobs:
           path-to-document: 'https://github.com/existence-master/Sentient/blob/master/CLA.md'
           branch: 'development'
           allowlist: itsskofficial,dependabot[bot]
+          remote-organization-name: existence-master
+          remote-repository-name: oss

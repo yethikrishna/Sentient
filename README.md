@@ -20,9 +20,6 @@
   <a href="https://github.com/existence-master/Sentient/issues/">
     <img src="https://img.shields.io/github/issues/existence-master/Sentient" alt="open issues" />
   </a>
-  <a href="https://github.com/existence-master/Sentient/blob/master/LICENSE">
-    <img src="https://img.shields.io/github/license/existence-master/Sentient.svg" alt="license" />
-  </a>
 </p>
    
 <h4>

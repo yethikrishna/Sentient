@@ -29,7 +29,7 @@ jobs:
         with:
           path-to-signatures: '.github/signatures/version1/cla.json'
           path-to-document: 'https://github.com/existence-master/Sentient/blob/master/CLA.md'
-          branch: 'development'
+          branch: 'oss'
           allowlist: itsskofficial,dependabot[bot]
           remote-organization-name: existence-master
-          remote-repository-name: oss
+          remote-repository-name: Sentient-Internal

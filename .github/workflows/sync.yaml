@@ -34,7 +34,7 @@ jobs:
 
       - name: Push changes to private repository branch
         env:
-          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN  }}
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
           ORG_NAME: existence-master
           ORIGINAL_REPO_NAME: Sentient
           DESTINATION_REPO_NAME: Sentient-Internal
@@ -45,8 +45,8 @@ jobs:
           # Clone the destination repository
           git clone --branch ${{ env.TARGET_BRANCH }} https://${{ env.GITHUB_TOKEN }}@github.com/${{ env.ORG_NAME }}/${{ env.DESTINATION_REPO_NAME }}.git
 
-          # Sync files (overwrite & delete missing files)
-          rsync -av --exclude='.git' --delete --ignore-missing-args . ${{ env.DESTINATION_REPO_NAME }}/
+          # Sync files (exclude .git, destination repo, and handle vanished files)
+          rsync -av --exclude='.git' --exclude="${{ env.DESTINATION_REPO_NAME}}/" --delete --ignore-missing-args $GITHUB_WORKSPACE/ ${{ env.DESTINATION_REPO_NAME}}/ || echo "Ignoring rsync exit code 24"
 
           cd ${{ env.DESTINATION_REPO_NAME }}
 

@@ -81,6 +81,10 @@ We at [Existence](https://existence.technology) believe that AI won't simply die
   <img src="https://media.licdn.com/dms/image/v2/D4D22AQGzRW37TxbgDg/feedshare-shrink_2048_1536/B4DZS2U5tUG4Ao-/0/1738225720816?e=1743033600&v=beta&t=pZh3NCZCYDL3_IslFZAqxcK5nlQDLoZBYVWYUH-Gw2c" alt="screenshot" />
   <p align="center">Memories in Sentient</p>
 </div>
+<div align="center"> 
+  <img src="https://github.com/user-attachments/assets/2e130ecf-b3ba-4074-8429-7be3fc241dae" alt="screenshot" />
+  <p align="center">Local inference in Sentient</p>
+</div>
 
 
 <!-- TechStack -->

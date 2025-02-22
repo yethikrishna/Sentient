@@ -1,7 +1,7 @@
 <div align="center">
 
-![README Banner](https://github.com/user-attachments/assets/72d5917a-cfc6-43ce-892f-927a2fea8f15)
-
+![README Banner](./.github/assets/banner.png)
+<h1>Your personal, private & interactive AI companion</h1>
   
 <!-- Badges -->
 <p>
@@ -41,7 +41,8 @@
 <!-- Table of Contents -->
 # :notebook_with_decorative_cover: Table of Contents
 
-- [About the Project](#star2-about-the-project)
+- [About The Project](#star2-about-the-project)
+  * [Philosophy](#thought_balloon-philosophy)
   * [Screenshots](#camera-screenshots)
   * [Tech Stack](#space_invader-tech-stack)
   * [Features](#dart-features)
@@ -58,12 +59,16 @@
 - [License](#warning-license)
 - [Contact](#handshake-contact)
 - [Acknowledgements](#gem-acknowledgements)
+- [Official Team](#heavy_check_mark-official-team)
 
-  
 
-<!-- About the Project -->
-## :star2: About the Project
+<!-- About The Project -->
+## :star2: About The Project
 
+<!-- Philosophy -->
+## :thought_balloon: Philosophy
+
+We at [Existence](https://existence.technology) believe that AI won't simply die as a fad or remain limited to an assistant. Instead, it will evolve to be a true companion of humans and our aim with Sentient is to contribute to that future. Building a true companion requires excellent automation which in turn requires deep personalization. And if we want the AI to be completely context aware of the user, privacy is non-negotiable. Hence, our goal is to build a completely private, personal & interactive AI companion. And we want to build it in the open, not behind closed doors
 
 <!-- Screenshots -->
 ### :camera: Screenshots
@@ -143,7 +148,7 @@ All dependencies are packaged into our installer - you do not need to download a
 <!-- Prerequisites -->
 ### :bangbang: Prerequisites (Contributors)
 
-#### Linux
+#### The following instructions are for Linux based machines, but they remain fundamentally same for Windows & Mac
 
 Clone the project
 
@@ -326,13 +331,13 @@ Sentient can already do a lot.
 
 Contributions are always welcome!
 
-See `contributing.md` for ways to get started.
+See the [contributing guide](https://github.com/existence-master/Sentient/blob/master/CONTRIBUTING.md) for ways to get started.
 
 
 <!-- Code of Conduct -->
 ### :scroll: Code of Conduct
 
-Please read the [Code of Conduct](https://github.com/existence-master/Sentient/blob/master/CODE_OF_CONDUCT.md)
+Please read the [code of conduct](https://github.com/existence-master/Sentient/blob/master/CODE_OF_CONDUCT.md)
 
 <!-- FAQ -->
 ## :grey_question: FAQ
@@ -347,7 +352,7 @@ Please read the [Code of Conduct](https://github.com/existence-master/Sentient/b
 
 - What data do you collect about me?
 
-  + For auth, we have a standard email-password flow provided by Auth0 (also supports Google OAuth). So, the only data we collect is the email provided by users and their login history. This helps us understand how users are using the app, retention rates, daily signups and more. Read more about data collection in our [Privacy Policy.](https://existence-sentient.vercel.app/privacy)
+  + For auth, we have a standard email-password flow provided by Auth0 (also supports Google OAuth). So, the only data we collect is the email provided by users and their login history. This helps us understand how users are using the app, retention rates, daily signups and more. Read more about data collection in our [privacy policy.](https://existence-sentient.vercel.app/privacy)
 
 - What kind of hardware do I need to run the app?
 
@@ -364,14 +369,12 @@ Please read the [Code of Conduct](https://github.com/existence-master/Sentient/b
 <!-- License -->
 ## :warning: License
 
-Distributed under the GNU AGPL License. See `LICENSE.md` for more information.
+Distributed under the GNU AGPL License. Check [our lisence](https://github.com/existence-master/Sentient/blob/master/LICENSE.md) for more information.
 
 <!-- Contact -->
 ## :handshake: Contact
 
-Sentient Team - [@existence_corp](https://twitter.com/@existence_corp) - existence.sentient@gmail.com
-
-Project Link: [https://github.com/existence-master/Sentient](https://github.com/existence-master/Sentient)
+[existence.sentient@gmail.com](existence.sentient@gmail.com)
 
 <!-- Acknowledgments -->
 ## :gem: Acknowledgements
@@ -384,3 +387,57 @@ Sentient wouldn't have been possible without
  - [Meta's Llama Models](https://www.llama.com/)
  - [ElectronJS](https://www.electronjs.org/)
  - [Next.js](https://nextjs.org/)
+
+<!-- Official Team -->
+## :heavy_check_mark: Official Team
+
+The official team behind Sentient
+
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section. -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
+
+<table>
+  <tr>
+     <td align="center">
+       <a href="https://github.com/itsskofficial">
+         <img src="https://avatars.githubusercontent.com/u/65887545?v=4?s=100" width="100px;" alt=""/>
+         <br />
+         <sub>
+           <b>
+             itsskofficial
+           </b>
+         </sub>
+       </a>
+       <br />
+     </td>  
+     <td align="center">
+       <a href="https://github.com/kabeer2004">
+         <img src="https://avatars.githubusercontent.com/u/59280736?v=4" width="100px;" alt=""/>
+         <br />
+         <sub>
+           <b>
+             kabeer2004
+           </b>
+         </sub>
+       </a>
+       <br />
+     </td>  
+      <td align="center">
+       <a href="https://github.com/abhijeetsuryawanshi12">
+         <img src="https://avatars.githubusercontent.com/u/108229267?v=4" width="100px;" alt=""/>
+         <br />
+         <sub>
+           <b>
+             abhijeetsuryawanshi12
+           </b>
+         </sub>
+       </a>
+       <br />
+     </td>
+  </tr>
+</table>
+<br />
+
+
+![Powered By](./.github/assets/powered-by.png)

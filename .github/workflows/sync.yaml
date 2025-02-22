@@ -5,9 +5,9 @@ on:
     branches:
       - master
       - development
-      - "*@feature"
-      - "*@bugfix" 
-      - "research@*"
+      - "feature/*"
+      - "bugfix/*" 
+      - "research/*"
 
 jobs:
   sync:
@@ -22,17 +22,11 @@ jobs:
           SOURCE_BRANCH=${GITHUB_REF#refs/heads/}  # Extract branch name
           
           if [[ "$SOURCE_BRANCH" == "master" ]]; then
-            TARGET_BRANCH="alpha@development"
+            TARGET_BRANCH="development"
           elif [[ "$SOURCE_BRANCH" == "development" ]]; then
-            TARGET_BRANCH="alpha@development#stage/combined"
-          elif [[ "$SOURCE_BRANCH" == *"@feature"* ]]; then
-            TARGET_BRANCH="${SOURCE_BRANCH}"
-          elif [[ "$SOURCE_BRANCH" == *"@bugfix"* ]]; then
-            TARGET_BRANCH="${SOURCE_BRANCH}"
-          elif [[ "$SOURCE_BRANCH" == research@* ]]; then
-            TARGET_BRANCH="${SOURCE_BRANCH}"
+            TARGET_BRANCH="development#stage/combined"
           else
-            TARGET_BRANCH="default-sync-branch"  # Fallback branch
+            TARGET_BRANCH="${SOURCE_BRANCH}"  # Fallback branch
           fi
 
           echo "SOURCE_BRANCH=$SOURCE_BRANCH" >> $GITHUB_ENV

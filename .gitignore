@@ -237,4 +237,4 @@ checkpoints
 token.pickle
 chatsDb.json
 userProfileDb.json
-.ruff_cache
+ruff_cache

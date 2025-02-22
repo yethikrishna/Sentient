@@ -1,0 +1,338 @@
+****************************************Chatgpt-4o***************************************
+
+Here is a detailed evaluation of each response based on **coherency, logic, and completeness**, with scores out of **10** in each category:
+
+---
+
+### **1. Qwen:1.8b Response**
+- **Coherency:** 6/10 – The response is readable and grammatically sound but lacks engaging flow.
+- **Logic:** 5/10 – It acknowledges Viking curiosity but fails to explore plausible reactions.
+- **Completeness:** 4/10 – The response does not provide a meaningful exploration of Viking society or how they might interact with the device.
+
+**Final Score:** **5/10** (Below average, lacks depth)
+
+---
+
+### **2. Qwen:4b Response**
+- **Coherency:** 7/10 – Well-structured, but simplistic.
+- **Logic:** 6/10 – The adaptation of Viking cultural practices is interesting but underdeveloped.
+- **Completeness:** 5/10 – The response lacks exploration of Viking technological limitations or belief systems.
+
+**Final Score:** **6/10** (Decent, but lacks detail)
+
+---
+
+### **3. Deepseek-r1:1.5b Response**
+- **Coherency:** 8/10 – The "thinking" approach makes it structured but slightly convoluted.
+- **Logic:** 7/10 – The approach of curiosity and adaptation is reasonable, but some points are vague.
+- **Completeness:** 6/10 – It introduces ideas well but lacks depth in their exploration.
+
+**Final Score:** **7/10** (Above average, but needs refinement)
+
+---
+
+### **4. Gemma:2b Response**
+- **Coherency:** 6/10 – The response is understandable but dismissive.
+- **Logic:** 4/10 – It assumes the Vikings would simply ignore the smartphone, which is unlikely.
+- **Completeness:** 4/10 – It does not explore potential Viking interactions.
+
+**Final Score:** **4.5/10** (Weak, dismisses the premise)
+
+---
+
+### **5. Qwen2.5:1.5b Response**
+- **Coherency:** 8/10 – Well-structured and engaging.
+- **Logic:** 8/10 – Consideration of humor, technology, and religion is strong.
+- **Completeness:** 8/10 – It covers multiple Viking reactions in a creative but logical way.
+
+**Final Score:** **8/10** (Strong response, creative yet plausible)
+
+---
+
+### **6. Qwen2.5:3b Response**
+- **Coherency:** 9/10 – The structure is clear and engaging.
+- **Logic:** 9/10 – The response balances curiosity and caution well.
+- **Completeness:** 9/10 – Covers various Viking behaviors, including analysis and adaptation.
+
+**Final Score:** **9/10** (Excellent response, realistic and well-thought-out)
+
+---
+
+### **7. Phi3 Response**
+- **Coherency:** 7/10 – Structured well but overly wordy.
+- **Logic:** 7/10 – Acknowledges Viking adaptability but over-explains some points.
+- **Completeness:** 7/10 – Good coverage, though the speculative reasoning is drawn out.
+
+**Final Score:** **7/10** (Good but could be more concise)
+
+---
+
+### **8. Llama3.2:3b Response**
+- **Coherency:** 9/10 – Strong structure and readability.
+- **Logic:** 8/10 – The timeline approach is unique but slightly comedic.
+- **Completeness:** 8/10 – Covers many angles, though it leans into exaggeration.
+
+**Final Score:** **8.5/10** (Engaging, but the humor slightly undermines realism)
+
+---
+
+### **9. Phi Response**
+- **Coherency:** 6/10 – The writing is robotic and awkward.
+- **Logic:** 5/10 – The response focuses too much on theoretical reasoning.
+- **Completeness:** 5/10 – Over-explains simple concepts instead of exploring Viking interactions.
+
+**Final Score:** **5.5/10** (Overly mechanical and indirect)
+
+---
+
+### **10. Granite3.1-Dense:2b Response**
+- **Coherency:** 8/10 – Clear structure and progression.
+- **Logic:** 8/10 – Vikings' reactions are logical and well-supported.
+- **Completeness:** 8/10 – Covers multiple interpretations while staying grounded.
+
+**Final Score:** **8/10** (Strong and well-thought-out)
+
+---
+
+### **11. Granite3.1-MOE Response**
+- **Coherency:** 8/10 – Well-structured.
+- **Logic:** 8/10 – Viking skills and cultural factors are considered.
+- **Completeness:** 8/10 – The response is methodical and well-rounded.
+
+**Final Score:** **8/10** (Great balance of logic and completeness)
+
+---
+
+### **12. Exaone3.5:2.4b Response**
+- **Coherency:** 9/10 – Smooth and well-organized.
+- **Logic:** 9/10 – Thoughtful exploration of Viking adaptation.
+- **Completeness:** 9/10 – Covers many angles without exaggeration.
+
+**Final Score:** **9/10** (One of the best responses)
+
+---
+
+### **13. Tinyllama:1.1b Response**
+- **Coherency:** 5/10 – The response is repetitive and generic.
+- **Logic:** 4/10 – It assumes the Vikings could upgrade a smartphone, which is unrealistic.
+- **Completeness:** 4/10 – Lacks depth and accuracy.
+
+**Final Score:** **4.5/10** (Weak, vague, and unrealistic)
+
+---
+
+### **14. Tinyllama Response**
+- **Coherency:** 5/10 – It reads like a generic technology adoption argument.
+- **Logic:** 4/10 – Assumes Vikings would instantly understand digital technology.
+- **Completeness:** 4/10 – Fails to address Viking society meaningfully.
+
+**Final Score:** **4.5/10** (Weak and unrealistic)
+
+---
+
+## **Top Responses**
+1. **Qwen2.5:3b – 9/10**
+2. **Exaone3.5:2.4b – 9/10**
+3. **Llama3.2:3b – 8.5/10**
+4. **Qwen2.5:1.5b – 8/10**
+5. **Granite3.1-Dense:2b – 8/10**
+6. **Granite3.1-MOE – 8/10**
+
+These responses demonstrated the best balance of **coherency, logic, and completeness**, creating **plausible, structured, and insightful explorations** of how Vikings might react to a smartphone.
+
+Would you like a ranking table for easy comparison?
+
+
+
+************************DeepSeek************************************
+
+Here is the evaluation of each model's response based on **coherency**, **logic**, and **completeness** (rated out of 10):
+
+---
+
+### **qwen:1.8b**  
+- **Coherency**: 7/10  
+- **Logic**: 7/10  
+- **Completeness**: 6/10  
+**Feedback**: General and surface-level. Acknowledges curiosity but lacks depth or specific examples of how Vikings might interact with the device.  
+
+---
+
+### **qwen:4b**  
+- **Coherency**: 8/10  
+- **Logic**: 8/10  
+- **Completeness**: 7/10  
+**Feedback**: Links smartphone use to Viking practices (storytelling, trade). Logical but misses broader societal impacts.  
+
+---
+
+### **deepseek-r1:1.5b**  
+- **Coherency**: 9/10  
+- **Logic**: 9/10  
+- **Completeness**: 9/10  
+**Feedback**: Well-structured analysis of Viking pragmatism and caution. Balances curiosity with societal context.  
+
+---
+
+### **gemma:2b**  
+- **Coherency**: 6/10  
+- **Logic**: 6/10  
+- **Completeness**: 5/10  
+**Feedback**: Overly dismissive ("absurd"). Ignores Viking adaptability and focuses on stereotypes (warriors vs. tech).  
+
+---
+
+### **qwen2.5:1.5b**  
+- **Coherency**: 7/10  
+- **Logic**: 7/10  
+- **Completeness**: 8/10  
+**Feedback**: Creative ideas (sacred relic, navigation) but uneven plausibility. Covers many angles but some stretches.  
+
+---
+
+### **qwen2.5:3b**  
+- **Coherency**: 8/10  
+- **Logic**: 9/10  
+- **Completeness**: 8/10  
+**Feedback**: Logical progression (curiosity → testing → integration). Strong focus on practical adaptation.  
+
+---
+
+### **phi3**  
+- **Coherency**: 9/10  
+- **Logic**: 9/10  
+- **Completeness**: 9/10  
+**Feedback**: Nuanced analysis of Viking pragmatism and skepticism. Considers spiritual, practical, and societal angles.  
+
+---
+
+### **starcoder2**  
+- **Coherency**: 0/10  
+- **Logic**: 0/10  
+- **Completeness**: 0/10  
+**Feedback**: Empty response.  
+
+---
+
+### **llama3.2:3b**  
+- **Coherency**: 9/10  
+- **Logic**: 9/10  
+- **Completeness**: 10/10  
+**Feedback**: Imaginative timeline with detailed integration steps. Balances humor and realism. Most complete response.  
+
+---
+
+### **phi**  
+- **Coherency**: 7/10  
+- **Logic**: 7/10  
+- **Completeness**: 6/10  
+**Feedback**: Diverts into a hypothetical tree-diagram scenario, weakening focus. Logical but incomplete.  
+
+---
+
+### **granite3.1-dense:2b**  
+- **Coherency**: 8/10  
+- **Logic**: 8/10  
+- **Completeness**: 8/10  
+**Feedback**: Structured breakdown (fascination, communication). Practical and plausible.  
+
+---
+
+### **granite3.1-moe**  
+- **Coherency**: 8/10  
+- **Logic**: 8/10  
+- **Completeness**: 8/10  
+**Feedback**: Step-by-step learning process. Anachronisms (USB drives) but logical progression.  
+
+---
+
+### **exaone3.5:2.4b**  
+- **Coherency**: 8/10  
+- **Logic**: 8/10  
+- **Completeness**: 8/10  
+**Feedback**: Blends curiosity with practical uses (navigation, combat). Realistic and grounded.  
+
+---
+
+### **tinyllama:1.1b-chat-v1-q8_0**  
+- **Coherency**: 6/10  
+- **Logic**: 5/10  
+- **Completeness**: 6/10  
+**Feedback**: Anachronisms (firearms, 5G). Superficial and historically inaccurate.  
+
+---
+
+### **tinyllama**  
+- **Coherency**: 5/10  
+- **Logic**: 5/10  
+- **Completeness**: 5/10  
+**Feedback**: Mentions modern concepts (podcasts, TV). Lacks grounding in Viking society.  
+
+---
+
+### **Summary**  
+- **Best Responses**: `deepseek-r1:1.5b`, `phi3`, and `llama3.2:3b` for balancing creativity, logic, and thoroughness.  
+- **Weakest Responses**: `starcoder2` (empty), `gemma:2b` (dismissive), and `tinyllama` (anachronistic).  
+- Most models successfully blended Viking traits (curiosity, adaptability) with plausible tech integration.
+
+
+***********************************************************Claude 3.5 Sonnet*************************************************************
+
+I'll analyze each response, evaluating them on coherency (how well-organized and clear the writing is), logic (how well-reasoned and plausible the arguments are), and completeness (how thoroughly the question is addressed).
+
+Gemma (gemma:2b response):
+- Coherency: 7/10 (Clear writing but overly dismissive tone)
+- Logic: 4/10 (Makes unfounded assumptions about Vikings having no concept of personal property)
+- Completeness: 3/10 (Primarily focuses on why Vikings wouldn't use it rather than exploring possibilities)
+Overall: Rather than engaging with the premise, takes a dismissive stance that misrepresents Viking culture.
+
+Phi-3 response:
+- Coherency: 9/10 (Well-structured, clear progression of ideas)
+- Logic: 8/10 (Thoughtful consideration of Viking culture and practical mindset)
+- Completeness: 8/10 (Covers multiple aspects: trade, navigation, cultural impact, practical uses)
+Overall: Strong response that balances Viking historical context with plausible reactions.
+
+Llama3 3B response:
+- Coherency: 8/10 (Clear day-by-day structure, though sometimes overly specific)
+- Logic: 7/10 (Generally reasonable progression, some overly modern assumptions)
+- Completeness: 9/10 (Very thorough exploration of different aspects and timeline)
+Overall: Comprehensive response with good structure, though occasionally too modern in its assumptions.
+
+Phi response:
+- Coherency: 6/10 (Some meandering thoughts, structure could be clearer)
+- Logic: 7/10 (Good consideration of Viking practicality and skepticism)
+- Completeness: 6/10 (Covers main points but gets repetitive)
+Overall: Makes good points about Viking practicality but less organized than Phi-3.
+
+Comparing across responses:
+- Phi-3 provides the most balanced and historically grounded response
+- Llama3 offers the most detailed exploration of possibilities
+- Regular Phi gives solid insights but with less structured presentation
+- Gemma's response is notably weaker, showing less engagement with the premise
+
+The strongest responses (Phi-3 and Llama3) succeeded by:
+1. Considering Viking cultural context
+2. Balancing practical and cultural reactions
+3. Acknowledging both curiosity and skepticism
+4. Avoiding overly modern assumptions
+5. Maintaining plausible scenarios within Viking capabilities
+
+
+*********************************************Gemini 2.0 Flash thinking*************************************************
+
+Model Response	Coherency (out of 10)	Logic (out of 10)	Completeness (out of 10)
+qwen:1.8b	8	5	3
+qwen:4b	8	6	4
+deepseek-r1:1.5b	9	8	7
+gemma:2b	8	7	6
+qwen2.5:1.5b	9	7	8
+qwen2.5:3b	9	8	8
+phi3	8	8	8
+starcoder2	1	1	1
+llama3.2:3b	10	9	9
+phi	7	5	5
+granite3.1-dense:2b	9	8	8
+granite3.1-moe	10	9	9
+exaone3.5:2.4b	9	8	8
+tinyllama:1.1b-chat-v1-q8_0	7	4	4
+tinyllama	7	3	3

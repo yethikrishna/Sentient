@@ -1,0 +1,608 @@
+************************************Chatgpt-4o*************************************************
+
+Here is the evaluation of each model's response based on the criteria of coherency, logic, and completeness:
+
+### **Evaluation Criteria:**
+1. **Coherency (Out of 10)** – How well the response is structured and easy to follow.
+2. **Logic (Out of 10)** – Whether the response makes logical sense given the prompt.
+3. **Completeness (Out of 10)** – Whether the response fully addresses the prompt without missing key details.
+
+---
+
+### **Evaluations:**
+
+#### **1. Qwen:1.8B**
+- **Coherency:** 4/10 – The response is cluttered with unnecessary repeated text.
+- **Logic:** 3/10 – Lacks a clear execution path for the task.
+- **Completeness:** 3/10 – The response does not properly follow the required format.
+
+**Final Score: 10/30**
+
+---
+
+#### **2. Qwen:4B**
+- **Coherency:** 5/10 – Lists hobbies in a readable format.
+- **Logic:** 4/10 – The response does not directly address the task.
+- **Completeness:** 4/10 – Lacks the expected tool calls and structured approach.
+
+**Final Score: 13/30**
+
+---
+
+#### **3. DeepSeek-R1:1.5B**
+- **Coherency:** 3/10 – Poor formatting, missing key details.
+- **Logic:** 3/10 – Does not adhere to JSON schema properly.
+- **Completeness:** 2/10 – The response is broken and unusable.
+
+**Final Score: 8/30**
+
+---
+
+#### **4. Gemma:2B**
+- **Coherency:** 9/10 – Clear structure.
+- **Logic:** 9/10 – Executes the required steps properly.
+- **Completeness:** 8/10 – Slightly lacks confirmation of email sending.
+
+**Final Score: 26/30**
+
+---
+
+#### **5. Qwen2.5:1.5B**
+- **Coherency:** 9/10 – Structured well.
+- **Logic:** 9/10 – Separates document creation and email sending logically.
+- **Completeness:** 9/10 – Meets the format well.
+
+**Final Score: 27/30**
+
+---
+
+#### **6. Qwen2.5:3B**
+- **Coherency:** 9/10 – Clear execution steps.
+- **Logic:** 9/10 – Correctly follows logical steps.
+- **Completeness:** 9/10 – Meets the requirement perfectly.
+
+**Final Score: 27/30**
+
+---
+
+#### **7. Phi3**
+- **Coherency:** 8/10 – Slightly redundant but structured.
+- **Logic:** 9/10 – Correct approach.
+- **Completeness:** 8/10 – Minor redundancy in tool calls.
+
+**Final Score: 25/30**
+
+---
+
+#### **8. Starcoder2**
+- **Coherency:** 6/10 – Some errors in formatting.
+- **Logic:** 6/10 – Misses some details.
+- **Completeness:** 5/10 – Does not fully meet the required schema.
+
+**Final Score: 17/30**
+
+---
+
+#### **9. Llama3.2:3B**
+- **Coherency:** 9/10 – Well-structured.
+- **Logic:** 9/10 – Correctly follows logical steps.
+- **Completeness:** 9/10 – Fully follows instructions.
+
+**Final Score: 27/30**
+
+---
+
+#### **10. Phi**
+- **Coherency:** 7/10 – Slightly unclear.
+- **Logic:** 7/10 – Misses part of the instruction.
+- **Completeness:** 7/10 – Incomplete tool calls.
+
+**Final Score: 21/30**
+
+---
+
+#### **11. Granite3.1-Dense:2B**
+- **Coherency:** 9/10 – Well-structured.
+- **Logic:** 9/10 – Follows proper execution order.
+- **Completeness:** 9/10 – Fully meets expectations.
+
+**Final Score: 27/30**
+
+---
+
+#### **12. Granite3.1-MOE**
+- **Coherency:** 8/10 – Clear structure.
+- **Logic:** 7/10 – Incorrect tool usage (gsheets instead of gdocs).
+- **Completeness:** 6/10 – Not fully aligned with the requirements.
+
+**Final Score: 21/30**
+
+---
+
+#### **13. ExaOne3.5:2.4B**
+- **Coherency:** 8/10 – Well-structured.
+- **Logic:** 9/10 – Follows logical execution.
+- **Completeness:** 8/10 – Good format but slight redundancy.
+
+**Final Score: 25/30**
+
+---
+
+#### **14. TinyLlama:1.1B**
+- **Coherency:** 4/10 – Some errors.
+- **Logic:** 4/10 – Incorrect tool calls.
+- **Completeness:** 3/10 – Incorrectly formatted.
+
+**Final Score: 11/30**
+
+---
+
+### **Final Ranking (Top Performers)**
+1. **Qwen2.5:1.5B** (27/30)
+2. **Qwen2.5:3B** (27/30)
+3. **Llama3.2:3B** (27/30)
+4. **Granite3.1-Dense:2B** (27/30)
+5. **Gemma:2B** (26/30)
+6. **ExaOne3.5:2.4B** (25/30)
+7. **Phi3** (25/30)
+
+These models followed the required format well, structured their responses properly, and maintained logical flow.
+
+
+
+
+***********************************************Deepseek-r1*****************************************************
+
+
+
+Based on the provided context and the required format, I will evaluate each model's response in terms of **coherency**, **logic**, and **completeness**. The goal is to assess how well each model adheres to the required format and the task of creating a Google Docs document about types of hobbies and sending it via Gmail.
+
+### Evaluation Criteria:
+1. **Coherency (0-10)**: Does the response make sense and follow a logical flow?
+2. **Logic (0-10)**: Does the response adhere to the required format and logical structure?
+3. **Completeness (0-10)**: Does the response fully address the task, including both creating the document and sending it via Gmail?
+
+---
+
+### 1. **qwen:1.8b response**
+- **Coherency**: 2/10
+  - The response is incoherent and contains repetitive, nonsensical text about "PhotosBySizing" and "disproportionatePhotosBySizing," which is unrelated to the task.
+- **Logic**: 1/10
+  - The response does not follow the required format or logical structure. It includes irrelevant details and fails to address the task.
+- **Completeness**: 1/10
+  - The response does not address the task of creating a Google Docs document or sending it via Gmail.
+
+---
+
+### 2. **qwen:4b response**
+- **Coherency**: 6/10
+  - The response is coherent but does not follow the required format. It lists hobbies but does not address the task of creating a document or sending it via Gmail.
+- **Logic**: 5/10
+  - The response does not adhere to the required format. It provides a list of hobbies but does not address the task logically.
+- **Completeness**: 4/10
+  - The response partially addresses the task by listing hobbies but does not create a document or send it via Gmail.
+
+---
+
+### 3. **deepseek-r1:1.5b response**
+- **Coherency**: 5/10
+  - The response is somewhat coherent but does not address the task. It defines a schema for tool calls but does not provide a practical response.
+- **Logic**: 6/10
+  - The response follows a logical structure but does not address the task of creating a document or sending it via Gmail.
+- **Completeness**: 4/10
+  - The response does not address the task of creating a document or sending it via Gmail.
+
+---
+
+### 4. **gemma:2b response**
+- **Coherency**: 8/10
+  - The response is coherent and follows the required format. It correctly identifies the task of creating a Google Docs document and sending it via Gmail.
+- **Logic**: 8/10
+  - The response adheres to the required format and logical structure. It correctly uses the "tool_call" structure.
+- **Completeness**: 7/10
+  - The response addresses the task but does not include a second tool call for sending the document via Gmail.
+
+---
+
+### 5. **qwen2.5:1.5b response**
+- **Coherency**: 9/10
+  - The response is coherent and follows the required format. It correctly identifies the task of creating a Google Docs document and sending it via Gmail.
+- **Logic**: 9/10
+  - The response adheres to the required format and logical structure. It correctly uses the "tool_call" structure for both tasks.
+- **Completeness**: 9/10
+  - The response fully addresses the task, including both creating the document and sending it via Gmail.
+
+---
+
+### 6. **qwen2.5:3b response**
+- **Coherency**: 9/10
+  - The response is coherent and follows the required format. It correctly identifies the task of creating a Google Docs document and sending it via Gmail.
+- **Logic**: 9/10
+  - The response adheres to the required format and logical structure. It correctly uses the "tool_call" structure for both tasks.
+- **Completeness**: 9/10
+  - The response fully addresses the task, including both creating the document and sending it via Gmail.
+
+---
+
+### 7. **phi3 response**
+- **Coherency**: 8/10
+  - The response is coherent and follows the required format. It correctly identifies the task of creating a Google Docs document and sending it via Gmail.
+- **Logic**: 8/10
+  - The response adheres to the required format and logical structure. It correctly uses the "tool_call" structure for both tasks.
+- **Completeness**: 8/10
+  - The response fully addresses the task, including both creating the document and sending it via Gmail.
+
+---
+
+### 8. **starcoder2 response**
+- **Coherency**: 6/10
+  - The response is coherent but does not fully follow the required format. It combines both tasks into a single tool call.
+- **Logic**: 6/10
+  - The response partially adheres to the required format. It combines both tasks into a single tool call, which is not ideal.
+- **Completeness**: 6/10
+  - The response partially addresses the task but combines both tasks into a single tool call.
+
+---
+
+### 9. **llama3.2:3b response**
+- **Coherency**: 9/10
+  - The response is coherent and follows the required format. It correctly identifies the task of creating a Google Docs document and sending it via Gmail.
+- **Logic**: 9/10
+  - The response adheres to the required format and logical structure. It correctly uses the "tool_call" structure for both tasks.
+- **Completeness**: 9/10
+  - The response fully addresses the task, including both creating the document and sending it via Gmail.
+
+---
+
+### 10. **phi response**
+- **Coherency**: 6/10
+  - The response is coherent but does not fully follow the required format. It combines both tasks into a single tool call.
+- **Logic**: 6/10
+  - The response partially adheres to the required format. It combines both tasks into a single tool call, which is not ideal.
+- **Completeness**: 6/10
+  - The response partially addresses the task but combines both tasks into a single tool call.
+
+---
+
+### 11. **granite3.1-dense:2b response**
+- **Coherency**: 9/10
+  - The response is coherent and follows the required format. It correctly identifies the task of creating a Google Docs document and sending it via Gmail.
+- **Logic**: 9/10
+  - The response adheres to the required format and logical structure. It correctly uses the "tool_call" structure for both tasks.
+- **Completeness**: 9/10
+  - The response fully addresses the task, including both creating the document and sending it via Gmail.
+
+---
+
+### 12. **granite3.1-moe response**
+- **Coherency**: 7/10
+  - The response is coherent but incorrectly uses "gsheets" instead of "gdocs" for creating the document.
+- **Logic**: 7/10
+  - The response partially adheres to the required format. It incorrectly uses "gsheets" instead of "gdocs."
+- **Completeness**: 7/10
+  - The response partially addresses the task but incorrectly uses "gsheets" instead of "gdocs."
+
+---
+
+### 13. **exaone3.5:2.4b response**
+- **Coherency**: 8/10
+  - The response is coherent and follows the required format. It correctly identifies the task of creating a Google Docs document and sending it via Gmail.
+- **Logic**: 8/10
+  - The response adheres to the required format and logical structure. It correctly uses the "tool_call" structure for both tasks.
+- **Completeness**: 8/10
+  - The response fully addresses the task, including both creating the document and sending it via Gmail.
+
+---
+
+### 14. **tinyllama:1.1b-chat-v1-q8_0 response**
+- **Coherency**: 5/10
+  - The response is coherent but does not address the task correctly. It creates a document about "project updates" instead of "types of hobbies."
+- **Logic**: 5/10
+  - The response partially adheres to the required format but does not address the task correctly.
+- **Completeness**: 5/10
+  - The response partially addresses the task but creates a document about "project updates" instead of "types of hobbies."
+
+---
+
+### 15. **tinyllama response**
+- **Coherency**: 5/10
+  - The response is coherent but does not address the task correctly. It creates a document about "project updates" instead of "types of hobbies."
+- **Logic**: 5/10
+  - The response partially adheres to the required format but does not address the task correctly.
+- **Completeness**: 5/10
+  - The response partially addresses the task but creates a document about "project updates" instead of "types of hobbies."
+
+---
+
+### Summary of Ratings:
+| Model                  | Coherency | Logic | Completeness |
+|------------------------|-----------|-------|--------------|
+| qwen:1.8b              | 2         | 1     | 1            |
+| qwen:4b                | 6         | 5     | 4            |
+| deepseek-r1:1.5b       | 5         | 6     | 4            |
+| gemma:2b               | 8         | 8     | 7            |
+| qwen2.5:1.5b           | 9         | 9     | 9            |
+| qwen2.5:3b             | 9         | 9     | 9            |
+| phi3                   | 8         | 8     | 8            |
+| starcoder2             | 6         | 6     | 6            |
+| llama3.2:3b            | 9         | 9     | 9            |
+| phi                    | 6         | 6     | 6            |
+| granite3.1-dense:2b    | 9         | 9     | 9            |
+| granite3.1-moe         | 7         | 7     | 7            |
+| exaone3.5:2.4b         | 8         | 8     | 8            |
+| tinyllama:1.1b-chat-v1 | 5         | 5     | 5            |
+| tinyllama              | 5         | 5     | 5            |
+
+---
+
+### Conclusion:
+The **qwen2.5:1.5b**, **qwen2.5:3b**, **llama3.2:3b**, and **granite3.1-dense:2b** models performed the best, with high scores in coherency, logic, and completeness. They fully adhered to the required format and addressed the task of creating a Google Docs document about types of hobbies and sending it via Gmail. 
+
+The **qwen:1.8b** and **tinyllama** models performed the worst, with low scores across all categories, as they either provided incoherent responses or failed to address the task correctly.
+
+
+
+*******************************************Claude 3.5 sonnet*******************************************************
+
+
+I'll analyze each model's response based on how well it followed the required format and handled the task. I'll evaluate them on:
+
+1. Format Correctness (adherence to required JSON schema)
+2. Task Understanding (correct interpretation of creating docs and sending email)
+3. Implementation Quality (proper tool usage and sequencing)
+
+Let me analyze each response:
+
+1. Qwen 1.8b:
+- Completely off-track response focusing on hobby data structure
+- Doesn't follow required format at all
+- No tool calls or email functionality
+Score: 0/10
+
+2. Qwen 4b:
+- Again provides hobby content instead of tool calls
+- Misses the required format entirely
+- No email or document creation functionality
+Score: 0/10
+
+3. Deepseek r1 1.5b:
+- Provides schema definition instead of actual response
+- While format-aware, doesn't actually implement the request
+- No practical tool usage
+Score: 2/10
+
+4. Gemma 2b:
+- Follows correct format
+- Combines both tasks into single instruction (less ideal)
+- Basic but functional response
+Score: 7/10
+
+5. Qwen2.5 1.5b:
+- Perfect format adherence
+- Correctly separates tasks into two tool calls
+- Proper sequencing of document creation then email
+Score: 9/10
+
+6. Qwen2.5 3b:
+- Similar to 1.5b version
+- Adds helpful subject line detail
+- Well-structured and complete
+Score: 9/10
+
+7. Phi3:
+- Correct format but redundant tool calls
+- Unnecessary repetition in task instructions
+- Poor handling of previous_tool_response
+Score: 6/10
+
+8. Starcoder2:
+- Overly simplified single tool call
+- Combines tasks inappropriately
+- Missing proper task separation
+Score: 4/10
+
+9. LLaMA3.2 3b:
+- Good format adherence
+- Adds unnecessary document link in response
+- Otherwise solid implementation
+Score: 8/10
+
+10. Phi:
+- Minimal implementation
+- Combines tasks inappropriately
+- Poor task separation
+Score: 3/10
+
+11. Granite3.1-dense 2b:
+- Excellent format and task separation
+- Clear, concise instructions
+- Proper tool usage
+Score: 9/10
+
+12. Granite3.1-moe:
+- Uses incorrect tool (gsheets instead of gdocs)
+- Adds unnecessary personal details
+- Otherwise good structure
+Score: 6/10
+
+13. Exaone3.5 2.4b:
+- Correct format but reversed tool order
+- Adds unnecessary detail to second call
+- Generally functional but could be more efficient
+Score: 7/10
+
+14. TinyLlama 1.1b:
+- Completely off-topic response
+- Wrong tool usage
+- Irrelevant task instructions
+Score: 1/10
+
+15. TinyLlama:
+- Non-standard format
+- Incorrect tool handling
+- Poor task implementation
+Score: 2/10
+
+Best Performers:
+1. Qwen2.5 (both versions)
+2. Granite3.1-dense 2b
+3. LLaMA3.2 3b
+
+These models demonstrated the best understanding of:
+- Proper JSON formatting
+- Correct tool usage
+- Appropriate task separation
+- Logical sequence of operations
+
+The key differentiator was their ability to:
+1. Separate the task into distinct tool calls
+2. Use the correct tools (gdocs and gmail)
+3. Maintain proper dependency ordering
+4. Follow the required JSON schema exactly
+
+
+
+***********************************************************Gemini 2.0 Flash thinking*******************************************************
+
+
+
+Here are the evaluations for each model response, graded on coherency, logic, and completeness out of 10:
+
+qwen:1.8b response:
+
+Coherency: 1/10 - The response is largely incoherent and does not follow the requested JSON format. It appears to be attempting to create document content directly within the JSON, but it becomes nonsensical and repetitive, especially with the "PhotosBySizingSmallMediumLarge disproportionate" section.
+
+Logic: 1/10 - There is no logical structure in terms of tool calls or task execution. The response doesn't identify the need for Gmail and Google Docs as separate tools.
+
+Completeness: 1/10 - The response is incomplete and doesn't fulfill any part of the request in a usable way. It fails to produce tool calls that could be interpreted and executed.
+
+qwen:4b response:
+
+Coherency: 2/10 - While formatted as JSON, the response is still incoherent in terms of fulfilling the prompt. It provides a list of hobbies as if it's directly answering "types of hobbies" rather than generating tool calls to create a document about them. The structure seems more like data output than tool instructions.
+
+Logic: 1/10 - The response doesn't demonstrate logical steps towards creating a Google Doc and sending it via Gmail. It misses the core task of tool orchestration.
+
+Completeness: 1/10 - Incomplete and doesn't address the request to create and send a document. It generates hobby descriptions instead.
+
+deepseek-r1:1.5b response:
+
+Coherency: 3/10 - The response attempts to adhere to the JSON format for tool calls but is incomplete and contains errors like empty strings and extra closing braces. It shows an understanding of the tool_calls structure but lacks content.
+
+Logic: 3/10 - It vaguely hints at the logical structure of tool calls but doesn't specify tool names or instructions effectively. It seems to recognize the need for tool calls but fails to define them.
+
+Completeness: 2/10 - Very incomplete, missing crucial details like tool names and task instructions within the content field. The JSON is also syntactically incorrect in places.
+
+gemma:2b response:
+
+Coherency: 8/10 - The response is coherent and uses the correct JSON format for a tool call. It clearly specifies gdocs as the tool and provides a task instruction.
+
+Logic: 7/10 - Logically identifies the need for Google Docs. However, it combines both document creation and sending the link into a single gdocs task instruction, rather than separating the email sending to a gmail tool call.
+
+Completeness: 7/10 - Partially complete. It addresses document creation but doesn't explicitly separate the email sending task into a distinct tool call. It could be interpreted as implying Gmail within the gdocs task, but it's not as clear as it could be.
+
+qwen2.5:1.5b response:
+
+Coherency: 9/10 - Excellent coherency. The JSON format is correct, and it clearly separates the tasks into two distinct tool calls for gdocs and gmail.
+
+Logic: 9/10 - Logically sound. It correctly identifies the need for both Google Docs to create the document and Gmail to send the link. The separation of tasks is appropriate.
+
+Completeness: 9/10 - Very complete. It covers both creating the document and sending the link via email with clear task instructions for each tool.
+
+qwen2.5:3b response:
+
+Coherency: 9/10 - Very coherent and well-structured JSON. Similar to qwen2.5:1.5b, it uses two tool calls effectively.
+
+Logic: 9/10 - Logically sound and very similar to qwen2.5:1.5b. The addition of a subject line in the Gmail task instruction is a small but positive detail.
+
+Completeness: 9/10 - Very complete, mirroring the completeness of qwen2.5:1.5b with the added detail of a subject line for the email.
+
+phi3 response:
+
+Coherency: 9/10 - Highly coherent and well-formatted JSON. It uses two tool calls, one for gdocs and another for gmail.
+
+Logic: 9/10 - Logically sound in separating document creation and email sending into distinct tool calls. The previous_tool_response: true for Gmail is logical as sending requires the document to be created first.
+
+Completeness: 9/10 - Very complete, covering both aspects of the prompt effectively and logically.
+
+starcoder2 response:
+
+Coherency: 7/10 - The JSON is somewhat coherent, but there are extra spaces and newlines at the end. It uses only one tool call for gmail, which is less ideal.
+
+Logic: 6/10 - The logic is less clear. It seems to assume that gmail can handle both document creation and sending the link in one step, which is not a typical tool call pattern for separate services like Google Docs and Gmail.
+
+Completeness: 6/10 - Incomplete as it doesn't distinctly address the document creation step with a gdocs tool call. It might be interpretable, but it's less explicit.
+
+llama3.2:3b response:
+
+Coherency: 9/10 - Very coherent and well-structured JSON, using two tool calls. It's similar to qwen2.5 and phi3 in structure.
+
+Logic: 9/10 - Logically sound in separating gdocs and gmail tasks. The inclusion of previous_tool_response: true for Gmail is correct. The addition of content within the gmail tool call specifying recipient and document link is a notable enhancement, showing a deeper understanding of email parameters.
+
+Completeness: 10/10 - Excellent completeness. It not only separates the tool calls logically but also includes extra details within the gmail call that would be very helpful for execution, such as specifying the recipient and even a placeholder document link. This goes beyond just basic instructions and anticipates further parameters needed for the tool.
+
+phi response:
+
+Coherency: 7/10 - JSON format is okay but there are extra spaces and newlines. It uses only one tool call for gmail, similar to starcoder2. The previous_tool_response: true when there's no prior tool call is illogical.
+
+Logic: 5/10 - The logic is flawed. Using gmail to "create a Google Docs document" is not accurate. Furthermore, setting previous_tool_response: true for the first and only tool call makes no sense.
+
+Completeness: 5/10 - Incomplete and logically inconsistent. It misses the crucial gdocs tool call and misuses gmail's function in the task instruction.
+
+granite3.1-dense:2b response:
+
+Coherency: 9/10 - Highly coherent and well-structured JSON. It uses two tool calls, one for gdocs and another for gmail.
+
+Logic: 9/10 - Logically sound in separating document creation and email sending. previous_tool_response: true for Gmail is logically correct.
+
+Completeness: 9/10 - Very complete, covering both document creation and sending via email with clear instructions for each tool, similar to qwen2.5 and phi3.
+
+granite3.1-moe response:
+
+Coherency: 8/10 - Coherent and well-structured JSON using two tool calls. It uses gsheets instead of gdocs, which is a minor inaccuracy in tool selection but still within the Google suite.
+
+Logic: 7/10 - Logically mostly sound, although choosing gsheets instead of gdocs for a document about hobbies is less precise (Google Docs is more suited for text documents, Google Sheets for spreadsheets). Separating email sending is correct. Including email content in the gmail instruction is a positive detail.
+
+Completeness: 8/10 - Mostly complete. It addresses both document creation (albeit with gsheets instead of gdocs) and sending via email, including example email content. The slight inaccuracy is the tool choice for document creation.
+
+exaone3.5:2.4b response:
+
+Coherency: 7/10 - JSON format is okay. The order of tool calls (gmail then gdocs) is reversed, which is unusual but might still function if the system is designed to handle previous_tool_response correctly.
+
+Logic: 7/10 - The logic is somewhat inverted in the order of operations. It instructs gmail first to handle document creation and sending, and then gdocs for creating the document. previous_tool_response: true for gdocs following gmail is illogical in this reversed order.
+
+Completeness: 7/10 - Mostly complete in that it includes instructions for both document creation and email sending, but the reversed order and illogical previous_tool_response reduce its effectiveness.
+
+tinyllama:1.1b-chat-v1-q8_0 response:
+
+Coherency: 2/10 - The JSON format is somewhat okay, but the tool names and task instructions are completely irrelevant to the prompt. It hallucinates tools gdrive and gcalendar and tasks about project updates and meetings.
+
+Logic: 1/10 - No logical connection to the prompt. The tool calls and tasks are completely off-topic and unrelated to creating a hobbies document and sending it via Gmail.
+
+Completeness: 1/10 - Completely incomplete and irrelevant. The response fails to address any part of the original request.
+
+tinyllama response:
+
+Coherency: 3/10 - The JSON structure is messy, mixing tool_call as an array with names outside of it. The tool names and task instructions are partially relevant but still significantly off-track, combining sales reports, project updates, and Google Docs in a confused manner.
+
+Logic: 2/10 - Weak logical connection to the prompt. While it mentions gdocs and gmail in the second tool call, it's mixed with irrelevant tasks like searching for sales reports. The overall logic is unclear and unfocused.
+
+Completeness: 2/10 - Very incomplete and largely irrelevant. While it vaguely touches on some relevant tools, the tasks and overall direction are not aligned with the prompt.
+
+Summary Table of Scores:
+
+Model	Coherency	Logic	Completeness
+qwen:1.8b	1/10	1/10	1/10
+qwen:4b	2/10	1/10	1/10
+deepseek-r1:1.5b	3/10	3/10	2/10
+gemma:2b	8/10	7/10	7/10
+qwen2.5:1.5b	9/10	9/10	9/10
+qwen2.5:3b	9/10	9/10	9/10
+phi3	9/10	9/10	9/10
+starcoder2	7/10	6/10	6/10
+llama3.2:3b	9/10	9/10	10/10
+phi	7/10	5/10	5/10
+granite3.1-dense:2b	9/10	9/10	9/10
+granite3.1-moe	8/10	7/10	8/10
+exaone3.5:2.4b	7/10	7/10	7/10
+tinyllama:1.1b-chat-v1-q8_0	2/10	1/10	1/10
+tinyllama	3/10	2/10	2/10

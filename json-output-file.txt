@@ -1,0 +1,379 @@
+qwen:1.8b response:
+{
+  "context": {
+    "title": "Types of Hobbies",
+    "author": "John Doe",
+    "date": "01-01-2023"
+  },
+  "response": {
+    "title": "Types of Hobbies",
+    "author": "John Doe",
+    "date": "01-01-2023"
+  
+  , "typeOfHobbyList": [
+    {
+      "description": "Gardening",
+      "type": "garden",
+      "example": {
+        "name": "Jane",
+        "age": 50,
+        "location": {
+          "id": "1234567890", 
+          "name": "California", 
+          "latitude": 34.05, 
+          "longitude": -115.03
+        }
+      }
+    }
+    
+  , "typeOfHobbyListSecondRowAndBeyondListitemsByTypeAndSubTypeGardeningPhotosPerSquareFootgardenCultivationPhotosBySquareFeetGardenLandscapePhotographyPhotosOfLandscapesInNaturalDisplaysOutdoorLightingPhotographySunlightOrbitalsAndBentnessPhotosBySizeSmallMediumLarge disproportionatePhotosBySizingSmallMediumLarge disproportionatePhotosBySizingSmallMediumLarge disproportionatePhotosBySizingSmallMediumLarge disproportionatePhotosBySizingSmallMediumLarge disproportionatePhotosBySizingSmallMediumLarge disproportionatePhotosBySizingSmallMediumLarge disproportionatePhotosBySizingSmallMediumLarge disproportionatePhotosBySizingSmallMediumLarge disproportionatePhotosBySizingSmallMediumLarge disproportionatePhotosBySizingSmallMediumLarge disproportionatePhotosBySizingSmallMediumLarge disproportionatePhotosBySizingSmallMediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmallMediumLarge disproportionatePhotosBySizingSmallMediumLarge disproportionatePhotosBySizingSmallMediumLarge disproportionatePhotosBySizingSmallMediumLarge disproportionatePhotosBySizingSmallMediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmallMediumLarge disproportionatePhotosBySizingSmallMediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmallMediumLarge disproportionatePhotosBySizingSmall Medium Large disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizing Small Medium Large disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySicingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizing Small Medium Large disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmallMediumLarge disproportionatePhotosBySizing Small Medium Large disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmallMediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall MediumLarge disproportionatePhotosBySizingSmall Medium Large disproportionate Photos By Sizing Small medium large disproportionate Photos By Sizing Small medium large disproportionate Photos By Sizing Small medium large disproportionate Photos By Sizing Small medium large disproportionate Photos By Sizing Small medium large disproportionate Photos By Sizing Small medium large disproportionate Photos By Sizing Small medium large disproportionate Photos By Sizing Small medium large disproportionate Photos By Sizing Small medium large disproportionate Photos By Sizing Small medium large disproportionate Photos By Sizing Small medium large disproportionate Photos By Sizing Small medium large disproportionate Photos By Sizing Small medium large disproportionate Photos By Sizing Small medium large disproportionate Photos By Sizing Small medium large disproportionate Photos By Sizing Small medium large disproportionate Photos By Sizing Small medium large disproportionate Photos By Sizing Small medium large disproportionate Photos By Sizing Small medium large disproportionate Photos By Sizing Small medium large disproportionate Photos By Sizing Small medium large disproportionate Photos By Sizing Small medium large disproportionate Photos By Sizing Small medium large disproportionate Photos By Sizing Small medium large disproportionate photos By Sizing Small medium large disproportionate photos By Sizing Small medium large disproportionate photos By Sizing Small medium large disproportionate photos By Sizing Small-medium-large-disproportionated不断地 small-medium-large-disproportionated photos By SizeSmallmediumlarge-disproportionated photos By SizeSmallmediumlarge-disproportionated photos By SizeSmallmediumlarge-disproportionated photos By SizeSmallmediumlarge-disproportionated photos By SizeSmallmediumlarge-disproportionated photos By SizeSmallmediumlarge-disproportionated photos By SizeSmallmediumlarge-disproportionated photos By SizeSmallmediumlarge-disproportionated photos By SizeSmallmediumlarge-disproportionated photos By SizeSmallmediumlarge-disproportionated photos By SizeSmallmediumlarge-disproportionated photos By SizeSmallmediumlarge-disproportionated photos By SizeSmallmediumlarge-disproportionated photos By SizeSmallmediumlargedisproportionated photos By SizeSmallmediumlargeimagesDisproportionatePhotos.jpg" 
+]}
+}
+
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+
+End response.
+----------------
+qwen:4b response:
+{"error": "", "response": "{","type":"hobbies","items":[{"id":"475c68595f6d1b7f3a05d2a9e2", "title":"Climbing Mount Everest","description":"It's the ultimate adventure for many people. Climb up to the highest peak in the world and experience the breathtaking views from above."},{"id":"54f0c8417b79763c887a8d6b2", "title":"Reading books","description":"Books are a source of knowledge and entertainment. Reading books can open up new worlds to you, and can help you learn new things and improve yourself."},{"id":"50b5f4c1e4510d963814572f2", "title":"Cooking food","description":"Food is an essential part of our daily lives. Cooking food can be a fun and creative experience for many people, and can help you learn new things about food and cooking."},{"id":"5c47bdc110a83e9b7d6f5bde2", "title":"Playing sports","description":"Sports are a popular form of exercise and entertainment. Playing sports can be a fun and rewarding experience for many people, and can help you learn new things about sports, exercise, and health."},{"id":"4911e3001d78b526c0a6aaca", "title":"Traveling to different places","description":"Traveling is an exciting and enriching experience. Traveling to different places can broaden your horizons and help you gain new insights and perspectives about the world, culture, history, politics, religion, science, technology, etc."},{"id":"5b3e40d9616c2a887d33f1cda", "title":"Working at a job","description":"Work is an essential part of our daily lives. Working at a job can be a fulfilling and rewarding experience for many people, and can help you learn new things about work, jobs, careers, etc."},{"id":"420d65a713b9e84f0a4daebcb", "title":"Yoga","description":"Yoga is an ancient practice that originated in India. Yoga involves a series of physical postures and breathing exercises, which are designed to promote physical flexibility, balance, strength, endurance, and overall health and well-being."}]}
+End response.
+----------------
+deepseek-r1:1.5b response:
+{
+
+  "type": "object",
+  "properties": {
+    "tool_calls": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "response_type": {"type": "string", "enum": ["tool_call"]},
+          "content": {
+            "type": "object",
+            "properties": {
+              "tool_name": {"type": "string", "enum": ["gmail", "gdocs", "gcalendar", "gsheets", "gslides", "gdrive"]},
+              "task_instruction": {"type": "string"},
+              "previous_tool_response": {"type": "boolean"},
+            "required": [
+              "tool_name",
+              "task_instruction",
+              "previous_tool_response",
+            ""],
+            "additionalProperties": false
+          },
+          "required": ["response_type", "content"],
+          "additionalProperties": false
+        },
+        "required": ["response_type", "content"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["tool_calls"],
+    "additionalProperties": false
+  }
+
+}
+
+}
+  
+  
+ 
+  
+ 
+  
+ 
+  
+
+  
+ 
+  
+ 
+  
+ 
+  
+ 
+  
+ 
+  
+ 
+ 
+ 
+
+End response.
+----------------
+gemma:2b response:
+{
+  "tool_calls": [
+    {
+      "response_type": "tool_call",
+      "content": {
+        "tool_name": "gdocs",
+        "task_instruction": "Create a Google Docs document about types of hobbies and send the document link to itsskofficial03@gmal.com via Gmail",
+        "previous_tool_response": false
+      }
+    }
+  ]
+}
+End response.
+----------------
+qwen2.5:1.5b response:
+{
+    "tool_calls": [
+        {
+            "response_type": "tool_call",
+            "content": {
+                "tool_name": "gdocs",
+                "task_instruction": "Create a Google Docs document about types of hobbies.",
+                "previous_tool_response": false
+            }
+        },
+        {
+            "response_type": "tool_call",
+            "content": {
+                "tool_name": "gmail",
+                "task_instruction": "Send the created document link to itsskofficial03@gmail.com via Gmail.",
+                "previous_tool_response": false
+            }
+        }
+    ]
+}
+End response.
+----------------
+qwen2.5:3b response:
+{
+    "tool_calls": [
+        {
+            "response_type": "tool_call",
+            "content": {
+                "tool_name": "gdocs",
+                "task_instruction": "Create a Google Docs document about types of hobbies.",
+                "previous_tool_response": false
+            }
+        },
+        {
+            "response_type": "tool_call",
+            "content": {
+                "tool_name": "gmail",
+                "task_instruction": "Send the created Google Doc to itsskofficial03@gmal.com with the subject 'Document for Hobbies Types'.",
+                "previous_tool_response": false
+            }
+        }
+    ]
+}
+End response.
+----------------
+phi3 response:
+{
+  "tool_calls": [
+    {
+      "response_type": "tool_call",
+      "content": {
+        "tool_name": "gdocs",
+        "task_instruction": "Create a Google Docs document about types of hobbies and send the document link to itsskofficial03@gmail.com via Gmail.",
+        "previous_tool_response": false
+      }
+    },
+    {
+      "response_type": "tool_call",
+      "content": {
+        "tool_name": "gmail",
+        "task_instruction": "Send the created document link about types of hobbies to itsskofficial03@gmal.com via Gmail.",
+        "previous_tool_response": true
+      }
+    }
+  ]
+}
+End response.
+----------------
+starcoder2 response:
+{"tool_calls": [{"response_type": "tool_call", "content": {"tool_name": "gmail", "task_instruction": "Create a Google Docs document about types of hobbies and send the document link to itsskofficial03@gmal.com via Gmail.", "previous_tool_response": false}}]}
+
+                                                                       
+
+
+
+                                                                        
+
+
+End response.
+----------------
+llama3.2:3b response:
+{
+  "tool_calls": [
+    {
+      "response_type": "tool_call",
+      "content": {
+        "tool_name": "gdocs",
+        "task_instruction": "Create a Google Docs document about types of hobbies.",
+        "previous_tool_response": false
+      }
+    },
+    {
+      "response_type": "tool_call",
+      "content": {
+        "tool_name": "gmail",
+        "task_instruction": "Send the document link to itsskofficial03@gmal.com.",
+        "previous_tool_response": true,
+        "content": {
+          "to_recipient": "itsskofficial03@gmal.com",
+          "document_link": "https://docs.google.com/document/d/ejHPW8B4U9wQZTbY6Mw0uNq5FgOZVdS5/edit?usp=sharing"
+        }
+      }
+    }
+  ]
+}
+End response.
+----------------
+phi response:
+{ 
+
+"tool_calls": [{ "response_type": "tool_call", 
+            "content": { "tool_name": "gmail", "task_instruction": "Create a Google Docs document about types of hobbies and send the document link to itsskofficial03@gmal.com via Gmail",
+                     "previous_tool_response": true }
+           }]
+ 
+ 
+
+}
+
+End response.
+----------------
+granite3.1-dense:2b response:
+{
+  "tool_calls": [
+    {
+      "response_type": "tool_call",
+      "content": {
+        "tool_name": "gdocs",
+        "task_instruction": "Create a Google Docs document about types of hobbies.",
+        "previous_tool_response": false
+      }
+    },
+    {
+      "response_type": "tool_call",
+      "content": {
+        "tool_name": "gmail",
+        "task_instruction": "Send an email to itsskofficial03@gmal.com with a link to the newly created Google Docs document about types of hobbies.",
+        "previous_tool_response": true
+      }
+    }
+  ]
+}
+End response.
+----------------
+granite3.1-moe response:
+{
+  "tool_calls": [
+    {
+      "response_type": "tool_call",
+      "content": {
+        "tool_name": "gsheets",
+        "task_instruction": "Create a Google Docs document titled 'Types of Hobbies'."
+      }
+    },
+    {
+      "response_type": "tool_call",
+      "content": {
+        "tool_name": "gmail",
+        "task_instruction": "Compose and send an email to itsskofficial03@gmal.com with the following content: 'Hello, I'm Sarthak from AI studies at college. I've created a Google Docs document titled 'Types of Hobbies'. Please download this document for your reference. Best regards.'",
+        "previous_tool_response": false
+      }
+    }
+  ]
+}
+End response.
+----------------
+exaone3.5:2.4b response:
+{
+  "tool_calls": [
+    {
+      "response_type": "tool_call",
+      "content": {
+        "tool_name": "gmail",
+        "task_instruction": "Create a Google Doc about types of hobbies and send the document link to itsskofficial03@gmal.com via Gmail",
+        "previous_tool_response": false
+      }
+    },
+    {
+      "response_type": "tool_call",
+      "content": {
+        "tool_name": "gdocs",
+        "task_instruction": "Create a Google Doc titled 'Types of Hobbies' with sections detailing various hobbies like hiking, drawing, reading, philosophy, etc.",
+        "previous_tool_response": true
+      }
+    }
+  ]
+}
+End response.
+----------------
+tinyllama:1.1b-chat-v1-q8_0 response:
+{"tool_calls": [{"response_type": "tool_call", "content": {"tool_name": "gdrive", "task_instruction": "Create a Google Doc about project updates.", "previous_tool_response": false}}, {"response_type": "tool_call", "content": {"tool_name": "gcalendar", "task_instruction": "Add an event to my calendar for a meeting with the team.", "previous_tool_response": true}}]}
+End response.
+----------------
+tinyllama response:
+{"tool_call": [{"response_type": "tool_call", "content": {"task_instruction": "Search for the latest sales report in drive and add an event to my calendar for a meeting with the team.", "previous_tool_response": false}, "name": "Sales Report"}, {"response_type": "tool_call", "content": {"task_instruction": "Create a google doc about project updates and send the document link to itsskofficial03@gmal.com via Gmail", "previous_tool_response": true}, "name": "Google Doc"}]}
+
+
+End response.
+----------------

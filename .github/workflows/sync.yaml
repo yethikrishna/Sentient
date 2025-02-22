@@ -46,7 +46,7 @@ jobs:
           git clone --branch ${{ env.TARGET_BRANCH }} https://${{ env.GITHUB_TOKEN }}@github.com/${{ env.ORG_NAME }}/${{ env.DESTINATION_REPO_NAME }}.git
 
           # Sync files (overwrite & delete missing files)
-          rsync -av --exclude='.git' --delete . ${{ env.DESTINATION_REPO_NAME }}/
+          rsync -av --exclude='.git' --delete --ignore-missing-args . ${{ env.DESTINATION_REPO_NAME }}/
 
           cd ${{ env.DESTINATION_REPO_NAME }}
 

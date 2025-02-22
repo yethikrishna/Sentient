@@ -95,16 +95,10 @@ We at [Existence](https://existence.technology) believe that AI won't simply die
   <ul>
     <li><a href="https://www.typescriptlang.org/">ElectronJS</a></li>
     <li><a href="https://nextjs.org/">Next.js</a></li>
-    <li><a href="https://tailwindcss.com/">TailwindCSS - Frontend Styling</a></li>
-    <li><a href="https://python.org/">Python - AI Backend</a></li>
+    <li><a href="https://tailwindcss.com/">TailwindCSS</a></li>
+    <li><a href="https://fastapi.tiangolo.com/">FastAPI</a></li>
     <li><a href="https://ollama.com/">Ollama</a></li>
     <li><a href="https://neo4j.com/">Neo4j</a></li>
-  </ul>
-</details>
-
-<details>
-<summary>APIs & Scrapers</summary>
-  <ul>
     <li><a href="https://praw.readthedocs.io/en/stable/">PRAW Reddit API</a></li>
     <li><a href="https://pypi.org/project/linkedin-scraper/">LinkedIn Scraper</a></li>
     <li><a href="https://nitter-scraper.readthedocs.io/en/latest/">Nitter for X</a></li>

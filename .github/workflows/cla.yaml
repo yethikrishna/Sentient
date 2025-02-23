@@ -24,12 +24,13 @@ jobs:
           ))
         uses: contributor-assistant/github-action@v2.6.1
         env:
-          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PERSONAL_ACCESS_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
         with:
           path-to-signatures: '.github/signatures/version1/cla.json'
           path-to-document: 'https://github.com/existence-master/Sentient/blob/master/CLA.md'
           branch: 'oss'  
-          allowlist: itsskofficial,dependabot[bot]
+          allowlist: itsskofficial,Kabeer2004,dependabot[bot]
           remote-organization-name: existence-master
           remote-repository-name: Sentient-Internal
-          force-when-sync: true

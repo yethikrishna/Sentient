@@ -211,7 +211,7 @@ Install the following to start contributing to Sentient:
 <!-- Environment Variables -->
 ### 🔒: Environment Variables (Contributors)
 
-You will need the following environment variables to run the project locally. For sensitive keys like Auth0, GCP, Brave Search you can create your own accounts and populate your own keys or [contact us for our development keys.](mailto:existence.sentient@gmail.com).
+You will need the following environment variables to run the project locally. For sensitive keys like Auth0, GCP, Brave Search you can create your own accounts and populate your own keys or comment in the discussion titled ['Request Environment Variables (.env) Here'](https://github.com/existence-master/Sentient/discussions/13) if you want pre-setup keys
 
 For the Electron Frontend, you will need to create a `.env` file in the `src/interface` folder. Populate that `.env` file with the following variables (examples given).
 
@@ -252,8 +252,6 @@ For the Python Backend, you will need to create a `.env` file and place it in th
   AUTH0_DOMAIN=abcdxyz.us.auth0.com
   AUTH0_MANAGEMENT_CLIENT_ID=YOUR_MANAGEMENT_CLIENT_ID
   AUTH0_MANAGEMENT_CLIENT_SECRET=YOUR_MANAGEMENT_CLIENT_SECRET
-  AUTH0_ROLES_CLIENT_ID=ROLE_CLIENT_ID
-  AUTH0_ROLES_CLIENT_SECRET=ROLE_CLIENT_SECRET
   APP_SERVER_PORT=5000
   AGENTS_SERVER_PORT=5001
   MEMORY_SERVER_PORT=5002

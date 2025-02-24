@@ -121,7 +121,8 @@ Maintenance tasks (dependencies, CI/CD, etc.)
 
 ### **6\. CLA Requirement**
 
-*   You **must** sign our [Contributor License Agreement](CLA.md) before merging.
+*   When a pull request is raised, the CLA Assistant bot will guide you with the steps required to sign our CLA, you have to simply follow them
+*   Along with the steps of the bot, you have to sign with your name in [CLA.md](./CLA.md) at the bottom in your own fork of the repository
 *   Unsigned PRs will be blocked automatically.
 
 ### **7\. Review Process**

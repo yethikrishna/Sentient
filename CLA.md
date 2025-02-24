@@ -38,4 +38,3 @@ This agreement is governed by the laws of India. Disputes shall be resolved in P
 ---
 
 **Sign Here**  
-[Digital Signature System or CLA Assistant Integration]  

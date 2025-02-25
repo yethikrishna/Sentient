@@ -25,7 +25,7 @@
 <h4>
     <a href="https://www.youtube.com/watch?v=vIWgxLUlgR8/">View Demo</a>
   <span> · </span>
-    <a href="https://beneficial-billboard-012.notion.site/Sentient-1916d7df083c809c929bf012b33594fc">Documentation</a>
+    <a href="https://sentient-2.gitbook.io/docs">Documentation</a>
   <span> · </span>
     <a href="https://github.com/existence-master/Sentient/issues/">Report Bug</a>
   <span> · </span>

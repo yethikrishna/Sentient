@@ -27,7 +27,7 @@ load_dotenv("../.env")  # Load environment variables from .env file
 
 # --- FastAPI Application ---
 app = FastAPI(
-    title="Sentient API", description="API for the Sentient AI companion"
+    title="Sentient API", description="API for the Sentient AI companion", docs_url="/docs", redoc_url=None
 )  # Initialize FastAPI application
 
 # --- CORS Middleware ---

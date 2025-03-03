@@ -18,7 +18,10 @@ MANAGEMENT_CLIENT_ID = os.getenv("AUTH0_MANAGEMENT_CLIENT_ID")
 MANAGEMENT_CLIENT_SECRET = os.getenv("AUTH0_MANAGEMENT_CLIENT_SECRET")
 
 # Initialize FastAPI application.
-app = FastAPI(docs_url=None, redoc_url=None)  # Disable default docs and redoc endpoints
+app = FastAPI(
+    docs_url="/docs", 
+    redoc_url=None
+    )  # Disable default docs and redoc endpoints
 
 # Add CORS middleware to allow cross-origin requests.
 app.add_middleware(

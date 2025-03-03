@@ -22,7 +22,9 @@ load_dotenv("../.env")  # Load environment variables from .env file
 
 # --- FastAPI Application ---
 app = FastAPI(
-    title="Chat API", description="API for chat functionalities"
+    title="Chat API", description="API for chat functionalities",
+    docs_url="/docs", 
+    redoc_url=None
 )  # Initialize FastAPI application
 
 # --- CORS Middleware ---

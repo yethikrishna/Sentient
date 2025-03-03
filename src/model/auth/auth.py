@@ -16,6 +16,8 @@ load_dotenv("../.env") # Load environment variables from .env file
 app = FastAPI(
     title="Authentication API",
     description="API for handling Google OAuth2 authentication",
+    docs_url="/docs", 
+    redoc_url=None
 )
 
 # Add CORS middleware to allow cross-origin requests

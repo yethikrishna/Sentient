@@ -22,7 +22,10 @@ from dotenv import load_dotenv
 load_dotenv("../.env")  # Load environment variables from .env file
 
 # --- FastAPI Application Initialization ---
-app = FastAPI()  # Creating a FastAPI application instance
+app = FastAPI(
+    docs_url="/docs", 
+    redoc_url=None
+    )  # Creating a FastAPI application instance
 
 # --- CORS Middleware Configuration ---
 # Configuring CORS to allow requests from any origin.

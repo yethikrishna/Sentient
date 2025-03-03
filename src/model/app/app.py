@@ -47,6 +47,8 @@ SERVICE_MODULES: Dict[str, str] = {
 app = FastAPI(
     title="Orchestrator API",
     description="Orchestrates different services to provide a seamless AI experience.",
+    docs_url="/docs", 
+    redoc_url=None
 )  # Initialize FastAPI application
 
 # --- CORS Middleware ---

@@ -1,34 +1,26 @@
-/**
- * @file Script to manage server setup, updates, and installation using GitHub releases and NSSM for Windows service management.
- * This script handles checking for updates from GitHub, downloading the latest server installer,
- * stopping/starting the Sentient service, and running the installer with elevated privileges using `sudo-prompt`.
- */
-
 import { app } from "electron"
 import path from "path"
 import https from "https"
 import fs from "fs"
 import sudo from "sudo-prompt"
+import { writeToLog } from "../utils/logger.js"
 import { getBetaUserStatusFromKeytar } from "../utils/auth.js"
 
 /**
- * Determines if the user is a beta user to select the correct GitHub repository for updates.
- * @constant {boolean}
- * @private
+ * Fetches the beta user status asynchronously.
+ * This status is used to determine whether to check for pre-release server updates.
  */
 const betaUserStatus = await getBetaUserStatusFromKeytar()
-
 /**
- * GitHub API URL for fetching the latest release information, determined by beta user status.
- * @constant {string}
+ * URL for the GitHub repository's releases API endpoint.
+ * Used to fetch release information including version and installer download URL.
  */
-const GITHUB_API_URL = betaUserStatus
-	? "https://api.github.com/repos/existence-master/Sentient-Beta-Releases/releases/latest"
-	: "https://api.github.com/repos/existence-master/Sentient-Releases/releases/latest"
+const GITHUB_REPO_URL =
+	"https://api.github.com/repos/existence-master/Sentient/releases"
 
 /**
- * Directory where the server is installed within the user's AppData.
- * @constant {string}
+ * Directory where the server application will be installed.
+ * It's located in the user's AppData/Local/Programs directory, under the Sentient application path.
  */
 const SERVER_DIR = path.join(
 	app.getPath("home"),
@@ -39,77 +31,116 @@ const SERVER_DIR = path.join(
 	"server"
 )
 /**
- * Temporary path for the server installer executable.
- * @constant {string}
+ * Path for the temporary server installer executable.
+ * Installer is downloaded to the temp directory before execution.
  */
 const TEMP_EXE = path.join(app.getPath("temp"), "ServerInstaller.exe")
 /**
- * Path to the file storing the current server version.
- * @constant {string}
+ * Path to the file that stores the current server version.
+ * This file is located within the server installation directory.
  */
 const CURRENT_VERSION_FILE = path.join(SERVER_DIR, "version.txt")
 /**
- * Path to the NSSM (Non-Sucking Service Manager) executable, used for service management on Windows.
- * @constant {string}
+ * Path to the NSSM (Non-Sucking Service Manager) executable.
+ * NSSM is used to install and manage the server as a Windows service.
  */
 const NSSM_PATH = path.join(SERVER_DIR, "nssm.exe")
 
 /**
- * Checks for updates by comparing the current version with the latest version available on GitHub.
+ * Asynchronously checks for updates to the server application.
  *
- * @async
- * @returns {Promise<object|null>} Returns release information if an update is available, otherwise null.
- *         The release information object contains `version` and `downloadUrl` of the installer.
- * @throws {Error} If there is an error during the update check process.
+ * It fetches the latest release information from GitHub and compares the version with the current installed version.
+ *
+ * @returns {Promise<object|null>} - Returns an object containing the latest version info and download URL if an update is available, otherwise null.
+ *                                   The object has the structure: `{ version: string, downloadUrl: string }`.
+ *                                   Returns null if no update is available or in case of an error.
  */
 const checkForUpdates = async () => {
 	try {
-		const latestVersionInfo = await fetchLatestReleaseInfo() // Fetch latest release info from GitHub.
-		const currentVersion = getCurrentVersion() // Get the currently installed server version.
-		// Compare versions and return release info if a newer version is available.
+		const latestVersionInfo = await fetchLatestReleaseInfo()
+		const currentVersion = await getCurrentVersion()
 		return latestVersionInfo.version.replace(/^v/, "") !== currentVersion
 			? latestVersionInfo
 			: null
 	} catch (err) {
-		await console.log(`Error checking updates: ${err}`) // Log any errors during update check.
-		return null // Return null to indicate no update available or check failed.
+		await writeToLog(`Error checking updates: ${err}`)
+		return null
 	}
 }
 
 /**
- * Fetches the latest release information from GitHub API, including version and installer download URL.
+ * Fetches the latest release information from the GitHub API.
  *
- * @returns {Promise<object>} A promise that resolves to an object containing the latest `version` and `downloadUrl`.
- * @throws {Error} If fetching or parsing release information fails.
+ * Depending on the `betaUserStatus`, it either fetches the latest stable release or the latest pre-release.
+ * For beta users, it retrieves a list of pre-releases and selects the most recent one based on published date.
+ *
+ * @returns {Promise<object>} - Returns a promise that resolves to an object containing the latest version and installer download URL.
+ *                              The object has the structure: `{ version: string, downloadUrl: string }`.
+ * @throws {Error} - Throws an error if the API request fails, if there are no pre-releases available for beta users,
+ *                   or if required assets (version.txt, ServerInstaller.exe) are missing in the release.
  */
 const fetchLatestReleaseInfo = () => {
 	return new Promise((resolve, reject) => {
-		// Recursive function to handle HTTP redirects.
+		/**
+		 * API URL to fetch release information.
+		 * If betaUserStatus is true, fetches a list of releases (up to 100) to find the latest prerelease.
+		 * If betaUserStatus is false, fetches the 'latest' release, which is the latest stable release.
+		 */
+		const apiUrl = betaUserStatus
+			? `${GITHUB_REPO_URL}?per_page=100`
+			: `${GITHUB_REPO_URL}/latest`
+
+		/**
+		 * Handles the HTTP request to the GitHub API.
+		 * Follows redirects and processes the response to extract release information.
+		 *
+		 * @param {string} url - The API URL to request.
+		 */
 		const handleRequest = (url) => {
 			https
 				.get(
 					url,
-					{ headers: { "User-Agent": "Electron-App" } }, // Set User-Agent to avoid being blocked.
-					(res) => {
-						// Handle HTTP redirects.
+					{ headers: { "User-Agent": "Electron-App" } },
+					async (res) => {
+						// Handle HTTP redirects (status codes 3xx)
 						if (
 							res.statusCode >= 300 &&
 							res.statusCode < 400 &&
 							res.headers.location
 						) {
-							console.log(
-								`Redirecting to: ${res.headers.location}`
-							)
-							handleRequest(res.headers.location) // Follow redirect.
+							handleRequest(res.headers.location) // Redirect to the new location
 						} else if (res.statusCode === 200) {
-							// Successful response.
+							// Successful response (status code 200)
 							let data = ""
-							res.on("data", (chunk) => (data += chunk)) // Accumulate response data.
+							res.on("data", (chunk) => (data += chunk)) // Accumulate response data
 							res.on("end", async () => {
-								// Response finished.
+								// Response fully received
 								try {
-									const release = JSON.parse(data) // Parse JSON response.
-									// Find assets for version and installer.
+									let release
+									if (betaUserStatus) {
+										// Process for beta users to find the latest pre-release
+										const releases = JSON.parse(data)
+										const prereleases = releases.filter(
+											(r) => r.prerelease // Filter for pre-releases
+										)
+										if (prereleases.length === 0) {
+											// No pre-releases found
+											throw new Error(
+												"No pre-releases available"
+											)
+										}
+										// Sort pre-releases by published date to get the latest
+										release = prereleases.sort(
+											(a, b) =>
+												new Date(b.published_at) -
+												new Date(a.published_at)
+										)[0]
+									} else {
+										// Process for stable users, data is directly the latest release info
+										release = JSON.parse(data)
+									}
+
+									// Find the 'version.txt' and 'ServerInstaller.exe' assets in the release
 									const versionAsset = release.assets.find(
 										(asset) => asset.name === "version.txt"
 									)
@@ -119,340 +150,360 @@ const fetchLatestReleaseInfo = () => {
 												"ServerInstaller.exe"
 											)
 									)
-									// Check if required assets are present.
+
 									if (!versionAsset || !installerAsset) {
-										reject(
-											new Error(
-												"Invalid release data: Missing version.txt or installer asset"
-											)
+										// Required assets are missing in the release
+										throw new Error(
+											"Missing required assets in release"
 										)
-										return
 									}
-									// Fetch version content and resolve with release info.
+
+									// Fetch the content of 'version.txt' to get the version number
 									const version = await fetchAssetContent(
 										versionAsset.browser_download_url
 									)
+
 									resolve({
-										version: version.trim(),
+										version: version.trim(), // Resolve with version and installer URL
 										downloadUrl:
 											installerAsset.browser_download_url
 									})
 								} catch (err) {
 									reject(
 										new Error(
-											`Error parsing release data: ${err.message}`
+											`Error processing release data: ${err.message}`
 										)
 									)
 								}
 							})
 						} else {
-							// HTTP error status.
-							reject(
-								new Error(
-									`Failed to fetch release info. HTTP status: ${res.statusCode}`
-								)
-							)
+							reject(new Error(`HTTP error ${res.statusCode}`)) // Reject for non-200 status codes
 						}
 					}
 				)
-				.on("error", (err) => reject(err)) // Handle network errors.
+				.on("error", reject) // Handle request errors
 		}
-		handleRequest(GITHUB_API_URL) // Start the initial request.
+
+		handleRequest(apiUrl)
 	})
 }
 
 /**
- * Fetches the content of a specific asset file from GitHub (e.g., version.txt).
+ * Fetches the content of a specific asset file from a given URL.
+ * Used to download the 'version.txt' file from a GitHub release asset.
  *
- * @param {string} assetUrl - URL of the asset to download.
- * @returns {Promise<string>} A promise that resolves with the content of the asset as a string.
- * @throws {Error} If download or handling of the asset content fails.
+ * @param {string} assetUrl - The URL of the asset to download.
+ * @returns {Promise<string>} - Returns a promise that resolves to the content of the asset file as a string.
+ * @throws {Error} - Throws an error if the HTTP request fails.
  */
 const fetchAssetContent = (assetUrl) => {
 	return new Promise((resolve, reject) => {
-		// Recursive function to handle HTTP redirects.
+		/**
+		 * Handles the HTTP request to download the asset content.
+		 * Follows redirects and resolves with the content on successful download.
+		 *
+		 * @param {string} url - The URL of the asset to download.
+		 */
 		const handleRequest = (url) => {
 			https
 				.get(
 					url,
-					{ headers: { "User-Agent": "Electron-App" } }, // Set User-Agent header.
+					{ headers: { "User-Agent": "Electron-App" } },
 					(response) => {
-						// Handle HTTP redirects.
+						// Handle HTTP redirects
 						if (
 							response.statusCode >= 300 &&
 							response.statusCode < 400 &&
 							response.headers.location
 						) {
-							console.log(
+							writeToLog(
 								`Redirecting to: ${response.headers.location}`
 							)
-							handleRequest(response.headers.location) // Follow redirect.
+							handleRequest(response.headers.location) // Redirect to new location
 						} else if (response.statusCode === 200) {
-							// Successful response.
+							// Successful response
 							let content = ""
-							response.on("data", (chunk) => (content += chunk)) // Accumulate content.
-							response.on("end", () => resolve(content)) // Resolve with content.
+							response.on("data", (chunk) => (content += chunk)) // Accumulate content
+							response.on("end", () => resolve(content)) // Resolve with the content
 						} else {
-							// HTTP error status.
 							reject(
 								new Error(
 									`Failed to fetch asset. HTTP status: ${response.statusCode}`
 								)
-							)
+							) // Reject for non-200 status
 						}
 					}
 				)
-				.on("error", reject) // Handle network errors.
+				.on("error", reject) // Handle request errors
 		}
-		handleRequest(assetUrl) // Start the initial request.
+		handleRequest(assetUrl)
 	})
 }
 
 /**
- * Gets the currently installed server version from the version.txt file.
+ * Gets the currently installed server version from the version file.
  *
- * @async
- * @returns {Promise<string>} Current server version, defaults to "0.0.0" if file not found or error occurs.
+ * @returns {Promise<string>} - Returns a promise that resolves to the current version string.
+ *                             Returns "0.0.0" if the version file does not exist or in case of an error.
  */
 const getCurrentVersion = async () => {
 	try {
 		return fs.existsSync(CURRENT_VERSION_FILE)
-			? fs.readFileSync(CURRENT_VERSION_FILE, "utf-8").trim() // Read version from file.
-			: "0.0.0" // Default version if file doesn't exist.
+			? fs.readFileSync(CURRENT_VERSION_FILE, "utf-8").trim() // Read version from file if exists
+			: "0.0.0" // Default version if file not found
 	} catch (err) {
-		await console.log(`Error reading current version: ${err}`) // Log error if reading fails.
-		return "0.0.0" // Default version in case of error.
+		await writeToLog(`Error reading current version: ${err}`)
+		return "0.0.0" // Default version in case of error
 	}
 }
 
 /**
- * Updates the server to the latest version by downloading the installer, stopping the service,
- * running the installer, reinstalling the service, and starting the service.
+ * Updates the server application to the latest version.
  *
- * @async
- * @param {string} downloadUrl - URL to download the server installer.
- * @throws {Error} If any step in the update process fails.
+ * Downloads the new server installer, stops the current SentientService, runs the installer,
+ * reinstalls the SentientService, and starts the updated service.
+ *
+ * @param {string} downloadUrl - The download URL for the new server installer.
+ * @throws {Error} - Throws an error if any step in the update process fails.
  */
 const updateServer = async (downloadUrl) => {
 	try {
-		const exePath = await downloadFile(downloadUrl, TEMP_EXE) // Download installer to temp path.
-		console.log("Downloaded installer.")
-		await stopSentientService() // Stop the Sentient service.
-		console.log("Stopped SentientService.")
-		await runInstaller(exePath) // Run the downloaded installer.
-		console.log("Ran installer.")
-		await reinstallSentientService() // Reinstall the Sentient service.
-		console.log("Reinstalled SentientService.")
-		await startSentientService() // Start the Sentient service.
-		console.log("Started SentientService.")
+		const exePath = await downloadFile(downloadUrl, TEMP_EXE) // Download the installer
+		writeToLog("Downloaded installer.")
+		await stopSentientService() // Stop the SentientService
+		writeToLog("Stopped SentientService.")
+		await runInstaller(exePath) // Run the installer
+		writeToLog("Ran installer.")
+		await reinstallSentientService() // Reinstall the SentientService
+		writeToLog("Reinstalled SentientService.")
+		await startSentientService() // Start the SentientService
+		writeToLog("Started SentientService.")
 	} catch (err) {
-		await console.log(`Error updating server: ${err}`) // Log any errors during update.
-		throw err // Propagate error to caller.
+		await writeToLog(`Error updating server: ${err}`)
+		throw err // Re-throw error to be handled by the caller
 	}
 }
 
 /**
- * Stops the Sentient service using NSSM.
+ * Stops the Windows service 'SentientService' using NSSM.
  *
- * @returns {Promise<void>} Promise that resolves when the service is successfully stopped.
- * @throws {Error} If stopping the service fails.
+ * @returns {Promise<void>} - Returns a promise that resolves when the service is successfully stopped.
+ * @throws {Error} - Throws an error if stopping the service fails.
  */
 const stopSentientService = () => {
 	return new Promise((resolve, reject) => {
 		sudo.exec(
-			`"${NSSM_PATH}" stop SentientService`, // NSSM command to stop the service.
-			{ name: "Sentient" }, // Prompt name for sudo.
+			`"${NSSM_PATH}" stop SentientService`, // Command to stop the service using NSSM
+			{ name: "Sentient" }, // Application name for sudo prompt
 			(error, stdout, stderr) => {
 				if (error)
 					return reject(
 						new Error(
-							`Failed to stop service: ${stderr || error.message}`
+							`Failed to stop service: ${stderr || error.message}` // Reject promise on error
 						)
 					)
-				console.log("SentientService stopped.")
-				resolve() // Resolve on successful stop.
+				writeToLog("SentientService stopped.")
+				resolve() // Resolve promise on success
 			}
 		)
 	})
 }
 
 /**
- * Reinstalls the Sentient service using NSSM, including removing existing service, installing new,
- * setting startup type, and description.
+ * Reinstalls the 'SentientService' Windows service using NSSM.
  *
- * @returns {Promise<void>} Promise that resolves when all reinstall commands are executed successfully.
- * @throws {Error} If any NSSM command during reinstallation fails.
+ * It first removes the existing service and then installs it again with the updated server executable path.
+ * It also sets the service to auto-start and adds a description.
+ *
+ * @returns {Promise<void>} - Returns a promise that resolves when the service is successfully reinstalled.
+ * @throws {Error} - Throws an error if any command in the reinstallation process fails.
  */
 const reinstallSentientService = () => {
 	return new Promise((resolve, reject) => {
-		// Array of NSSM commands to execute for reinstallation.
+		/**
+		 * Array of NSSM commands to execute for reinstallation.
+		 * 1. Remove the existing service (with confirmation)
+		 * 2. Install the service, pointing to the updated server executable
+		 * 3. Set the service to auto-start on system boot
+		 * 4. Set a description for the service
+		 */
 		const commands = [
-			`"${NSSM_PATH}" remove SentientService confirm`, // Remove existing service.
+			`"${NSSM_PATH}" remove SentientService confirm`,
 			`"${NSSM_PATH}" install SentientService "${path.join(
 				SERVER_DIR,
-				"app.exe"
-			)}"`, // Install service for the new app.exe.
-			`"${NSSM_PATH}" set SentientService Start SERVICE_AUTO_START`, // Set service to auto-start.
-			`"${NSSM_PATH}" set SentientService Description "Handles background tasks for the Sentient application."` // Set service description.
+				"app.exe" // Path to the server application executable
+			)}"`,
+			`"${NSSM_PATH}" set SentientService Start SERVICE_AUTO_START`,
+			`"${NSSM_PATH}" set SentientService Description "Handles background tasks for the Sentient application."`
 		]
 
-		// Recursive function to run commands sequentially.
+		/**
+		 * Recursively runs commands from the commands array.
+		 * Executes each command in sequence and resolves when all commands are successfully executed.
+		 *
+		 * @param {number} [index=0] - The index of the command to execute in the commands array.
+		 */
 		const runCommands = (index = 0) => {
-			if (index >= commands.length) return resolve() // Resolve if all commands are executed.
+			if (index >= commands.length) return resolve() // Resolve when all commands are executed
 
 			sudo.exec(
-				commands[index], // Command to execute.
-				{ name: "Sentient" }, // Prompt name for sudo.
+				commands[index], // Execute the command at the current index
+				{ name: "Sentient" }, // Application name for sudo prompt
 				(error, stdout, stderr) => {
 					if (error)
 						return reject(
 							new Error(
 								`Failed command ${commands[index]}: ${
-									stderr || error.message
+									stderr || error.message // Reject promise if command fails
 								}`
 							)
 						)
-					console.log(`Executed: ${commands[index]}`) // Log executed command.
-					runCommands(index + 1) // Run next command.
+					writeToLog(`Executed: ${commands[index]}`)
+					runCommands(index + 1) // Run the next command
 				}
 			)
 		}
 
-		runCommands() // Start executing commands.
+		runCommands() // Start executing commands from index 0
 	})
 }
 
 /**
- * Starts the Sentient service using NSSM.
+ * Starts the 'SentientService' Windows service using NSSM.
  *
- * @returns {Promise<void>} Promise that resolves when the service is successfully started.
- * @throws {Error} If starting the service fails.
+ * @returns {Promise<void>} - Returns a promise that resolves when the service is successfully started.
+ * @throws {Error} - Throws an error if starting the service fails.
  */
 const startSentientService = () => {
 	return new Promise((resolve, reject) => {
 		sudo.exec(
-			`"${NSSM_PATH}" start SentientService`, // NSSM command to start the service.
-			{ name: "Sentient" }, // Prompt name for sudo.
+			`"${NSSM_PATH}" start SentientService`, // Command to start the service using NSSM
+			{ name: "Sentient" }, // Application name for sudo prompt
 			(error, stdout, stderr) => {
 				if (error)
 					return reject(
 						new Error(
 							`Failed to start service: ${
-								stderr || error.message
+								stderr || error.message // Reject promise if starting fails
 							}`
 						)
 					)
-				console.log("SentientService started.")
-				resolve() // Resolve on successful start.
+				writeToLog("SentientService started.")
+				resolve() // Resolve promise on success
 			}
 		)
 	})
 }
 
 /**
- * Downloads a file from a URL to a specified destination.
+ * Downloads a file from a given URL to a specified destination path.
  *
- * @param {string} fileUrl - URL of the file to download.
- * @param {string} destination - Local path to save the downloaded file.
- * @returns {Promise<string>} Promise that resolves with the destination path when download is complete.
- * @throws {Error} If download fails or HTTP error occurs.
+ * @param {string} fileUrl - The URL of the file to download.
+ * @param {string} destination - The local file path where the downloaded file should be saved.
+ * @returns {Promise<string>} - Returns a promise that resolves to the destination path of the downloaded file upon successful download.
+ * @throws {Error} - Throws an error if the download fails or if there is an issue writing the file.
  */
 const downloadFile = (fileUrl, destination) => {
 	return new Promise((resolve, reject) => {
-		// Recursive function to handle HTTP redirects.
+		/**
+		 * Handles the HTTP request to download the file.
+		 * Follows redirects and pipes the response to a file stream to save the downloaded file.
+		 *
+		 * @param {string} url - The URL of the file to download.
+		 */
 		const handleRequest = (url) => {
 			https
 				.get(url, (response) => {
-					// Handle HTTP redirects.
+					// Handle HTTP redirects
 					if (
 						response.statusCode >= 300 &&
 						response.statusCode < 400 &&
 						response.headers.location
 					) {
-						console.log(
+						writeToLog(
 							`Redirecting to: ${response.headers.location}`
 						)
-						handleRequest(response.headers.location) // Follow redirect.
+						handleRequest(response.headers.location) // Redirect to new location
 					} else if (response.statusCode === 200) {
-						// Successful response.
-						const file = fs.createWriteStream(destination) // Create write stream for destination.
-						response.pipe(file) // Pipe response stream to file stream.
+						// Successful response
+						const file = fs.createWriteStream(destination) // Create write stream for destination file
+						response.pipe(file) // Pipe the response stream to the file stream
 						file.on("finish", () => {
-							// File download finished.
+							// File download finished
 							file.close((err) => {
-								if (err) reject(err)
-								else resolve(destination) // Resolve with destination path.
+								if (err)
+									reject(err) // Reject if closing file stream fails
+								else resolve(destination) // Resolve with destination path on success
 							})
 						})
 					} else {
-						// HTTP error status.
 						reject(
 							new Error(
-								`Failed to download file. HTTP status: ${response.statusCode}`
+								`Failed to download file. HTTP status: ${response.statusCode}` // Reject for non-200 status
 							)
 						)
 					}
 				})
 				.on("error", (err) => {
-					// Handle download errors.
-					fs.unlink(destination, () => reject(err)) // Clean up destination file and reject.
+					fs.unlink(destination, () => reject(err)) // Delete partially downloaded file and reject on error
 				})
 		}
-		handleRequest(fileUrl) // Start the initial download request.
+		handleRequest(fileUrl) // Start the download process
 	})
 }
 
 /**
- * Runs the server installer executable with elevated privileges using `sudo-prompt`.
+ * Runs the server installer executable.
  *
- * @param {string} exePath - Path to the installer executable.
- * @returns {Promise<void>} Promise that resolves when the installer completes.
- * @throws {Error} If the installer fails to run.
+ * @param {string} exePath - The path to the server installer executable.
+ * @returns {Promise<void>} - Returns a promise that resolves when the installer process completes.
+ * @throws {Error} - Throws an error if the installer fails to run.
  */
 const runInstaller = (exePath) => {
 	return new Promise((resolve, reject) => {
-		const options = { name: "Sentient", env: { PATH: process.env.PATH } } // Options for sudo-prompt.
+		const options = { name: "Sentient", env: { PATH: process.env.PATH } } // Options for sudo execution, including PATH environment variable
 
 		sudo.exec(`"${exePath}"`, options, (error, stdout, stderr) => {
-			// Execute installer with sudo privileges.
-			if (error) reject(new Error(`Installer failed: ${error.message}`)) // Reject if installer fails.
-			if (stderr) console.error(`Installer error: ${stderr}`) // Log installer errors.
-			if (stdout) console.log(`Installer: ${stdout}`) // Log installer output.
-			resolve() // Resolve when installer completes.
+			// Execute the installer with sudo privileges
+			if (error) reject(new Error(`Installer failed: ${error.message}`)) // Reject promise if installer execution fails
+			if (stderr) console.error(`Installer error: ${stderr}`) // Log installer errors to console
+			if (stdout) console.log(`Installer: ${stdout}`) // Log installer output to console
+			resolve() // Resolve promise when installer completes (regardless of internal installer success, assuming process started)
 		})
 	})
 }
 
 /**
- * Sets up the FastAPI server by checking for updates and installing or updating the server as needed.
+ * Sets up the FastAPI server application.
  *
- * @async
- * @returns {Promise<object>} Returns an object indicating setup success and update status.
- *         Object contains `success: boolean` and `updateNeeded: boolean`.
- * @throws {Error} If server setup process encounters an error.
+ * Checks if the server directory exists, checks for updates, and updates the server if a new version is available.
+ *
+ * @returns {Promise<{success: boolean, updateNeeded?: boolean, error?: string}>} - Returns a promise that resolves to an object
+ *           indicating the success of the server setup and whether an update was needed.
+ *           The object has the structure: `{ success: boolean, updateNeeded?: boolean, error?: string }`.
  */
 const setupServer = async () => {
 	try {
-		console.log("Setting up FastAPI server...")
+		writeToLog("Setting up FastAPI server...")
 
-		// Ensure server directory exists.
 		if (!fs.existsSync(SERVER_DIR)) {
+			// Create server directory if it does not exist
 			fs.mkdirSync(SERVER_DIR, { recursive: true })
 		}
 
-		const updateInfo = await checkForUpdates() // Check for server updates.
+		const updateInfo = await checkForUpdates() // Check for server updates
 
-		console.log(`Update info: ${JSON.stringify(updateInfo)}`)
+		writeToLog(`Update info: ${JSON.stringify(updateInfo)}`)
 
 		if (updateInfo) {
-			// Update server if a new version is available.
+			// Update server if a new version is available
 			await updateServer(updateInfo.downloadUrl)
 		}
 
-		return { success: true, updateNeeded: !!updateInfo } // Return setup success status and update needed info.
+		return { success: true, updateNeeded: !!updateInfo } // Return success status and updateNeeded flag
 	} catch (err) {
-		await console.log(`Error setting up FastAPI server: ${err}`) // Log any setup errors.
-		return { success: false, error: err.message } // Return setup failure status and error message.
+		await writeToLog(`Error setting up FastAPI server: ${err}`)
+		return { success: false, error: err.message } // Return failure status and error message
 	}
 }
 

@@ -470,27 +470,49 @@ const initializeAppServer = async () => {
  * @async
  * @returns {Promise<void>}
  */
-const checkForUpdates = async () => {
-	const betaUserStatus = await getBetaUserStatusFromKeytar()
 
-	// Set autoUpdater feed URL based on beta user status
+const checkForUpdates = async () => {
+	/**
+	 *  Indicates whether the current user is a beta user.
+	 *  If true, the application will check for pre-release (beta) updates.
+	 *  If false, the application will check for stable updates.
+	 */
+	const betaUserStatus = true
+
 	if (betaUserStatus) {
+		// Configure autoUpdater to check for pre-release updates if the user is a beta user.
 		autoUpdater.setFeedURL({
-			provider: "github",
-			owner: "existence-master",
-			repo: "Sentient-Beta-Releases"
+			provider: "github", // Specify the update provider as GitHub
+			owner: "existence-master", // The owner of the GitHub repository
+			repo: "Sentient" // The name of the GitHub repository
 		})
+
+		/**
+		 * Allows autoUpdater to check for and download pre-release versions (e.g., beta, alpha).
+		 * This is set to true for beta users to receive beta updates.
+		 */
+		autoUpdater.allowPrerelease = true
 	} else {
+		// Configure autoUpdater to check for stable releases if the user is not a beta user.
 		autoUpdater.setFeedURL({
-			provider: "github",
-			owner: "existence-master",
-			repo: "Sentient-Releases"
+			provider: "github", // Specify the update provider as GitHub
+			owner: "existence-master", // The owner of the GitHub repository
+			repo: "Sentient" // The name of the GitHub repository
 		})
+		// autoUpdater.allowPrerelease is not set here, which defaults to false, ensuring only stable releases are checked.
 	}
 
-	createAppWindow() // Create the main application window
+	/**
+	 * Creates the main application window.
+	 * This should be called after setting up the update feed to ensure the app window is ready regardless of update status.
+	 */
+	createAppWindow()
 
-	// autoUpdater.checkForUpdatesAndNotify() // Check for updates and notify user (currently disabled)
+	/**
+	 * Initiates the update check process and notifies the user if an update is available.
+	 * This asynchronous call checks for updates based on the configured feed URL and displays a notification to the user.
+	 */
+	autoUpdater.checkForUpdatesAndNotify()
 }
 
 /**

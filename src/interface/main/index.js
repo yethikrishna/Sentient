@@ -20,7 +20,10 @@ import {
 	fetchAndSetBetaUserStatus,
 	getReferralCodeFromKeytar,
 	getBetaUserStatusFromKeytar,
-	setBetaUserStatusInKeytar
+	setBetaUserStatusInKeytar,
+	hasApiKey,
+	setApiKey,
+	deleteApiKey
 } from "../utils/auth.js"
 import { getPrivateData } from "../utils/api.js"
 import { createAuthWindow, createLogoutWindow } from "./auth.js"
@@ -126,6 +129,11 @@ const chatsDb = await getChatsDb(chatsDbPath)
  * @type {lowdb.Low<lowdb.Data<any>>}
  */
 const userProfileDb = await getUserProfileDb(userProfileDbPath)
+
+if (!userProfileDb.data.userData.selectedModel) {
+	userProfileDb.data.userData.selectedModel = "llama3.2:3b"
+	await userProfileDb.write()
+}
 
 /**
  * The main application window instance.
@@ -1013,9 +1021,9 @@ ipcMain.handle("send-message", async (_event, { chatId, input }) => {
 								id: uuid(),
 								message: "",
 								isUser: false,
-								memoryUsed: false,
-								agentsUsed: false,
-								internetUsed: false
+								memoryUsed: parsedMessage.memoryUsed,
+								agentsUsed: parsedMessage.agentsUsed,
+								internetUsed: parsedMessage.internetUsed
 							}
 							chat.chatHistory.push(last) // Add new message to chat history
 						}
@@ -1450,4 +1458,48 @@ ipcMain.handle("delete-subgraph", async (event, { source_name }) => {
 		console.log(`Error deleting subgraph: ${error}`)
 		return { status: "failure", error: error.message }
 	}
+})
+
+ipcMain.handle("get-ollama-models", async () => {
+	try {
+		const response = await fetch("http://localhost:11434/api/tags")
+		if (!response.ok) {
+			throw new Error("Failed to fetch models from Ollama")
+		}
+		const data = await response.json()
+		return data.models.map((model) => model.name)
+	} catch (error) {
+		console.error("Error fetching Ollama models:", error)
+		return [] // Return empty array on failure
+	}
+})
+
+// IPC handler to check if an API key exists for a provider
+ipcMain.handle("check-api-key", async (event, provider) => {
+	return await hasApiKey(provider)
+})
+
+// IPC handler to set an API key for a provider
+ipcMain.handle("set-api-key", async (event, { provider, apiKey }) => {
+	return await setApiKey(provider, apiKey)
+})
+
+ipcMain.handle("get-stored-providers", async () => {
+	try {
+		const response = await fetch(
+			"http://localhost:5005/get-stored-providers"
+		)
+		if (!response.ok) {
+			throw new Error("Failed to fetch stored providers")
+		}
+		return await response.json()
+	} catch (error) {
+		console.error("Error fetching stored providers:", error)
+		throw error
+	}
+})
+
+// IPC handler to delete an API key for a provider
+ipcMain.handle("delete-api-key", async (event, provider) => {
+	return await deleteApiKey(provider)
 })

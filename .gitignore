@@ -227,6 +227,8 @@ models
 input
 results
 checkpoints
+chroma_db
+uploads
 
 # Custom files
 .env*

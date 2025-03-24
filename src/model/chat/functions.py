@@ -1,14 +1,15 @@
 import os
-from prompts import *
 from wrapt_timeout_decorator import *
-from helpers import *
 import json
 import requests
 import asyncio
 from typing import Dict, Any, List, Optional, AsyncGenerator
 from dotenv import load_dotenv
 
-load_dotenv("../.env")  # Load environment variables from .env file
+from .prompts import *
+from model.app.helpers import *
+
+load_dotenv("model/.env")  # Load environment variables from .env file
 
 async def generate_streaming_response(
     runnable, inputs: Dict[str, Any], stream: bool = False
@@ -71,7 +72,7 @@ def generate_response(
     """
     try:
         with open(
-            "../../userProfileDb.json", "r", encoding="utf-8"
+            "userProfileDb.json", "r", encoding="utf-8"
         ) as f:  # Open and load user profile database
             db = json.load(f)  # Load user profile data from JSON file
 
@@ -213,56 +214,44 @@ def get_search_summary(
     return search_summary  # Return the generated search summary
 
 
-def get_chat_history(chat_id: str) -> Optional[List[Dict[str, str]]]:
+def get_chat_history() -> Optional[List[Dict[str, str]]]:
     """
-    Retrieve the chat history for the given chat_id and format it for conversational models.
+    Retrieve the chat history from the active chat for use with the Ollama backend.
 
-    This function reads chat history from a JSON database file, filters for the chat with the given ID,
-    and formats the last 10 messages into a list of dictionaries suitable for conversational models,
-    indicating 'user' or 'assistant' role for each message.
-
-    Args:
-        chat_id (str): The unique identifier for the chat session.
+    Reads the chat history from "chatsDb.json" and formats it into a list of dictionaries
+    suitable for conversational models, indicating 'user' or 'assistant' role for each message.
 
     Returns:
-        Optional[List[Dict[str, str]]]: Formatted chat history as a list of dictionaries, where each dictionary
-                                        has 'role' ('user' or 'assistant') and 'content' (message text).
-                                        Returns None if chat history retrieval fails or chat ID is not found.
+        Optional[List[Dict[str, str]]]: Formatted chat history as a list of dictionaries, where each
+                                        dictionary has 'role' ('user' or 'assistant') and 'content'
+                                        (message text). Returns None if retrieval fails or no active chat exists.
     """
     try:
-        with open(
-            "../../chatsDb.json", "r", encoding="utf-8"
-        ) as f:  # Open and load chat database file
-            db = json.load(f)  # Load chat data from JSON file
+        with open("chatsDb.json", "r", encoding="utf-8") as f:
+            db = json.load(f)  # Load chat database from JSON file
 
-            chats: List[Dict[str, Any]] = db.get(
-                "chats", []
-            )  # Get list of chats from database, default to empty list if not found
-            chat: Optional[Dict[str, Any]] = next(
-                (c for c in chats if c["id"] == chat_id), None
-            )  # Find chat with given ID, default to None if not found
+        active_chat_id = db.get("active_chat_id")
+        if active_chat_id is None:
+            return []  # No active chat, return empty history
 
-            if not chat:  # Check if chat was found
-                raise ValueError(
-                    f"Chat with id {chat_id} not found."
-                )  # Raise ValueError if chat ID not found
+        # Find the active chat
+        active_chat = next((chat for chat in db["chats"] if chat["id"] == active_chat_id), None)
+        if active_chat is None:
+            return []  # Active chat not found, return empty history
 
-            chat_history: List[Dict[str, Any]] = chat["chatHistory"][
-                -10:
-            ]  # Get last 10 messages from chat history
+        messages = active_chat.get("messages", [])  # Get messages from active chat
 
-            formatted_chat_history: List[
-                Dict[str, str]
-            ] = [  # Format chat history for conversational model input
-                {
-                    "role": "user" if entry["isUser"] else "assistant",
-                    "content": entry["message"],
-                }  # Map each entry to desired format
-                for entry in chat_history  # Iterate through chat history entries
-            ]
+        formatted_chat_history: List[Dict[str, str]] = [
+            {
+                "role": "user" if entry["isUser"] else "assistant",
+                "content": entry["message"],
+            }
+            for entry in messages  # Format all messages from active chat
+        ]
 
-            return formatted_chat_history  # Return the formatted chat history
+        return formatted_chat_history
 
-    except Exception as e:  # Catch any exceptions during chat history retrieval
-        print(f"Error retrieving chat history: {e}")
-        return None  # Return None to indicate retrieval failure
+    except Exception as e:
+        print(f"Error retrieving chat history: {str(e)}")
+        return None  # Return None in case of error
+

@@ -1,1409 +1,1524 @@
-import os
-import sys
-import httpx
 import time
-from typing import Union
-import uvicorn
-import asyncio
-import psutil
-import subprocess
+START_TIME = time.time()
+
+import os
 import json
-from helpers import *
-import nest_asyncio
+import asyncio
+import pickle
+import multiprocessing
+import requests
+from datetime import datetime, timezone
+from tzlocal import get_localzone
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Dict, Optional, List, Any, AsyncGenerator
-import multiprocessing
-import traceback
-import sys
+from pydantic import BaseModel
+from typing import Optional, Any, Dict, List, AsyncGenerator
+from neo4j import GraphDatabase
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
 from dotenv import load_dotenv
+import nest_asyncio
+import uvicorn
 
-load_dotenv("../.env")  # Load environment variables from .env file
+# Import specific functions, runnables, and helpers from respective folders
+from model.agents.runnables import *
+from model.agents.functions import *
+from model.agents.prompts import *
+from model.agents.formats import *
 
-# --- Service Configuration ---
-# Mapping of service categories to their respective port environment variables.
-CATEGORY_SERVERS: Dict[str, str] = {
-    "chat": os.getenv("CHAT_SERVER_PORT"),
-    "memory": os.getenv("MEMORY_SERVER_PORT"),
-    "agents": os.getenv("AGENTS_SERVER_PORT"),
-    "scraper": os.getenv("SCRAPER_SERVER_PORT"),
-    "utils": os.getenv("UTILS_SERVER_PORT"),
-    "common": os.getenv("COMMON_SERVER_PORT"),
-}
+from model.memory.runnables import *
+from model.memory.functions import *
+from model.memory.prompts import *
+from model.memory.constants import *
+from model.memory.formats import *
 
-# Mapping of port environment variables to their executable file names (Windows .exe files).
-SERVICE_MODULES: Dict[str, str] = {
-    "AGENTS_SERVER_PORT": "agents.exe",
-    "MEMORY_SERVER_PORT": "memory.exe",
-    "CHAT_SERVER_PORT": "chat.exe",
-    "SCRAPER_SERVER_PORT": "scraper.exe",
-    "UTILS_SERVER_PORT": "utils.exe",
-    "COMMON_SERVER_PORT": "common.exe",
-}
+from model.utils.helpers import *
 
-# --- FastAPI Application ---
-app = FastAPI(
-    title="Orchestrator API",
-    description="Orchestrates different services to provide a seamless AI experience.",
-    docs_url="/docs", 
-    redoc_url=None
-)  # Initialize FastAPI application
+from model.scraper.runnables import *
+from model.scraper.functions import *
+from model.scraper.prompts import *
+from model.scraper.formats import *
 
-# --- CORS Middleware ---
-# Configure CORS to allow cross-origin requests.
-# In a production environment, you should restrict the `allow_origins` to specific domains for security.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins - configure this for production
-    allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods - configure this for production
-    allow_headers=["*"],  # Allows all headers - configure this for production
+from model.auth.helpers import *
+
+from model.common.functions import *
+from model.common.runnables import *
+from model.common.prompts import *
+from model.common.formats import *
+
+from model.chat.runnables import *
+from model.chat.prompts import *
+from model.chat.functions import *
+
+
+# Load environment variables from .env file
+load_dotenv("model/.env")
+
+# Apply nest_asyncio to allow nested event loops (useful for development environments)
+nest_asyncio.apply()
+
+# --- Global Initializations ---
+# Perform all initializations before defining endpoints, replacing the /initiate endpoints
+
+# Initialize embedding model for memory-related operations
+embed_model = HuggingFaceEmbedding(model_name=os.environ["EMBEDDING_MODEL_REPO_ID"])
+
+# Initialize Neo4j graph driver for knowledge graph interactions
+graph_driver = GraphDatabase.driver(
+    uri=os.environ["NEO4J_URI"],
+    auth=(os.environ["NEO4J_USERNAME"], os.environ["NEO4J_PASSWORD"])
 )
 
-# --- Pydantic Models for Request Bodies ---
-# Define Pydantic models for request validation and data structure.
+# Initialize runnables from agents
+reflection_runnable = get_reflection_runnable()
+inbox_summarizer_runnable = get_inbox_summarizer_runnable()
 
+# Initialize runnables from memory
+graph_decision_runnable = get_graph_decision_runnable()
+information_extraction_runnable = get_information_extraction_runnable()
+graph_analysis_runnable = get_graph_analysis_runnable()
+text_dissection_runnable = get_text_dissection_runnable()
+text_conversion_runnable = get_text_conversion_runnable()
+query_classification_runnable = get_query_classification_runnable()
+fact_extraction_runnable = get_fact_extraction_runnable()
+text_summarizer_runnable = get_text_summarizer_runnable()
+text_description_runnable = get_text_description_runnable()
 
+# Initialize runnables from scraper
+reddit_runnable = get_reddit_runnable()
+twitter_runnable = get_twitter_runnable()
+
+internet_query_reframe_runnable = get_internet_query_reframe_runnable()
+internet_summary_runnable = get_internet_summary_runnable()
+
+# Tool handlers registry for agent tools
+tool_handlers: Dict[str, callable] = {}
+
+def register_tool(name: str):
+    """Decorator to register a function as a tool handler."""
+    def decorator(func: callable):
+        tool_handlers[name] = func
+        return func
+    return decorator
+
+# Google OAuth2 scopes and credentials (from auth and common)
+SCOPES = [
+    "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/gmail.compose",
+    "https://www.googleapis.com/auth/gmail.modify",
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/documents",
+    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/presentations",
+    "https://www.googleapis.com/auth/drive",
+    "https://mail.google.com/",
+]
+
+CREDENTIALS_DICT = {
+    "installed": {
+        "client_id": os.environ.get("GOOGLE_CLIENT_ID"),
+        "project_id": os.environ.get("GOOGLE_PROJECT_ID"),
+        "auth_uri": os.environ.get("GOOGLE_AUTH_URI"),
+        "token_uri": os.environ.get("GOOGLE_TOKEN_URI"),
+        "auth_provider_x509_cert_url": os.environ.get("GOOGLE_AUTH_PROVIDER_x509_CERT_URL"),
+        "client_secret": os.environ.get("GOOGLE_CLIENT_SECRET"),
+        "redirect_uris": ["http://localhost"]
+    }
+}
+
+# Auth0 configuration from utils
+AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN")
+MANAGEMENT_CLIENT_ID = os.getenv("AUTH0_MANAGEMENT_CLIENT_ID")
+MANAGEMENT_CLIENT_SECRET = os.getenv("AUTH0_MANAGEMENT_CLIENT_SECRET")
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+USER_PROFILE_DB = os.path.join(BASE_DIR, "..", "..", "userProfileDb.json")
+
+CHAT_DB = "chatsDb.json"
+db_lock = asyncio.Lock()  # Lock for synchronizing database access
+
+initial_db = {
+    "chats": [],
+    "active_chat_id": None,
+    "next_chat_id": 1
+}
+
+async def load_db():
+    """Load the database from chatsDb.json, initializing if it doesn't exist or is invalid."""
+    try:
+        with open(CHAT_DB, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            if "chats" not in data:
+                data["chats"] = []
+            if "active_chat_id" not in data:
+                data["active_chat_id"] = None
+            if "next_chat_id" not in data:
+                data["next_chat_id"] = 1
+            return data
+    except (FileNotFoundError, json.JSONDecodeError):
+        print("DB NOT FOUND! Initializing with default structure.")
+        return initial_db
+
+async def save_db(data):
+    """Save the data to chatsDb.json."""
+    with open(CHAT_DB, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=4)
+
+# --- FastAPI Application Setup ---
+app = FastAPI(
+    title="Sentient API",
+    description="Monolithic API for the Sentient AI companion",
+    docs_url="/docs",
+    redoc_url=None
+)
+
+# Add CORS middleware to allow cross-origin requests
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
+
+# --- Pydantic Models ---
 class Message(BaseModel):
-    """BaseModel for chat messages."""
-
     input: str
     pricing: str
     credits: int
     chat_id: str
 
-
-class ChatId(BaseModel):
-    """BaseModel for chat IDs."""
-
-    id: str
-
-
-class InternetSearchRequest(BaseModel):
-    """BaseModel for internet search requests."""
-
-    query: str
-
-
-class ContextClassificationRequest(BaseModel):
-    """BaseModel for context classification requests."""
-
-    query: str
-    context: str
-
+class ToolCall(BaseModel):
+    input: str
+    previous_tool_response: Optional[Any] = None
 
 class ElaboratorMessage(BaseModel):
-    """BaseModel for elaborator messages."""
-
     input: str
     purpose: str
 
-
-class DeleteSubgraphRequest(BaseModel):
-    """BaseModel for delete subgraph requests."""
-
-    source: str
-
-
-class GraphRequest(BaseModel):
-    """BaseModel for generic graph requests."""
-
-    information: str
-
-
-class RedditURL(BaseModel):
-    """BaseModel for Reddit URL requests."""
-
-    url: str
-
-
-class TwitterURL(BaseModel):
-    """BaseModel for Twitter URL requests."""
-
-    url: str
-
-
-class Profile(BaseModel):
-    """BaseModel for social media profile URLs."""
-
-    url: str
-
-
 class EncryptionRequest(BaseModel):
-    """BaseModel for encryption requests."""
-
     data: str
 
-
 class DecryptionRequest(BaseModel):
-    """BaseModel for decryption requests."""
-
     encrypted_data: str
 
-
 class UserInfoRequest(BaseModel):
-    """BaseModel for user info requests (user_id)."""
-
     user_id: str
 
-
 class ReferrerStatusRequest(BaseModel):
-    """BaseModel for referrer status update requests."""
-
     user_id: str
     referrer_status: bool
 
-
-class SetReferrerRequest(BaseModel):
-    """BaseModel for setting referrer using referral code."""
-
-    referral_code: str
-
-
-class GraphRAGRequest(BaseModel):
-    """BaseModel for GraphRAG (Graph-based Retrieval Augmented Generation) requests."""
-
-    query: str
-
-
-class InternetSearchRequest(BaseModel):
-    """BaseModel for internet search requests."""
-
-    query: str
-
-
-class ContextClassificationRequest(BaseModel):
-    """BaseModel for context classification requests."""
-
-    query: str
-    context: str
-
-
 class BetaUserStatusRequest(BaseModel):
-    """BaseModel for beta user status update requests."""
-
     user_id: str
     beta_user_status: bool
 
+class SetReferrerRequest(BaseModel):
+    referral_code: str
 
-# --- Global Variables ---
-# Global variables to maintain chat context and runnables.
-chat_id: Optional[str] = (
-    None  # Global variable to store the current chat ID, initialized to None
-)
-chat_history = (
-    None  # Placeholder for chat history object, currently unused in this orchestrator
-)
-chat_runnable = (
-    None  # Placeholder for chat runnable, currently unused in this orchestrator
-)
-orchestrator_runnable = None  # Placeholder for orchestrator runnable, currently unused
-context_classification_runnable = (
-    None  # Placeholder for context classification runnable
-)
-internet_search_runnable = None  # Placeholder for internet search runnable
-internet_query_reframe_runnable = (
-    None  # Placeholder for internet query reframe runnable
-)
-internet_summary_runnable = None  # Placeholder for internet summary runnable
+class DeleteSubgraphRequest(BaseModel):
+    source: str
 
+class GraphRequest(BaseModel):
+    information: str
 
-# --- Asyncio Integration ---
-nest_asyncio.apply()  # Apply nest_asyncio to allow nested asyncio event loops
+class GraphRAGRequest(BaseModel):
+    query: str
 
+class RedditURL(BaseModel):
+    url: str
 
-# --- Server State Management Functions ---
-# Functions to manage the lifecycle of backend services (start, check status, stop).
+class TwitterURL(BaseModel):
+    url: str
 
-
-async def is_server_live(port: str) -> bool:
-    """
-    Checks if a server is live at the given port by sending a GET request to the root URL.
-
-    Args:
-        port (str): The port number where the server is expected to be running.
-
-    Returns:
-        bool: True if the server responds with a 200 status code, False otherwise.
-    """
-    url = f"http://localhost:{port}/"  # Construct URL to check server liveness
-    try:
-        async with httpx.AsyncClient(
-            timeout=None
-        ) as client:  # Create async HTTP client with no timeout
-            response = await client.get(
-                url, timeout=None
-            )  # Send GET request to server root
-            return (
-                response.status_code == 200
-            )  # Return True if status code is 200 (OK), False otherwise
-    except httpx.ConnectError:  # Handle connection errors (server not reachable)
-        return False  # Server is not live if connection error occurs
-    except Exception as e:  # Catch any other exceptions during server liveness check
-        print(f"Error checking server liveness at port {port}: {e}")
-        return False  # Server is considered not live in case of any error
-
-
-async def spawn_server(port_env_var: str) -> bool:
-    """
-    Spawns a server as a Windows executable if it's not already live.
-
-    This function checks if a server is already running on the specified port.
-    If not, it attempts to start the server by launching a Windows executable defined in SERVICE_MODULES.
-
-    Args:
-        port_env_var (str): Environment variable name that holds the port number for the service.
-
-    Returns:
-        bool: True if the server is live after checking or spawning, False if spawning fails or times out.
-    """
-    port: Optional[str] = os.environ.get(
-        port_env_var
-    )  # Get port number from environment variable
-    exe_file: Optional[str] = SERVICE_MODULES.get(
-        port_env_var
-    )  # Get executable file name from SERVICE_MODULES mapping
-
-    if not port:  # Check if port is defined
-        print(f"{port_env_var} not defined in environment variables.")
-        return False  # Return False if port is not defined
-    if not exe_file:  # Check if executable file is defined
-        print(f"No executable defined for {port_env_var}.")
-        return False  # Return False if executable file is not defined
-
-    if await is_server_live(port):  # Check if server is already live
-        print(f"Server at port {port} is already live.")
-        return True  # Return True if server is already live
-
-    print(f"Spawning server for {port_env_var} on port {port}...")
-    print(
-        f"Starting server with: {os.path.join(os.path.dirname(sys.executable), exe_file)}"
-    )
-
-    try:
-        process: subprocess.Popen = subprocess.Popen(  # Start server as a subprocess
-            [
-                os.path.join(os.path.dirname(sys.executable), exe_file)
-            ],  # Path to the executable
-            env=os.environ.copy(),  # Inherit environment variables
-            cwd=os.path.dirname(
-                sys.executable
-            ),  # Set current working directory to executable's directory
-            creationflags=subprocess.CREATE_NO_WINDOW,  # Run in background without a console window (Windows specific)
-        )
-
-        start_time: float = time.time()  # Record start time for timeout
-        timeout: int = 120  # Set timeout for server to become live (seconds)
-
-        while (
-            time.time() - start_time < timeout
-        ):  # Wait for server to become live within timeout period
-            if await is_server_live(port):  # Check if server is live
-                print(f"Server on port {port} spawned successfully.")
-                return True  # Return True if server spawned successfully and is live
-            await asyncio.sleep(2)  # Wait for 2 seconds before checking again
-
-        print(f"Server on port {port} did not become live within {timeout} seconds.")
-        return False  # Return False if server did not become live within timeout
-
-    except Exception as e:  # Catch any exceptions during server spawning
-        print(f"Error spawning server on port {port}: {e}")
-        return False  # Return False if server spawning fails
-
-
-async def stop_server(port_env_var: str) -> bool:
-    """
-    Stops a server running as a Windows executable based on the port and executable path.
-
-    This function iterates through running processes to find and terminate a server
-    process that matches the executable path defined for the given port environment variable.
-
-    Args:
-        port_env_var (str): Environment variable name that holds the port number for the service to stop.
-
-    Returns:
-        bool: True if the server was successfully stopped or if no server was found running, False if an error occurred during termination.
-    """
-    port: Optional[str] = os.environ.get(
-        port_env_var
-    )  # Get port number from environment variable
-    exe_file: Optional[str] = SERVICE_MODULES.get(
-        port_env_var
-    )  # Get executable file name from SERVICE_MODULES mapping
-
-    if not port:  # Check if port is defined
-        print(f"{port_env_var} not defined in environment variables.")
-        return False  # Return False if port is not defined
-    if not exe_file:  # Check if executable file is defined
-        print(f"No executable defined for {port_env_var}.")
-        return False  # Return False if executable file is not defined
-
-    if not await is_server_live(port):  # Check if server is live
-        print(f"No live server found on port {port}.")
-        return True  # Return True if no live server found (considered stopped)
-
-    target_path: str = os.path.join(
-        os.path.dirname(sys.executable), exe_file
-    )  # Construct full path to executable
-
-    try:
-        print(f"Stopping server on port {port} (Path: {target_path})...")
-
-        for proc in psutil.process_iter(
-            attrs=["pid", "name", "exe"]
-        ):  # Iterate through running processes
-            if (
-                proc.info["exe"]
-                and os.path.normcase(proc.info["exe"]) == os.path.normcase(target_path)
-            ):  # Check if process executable path matches target path (case-insensitive)
-                proc.terminate()  # Terminate the process
-                proc.wait(timeout=30)  # Wait for process to terminate, with timeout
-                print(f"Server on port {port} stopped successfully.")
-                return True  # Return True if server stopped successfully
-
-        print(f"No running process found for {target_path}.")
-        return False  # Return False if no matching process found
-
-    except Exception as e:  # Catch any exceptions during server stopping
-        print(f"Error stopping server on port {port}: {e}")
-        return False  # Return False if error occurred during server stopping
-
-
-# --- Service Call Functions ---
-# Functions to call and manage interactions with backend services (initiate, call endpoints).
-
-
-async def call_service_initiate(port_env_var: str) -> JSONResponse:
-    """
-    Calls the '/initiate' endpoint of a service after ensuring it's live.
-
-    This function first ensures that the service at the given port is live,
-    spawning it if necessary. Then, it calls the '/initiate' endpoint of the service.
-
-    Args:
-        port_env_var (str): Environment variable name that holds the port number of the service.
-
-    Returns:
-        JSONResponse: A FastAPI JSONResponse object containing the service's response,
-                      or an error message if initiation fails.
-    """
-    port: Optional[str] = os.environ.get(
-        port_env_var
-    )  # Get port number from environment variable
-    if not port:  # Check if port is defined
-        print(f"{port_env_var} not configured.")
-        return JSONResponse(
-            status_code=500, content={"message": f"{port_env_var} not configured."}
-        )  # Return error response if port is not configured
-
-    if not await spawn_server(port_env_var):  # Ensure the server is spawned and live
-        print(f"Failed to spawn service on port {port}.")
-        return JSONResponse(
-            status_code=500,
-            content={"message": f"Failed to start service on port {port}."},
-        )  # Return error response if server spawning fails
-
-    initiate_url: str = (
-        f"http://localhost:{port}/initiate"  # Construct initiate endpoint URL
-    )
-    try:
-        async with httpx.AsyncClient(
-            timeout=None
-        ) as client:  # Create async HTTP client with no timeout
-            response: httpx.Response = await client.post(
-                initiate_url
-            )  # Send POST request to initiate endpoint
-            if response.status_code == 200:  # Check if request was successful
-                print(f"Service on port {port} initiated successfully.")
-                return JSONResponse(
-                    status_code=200, content=response.json()
-                )  # Return success response with service response
-            else:  # Handle non-200 status codes
-                print(f"Error initiating service on port {port}: {response.text}")
-                return JSONResponse(
-                    status_code=response.status_code, content={"message": response.text}
-                )  # Return error response with service error message
-    except Exception as e:  # Catch any exceptions during service initiation call
-        print(f"Error calling initiate endpoint at port {port}: {e}")
-        return JSONResponse(
-            status_code=500, content={"message": f"Error initiating service: {str(e)}"}
-        )  # Return error response with exception message
-
-
-async def call_service_endpoint(
-    port_env_var: str, endpoint: str, payload: Optional[dict] = None
-) -> JSONResponse:
-    """
-    Calls a specific endpoint of a service, ensuring the service is live and initiated.
-
-    This function improves upon `call_service_initiate` by adding retry logic for service initiation
-    and more robust error handling for both service availability and HTTP requests.
-
-    Args:
-        port_env_var (str): Environment variable name for the service's port.
-        endpoint (str): The API endpoint to call on the service (e.g., "/chat", "/graphrag").
-        payload (Optional[dict]): Optional dictionary payload to send with the POST request as JSON.
-
-    Returns:
-        JSONResponse: A FastAPI JSONResponse object containing the service's response,
-                      or a detailed error response if the call fails at any stage.
-    """
-    port: Optional[str] = os.environ.get(
-        port_env_var
-    )  # Get port number from environment variable
-    if not port:  # Check if port is configured
-        return JSONResponse(
-            status_code=500,
-            content={
-                "message": f"{port_env_var} not configured."
-            },  # Return error response if port is not configured
-        )
-
-    try:
-        server_available: bool = (
-            await asyncio.wait_for(  # Wait for server to be available, with timeout
-                spawn_server(
-                    port_env_var
-                ),  # Attempt to spawn server if not already running
-                timeout=None,  # No timeout for server spawning
-            )
-        )
-        if (
-            not server_available
-        ):  # Check if server is available after attempting to spawn
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "message": f"Service on port {port} unavailable after startup attempt"
-                },  # Return error response if server is unavailable
-            )
-
-        max_retries: int = 3  # Set maximum number of retries for service initiation
-        for attempt in range(max_retries):  # Retry loop for service initiation
-            initiate_response: JSONResponse = await call_service_initiate(
-                port_env_var
-            )  # Call service initiate endpoint
-            if (
-                initiate_response.status_code == 200
-            ):  # Check if initiate call was successful
-                break  # Break retry loop if initiation is successful
-            await asyncio.sleep(
-                1 + attempt * 2
-            )  # Wait before retrying, with increasing backoff
-        else:  # Else block executed if loop completes without break (all retries failed)
-            print(
-                f"Failed to initiate service on port {port} after {max_retries} attempts"
-            )
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "message": f"Service initiation failed after {max_retries} attempts"
-                },  # Return error response if initiation fails after retries
-            )
-
-        service_url: str = (
-            f"http://localhost:{port}{endpoint}"  # Construct full service endpoint URL
-        )
-
-        async with httpx.AsyncClient(
-            timeout=None
-        ) as client:  # Create async HTTP client with no timeout
-            response: httpx.Response = (
-                await client.post(  # Send POST request to service endpoint
-                    service_url,
-                    json=payload,  # Payload for the request
-                    headers={
-                        "Content-Type": "application/json"
-                    },  # Set JSON content type header
-                )
-            )
-
-            try:
-                response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
-                return JSONResponse(  # Return success JSONResponse with content from service
-                    status_code=response.status_code, content=response.json()
-                )
-            except httpx.HTTPStatusError as e:  # Catch HTTP status errors
-                print(f"Service returned error: {e.response.text}")
-                return JSONResponse(  # Return error JSONResponse with details from service error
-                    status_code=e.response.status_code,
-                    content={"message": f"Service returned error: {str(e)}"},
-                )
-
-    except asyncio.TimeoutError:  # Handle asyncio timeout errors
-        print(f"Service timeout")
-        return JSONResponse(
-            status_code=504,
-            content={"message": f"Service timeout"},  # Return timeout error response
-        )
-    except httpx.RequestError as e:  # Handle httpx request errors (network issues)
-        print(f"Network error calling {endpoint}: {e}")
-        return JSONResponse(
-            status_code=502,
-            content={
-                "message": f"Network error: {str(e)}"
-            },  # Return network error response
-        )
-    except Exception as e:  # Catch any other unexpected exceptions
-        print(f"Critical error calling {endpoint}: {traceback.format_exc()}")
-        return JSONResponse(
-            status_code=500,
-            content={
-                "message": "Internal server error"
-            },  # Return internal server error response
-        )
-
-
-async def fetch_streaming_response(url: str, payload: dict) -> StreamingResponse:
-    """
-    Proxies a streaming response from a backend service to the client.
-
-    This function sets up an asynchronous generator to stream data from a backend service endpoint
-    and forwards it as a StreamingResponse. It handles JSON decoding and yields JSON formatted lines.
-
-    Args:
-        url (str): The full URL of the streaming endpoint on the backend service.
-        payload (dict): The dictionary payload to send as JSON in the POST request to the streaming endpoint.
-
-    Returns:
-        StreamingResponse: A FastAPI StreamingResponse that streams data from the backend service.
-    """
-
-    async def generate() -> AsyncGenerator[str, None]:
-        """
-        Asynchronous generator that streams data from the backend service.
-
-        Yields:
-            str: JSON-formatted string representing a line of data from the streaming response.
-                 In case of errors, yields JSON-formatted error messages.
-        """
-        try:
-            async with httpx.AsyncClient(
-                timeout=None
-            ) as client:  # Create async HTTP client with no timeout
-                async with client.stream(
-                    "POST", url, json=payload
-                ) as response:  # Open a streaming POST request
-                    async for line in (
-                        response.aiter_lines()
-                    ):  # Asynchronously iterate over lines in the response
-                        if line:  # Check if line is not empty
-                            try:
-                                data: Dict[str, Any] = json.loads(
-                                    line
-                                )  # Parse each line as JSON
-                                yield (
-                                    json.dumps(data) + "\n"
-                                )  # Yield JSON data as a string, with newline for streaming
-                                await asyncio.sleep(
-                                    0.05
-                                )  # Small delay to control stream rate
-                            except (
-                                json.JSONDecodeError
-                            ):  # Handle JSON decode errors (malformed JSON)
-                                continue  # Skip to the next line if JSON decode fails
-
-        except httpx.HTTPStatusError as e:  # Handle HTTP status errors during streaming
-            error_msg: str = f"HTTP error {e.response.status_code}: {e.response.text}"  # Format error message
-            print(f"HTTP error: {error_msg}")
-            yield (
-                json.dumps({"type": "error", "message": error_msg}) + "\n"
-            )  # Yield JSON error message
-        except Exception as e:  # Catch any other exceptions during streaming
-            error_msg: str = (
-                f"Connection error: {str(e)}"  # Format connection error message
-            )
-            print(f"Connection error: {error_msg}")
-            yield (
-                json.dumps({"type": "error", "message": error_msg}) + "\n"
-            )  # Yield JSON error message
-
-    return StreamingResponse(
-        generate(), media_type="application/json"
-    )  # Return StreamingResponse with the generator
-
-
-async def stream_yield(data: dict) -> StreamingResponse:
-    """
-    Yields a single streaming JSON response for any provided data.
-
-    This is a utility function to quickly create a StreamingResponse that yields a single JSON object.
-    Useful for immediate, non-streaming responses that need to be in a streaming format for consistency.
-
-    Args:
-        data (dict): The dictionary data to be yielded as a single JSON object.
-
-    Returns:
-        StreamingResponse: A FastAPI StreamingResponse that yields the provided data as JSON.
-    """
-
-    async def generate() -> AsyncGenerator[str, None]:
-        """
-        Asynchronous generator that yields the provided data as JSON.
-
-        Yields:
-            str: JSON-formatted string of the provided data, followed by a newline.
-        """
-        yield json.dumps(data) + "\n"  # Yield data as JSON string with newline
-        await asyncio.sleep(
-            0.05
-        )  # Small delay, though likely unnecessary for single yield
-
-    return StreamingResponse(
-        generate(), media_type="application/json"
-    )  # Return StreamingResponse for the data
-
+class LinkedInURL(BaseModel):
+    url: str
 
 # --- API Endpoints ---
-# Define FastAPI endpoints for the orchestrator service.
 
-
+## Root Endpoint
 @app.get("/", status_code=200)
-async def main() -> Dict[str, str]:
-    """
-    Root endpoint of the orchestrator API.
-
-    Returns:
-        JSONResponse: A simple greeting message in JSON format.
-    """
+async def main():
+    """Root endpoint providing a welcome message."""
     return {
         "message": "Hello, I am Sentient, your private, decentralized and interactive AI companion who feels human"
-    }  # Return a greeting message
-
-
-@app.post("/initiate", status_code=200)
-async def initiate() -> JSONResponse:
+    }
+    
+@app.get("/get-history", status_code=200)
+async def get_history():
     """
-    Initiate the orchestration server itself.
-
-    This endpoint currently just returns a success message, as the orchestrator
-    doesn't have a complex initiation process beyond starting the FastAPI app.
-
-    Returns:
-        JSONResponse: Success message indicating the orchestrator has been initiated.
+    Retrieve the chat history of the currently active chat.
+    Check for inactivity (10 minutes since last message) and create a new chat if needed.
     """
-    print("Orchestration Model initiated successfully")
-    return JSONResponse(
-        status_code=200,
-        content={"message": "Orchestration Model initiated successfully"},
-    )  # Return success message
+    async with db_lock:
+        chatsDb = await load_db()
+        active_chat_id = chatsDb["active_chat_id"]
+        current_time = datetime.datetime.now(timezone.utc)  # Updated to use datetime.now with UTC timezone
 
+        # If no active chat exists, create a new one
+        if active_chat_id is None or not chatsDb["chats"]:
+            new_chat_id = f"chat_{chatsDb['next_chat_id']}"
+            chatsDb["next_chat_id"] += 1
+            new_chat = {"id": new_chat_id, "messages": []}
+            chatsDb["chats"].append(new_chat)
+            chatsDb["active_chat_id"] = new_chat_id
+            await save_db(chatsDb)
+            return JSONResponse(status_code=200, content={"messages": []})
 
-@app.post("/set-chat", status_code=200)
-async def set_chat(id: ChatId) -> JSONResponse:
-    """
-    Set the current chat ID for the session.
+        # Find the active chat
+        active_chat = next((chat for chat in chatsDb["chats"] if chat["id"] == active_chat_id), None)
+        if active_chat and active_chat["messages"]:
+            last_message = active_chat["messages"][-1]
+            last_timestamp = datetime.datetime.fromisoformat(last_message["timestamp"].replace('Z', '+00:00'))
+            if (current_time - last_timestamp).total_seconds() > 600:  # 10 minutes = 600 seconds
+                # Inactivity period exceeded, create a new chat
+                new_chat_id = f"chat_{chatsDb['next_chat_id']}"
+                chatsDb["next_chat_id"] += 1
+                new_chat = {"id": new_chat_id, "messages": []}
+                chatsDb["chats"].append(new_chat)
+                chatsDb["active_chat_id"] = new_chat_id
+                await save_db(chatsDb)
+                return JSONResponse(status_code=200, content={"messages": []})
 
-    This endpoint allows clients to set a chat ID, which can be used to maintain
-    context across chat messages.
+        # Return messages from the active chat
+        active_chat = next((chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"]), None)
+        return JSONResponse(status_code=200, content={"messages": active_chat["messages"] if active_chat else []})
+    
+@app.post("/clear-chat-history", status_code=200)
+async def clear_chat_history():
+    """Clear all chat history by resetting to the initial database structure."""
+    async with db_lock:
+        chatsDb = initial_db.copy()
+        await save_db(chatsDb)
+    return JSONResponse(status_code=200, content={"message": "Chat history cleared"})
 
-    Args:
-        id (ChatId): Pydantic model containing the chat ID to set.
+## Chat Endpoint (Combining agents and memory logic)
+@app.post("/chat", status_code=200)
+async def chat(message: Message):
+    global embed_model, chat_runnable, fact_extraction_runnable, text_conversion_runnable
+    global information_extraction_runnable, graph_analysis_runnable, graph_decision_runnable
+    global query_classification_runnable, agent_runnable, text_description_runnable
+    global reflection_runnable, internet_query_reframe_runnable, internet_summary_runnable
 
-    Returns:
-        JSONResponse: Success message indicating the chat ID has been set,
-                      or an error message if setting the chat ID fails.
-    """
-    global chat_id  # Access the global chat_id variable
     try:
-        chat_id = id.id  # Set the global chat_id to the ID provided in the request
-        print(f"Chat set to {chat_id}")
-        return JSONResponse(
-            status_code=200, content={"message": "Chat set successfully"}
-        )  # Return success message
-    except Exception as e:  # Catch any exceptions during chat ID setting
-        print(f"Error in set-chat: {str(e)}")
-        return JSONResponse(
-            status_code=500, content={"message": str(e)}
-        )  # Return error response with exception message
+        with open("userProfileDb.json", "r", encoding="utf-8") as f:
+            db = json.load(f)
 
+        async with db_lock:
+            chatsDb = await load_db()
+            active_chat_id = chatsDb["active_chat_id"]
+            if active_chat_id is None:
+                raise HTTPException(status_code=400, detail="No active chat found. Please load the chat page first.")
 
-@app.post("/initiate-agents", status_code=200)
-async def initiate_agents() -> JSONResponse:
-    """
-    Endpoint to initiate the Agent Service.
+            # Find the active chat
+            active_chat = next((chat for chat in chatsDb["chats"] if chat["id"] == active_chat_id), None)
+            if active_chat is None:
+                raise HTTPException(status_code=400, detail="Active chat not found.")
 
-    Forwards the initiation request to the Agent Service and returns its response.
+        chat_history = get_chat_history()
+        if chat_history is None:
+            raise HTTPException(status_code=500, detail="Failed to retrieve chat history")
 
-    Returns:
-        JSONResponse: Response from the Agent Service's initiate endpoint.
-    """
-    return await call_service_initiate(
-        "AGENTS_SERVER_PORT"
-    )  # Call Agent Service initiate endpoint
+        chat_runnable = get_chat_runnable(chat_history)
+        agent_runnable = get_agent_runnable(chat_history)
+        unified_classification_runnable = get_unified_classification_runnable(chat_history)
 
+        username = db["userData"]["personalInfo"]["name"]
+        unified_output = unified_classification_runnable.invoke({"query": message.input})
+        category = unified_output["category"]
+        use_personal_context = unified_output["use_personal_context"]
+        internet = unified_output["internet"]
+        transformed_input = unified_output["transformed_input"]
 
-@app.post("/initiate-memory", status_code=200)
-async def initiate_memory() -> JSONResponse:
-    """
-    Endpoint to initiate the Memory Service.
+        pricing_plan = message.pricing
+        credits = message.credits
 
-    Forwards the initiation request to the Memory Service and returns its response.
+        async def response_generator():
+            memory_used = False
+            agents_used = False
+            internet_used = False
+            user_context = None
+            internet_context = None
+            pro_used = False
+            note = ""
 
-    Returns:
-        JSONResponse: Response from the Memory Service's initiate endpoint.
-    """
-    return await call_service_initiate(
-        "MEMORY_SERVER_PORT"
-    )  # Call Memory Service initiate endpoint
+            # Add user message to active chat
+            user_msg = {
+                "id": str(int(time.time() * 1000)),
+                "message": message.input,
+                "isUser": True,
+                "memoryUsed": False,
+                "agentsUsed": False,
+                "internetUsed": False,
+                "timestamp": datetime.datetime.utcnow().isoformat() + 'Z'
+            }
+            async with db_lock:
+                chatsDb = await load_db()
+                active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
+                active_chat["messages"].append(user_msg)
+                await save_db(chatsDb)
 
+            yield json.dumps({
+                "type": "userMessage",
+                "message": message.input,
+                "memoryUsed": memory_used,
+                "agentsUsed": agents_used,
+                "internetUsed": internet_used
+            }) + "\n"
+            await asyncio.sleep(0.05)
 
-@app.post("/initiate-chat", status_code=200)
-async def initiate_chat() -> JSONResponse:
-    """
-    Endpoint to initiate the Chat Service.
+            # Initialize assistant message
+            assistant_msg = {
+                "id": str(int(time.time() * 1000)),
+                "message": "",
+                "isUser": False,
+                "memoryUsed": False,
+                "agentsUsed": False,
+                "internetUsed": False,
+                "timestamp": datetime.datetime.utcnow().isoformat() + 'Z'
+            }
+            async with db_lock:
+                chatsDb = await load_db()
+                active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
+                active_chat["messages"].append(assistant_msg)
+                await save_db(chatsDb)
 
-    Forwards the initiation request to the Chat Service and returns its response.
+            # Handle memory category: update memories first, then retrieve context
+            if category == "memory":
+                if pricing_plan == "free" and credits <= 0:
+                    yield json.dumps({"type": "intermediary", "message": "Retrieving memories..."}) + "\n"
+                    user_context = query_user_profile(transformed_input, graph_driver, embed_model, text_conversion_runnable, query_classification_runnable)
+                    note = "Sorry friend, could have updated my memory for this query. But, that is a pro feature and your daily credits have expired. You can always upgrade to pro from the settings page"
+                else:
+                    yield json.dumps({"type": "intermediary", "message": "Updating memories..."}) + "\n"
+                    memory_used = True
+                    pro_used = True
+                    points = fact_extraction_runnable.invoke({"paragraph": transformed_input, "username": username})
+                    for point in points:
+                        crud_graph_operations(point, graph_driver, embed_model, query_classification_runnable, information_extraction_runnable, graph_analysis_runnable, graph_decision_runnable, text_description_runnable)
+                    yield json.dumps({"type": "intermediary", "message": "Retrieving memories..."}) + "\n"
+                    user_context = query_user_profile(transformed_input, graph_driver, embed_model, text_conversion_runnable, query_classification_runnable)
+            # For chat and agent, retrieve context if use_personal_context is true
+            elif use_personal_context:
+                yield json.dumps({"type": "intermediary", "message": "Retrieving memories..."}) + "\n"
+                memory_used = True
+                user_context = query_user_profile(transformed_input, graph_driver, embed_model, text_conversion_runnable, query_classification_runnable)
 
-    Returns:
-        JSONResponse: Response from the Chat Service's initiate endpoint.
-    """
-    return await call_service_initiate(
-        "CHAT_SERVER_PORT"
-    )  # Call Chat Service initiate endpoint
+            # Handle internet search if required
+            if internet == "Internet":
+                if pricing_plan == "free":
+                    if credits > 0:
+                        yield json.dumps({"type": "intermediary", "message": "Searching the internet..."}) + "\n"
+                        reframed_query = get_reframed_internet_query(internet_query_reframe_runnable, transformed_input)
+                        search_results = get_search_results(reframed_query)
+                        internet_context = get_search_summary(internet_summary_runnable, search_results)
+                        internet_used = True
+                        pro_used = True
+                    else:
+                        note = "Sorry friend, could have searched the internet for more context, but your daily credits have expired. You can always upgrade to pro from the settings page"
+                else:
+                    yield json.dumps({"type": "intermediary", "message": "Searching the internet..."}) + "\n"
+                    reframed_query = get_reframed_internet_query(internet_query_reframe_runnable, transformed_input)
+                    search_results = get_search_results(reframed_query)
+                    internet_context = get_search_summary(internet_summary_runnable, search_results)
+                    internet_used = True
+                    pro_used = True
 
+            # Generate response based on category
+            if category in ["chat", "memory"]:
+                with open("userProfileDb.json", "r", encoding="utf-8") as f:
+                    db = json.load(f)
+                personality_description = db["userData"].get("personality", "None")
+                assistant_msg["memoryUsed"] = memory_used
+                assistant_msg["internetUsed"] = internet_used
+                async for token in generate_streaming_response(
+                    chat_runnable,
+                    inputs={
+                        "query": transformed_input,
+                        "user_context": user_context,
+                        "internet_context": internet_context,
+                        "name": username,
+                        "personality": personality_description
+                    },
+                    stream=True
+                ):
+                    if isinstance(token, str):
+                        assistant_msg["message"] += token
+                        async with db_lock:
+                            chatsDb = await load_db()
+                            active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
+                            for msg in active_chat["messages"]:
+                                if msg["id"] == assistant_msg["id"]:
+                                    msg["message"] = assistant_msg["message"]
+                                    break
+                            await save_db(chatsDb)
+                        yield json.dumps({
+                            "type": "assistantStream",
+                            "token": token,
+                            "done": False,
+                            "messageId": assistant_msg["id"]
+                        }) + "\n"
+                    else:
+                        if note:
+                            assistant_msg["message"] += "\n\n" + note
+                        async with db_lock:
+                            chatsDb = await load_db()
+                            active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
+                            for msg in active_chat["messages"]:
+                                if msg["id"] == assistant_msg["id"]:
+                                    msg.update(assistant_msg)
+                                    break
+                            await save_db(chatsDb)
+                        yield json.dumps({
+                            "type": "assistantStream",
+                            "token": "\n\n" + note,
+                            "done": True,
+                            "memoryUsed": memory_used,
+                            "agentsUsed": agents_used,
+                            "internetUsed": internet_used,
+                            "proUsed": pro_used,
+                            "messageId": assistant_msg["id"]
+                        }) + "\n"
+                    await asyncio.sleep(0.05)
 
-@app.post("/initiate-scraper", status_code=200)
-async def initiate_scraper() -> JSONResponse:
-    """
-    Endpoint to initiate the Scraper Service.
+            elif category == "agent":
+                agents_used = True
+                assistant_msg["memoryUsed"] = memory_used
+                assistant_msg["internetUsed"] = internet_used
+                response = generate_response(agent_runnable, transformed_input, user_context, internet_context, username)
 
-    Forwards the initiation request to the Scraper Service and returns its response.
+                if "tool_calls" not in response or not isinstance(response["tool_calls"], list):
+                    assistant_msg["message"] = "Error: Invalid tool_calls format in response."
+                    async with db_lock:
+                        chatsDb = await load_db()
+                        active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
+                        for msg in active_chat["messages"]:
+                            if msg["id"] == assistant_msg["id"]:
+                                msg.update(assistant_msg)
+                                break
+                        await save_db(chatsDb)
+                    yield json.dumps({"type": "assistantMessage", "message": assistant_msg["message"]}) + "\n"
+                    return
 
-    Returns:
-        JSONResponse: Response from the Scraper Service's initiate endpoint.
-    """
-    return await call_service_initiate(
-        "SCRAPER_SERVER_PORT"
-    )  # Call Scraper Service initiate endpoint
+                previous_tool_result = None
+                all_tool_results = []
+                if len(response["tool_calls"]) > 1 and pricing_plan == "free":
+                    assistant_msg["message"] = "Sorry. This query requires multiple tools to be called. Flows are a pro feature and you have run out of daily Pro credits. You can upgrade to pro from the Settings page." + f"\n\n{note}"
+                    async with db_lock:
+                        chatsDb = await load_db()
+                        active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
+                        for msg in active_chat["messages"]:
+                            if msg["id"] == assistant_msg["id"]:
+                                msg.update(assistant_msg)
+                                break
+                        await save_db(chatsDb)
+                    if credits <= 0:
+                        yield json.dumps({"type": "assistantMessage", "message": assistant_msg["message"]}) + "\n"
+                        return
+                    else:
+                        pro_used = True
 
+                for tool_call in response["tool_calls"]:
+                    if tool_call["response_type"] != "tool_call":
+                        continue
+                    tool_name = tool_call["content"].get("tool_name")
+                    if tool_name != "gmail" and pricing_plan == "free" and credits <= 0:
+                        assistant_msg["message"] = "Sorry, but the query requires Sentient to use a tool that it can only use on the Pro plan. You have run out of daily credits for Pro and can upgrade your plan from the Settings page." + f"\n\n{note}"
+                        async with db_lock:
+                            chatsDb = await load_db()
+                            active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
+                            for msg in active_chat["messages"]:
+                                if msg["id"] == assistant_msg["id"]:
+                                    msg.update(assistant_msg)
+                                    break
+                            await save_db(chatsDb)
+                        yield json.dumps({"type": "assistantMessage", "message": assistant_msg["message"]}) + "\n"
+                        return
+                    elif tool_name != "gmail" and pricing_plan == "free":
+                        pro_used = True
 
-@app.post("/initiate-utils", status_code=200)
-async def initiate_utils() -> JSONResponse:
-    """
-    Endpoint to initiate the Utils Service.
+                    task_instruction = tool_call["content"].get("task_instruction")
+                    previous_tool_response_required = tool_call["content"].get("previous_tool_response", False)
+                    if not tool_name or not task_instruction:
+                        assistant_msg["message"] = "Error: Tool call is missing required fields."
+                        async with db_lock:
+                            chatsDb = await load_db()
+                            active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
+                            for msg in active_chat["messages"]:
+                                if msg["id"] == assistant_msg["id"]:
+                                    msg.update(assistant_msg)
+                                    break
+                            await save_db(chatsDb)
+                        yield json.dumps({"type": "assistantMessage", "message": assistant_msg["message"]}) + "\n"
+                        continue
 
-    Forwards the initiation request to the Utils Service and returns its response.
+                    yield json.dumps({"type": "intermediary-flow-update", "message": f"Calling tool: {tool_name}..."}) + "\n"
+                    tool_handler = tool_handlers.get(tool_name)
+                    if not tool_handler:
+                        assistant_msg["message"] = f"Error: Tool {tool_name} not found."
+                        async with db_lock:
+                            chatsDb = await load_db()
+                            active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
+                            for msg in active_chat["messages"]:
+                                if msg["id"] == assistant_msg["id"]:
+                                    msg.update(assistant_msg)
+                                    break
+                            await save_db(chatsDb)
+                        yield json.dumps({"type": "assistantMessage", "message": assistant_msg["message"]}) + "\n"
+                        continue
 
-    Returns:
-        JSONResponse: Response from the Utils Service's initiate endpoint.
-    """
-    return await call_service_initiate(
-        "UTILS_SERVER_PORT"
-    )  # Call Utils Service initiate endpoint
+                    tool_input = {"input": task_instruction}
+                    if previous_tool_response_required and previous_tool_result:
+                        tool_input["previous_tool_response"] = previous_tool_result
+                    else:
+                        tool_input["previous_tool_response"] = "Not Required"
 
+                    try:
+                        tool_result_main = await tool_handler(tool_input)
+                        tool_result = tool_result_main["tool_result"] if "tool_result" in tool_result_main else tool_result_main
+                        if "tool_call_str" in tool_result_main and tool_result_main["tool_call_str"]:
+                            tool_name = tool_result_main["tool_call_str"]["tool_name"]
+                            if tool_name == "search_inbox":
+                                yield json.dumps({
+                                    "type": "toolResult",
+                                    "tool_name": tool_name,
+                                    "result": tool_result["result"],
+                                    "gmail_search_url": tool_result["result"]["gmail_search_url"]
+                                }) + "\n"
+                            elif tool_name == "get_email_details":
+                                yield json.dumps({
+                                    "type": "toolResult",
+                                    "tool_name": tool_name,
+                                    "result": tool_result["result"]
+                                }) + "\n"
+                        previous_tool_result = tool_result
+                        all_tool_results.append({"tool_name": tool_name, "task_instruction": task_instruction, "tool_result": tool_result})
+                    except Exception as e:
+                        assistant_msg["message"] = f"Error executing tool {tool_name}: {str(e)}"
+                        async with db_lock:
+                            chatsDb = await load_db()
+                            active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
+                            for msg in active_chat["messages"]:
+                                if msg["id"] == assistant_msg["id"]:
+                                    msg.update(assistant_msg)
+                                    break
+                            await save_db(chatsDb)
+                        yield json.dumps({"type": "assistantMessage", "message": assistant_msg["message"]}) + "\n"
+                        continue
 
+                yield json.dumps({"type": "intermediary-flow-end"}) + "\n"
+                assistant_msg["agentsUsed"] = agents_used
+                try:
+                    if len(all_tool_results) == 1 and all_tool_results[0]["tool_name"] == "search_inbox":
+                        filtered_tool_result = {
+                            "response": all_tool_results[0]["tool_result"]["result"]["response"],
+                            "email_data": [{key: email[key] for key in email if key != "body"} for email in all_tool_results[0]["tool_result"]["result"]["email_data"]],
+                            "gmail_search_url": all_tool_results[0]["tool_result"]["result"]["gmail_search_url"]
+                        }
+                        async for token in generate_streaming_response(
+                            inbox_summarizer_runnable,
+                            inputs={"tool_result": filtered_tool_result},
+                            stream=True
+                        ):
+                            if isinstance(token, str):
+                                assistant_msg["message"] += token
+                                async with db_lock:
+                                    chatsDb = await load_db()
+                                    active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
+                                    for msg in active_chat["messages"]:
+                                        if msg["id"] == assistant_msg["id"]:
+                                            msg["message"] = assistant_msg["message"]
+                                            break
+                                    await save_db(chatsDb)
+                                yield json.dumps({
+                                    "type": "assistantStream",
+                                    "token": token,
+                                    "done": False,
+                                    "messageId": assistant_msg["id"]
+                                }) + "\n"
+                            else:
+                                if note:
+                                    assistant_msg["message"] += "\n\n" + note
+                                async with db_lock:
+                                    chatsDb = await load_db()
+                                    active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
+                                    for msg in active_chat["messages"]:
+                                        if msg["id"] == assistant_msg["id"]:
+                                            msg.update(assistant_msg)
+                                            break
+                                    await save_db(chatsDb)
+                                yield json.dumps({
+                                    "type": "assistantStream",
+                                    "token": "\n\n" + note,
+                                    "done": True,
+                                    "memoryUsed": memory_used,
+                                    "agentsUsed": agents_used,
+                                    "internetUsed": internet_used,
+                                    "proUsed": pro_used,
+                                    "messageId": assistant_msg["id"]
+                                }) + "\n"
+                            await asyncio.sleep(0.05)
+                    else:
+                        async for token in generate_streaming_response(
+                            reflection_runnable,
+                            inputs={"tool_results": all_tool_results},
+                            stream=True
+                        ):
+                            if isinstance(token, str):
+                                assistant_msg["message"] += token
+                                async with db_lock:
+                                    chatsDb = await load_db()
+                                    active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
+                                    for msg in active_chat["messages"]:
+                                        if msg["id"] == assistant_msg["id"]:
+                                            msg["message"] = assistant_msg["message"]
+                                            break
+                                    await save_db(chatsDb)
+                                yield json.dumps({
+                                    "type": "assistantStream",
+                                    "token": token,
+                                    "done": False,
+                                    "messageId": assistant_msg["id"]
+                                }) + "\n"
+                            else:
+                                if note:
+                                    assistant_msg["message"] += "\n\n" + note
+                                async with db_lock:
+                                    chatsDb = await load_db()
+                                    active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
+                                    for msg in active_chat["messages"]:
+                                        if msg["id"] == assistant_msg["id"]:
+                                            msg.update(assistant_msg)
+                                            break
+                                    await save_db(chatsDb)
+                                yield json.dumps({
+                                    "type": "assistantStream",
+                                    "token": "\n\n" + note,
+                                    "done": True,
+                                    "memoryUsed": memory_used,
+                                    "agentsUsed": agents_used,
+                                    "internetUsed": internet_used,
+                                    "proUsed": pro_used,
+                                    "messageId": assistant_msg["id"]
+                                }) + "\n"
+                            await asyncio.sleep(0.05)
+                except Exception as e:
+                    assistant_msg["message"] = f"Error during reflection: {str(e)}"
+                    async with db_lock:
+                        chatsDb = await load_db()
+                        active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
+                        for msg in active_chat["messages"]:
+                            if msg["id"] == assistant_msg["id"]:
+                                msg.update(assistant_msg)
+                                break
+                        await save_db(chatsDb)
+                    yield json.dumps({"type": "assistantMessage", "message": assistant_msg["message"]}) + "\n"
+
+        return StreamingResponse(response_generator(), media_type="application/json")
+
+    except Exception as e:
+        print(f"Error in chat: {str(e)}")
+        return JSONResponse(status_code=500, content={"message": str(e)})
+    
+## Agents Endpoints
 @app.post("/elaborator", status_code=200)
-async def elaborate(message: ElaboratorMessage) -> JSONResponse:
-    """
-    Endpoint to proxy elaboration requests to the Agent Service.
+async def elaborate(message: ElaboratorMessage):
+    """Elaborates on an input string based on a specified purpose."""
+    try:
+        elaborator_runnable = get_tool_runnable(
+            elaborator_system_prompt_template,
+            elaborator_user_prompt_template,
+            None,
+            ["query", "purpose"]
+        )
+        output = elaborator_runnable.invoke({"query": message.input, "purpose": message.purpose})
+        return JSONResponse(status_code=200, content={"message": output})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"message": str(e)})
 
-    Forwards elaboration requests to the Agent Service and returns its response.
-    The elaborator service is now integrated within the Agent Service.
+## Tool Handlers
+@register_tool("gmail")
+async def gmail_tool(tool_call: ToolCall) -> Dict[str, Any]:
+    """Handles Gmail-related tasks using multi-tool support."""
+    try:
+        with open("userProfileDb.json", "r", encoding="utf-8") as f:
+            db = json.load(f)
+        username = db["userData"]["personalInfo"]["name"]
+        tool_runnable = get_tool_runnable(
+            gmail_agent_system_prompt_template,
+            gmail_agent_user_prompt_template,
+            gmail_agent_required_format,
+            ["query", "username", "previous_tool_response"]
+        )
+        tool_call_str = tool_runnable.invoke({
+            "query": tool_call.input,
+            "username": username,
+            "previous_tool_response": tool_call.previous_tool_response
+        })
+        tool_result = await parse_and_execute_tool_calls(tool_call_str)
+        return {"tool_result": tool_result, "tool_call_str": tool_call_str}
+    except Exception as e:
+        return {"status": "failure", "error": str(e)}
+
+@register_tool("gdrive")
+async def drive_tool(tool_call: ToolCall) -> Dict[str, Any]:
+    """Handles Google Drive interactions."""
+    try:
+        tool_runnable = get_tool_runnable(
+            gdrive_agent_system_prompt_template,
+            gdrive_agent_user_prompt_template,
+            gdrive_agent_required_format,
+            ["query", "previous_tool_response"]
+        )
+        tool_call_str = tool_runnable.invoke({
+            "query": tool_call.input,
+            "previous_tool_response": tool_call.previous_tool_response
+        })
+        tool_result = await parse_and_execute_tool_calls(tool_call_str)
+        return {"tool_result": tool_result, "tool_call_str": None}
+    except Exception as e:
+        return {"status": "failure", "error": str(e)}
+
+@register_tool("gdocs")
+async def gdoc_tool(tool_call: ToolCall) -> Dict[str, Any]:
+    """
+    GDocs Tool endpoint to handle Google Docs creation and text elaboration using multi-tool support.
+    Registered as a tool with the name "gdocs".
 
     Args:
-        message (ElaboratorMessage): Request body containing the input for elaboration.
+        tool_call (ToolCall): Request body containing the input for the gdocs tool.
 
     Returns:
-        JSONResponse: Response from the Agent Service's elaborator endpoint.
+        Dict[str, Any]: A dictionary containing the tool result and tool call string (None in this case).
+                         Returns status "failure" and error message if an exception occurs.
     """
-    payload: Dict[str, str] = (
-        message.model_dump()
-    )  # Extract payload from ElaboratorMessage model
-    return await call_service_endpoint(
-        "AGENTS_SERVER_PORT", "/elaborator", payload
-    )  # Call Agent Service elaborator endpoint
+    try:
+        tool_runnable = get_tool_runnable(  # Initialize gdocs tool runnable
+            gdocs_agent_system_prompt_template,
+            gdocs_agent_user_prompt_template,
+            gdocs_agent_required_format,
+            ["query", "previous_tool_response"],  # Expected input parameters
+        )
+        tool_call_str = tool_runnable.invoke(
+            {  # Invoke the gdocs tool runnable
+                "query": tool_call["input"],
+                "previous_tool_response": tool_call["previous_tool_response"],
+            }
+        )
 
+        tool_result = await parse_and_execute_tool_calls(
+            tool_call_str
+        )  # Parse and execute tool calls from the response
+        return {
+            "tool_result": tool_result,
+            "tool_call_str": None,
+        }  # Return tool result and None for tool call string
+    except Exception as e:  # Handle exceptions during gdocs tool execution
+        print(f"Error calling gdocs tool: {e}")
+        return {"status": "failure", "error": str(e)}  # Return error status and message
 
-@app.post("/create-graph", status_code=200)
-async def create_graph() -> JSONResponse:
+@register_tool("gsheets")
+async def gsheet_tool(tool_call: ToolCall) -> Dict[str, Any]:
     """
-    Endpoint to proxy graph creation requests to the Memory Service.
-
-    Forwards requests to create a new graph to the Memory Service and returns its response.
-    The graph creation service is now part of the Memory Service.
-
-    Returns:
-        JSONResponse: Response from the Memory Service's create-graph endpoint.
-    """
-    return await call_service_endpoint(
-        "MEMORY_SERVER_PORT", "/create-graph"
-    )  # Call Memory Service create-graph endpoint
-
-
-@app.post("/delete-subgraph", status_code=200)
-async def delete_subgraph(request: DeleteSubgraphRequest) -> JSONResponse:
-    """
-    Endpoint to proxy subgraph deletion requests to the Memory Service.
-
-    Forwards requests to delete a subgraph to the Memory Service and returns its response.
-    The delete subgraph service is part of the Memory Service.
+    GSheets Tool endpoint to handle Google Sheets creation and data population using multi-tool support.
+    Registered as a tool with the name "gsheets".
 
     Args:
-        request (DeleteSubgraphRequest): Request body specifying the source of the subgraph to delete.
+        tool_call (ToolCall): Request body containing the input for the gsheets tool.
 
     Returns:
-        JSONResponse: Response from the Memory Service's delete-subgraph endpoint.
+        Dict[str, Any]: A dictionary containing the tool result and tool call string (None in this case).
+                         Returns status "failure" and error message if an exception occurs.
     """
-    payload: Dict[str, str] = (
-        request.model_dump()
-    )  # Extract payload from DeleteSubgraphRequest model
-    return await call_service_endpoint(
-        "MEMORY_SERVER_PORT", "/delete-subgraph", payload
-    )  # Call Memory Service delete-subgraph endpoint
 
+    try:
+        tool_runnable = get_tool_runnable(  # Initialize gsheets tool runnable
+            gsheets_agent_system_prompt_template,
+            gsheets_agent_user_prompt_template,
+            gsheets_agent_required_format,
+            ["query", "previous_tool_response"],  # Expected input parameters
+        )
+        tool_call_str = tool_runnable.invoke(
+            {  # Invoke the gsheets tool runnable
+                "query": tool_call["input"],
+                "previous_tool_response": tool_call["previous_tool_response"],
+            }
+        )
 
-@app.post("/create-document", status_code=200)
-async def create_document() -> JSONResponse:
+        tool_result = await parse_and_execute_tool_calls(
+            tool_call_str
+        )  # Parse and execute tool calls from the response
+        return {
+            "tool_result": tool_result,
+            "tool_call_str": None,
+        }  # Return tool result and None for tool call string
+    except Exception as e:  # Handle exceptions during gsheets tool execution
+        print(f"Error calling gsheets tool: {e}")
+        return {"status": "failure", "error": str(e)}  # Return error status and message
+
+@register_tool("gslides")
+async def gslides_tool(tool_call: ToolCall) -> Dict[str, Any]:
     """
-    Endpoint to proxy document creation requests to the Memory Service.
-
-    Forwards requests to create a new document to the Memory Service and returns its response.
-    The create document service is now part of the Memory Service.
-
-    Returns:
-        JSONResponse: Response from the Memory Service's create-document endpoint.
-    """
-    return await call_service_endpoint(
-        "MEMORY_SERVER_PORT", "/create-document"
-    )  # Call Memory Service create-document endpoint
-
-
-@app.post("/scrape-linkedin", status_code=200)
-async def scrape_linkedin(profile: Profile) -> JSONResponse:
-    """
-    Endpoint to proxy LinkedIn scraping requests to the Scraper Service.
-
-    Forwards requests to scrape LinkedIn profiles to the Scraper Service and returns its response.
+    GSlides Tool endpoint to handle Google Slides presentation creation using multi-tool support.
+    Registered as a tool with the name "gslides".
 
     Args:
-        profile (Profile): Request body containing the LinkedIn profile URL to scrape.
+        tool_call (ToolCall): Request body containing the input for the gslides tool.
 
     Returns:
-        JSONResponse: Response from the Scraper Service's scrape-linkedin endpoint.
+        Dict[str, Any]: A dictionary containing the tool result and tool call string (None in this case).
+                         Returns status "failure" and error message if an exception occurs.
     """
-    payload: Dict[str, str] = profile.model_dump()  # Extract payload from Profile model
-    return await call_service_endpoint(
-        "SCRAPER_SERVER_PORT", "/scrape-linkedin", payload
-    )  # Call Scraper Service scrape-linkedin endpoint
 
+    try:
+        with open(
+            "userProfileDb.json", "r", encoding="utf-8"
+        ) as f:  # Load user profile database
+            db = json.load(f)
 
-@app.post("/customize-graph", status_code=200)
-async def customize_graph(request: GraphRequest) -> JSONResponse:
+        username = db["userData"]["personalInfo"][
+            "name"
+        ]  # Extract username from user profile
+
+        tool_runnable = get_tool_runnable(  # Initialize gslides tool runnable
+            gslides_agent_system_prompt_template,
+            gslides_agent_user_prompt_template,
+            gslides_agent_required_format,
+            [
+                "query",
+                "user_name",
+                "previous_tool_response",
+            ],  # Expected input parameters
+        )
+        tool_call_str = tool_runnable.invoke(
+            {  # Invoke the gslides tool runnable
+                "query": tool_call["input"],
+                "user_name": username,
+                "previous_tool_response": tool_call["previous_tool_response"],
+            }
+        )
+
+        tool_result = await parse_and_execute_tool_calls(
+            tool_call_str
+        )  # Parse and execute tool calls from the response
+        return {
+            "tool_result": tool_result,
+            "tool_call_str": None,
+        }  # Return tool result and None for tool call string
+    except Exception as e:  # Handle exceptions during gslides tool execution
+        print(f"Error calling gslides tool: {e}")
+        return {"status": "failure", "error": str(e)}  # Return error status and message
+    
+@register_tool("gcalendar")
+async def gcalendar_tool(tool_call: ToolCall) -> Dict[str, Any]:
     """
-    Endpoint to proxy graph customization requests to the Memory Service.
-
-    Forwards requests to customize the graph to the Memory Service and returns its response.
-    The customize graph service is now part of the Memory Service.
+    GCalendar Tool endpoint to handle Google Calendar interactions using multi-tool support.
+    Registered as a tool with the name "gcalendar".
 
     Args:
-        request (GraphRequest): Request body containing information for graph customization.
+        tool_call (ToolCall): Request body containing the input for the gcalendar tool.
 
     Returns:
-        JSONResponse: Response from the Memory Service's customize-graph endpoint.
+        Dict[str, Any]: A dictionary containing the tool result and tool call string (None in this case).
+                         Returns status "failure" and error message if an exception occurs.
     """
-    payload: Dict[str, str] = (
-        request.model_dump()
-    )  # Extract payload from GraphRequest model
-    return await call_service_endpoint(
-        "MEMORY_SERVER_PORT", "/customize-graph", payload
-    )  # Call Memory Service customize-graph endpoint
 
+    try:
+        current_time = datetime.datetime.now().isoformat()  # Get current time in ISO format
+        local_timezone = get_localzone()  # Get local timezone
+        timezone = local_timezone.key  # Get timezone key
 
-@app.post("/scrape-reddit")
-async def scrape_reddit(reddit_url: RedditURL) -> JSONResponse:
-    """
-    Endpoint to proxy Reddit scraping requests to the Scraper Service.
+        tool_runnable = get_tool_runnable(  # Initialize gcalendar tool runnable
+            gcalendar_agent_system_prompt_template,
+            gcalendar_agent_user_prompt_template,
+            gcalendar_agent_required_format,
+            [
+                "query",
+                "current_time",
+                "timezone",
+                "previous_tool_response",
+            ],  # Expected input parameters
+        )
 
-    Forwards requests to scrape Reddit URLs to the Scraper Service and returns its response.
+        tool_call_str = tool_runnable.invoke(  # Invoke the gcalendar tool runnable
+            {
+                "query": tool_call["input"],
+                "current_time": current_time,
+                "timezone": timezone,
+                "previous_tool_response": tool_call["previous_tool_response"],
+            }
+        )
 
-    Args:
-        reddit_url (RedditURL): Request body containing the Reddit URL to scrape.
+        tool_result = await parse_and_execute_tool_calls(
+            tool_call_str
+        )  # Parse and execute tool calls from the response
+        return {
+            "tool_result": tool_result,
+            "tool_call_str": None,
+        }  # Return tool result and None for tool call string
+    except Exception as e:  # Handle exceptions during gcalendar tool execution
+        print(f"Error calling gcalendar: {e}")
+        return {"status": "failure", "error": str(e)}  # Return error status and message
 
-    Returns:
-        JSONResponse: Response from the Scraper Service's scrape-reddit endpoint.
-    """
-    payload: Dict[str, str] = (
-        reddit_url.model_dump()
-    )  # Extract payload from RedditURL model
-    return await call_service_endpoint(
-        "SCRAPER_SERVER_PORT", "/scrape-reddit", payload
-    )  # Call Scraper Service scrape-reddit endpoint
-
-
-@app.post("/scrape-twitter")
-async def scrape_twitter(twitter_url: TwitterURL) -> JSONResponse:
-    """
-    Endpoint to proxy Twitter scraping requests to the Scraper Service.
-
-    Forwards requests to scrape Twitter URLs to the Scraper Service and returns its response.
-
-    Args:
-        twitter_url (TwitterURL): Request body containing the Twitter URL to scrape.
-
-    Returns:
-        JSONResponse: Response from the Scraper Service's scrape-twitter endpoint.
-    """
-    payload: Dict[str, str] = (
-        twitter_url.model_dump()
-    )  # Extract payload from TwitterURL model
-    return await call_service_endpoint(
-        "SCRAPER_SERVER_PORT", "/scrape-twitter", payload
-    )  # Call Scraper Service scrape-twitter endpoint
-
-
+## Utils Endpoints
 @app.post("/get-role")
-async def get_role_endpoint(request: UserInfoRequest) -> JSONResponse:
-    """
-    Endpoint to proxy user role retrieval requests to the Utils Service.
+async def get_role(request: UserInfoRequest) -> JSONResponse:
+    """Retrieves a user's role from Auth0."""
+    try:
+        token = get_management_token()
+        roles_response = requests.get(
+            f"https://{AUTH0_DOMAIN}/api/v2/users/{request.user_id}/roles",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        if roles_response.status_code != 200:
+            raise HTTPException(status_code=roles_response.status_code, detail=roles_response.text)
+        roles = roles_response.json()
+        if not roles:
+            return JSONResponse(status_code=404, content={"message": "No roles found for user."})
+        return JSONResponse(status_code=200, content={"role": roles[0]["name"].lower()})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"message": str(e)})
 
-    Forwards requests to get user roles to the Utils Service and returns its response.
-
-    Args:
-        request (UserInfoRequest): Request body containing the user ID for role retrieval.
-
-    Returns:
-        JSONResponse: Response from the Utils Service's get-role endpoint.
-    """
-    payload: Dict[str, str] = (
-        request.model_dump()
-    )  # Extract payload from UserInfoRequest model
-    return await call_service_endpoint(
-        "UTILS_SERVER_PORT", "/get-role", payload
-    )  # Call Utils Service get-role endpoint
-
+@app.post("/get-beta-user-status")
+async def get_beta_user_status(request: UserInfoRequest) -> JSONResponse:
+    """Retrieves beta user status from Auth0 app_metadata."""
+    try:
+        token = get_management_token()
+        response = requests.get(
+            f"https://{AUTH0_DOMAIN}/api/v2/users/{request.user_id}",
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"}
+        )
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+        user_data = response.json()
+        beta_user_status = user_data.get("app_metadata", {}).get("betaUser")
+        if beta_user_status is None:
+            return JSONResponse(status_code=404, content={"message": "Beta user status not found."})
+        return JSONResponse(status_code=200, content={"betaUserStatus": beta_user_status})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"message": str(e)})
 
 @app.post("/get-referral-code")
-async def get_referral_code_endpoint(request: UserInfoRequest) -> JSONResponse:
+async def get_referral_code(request: UserInfoRequest) -> JSONResponse:
     """
-    Endpoint to proxy referral code retrieval requests to the Utils Service.
-
-    Forwards requests to get referral codes to the Utils Service and returns its response.
+    Retrieves the referral code from Auth0 app_metadata.
 
     Args:
-        request (UserInfoRequest): Request body containing the user ID for referral code retrieval.
+        request (UserInfoRequest): Request containing the user_id.
 
     Returns:
-        JSONResponse: Response from the Utils Service's get-referral-code endpoint.
+        JSONResponse: Referral code or error message.
     """
-    payload: Dict[str, str] = (
-        request.model_dump()
-    )  # Extract payload from UserInfoRequest model
-    return await call_service_endpoint(
-        "UTILS_SERVER_PORT", "/get-referral-code", payload
-    )  # Call Utils Service get-referral-code endpoint
+    try:
+        token = get_management_token()  # Obtain management API token
+        url = f"https://{AUTH0_DOMAIN}/api/v2/users/{request.user_id}"
+        headers = {
+            "Authorization": f"Bearer {token}",  # Include token in header
+            "Accept": "application/json",
+        }
+
+        response = requests.get(url, headers=headers)
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Error fetching user info: {response.text}",  # Raise HTTP exception if request fails
+            )
+
+        user_data = response.json()
+        referral_code = user_data.get("app_metadata", {}).get(
+            "referralCode"
+        )  # Extract referralCode from app_metadata
+        if not referral_code:
+            return JSONResponse(
+                status_code=404, content={"message": "Referral code not found."}
+            )  # Return 404 if referral code not found
+
+        return JSONResponse(
+            status_code=200, content={"referralCode": referral_code}
+        )  # Return referral code
+    except Exception as e:
+        print(f"Error in get-referral-code: {str(e)}")
+        return JSONResponse(
+            status_code=500, content={"message": str(e)}
+        )  # Return 500 for any exceptions
 
 
 @app.post("/get-referrer-status")
-async def get_referrer_status_endpoint(request: UserInfoRequest) -> JSONResponse:
+async def get_referrer_status(request: UserInfoRequest) -> JSONResponse:
     """
-    Endpoint to proxy referrer status retrieval requests to the Utils Service.
-
-    Forwards requests to get referrer status to the Utils Service and returns its response.
+    Retrieves the referrer status from Auth0 app_metadata.
 
     Args:
-        request (UserInfoRequest): Request body containing the user ID for referrer status retrieval.
+        request (UserInfoRequest): Request containing the user_id.
 
     Returns:
-        JSONResponse: Response from the Utils Service's get-referrer-status endpoint.
+        JSONResponse: Referrer status or error message.
     """
-    payload: Dict[str, bool] = (
-        request.model_dump()
-    )  # Extract payload from UserInfoRequest model
-    return await call_service_endpoint(
-        "UTILS_SERVER_PORT", "/get-referrer-status", payload
-    )  # Call Utils Service get-referrer-status endpoint
+    try:
+        token = get_management_token()  # Obtain management API token
+        url = f"https://{AUTH0_DOMAIN}/api/v2/users/{request.user_id}"
+        headers = {
+            "Authorization": f"Bearer {token}",  # Include token in header
+            "Accept": "application/json",
+        }
+
+        response = requests.get(url, headers=headers)
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Error fetching user info: {response.text}",  # Raise HTTP exception if request fails
+            )
+
+        user_data = response.json()
+        referrer_status = user_data.get("app_metadata", {}).get(
+            "referrer"
+        )  # Extract referrer status from app_metadata
+        if referrer_status is None:
+            return JSONResponse(
+                status_code=404, content={"message": "Referrer status not found."}
+            )  # Return 404 if referrer status not found
+
+        return JSONResponse(
+            status_code=200, content={"referrerStatus": referrer_status}
+        )  # Return referrer status
+    except Exception as e:
+        print(f"Error in referrer-status: {str(e)}")
+        return JSONResponse(
+            status_code=500, content={"message": str(e)}
+        )  # Return 500 for any exceptions
 
 
 @app.post("/set-referrer-status")
-async def set_referrer_status_endpoint(request: ReferrerStatusRequest) -> JSONResponse:
+async def set_referrer_status(request: ReferrerStatusRequest) -> JSONResponse:
     """
-    Endpoint to proxy referrer status update requests to the Utils Service.
-
-    Forwards requests to set referrer status to the Utils Service and returns its response.
+    Sets the referrer status in Auth0 app_metadata.
 
     Args:
-        request (ReferrerStatusRequest): Request body containing user ID and new referrer status.
+        request (ReferrerStatusRequest): Request containing user_id and referrer_status.
 
     Returns:
-        JSONResponse: Response from the Utils Service's set-referrer-status endpoint.
+        JSONResponse: Success or error message.
     """
-    payload: Dict[str, Union[str, bool]] = (
-        request.model_dump()
-    )  # Extract payload from ReferrerStatusRequest model
-    return await call_service_endpoint(
-        "UTILS_SERVER_PORT", "/set-referrer-status", payload
-    )  # Call Utils Service set-referrer-status endpoint
+    try:
+        token = get_management_token()  # Obtain management API token
+        url = f"https://{AUTH0_DOMAIN}/api/v2/users/{request.user_id}"
+        headers = {
+            "Authorization": f"Bearer {token}",  # Include token in header
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "app_metadata": {
+                "referrer": request.referrer_status  # Set referrer status in app_metadata
+            }
+        }
+
+        response = requests.patch(
+            url, headers=headers, json=payload
+        )  # Use PATCH to update user metadata
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Error updating referrer status: {response.text}",  # Raise HTTP exception if request fails
+            )
+
+        return JSONResponse(
+            status_code=200,
+            content={"message": "Referrer status updated successfully."},
+        )  # Return success message
+    except Exception as e:
+        print(f"Error in set-referrer-status: {str(e)}")
+        return JSONResponse(
+            status_code=500, content={"message": str(e)}
+        )  # Return 500 for any exceptions
 
 
 @app.post("/get-user-and-set-referrer-status")
-async def get_user_and_set_referrer_status_endpoint(
-    request: SetReferrerRequest,
-) -> JSONResponse:
+async def get_user_and_set_referrer_status(request: SetReferrerRequest) -> JSONResponse:
     """
-    Endpoint to proxy user retrieval and referrer status setting requests to the Utils Service.
-
-    Forwards requests to get user info and set referrer status based on referral code to the Utils Service and returns its response.
+    Searches for a user by referral code and sets their referrer status to true.
 
     Args:
-        request (SetReferrerRequest): Request body containing referral code to set referrer status.
+        request (SetReferrerRequest): Request containing referral_code.
 
     Returns:
-        JSONResponse: Response from the Utils Service's get-user-and-set-referrer-status endpoint.
+        JSONResponse: Success or error message.
     """
-    payload: Dict[str, str] = (
-        request.model_dump()
-    )  # Extract payload from SetReferrerRequest model
-    return await call_service_endpoint(
-        "UTILS_SERVER_PORT", "/get-user-and-set-referrer-status", payload
-    )  # Call Utils Service get-user-and-set-referrer-status endpoint
+    try:
+        token = get_management_token()  # Obtain management API token
+        headers = {
+            "Authorization": f"Bearer {token}",  # Include token in header
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
 
+        search_url = f"https://{AUTH0_DOMAIN}/api/v2/users?q=app_metadata.referralCode%3A%22{request.referral_code}%22"  # Search URL to find user by referral code
+        search_response = requests.get(search_url, headers=headers)
 
-@app.post("/get-user-and-invert-beta-user-status")
-async def get_user_and_invert_beta_user_status_endpoint(
-    request: UserInfoRequest,
-) -> JSONResponse:
-    """
-    Endpoint to proxy user retrieval and beta user status inversion requests to the Utils Service.
+        if search_response.status_code != 200:
+            raise HTTPException(
+                status_code=search_response.status_code,
+                detail=f"Error searching for user: {search_response.text}",  # Raise HTTP exception if search fails
+            )
 
-    Forwards requests to get user info and invert beta user status to the Utils Service and returns its response.
+        users = search_response.json()
 
-    Args:
-        request (UserInfoRequest): Request body containing user ID for beta user status inversion.
+        if not users or len(users) == 0:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No user found with referral code: {request.referral_code}",  # Raise 404 if no user found
+            )
 
-    Returns:
-        JSONResponse: Response from the Utils Service's get-user-and-invert-beta-user-status endpoint.
-    """
-    payload: Dict[str, str] = (
-        request.model_dump()
-    )  # Extract payload from UserInfoRequest model
-    return await call_service_endpoint(
-        "UTILS_SERVER_PORT", "/get-user-and-invert-beta-user-status", payload
-    )  # Call Utils Service get-user-and-invert-beta-user-status endpoint
+        user_id = users[0]["user_id"]  # Get user_id from search results
+
+        referrer_status_payload = {"user_id": user_id, "referrer_status": True}
+
+        set_status_url = f"http://localhost:5005/set-referrer-status"  # URL to set referrer status (assuming local service)
+        set_status_response = requests.post(
+            set_status_url, json=referrer_status_payload
+        )  # Call local service to set referrer status
+
+        if set_status_response.status_code != 200:
+            raise HTTPException(
+                status_code=set_status_response.status_code,
+                detail=f"Error setting referrer status: {set_status_response.text}",  # Raise HTTP exception if setting status fails
+            )
+
+        return JSONResponse(
+            status_code=200,
+            content={"message": "Referrer status updated successfully."},
+        )  # Return success message
+
+    except Exception as e:
+        print(f"Error in get-user-and-set-referrer-status: {str(e)}")
+        return JSONResponse(
+            status_code=500, content={"message": str(e)}
+        )  # Return 500 for any exceptions
 
 
 @app.post("/set-beta-user-status")
-async def set_beta_user_status_endpoint(request: BetaUserStatusRequest) -> JSONResponse:
+def set_beta_user_status(request: BetaUserStatusRequest) -> JSONResponse:
     """
-    Endpoint to proxy beta user status update requests to the Utils Service.
-
-    Forwards requests to set beta user status to the Utils Service and returns its response.
+    Sets the beta user status in Auth0 app_metadata.
 
     Args:
-        request (BetaUserStatusRequest): Request body containing user ID and new beta user status.
+        request (BetaUserStatusRequest): Request containing user_id and beta_user_status.
 
     Returns:
-        JSONResponse: Response from the Utils Service's set-beta-user-status endpoint.
+        JSONResponse: Success or error message.
     """
-    payload: Dict[str, Union[str, bool]] = (
-        request.model_dump()
-    )  # Extract payload from BetaUserStatusRequest model
-    return await call_service_endpoint(
-        "UTILS_SERVER_PORT", "/set-beta-user-status", payload
-    )  # Call Utils Service set-beta-user-status endpoint
-
-
-@app.post("/get-beta-user-status")
-async def get_beta_user_status_endpoint(request: UserInfoRequest) -> JSONResponse:
-    """
-    Endpoint to proxy beta user status retrieval requests to the Utils Service.
-
-    Forwards requests to get beta user status to the Utils Service and returns its response.
-
-    Args:
-        request (UserInfoRequest): Request body containing user ID for beta user status retrieval.
-
-    Returns:
-        JSONResponse: Response from the Utils Service's get-beta-user-status endpoint.
-    """
-    payload: Dict[str, str] = (
-        request.model_dump()
-    )  # Extract payload from UserInfoRequest model
-    return await call_service_endpoint(
-        "UTILS_SERVER_PORT", "/get-beta-user-status", payload
-    )  # Call Utils Service get-beta-user-status endpoint
-
-
-@app.post("/encrypt")
-async def encrypt_endpoint(request: EncryptionRequest) -> JSONResponse:
-    """
-    Endpoint to proxy encryption requests to the Utils Service.
-
-    Forwards requests to encrypt data to the Utils Service and returns its response.
-
-    Args:
-        request (EncryptionRequest): Request body containing data to be encrypted.
-
-    Returns:
-        JSONResponse: Response from the Utils Service's encrypt endpoint.
-    """
-    payload: Dict[str, str] = (
-        request.model_dump()
-    )  # Extract payload from EncryptionRequest model
-    return await call_service_endpoint(
-        "UTILS_SERVER_PORT", "/encrypt", payload
-    )  # Call Utils Service encrypt endpoint
-
-
-@app.post("/decrypt")
-async def decrypt_endpoint(request: DecryptionRequest) -> JSONResponse:
-    """
-    Endpoint to proxy decryption requests to the Utils Service.
-
-    Forwards requests to decrypt data to the Utils Service and returns its response.
-
-    Args:
-        request (DecryptionRequest): Request body containing encrypted data to be decrypted.
-
-    Returns:
-        JSONResponse: Response from the Utils Service's decrypt endpoint.
-    """
-    payload: Dict[str, str] = (
-        request.model_dump()
-    )  # Extract payload from DecryptionRequest model
-    return await call_service_endpoint(
-        "UTILS_SERVER_PORT", "/decrypt", payload
-    )  # Call Utils Service decrypt endpoint
-
-
-@app.post("/graphrag")
-async def graphrag_endpoint(request: GraphRAGRequest) -> JSONResponse:
-    """
-    Endpoint to proxy GraphRAG requests to the Memory Service.
-
-    Forwards requests for graph-based retrieval-augmented generation to the Memory Service and returns its streaming response.
-
-    Args:
-        request (GraphRAGRequest): Request body containing the query for GraphRAG.
-
-    Returns:
-        StreamingResponse: Streaming response from the Memory Service's graphrag endpoint.
-    """
-    payload: Dict[str, str] = (
-        request.model_dump()
-    )  # Extract payload from GraphRAGRequest model
-    return await call_service_endpoint(
-        "MEMORY_SERVER_PORT", "/graphrag", payload
-    )  # Fetch and return streaming response
-
-
-@app.post("/internet-search")
-async def internet_search_endpoint(request: InternetSearchRequest) -> JSONResponse:
-    """
-    Endpoint to proxy internet search requests to the Common Service.
-
-    Forwards requests for internet searches to the Common Service and returns its response.
-
-    Args:
-        request (InternetSearchRequest): Request body containing the query for internet search.
-
-    Returns:
-        JSONResponse: Response from the Common Service's internet-search endpoint.
-    """
-    payload: Dict[str, str] = (
-        request.model_dump()
-    )  # Extract payload from InternetSearchRequest model
-    return await call_service_endpoint(
-        "COMMON_SERVER_PORT", "/internet-search", payload
-    )  # Call Common Service internet-search endpoint
-
-
-@app.post("/context-classify")
-async def context_classify_endpoint(
-    request: ContextClassificationRequest,
-) -> JSONResponse:
-    """
-    Endpoint to proxy context classification requests to the Common Service.
-
-    Forwards requests to classify context to the Common Service and returns its response.
-
-    Args:
-        request (ContextClassificationRequest): Request body containing query and context for classification.
-
-    Returns:
-        JSONResponse: Response from the Common Service's context-classify endpoint.
-    """
-    payload: Dict[str, str] = (
-        request.model_dump()
-    )  # Extract payload from ContextClassificationRequest model
-    return await call_service_endpoint(
-        "COMMON_SERVER_PORT", "/context-classify", payload
-    )  # Call Common Service context-classify endpoint
-
-
-@app.post("/chat", status_code=200)
-async def chat(message: Message) -> StreamingResponse:
-    """
-    Main chat endpoint to route chat requests to the appropriate service based on classification.
-
-    This endpoint classifies the chat message using the Common Service and then routes the request
-    to either the Chat, Memory, or Agent Service based on the classification result.
-    It returns a StreamingResponse, proxying the streaming output from the relevant service.
-
-    Args:
-        message (Message): Request body containing the chat message and related context.
-
-    Returns:
-        StreamingResponse: Streaming response from the Chat, Memory, or Agent Service,
-                           depending on the classification of the chat message.
-
-    Raises:
-        HTTPException: If chat classification fails or if the determined category is invalid.
-    """
-    global chat_id  # Access the global chat_id variable
-
     try:
-        response: JSONResponse = await call_service_endpoint(
-            "COMMON_SERVER_PORT",
-            "/chat-classify",
-            {"input": message.input, "chat_id": chat_id},
-        )  # Classify chat message category
-
-        if response.status_code != 200:  # Check if chat classification was successful
-            print(f"Chat classification failed: {json.loads(response.body)['message']}")
-            raise HTTPException(
-                status_code=response.status_code,
-                detail=f"Chat classification failed: {json.loads(response.body)['message']}",
-            )  # Raise HTTPException if classification fails
-
-        response_data: Dict[str, Any] = json.loads(
-            response.body
-        )  # Load JSON response from classification service
-        category: str = response_data[
-            "classification"
-        ]  # Extract classification category
-        transformed_input: str = response_data[
-            "transformed_input"
-        ]  # Extract transformed input
-
-        category_port_env_var: Optional[str] = (
-            None  # Initialize category port environment variable
-        )
-        if category == "chat":  # Route to Chat Service if category is 'chat'
-            category_port_env_var = "CHAT_SERVER_PORT"
-        elif category == "memory":  # Route to Memory Service if category is 'memory'
-            category_port_env_var = "MEMORY_SERVER_PORT"
-        elif category == "agent":  # Route to Agent Service if category is 'agent'
-            category_port_env_var = "AGENTS_SERVER_PORT"
-        else:  # Handle invalid categories
-            print(f"Invalid category determined by orchestrator: {category}")
-            raise HTTPException(
-                status_code=400, detail="Invalid category determined by orchestrator"
-            )  # Raise HTTPException for invalid category
-
-        category_port: Optional[str] = os.environ.get(
-            category_port_env_var
-        )  # Get category service port from environment variable
-        if not category_port:  # Check if category port is configured
-            print(f"{category_port_env_var} not configured.")
-            raise HTTPException(
-                status_code=500, detail=f"{category_port_env_var} not configured."
-            )  # Raise HTTPException if category port is not configured
-
-        if not await spawn_server(
-            category_port_env_var
-        ):  # Ensure category service is spawned and live
-            print(f"Service on port {category_port} is not available.")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Service on port {category_port} is not available.",
-            )  # Raise HTTPException if service is not available
-
-        await call_service_initiate(
-            category_port_env_var
-        )  # Initiate the category service
-
-        category_url: str = f"http://localhost:{category_port}/chat"  # Construct URL for category-specific chat endpoint
-
-        payload: Dict[str, Union[str, int]] = {  # Construct payload for chat endpoint
-            "chat_id": chat_id,
-            "original_input": message.input,
-            "transformed_input": transformed_input,
-            "pricing": message.pricing,
-            "credits": message.credits,
+        token = get_management_token()  # Obtain management API token
+        url = f"https://{AUTH0_DOMAIN}/api/v2/users/{request.user_id}"
+        headers = {
+            "Authorization": f"Bearer {token}",  # Include token in header
+            "Content-Type": "application/json",
         }
 
-        return await fetch_streaming_response(
-            category_url, payload
-        )  # Fetch and return streaming response from category service
+        payload = {
+            "app_metadata": {
+                "betaUser": request.beta_user_status  # Set betaUser status in app_metadata
+            }
+        }
 
-    except HTTPException as http_exc:  # Catch HTTPExceptions raised during processing
-        print(http_exc)
+        response = requests.patch(
+            url, headers=headers, json=payload
+        )  # Use PATCH to update user metadata
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Error updating beta user status: {response.text}",  # Raise HTTP exception if request fails
+            )
+
         return JSONResponse(
-            status_code=http_exc.status_code, content={"message": http_exc.detail}
-        )  # Return JSONResponse for HTTP Exceptions
-    except Exception as e:  # Catch any other exceptions during chat processing
-        print(f"Error in chat endpoint: {e}")
+            status_code=200,
+            content={"message": "Beta user status updated successfully."},
+        )  # Return success message
+    except Exception as e:
+        print(f"Error in set-beta-user-status: {str(e)}")
         return JSONResponse(
-            status_code=500, content={"message": f"Error processing chat: {str(e)}"}
-        )  # Return JSONResponse for general exceptions
+            status_code=500, content={"message": str(e)}
+        )  # Return 500 for any exceptions
 
 
-# --- Server Shutdown Endpoint ---
-# Endpoint to gracefully stop backend services when the orchestrator app closes.
-
-SERVERS_TO_STOP_ON_APP_CLOSE: List[str] = [
-    "AGENTS_SERVER_PORT",
-    "SCRAPER_SERVER_PORT",
-    "MEMORY_SERVER_PORT",
-    "CHAT_SERVER_PORT",
-    "UTILS_SERVER_PORT",
-    "COMMON_SERVER_PORT",
-]  # List of servers to stop on app close
-
-
-@app.post("/stop-servers-on-app-close")
-async def stop_servers_endpoint() -> JSONResponse:
+@app.post("/get-user-and-invert-beta-user-status")
+def get_user_and_invert_beta_user_status(request: UserInfoRequest) -> JSONResponse:
     """
-    Endpoint to stop specific backend servers when the orchestrator application is closing.
+    Searches for a user by user id and inverts the beta user status in Auth0 app_metadata.
 
-    This endpoint iterates through a predefined list of server port environment variables,
-    stopping each server asynchronously. It aggregates the results and returns a JSON response
-    indicating the success or failure of stopping each server.
+    Args:
+        request (UserInfoRequest): Request containing user_id.
 
     Returns:
-        JSONResponse: A FastAPI JSONResponse object indicating the status of stopping each server.
-                      Returns a success message if all servers are stopped successfully,
-                      or an error message if some servers failed to stop.
+        JSONResponse: Success or error message.
     """
-    results: Dict[
-        str, str
-    ] = {}  # Initialize dictionary to store results of stopping each server
-
     try:
-        for (
-            server
-        ) in SERVERS_TO_STOP_ON_APP_CLOSE:  # Iterate through list of servers to stop
-            result: bool = await stop_server(server)  # Stop each server asynchronously
-            results[server] = (
-                "Stopped" if result else "Failed"
-            )  # Record stop status in results dictionary
+        token = get_management_token()  # Obtain management API token
+        url = f"https://{AUTH0_DOMAIN}/api/v2/users/{request.user_id}"
+        headers = {
+            "Authorization": f"Bearer {token}",  # Include token in header
+            "Accept": "application/json",
+        }
 
-        if all(
-            status == "Stopped" for status in results.values()
-        ):  # Check if all servers were stopped successfully
-            print("All servers stopped successfully")
-            return JSONResponse(
-                status_code=200, content={"message": "All servers stopped successfully"}
-            )  # Return success response if all servers stopped
-        else:  # If not all servers stopped successfully
-            print("Some servers failed to stop")
-            return JSONResponse(
-                status_code=500, content={"message": "Some servers failed to stop"}
-            )  # Return error response if some servers failed to stop
+        response = requests.get(url, headers=headers)
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Error fetching user info: {response.text}",  # Raise HTTP exception if request fails
+            )
 
-    except Exception as e:  # Catch any exceptions during server stopping process
-        print(f"Error stopping servers: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Error stopping servers: {str(e)}"
-        )  # Raise HTTPException with error details
+        user_data = response.json()
+        beta_user_status = user_data.get("app_metadata", {}).get(
+            "betaUser"
+        )  # Get current betaUser status
 
+        # Invert the beta user status (string boolean to boolean and then invert)
+        beta_user_status_payload = {
+            "user_id": request.user_id,
+            "beta_user_status": False
+            if str(beta_user_status).lower() == "true"
+            else True,
+        }
 
-# --- Main Application Execution ---
+        set_status_url = f"http://localhost:5005/set-beta-user-status"  # URL to set beta user status (assuming local service)
+        set_status_response = requests.post(
+            set_status_url, json=beta_user_status_payload
+        )  # Call local service to set inverted beta user status
+
+        if set_status_response.status_code != 200:
+            raise HTTPException(
+                status_code=set_status_response.status_code,
+                detail=f"Error inverting beta user status: {set_status_response.text}",  # Raise HTTP exception if setting status fails
+            )
+
+        return JSONResponse(
+            status_code=200,
+            content={"message": "Beta user status inverted successfully."},
+        )  # Return success message
+    except Exception as e:
+        print(f"Error in get-user-and-invert-beta-user-status: {str(e)}")
+        return JSONResponse(
+            status_code=500, content={"message": str(e)}
+        )  # Return 500 for any exceptions
+
+@app.post("/encrypt")
+async def encrypt_data(request: EncryptionRequest) -> JSONResponse:
+    """Encrypts data using AES encryption."""
+    try:
+        encrypted_data = aes_encrypt(request.data)
+        return JSONResponse(status_code=200, content={"encrypted_data": encrypted_data})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"message": str(e)})
+
+@app.post("/decrypt")
+async def decrypt_data(request: DecryptionRequest) -> JSONResponse:
+    """Decrypts data using AES decryption."""
+    try:
+        decrypted_data = aes_decrypt(request.encrypted_data)
+        return JSONResponse(status_code=200, content={"decrypted_data": decrypted_data})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"message": str(e)})
+
+## Scraper Endpoints
+@app.post("/scrape-linkedin", status_code=200)
+async def scrape_linkedin(profile: LinkedInURL):
+    """Scrapes and returns LinkedIn profile information."""
+    try:
+        linkedin_profile = scrape_linkedin_profile(profile.url)
+        return JSONResponse(status_code=200, content={"profile": linkedin_profile})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"message": str(e)})
+
+@app.post("/scrape-reddit")
+async def scrape_reddit(reddit_url: RedditURL):
+    """Extracts topics of interest from a Reddit user's profile."""
+    try:
+        subreddits = reddit_scraper(reddit_url.url)
+        response = reddit_runnable.invoke({"subreddits": subreddits})
+        if isinstance(response, list):
+            return JSONResponse(status_code=200, content={"topics": response})
+        else:
+            raise HTTPException(status_code=500, detail="Invalid response format from the language model.")
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
+@app.post("/scrape-twitter")
+async def scrape_twitter(twitter_url: TwitterURL):
+    """Extracts topics of interest from a Twitter user's profile."""
+    try:
+        tweets = scrape_twitter_data(twitter_url.url, 20)
+        response = twitter_runnable.invoke({"tweets": tweets})
+        if isinstance(response, list):
+            return JSONResponse(status_code=200, content={"topics": response})
+        else:
+            raise HTTPException(status_code=500, detail="Invalid response format from the language model.")
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
+## Auth Endpoint
+@app.get("/authenticate-google")
+async def authenticate_google():
+    """Authenticates with Google using OAuth 2.0."""
+    try:
+        creds = None
+        if os.path.exists("model/token.pickle"):
+            with open("model/token.pickle", "rb") as token:
+                creds = pickle.load(token)
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_config(CREDENTIALS_DICT, SCOPES)
+                creds = flow.run_local_server(port=0)
+            with open("model/token.pickle", "wb") as token:
+                pickle.dump(creds, token)
+        return JSONResponse(status_code=200, content={"success": True})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+## Memory Endpoints
+@app.post("/graphrag", status_code=200)
+async def graphrag(request: GraphRAGRequest):
+    """Processes a user profile query using GraphRAG."""
+    try:
+        context = query_user_profile(
+            request.query, graph_driver, embed_model,
+            text_conversion_runnable, query_classification_runnable
+        )
+        return JSONResponse(status_code=200, content={"context": context})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"message": str(e)})
+
+@app.post("/create-graph", status_code=200)
+async def create_graph():
+    """Creates a knowledge graph from documents in the input directory."""
+    try:
+        input_dir = "model/input"
+        with open("userProfileDb.json", "r", encoding="utf-8") as f:
+            db = json.load(f)
+        username = db["userData"]["personalInfo"].get("name", "User")
+        extracted_texts = []
+        for file_name in os.listdir(input_dir):
+            file_path = os.path.join(input_dir, file_name)
+            if os.path.isfile(file_path):
+                with open(file_path, "r", encoding="utf-8") as file:
+                    text_content = file.read().strip()
+                    if text_content:
+                        extracted_texts.append({"text": text_content, "source": file_name})
+        if not extracted_texts:
+            return JSONResponse(status_code=400, content={"message": "No content found in input documents."})
+        
+        with graph_driver.session() as session:
+            session.run("MATCH (n) DETACH DELETE n")
+        build_initial_knowledge_graph(
+            username, extracted_texts, graph_driver, embed_model,
+            text_dissection_runnable, information_extraction_runnable
+        )
+        return JSONResponse(status_code=200, content={"message": "Graph created successfully."})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"message": str(e)})
+
+@app.post("/delete-subgraph", status_code=200)
+async def delete_subgraph(request: DeleteSubgraphRequest):
+    """Deletes a subgraph from the knowledge graph based on a source name."""
+    try:
+        with open("userProfileDb.json", "r", encoding="utf-8") as f:
+            db = json.load(f)
+        username = db["userData"]["personalInfo"].get("name", "User").lower()
+        source_name = request.source
+        SOURCES = {
+            "linkedin": f"{username}_linkedin_profile.txt",
+            "reddit": f"{username}_reddit_profile.txt",
+            "twitter": f"{username}_twitter_profile.txt"
+        }
+        file_name = SOURCES.get(source_name)
+        if not file_name:
+            return JSONResponse(status_code=400, content={"message": f"No file mapping found for source: {source_name}"})
+        delete_source_subgraph(graph_driver, file_name)
+        os.remove(f"model/input/{file_name}")
+        return JSONResponse(status_code=200, content={"message": f"Subgraph related to {file_name} deleted successfully."})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"message": str(e)})
+
+@app.post("/create-document", status_code=200)
+async def create_document():
+    """Creates and summarizes personality documents based on user profile data."""
+    try:
+        with open("userProfileDb.json", "r", encoding="utf-8") as f:
+            db = json.load(f)
+        username = db["userData"]["personalInfo"].get("name", "User")
+        personality_type = db["userData"].get("personalityType", "")
+        structured_linkedin_profile = db["userData"].get("linkedInProfile", {})
+        reddit_profile = db["userData"].get("redditProfile", [])
+        twitter_profile = db["userData"].get("twitterProfile", [])
+        input_dir = "model/input"
+        os.makedirs(input_dir, exist_ok=True)
+        for file in os.listdir(input_dir):
+            os.remove(os.path.join(input_dir, file))
+
+        trait_descriptions = []
+        for trait in personality_type:
+            if trait in PERSONALITY_DESCRIPTIONS:
+                description = f"{trait}: {PERSONITY_DESCRIPTIONS[trait]}"
+                trait_descriptions.append(description)
+                filename = f"{username.lower()}_{trait.lower()}.txt"
+                summarized_paragraph = text_summarizer_runnable.invoke({"user_name": username, "text": description})
+                with open(os.path.join(input_dir, filename), "w", encoding="utf-8") as file:
+                    file.write(summarized_paragraph)
+
+        unified_personality_description = f"{username}'s Personality:\n\n" + "\n".join(trait_descriptions)
+        
+        if structured_linkedin_profile:
+            linkedin_file = os.path.join(input_dir, f"{username.lower()}_linkedin_profile.txt")
+            summarized_paragraph = text_summarizer_runnable.invoke({"user_name": username, "text": structured_linkedin_profile})
+            with open(linkedin_file, "w", encoding="utf-8") as file:
+                file.write(summarized_paragraph)
+        
+        if reddit_profile:
+            reddit_file = os.path.join(input_dir, f"{username.lower()}_reddit_profile.txt")
+            summarized_paragraph = text_summarizer_runnable.invoke({"user_name": username, "text": "Interests: " + ",".join(reddit_profile)})
+            with open(reddit_file, "w", encoding="utf-8") as file:
+                file.write(summarized_paragraph)
+        
+        if twitter_profile:
+            twitter_file = os.path.join(input_dir, f"{username.lower()}_twitter_profile.txt")
+            summarized_paragraph = text_summarizer_runnable.invoke({"user_name": username, "text": "Interests: " + ",".join(twitter_profile)})
+            with open(twitter_file, "w", encoding="utf-8") as file:
+                file.write(summarized_paragraph)
+
+        return JSONResponse(status_code=200, content={"message": "Documents created successfully", "personality": unified_personality_description})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"message": str(e)})
+
+@app.post("/customize-graph", status_code=200)
+async def customize_graph(request: GraphRequest):
+    """Customizes the knowledge graph with new information."""
+    try:
+        with open("userProfileDb.json", "r", encoding="utf-8") as f:
+            db = json.load(f)
+        username = db["userData"]["personalInfo"]["name"]
+        points = fact_extraction_runnable.invoke({"paragraph": request.information, "username": username})
+        for point in points:
+            crud_graph_operations(
+                point, graph_driver, embed_model, query_classification_runnable,
+                information_extraction_runnable, graph_analysis_runnable,
+                graph_decision_runnable, text_description_runnable
+            )
+        return JSONResponse(status_code=200, content={"message": "Graph customized successfully."})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"message": str(e)})
+
+STARTUP_TIME = time.time() - START_TIME
+print(f"Server startup time: {STARTUP_TIME:.2f} seconds")
+
+# --- Run the Application ---
 if __name__ == "__main__":
-    multiprocessing.freeze_support()  # For Windows executables created with PyInstaller
-    uvicorn.run(
-        app, host="0.0.0.0", port=5000, reload=False, workers=1
-    )  # Run the FastAPI application using Uvicorn server
+    multiprocessing.freeze_support()
+    uvicorn.run(app, host="0.0.0.0", port=5000, reload=False, workers=1)

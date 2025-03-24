@@ -33,6 +33,7 @@ from model.memory.functions import *
 from model.memory.prompts import *
 from model.memory.constants import *
 from model.memory.formats import *
+from model.memory.backend import MemoryBackend
 
 from model.utils.helpers import *
 
@@ -145,6 +146,9 @@ initial_db = {
     "active_chat_id": None,
     "next_chat_id": 1
 }
+
+memory_backend = MemoryBackend()
+memory_backend.cleanup()
 
 async def load_db():
     """Load the database from chatsDb.json, initializing if it doesn't exist or is invalid."""
@@ -302,6 +306,7 @@ async def chat(message: Message):
     global information_extraction_runnable, graph_analysis_runnable, graph_decision_runnable
     global query_classification_runnable, agent_runnable, text_description_runnable
     global reflection_runnable, internet_query_reframe_runnable, internet_summary_runnable
+    global memory_backend
 
     try:
         with open("userProfileDb.json", "r", encoding="utf-8") as f:
@@ -390,22 +395,19 @@ async def chat(message: Message):
             if category == "memory":
                 if pricing_plan == "free" and credits <= 0:
                     yield json.dumps({"type": "intermediary", "message": "Retrieving memories..."}) + "\n"
-                    user_context = query_user_profile(transformed_input, graph_driver, embed_model, text_conversion_runnable, query_classification_runnable)
-                    note = "Sorry friend, could have updated my memory for this query. But, that is a pro feature and your daily credits have expired. You can always upgrade to pro from the settings page"
+                    user_context = memory_backend.retrieve_memory(username, transformed_input)
+                    note = "Sorry friend, memory updates are a pro feature and your daily credits have expired. Upgrade to pro in settings!"
                 else:
                     yield json.dumps({"type": "intermediary", "message": "Updating memories..."}) + "\n"
                     memory_used = True
                     pro_used = True
-                    points = fact_extraction_runnable.invoke({"paragraph": transformed_input, "username": username})
-                    for point in points:
-                        crud_graph_operations(point, graph_driver, embed_model, query_classification_runnable, information_extraction_runnable, graph_analysis_runnable, graph_decision_runnable, text_description_runnable)
+                    memory_backend.update_memory(username, transformed_input)
                     yield json.dumps({"type": "intermediary", "message": "Retrieving memories..."}) + "\n"
-                    user_context = query_user_profile(transformed_input, graph_driver, embed_model, text_conversion_runnable, query_classification_runnable)
-            # For chat and agent, retrieve context if use_personal_context is true
+                    user_context = memory_backend.retrieve_memory(username, transformed_input)
             elif use_personal_context:
                 yield json.dumps({"type": "intermediary", "message": "Retrieving memories..."}) + "\n"
                 memory_used = True
-                user_context = query_user_profile(transformed_input, graph_driver, embed_model, text_conversion_runnable, query_classification_runnable)
+                user_context = memory_backend.retrieve_memory(username, transformed_input)
 
             # Handle internet search if required
             if internet == "Internet":

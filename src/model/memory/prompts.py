@@ -1622,7 +1622,6 @@ update_required_format = {
     "required": ["update"]
 }
 
-
 update_decision_system_prompt = """
 You are a memory management AI designed to make precise, context-aware decisions about updating memory records. Your goal is to ensure that memory records are always relevant, accurate, and comprehensive.
 

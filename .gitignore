@@ -240,3 +240,4 @@ token.pickle
 chatsDb.json
 userProfileDb.json
 ruff_cache
+.db

@@ -7,7 +7,7 @@ import asyncio
 import pickle
 import multiprocessing
 import requests
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from tzlocal import get_localzone
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -21,12 +21,15 @@ from google.auth.transport.requests import Request
 from dotenv import load_dotenv
 import nest_asyncio
 import uvicorn
+from fastapi import WebSocket, WebSocketDisconnect
 
 # Import specific functions, runnables, and helpers from respective folders
 from model.agents.runnables import *
 from model.agents.functions import *
 from model.agents.prompts import *
 from model.agents.formats import *
+from model.agents.base import *
+from model.agents.helpers import *
 
 from model.memory.runnables import *
 from model.memory.functions import *
@@ -71,9 +74,12 @@ graph_driver = GraphDatabase.driver(
     auth=(os.environ["NEO4J_USERNAME"], os.environ["NEO4J_PASSWORD"])
 )
 
+manager = WebSocketManager()
+
 # Initialize runnables from agents
 reflection_runnable = get_reflection_runnable()
 inbox_summarizer_runnable = get_inbox_summarizer_runnable()
+priority_runnable = get_priority_runnable()
 
 # Initialize runnables from memory
 graph_decision_runnable = get_graph_decision_runnable()
@@ -95,6 +101,9 @@ internet_summary_runnable = get_internet_summary_runnable()
 
 # Tool handlers registry for agent tools
 tool_handlers: Dict[str, callable] = {}
+
+# Instantiate the task queue globally
+task_queue = TaskQueue()
 
 def register_tool(name: str):
     """Decorator to register a function as a tool handler."""
@@ -146,6 +155,11 @@ initial_db = {
     "next_chat_id": 1
 }
 
+def load_user_profile():
+    """Load user profile data from userProfileDb.json."""
+    with open("userProfileDb.json", "r", encoding="utf-8") as f:
+        return json.load(f)
+
 async def load_db():
     """Load the database from chatsDb.json, initializing if it doesn't exist or is invalid."""
     try:
@@ -167,6 +181,269 @@ async def save_db(data):
     with open(CHAT_DB, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=4)
 
+async def get_chat_history_messages() -> List[Dict[str, Any]]:
+    """
+    Function to retrieve the chat history of the currently active chat.
+    Checks for inactivity and creates a new chat if needed.
+    Returns the list of messages for the active chat, filtering out messages where isVisible is False.
+    """
+    async with db_lock:
+        chatsDb = await load_db()
+        active_chat_id = chatsDb["active_chat_id"]
+        current_time = datetime.datetime.now(timezone.utc)
+
+        # If no active chat exists, create a new one
+        if active_chat_id is None or not chatsDb["chats"]:
+            new_chat_id = f"chat_{chatsDb['next_chat_id']}"
+            chatsDb["next_chat_id"] += 1
+            new_chat = {"id": new_chat_id, "messages": []}
+            chatsDb["chats"].append(new_chat)
+            chatsDb["active_chat_id"] = new_chat_id
+            await save_db(chatsDb)
+            return []  # Return empty messages for new chat
+
+        # Find the active chat
+        active_chat = next((chat for chat in chatsDb["chats"] if chat["id"] == active_chat_id), None)
+        if active_chat and active_chat["messages"]:
+            last_message = active_chat["messages"][-1]
+            last_timestamp = datetime.datetime.fromisoformat(last_message["timestamp"].replace('Z', '+00:00'))
+            if (current_time - last_timestamp).total_seconds() > 600:  # 10 minutes = 600 seconds
+                # Inactivity period exceeded, create a new chat
+                new_chat_id = f"chat_{chatsDb['next_chat_id']}"
+                chatsDb["next_chat_id"] += 1
+                new_chat = {"id": new_chat_id, "messages": []}
+                chatsDb["chats"].append(new_chat)
+                chatsDb["active_chat_id"] = new_chat_id
+                await save_db(chatsDb)
+                return [] # Return empty messages for new chat
+
+        # Return messages from the active chat, filtering out those with isVisible: False
+        active_chat = next((chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"]), None)
+        if active_chat and active_chat["messages"]:
+            filtered_messages = [
+                message for message in active_chat["messages"]
+                if not message.get("isVisible", True) is False # default to True if isVisible is not present
+            ]
+            
+            return filtered_messages
+        else:
+            return []
+
+class WebSocketManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def send_personal_message(self, message: str, websocket: WebSocket):
+        await websocket.send_text(message)
+
+    async def broadcast(self, message: str):
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(message)
+            except Exception as e:
+                print(f"Error broadcasting message to connection: {e}")
+                self.disconnect(connection) # Remove broken connection
+
+async def cleanup_tasks_periodically():
+    """Periodically clean up old completed tasks."""
+    while True:
+        await task_queue.delete_old_completed_tasks()
+        await asyncio.sleep(60 * 60) # Check every hour (or less for testing, e.g., 60 seconds)
+
+async def process_queue():
+    while True:
+        task = await task_queue.get_next_task()
+        if task:
+            print(f"Processing task: {task}")
+            try:
+                task_queue.current_task_execution = asyncio.create_task(execute_agent_task(task))
+                result = await task_queue.current_task_execution
+                await add_result_to_chat(task["chat_id"], task["description"], True)
+                await add_result_to_chat(task["chat_id"], result, False, task["description"])
+                await task_queue.complete_task(task["task_id"], result=result)
+
+                # --- WebSocket Message on Success ---
+                task_completion_message = {
+                    "type": "task_completed",
+                    "task_id": task["task_id"],
+                    "description": task["description"],
+                    "result": result
+                }
+                await manager.broadcast(json.dumps(task_completion_message))
+                print(f"WebSocket message sent for task completion: {task['task_id']}")
+
+
+            except asyncio.CancelledError:
+                await task_queue.complete_task(task["task_id"], error="Task was cancelled")
+                # --- WebSocket Message on Cancellation ---
+                task_error_message = {
+                    "type": "task_error",
+                    "task_id": task["task_id"],
+                    "description": task["description"],
+                    "error": "Task was cancelled"
+                }
+                await manager.broadcast(json.dumps(task_error_message))
+                print(f"WebSocket message sent for task cancellation: {task['task_id']}")
+
+            except Exception as e:
+                error_str = str(e)
+                await task_queue.complete_task(task["task_id"], error=error_str)
+                # --- WebSocket Message on Error ---
+                task_error_message = {
+                    "type": "task_error",
+                    "task_id": task["task_id"],
+                    "description": task["description"],
+                    "error": error_str
+                }
+                await manager.broadcast(json.dumps(task_error_message))
+                print(f"WebSocket message sent for task error: {task['task_id']} - Error: {error_str}")
+        await asyncio.sleep(0.1)
+
+async def execute_agent_task(task: dict) -> str:
+    """Execute the agent task asynchronously and return the result."""
+    global agent_runnable, reflection_runnable, inbox_summarizer_runnable, graph_driver, embed_model, text_conversion_runnable, query_classification_runnable, internet_query_reframe_runnable, internet_summary_runnable
+
+    # Extract parameters from task
+    transformed_input = task["description"]
+    username = task["username"]
+    personality = task["personality"]
+    use_personal_context = task["use_personal_context"]
+    internet = task["internet"]
+
+    # Initialize context variables
+    user_context = None
+    internet_context = None
+
+    # Compute user_context if required
+    if use_personal_context:
+        try:
+            user_context = query_user_profile(
+                transformed_input,
+                graph_driver,
+                embed_model,
+                text_conversion_runnable,
+                query_classification_runnable
+            )
+        except Exception as e:
+            print(f"Error computing user_context: {e}")
+            user_context = None
+
+    # Compute internet_context if required
+    if internet == "Internet":
+        try:
+            reframed_query = get_reframed_internet_query(internet_query_reframe_runnable, transformed_input)
+            search_results = get_search_results(reframed_query)
+            internet_context = get_search_summary(internet_summary_runnable, search_results)
+        except Exception as e:
+            print(f"Error computing internet_context: {e}")
+            internet_context = None
+
+    # Invoke agent_runnable with all required parameters
+    response = agent_runnable.invoke({
+        "query": transformed_input,
+        "name": username,
+        "user_context": user_context,
+        "internet_context": internet_context,
+        "personality": personality
+    })
+
+    print(f"Agent response: {response}")
+
+    # Handle tool calls
+    if "tool_calls" not in response or not isinstance(response["tool_calls"], list):
+        return "Error: Invalid tool_calls format in response."
+
+    print(f"Executing task: {transformed_input}")
+    print(f"Tool calls: {response['tool_calls']}")
+
+    all_tool_results = []
+    previous_tool_result = None
+    for tool_call in response["tool_calls"]:
+        if tool_call["response_type"] != "tool_call":
+            continue
+        tool_name = tool_call["content"].get("tool_name")
+        task_instruction = tool_call["content"].get("task_instruction")
+        previous_tool_response_required = tool_call["content"].get("previous_tool_response", False)
+
+        tool_handler = tool_handlers.get(tool_name)
+        if not tool_handler:
+            return f"Error: Tool {tool_name} not found."
+
+        tool_input = {"input": task_instruction}
+        if previous_tool_response_required and previous_tool_result:
+            tool_input["previous_tool_response"] = previous_tool_result
+        else:
+            tool_input["previous_tool_response"] = "Not Required"
+
+        tool_result_main = await tool_handler(tool_input)
+
+        print(f"Tool result for {tool_name}: {tool_result_main}")
+
+        tool_result = tool_result_main["tool_result"] if "tool_result" in tool_result_main else tool_result_main
+        previous_tool_result = tool_result
+        all_tool_results.append({"tool_name": tool_name, "task_instruction": task_instruction, "tool_result": tool_result})
+
+    # Generate final response based on tool results
+    if len(all_tool_results) == 1 and all_tool_results[0]["tool_name"] == "search_inbox":
+        filtered_tool_result = {
+            "response": all_tool_results[0]["tool_result"]["result"]["response"],
+            "email_data": [{k: email[k] for k in email if k != "body"} for email in all_tool_results[0]["tool_result"]["result"]["email_data"]],
+            "gmail_search_url": all_tool_results[0]["tool_result"]["result"]["gmail_search_url"]
+        }
+        # Assuming inbox_summarizer_runnable also supports non-streaming invocation
+        result = inbox_summarizer_runnable.invoke({"tool_result": filtered_tool_result})
+    else:
+        # Invoke reflection_runnable without streaming
+        result = reflection_runnable.invoke({"tool_results": all_tool_results})
+
+    print(f"Final result: {result}")
+    return result
+
+async def add_result_to_chat(chat_id: str, result: str, isUser: bool, task_description: str = None):
+    """Add the task result to the corresponding chat."""
+    async with db_lock:
+        chatsDb = await load_db()
+        chat = next((c for c in chatsDb["chats"] if c["id"] == chat_id), None)
+        if chat:
+            if not isUser:
+                result_message = {
+                    "id": str(int(time.time() * 1000)),
+                    "type": "tool_result",
+                    "message": result,
+                    "task": task_description,
+                    "isUser": False,
+                    "memoryUsed": False,
+                    "agentsUsed": True,
+                    "internetUsed": False,
+                    "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
+                }
+            else:
+                result_message = {
+                    "id": str(int(time.time() * 1000)),
+                    "message": result,
+                    "isUser": True,
+                    "isVisible": False,
+                    "memoryUsed": False,
+                    "agentsUsed": False,
+                    "internetUsed": False,
+                    "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
+                }
+            chat["messages"].append(result_message)
+            await save_db(chatsDb)
+
+chat_history = get_chat_history()
+
+chat_runnable = get_chat_runnable(chat_history)
+agent_runnable = get_agent_runnable(chat_history)
+unified_classification_runnable = get_unified_classification_runnable(chat_history)
+
 # --- FastAPI Application Setup ---
 app = FastAPI(
     title="Sentient API",
@@ -183,6 +460,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
+
+# Load tasks on startup
+@app.on_event("startup")
+async def startup_event():
+    await task_queue.load_tasks()
+
+# Start the queue processor on app startup
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(process_queue())
+    asyncio.create_task(cleanup_tasks_periodically()) # Start periodic cleanup task
+
+# Optional: Save tasks on shutdown (not strictly necessary since we save after each operation)
+@app.on_event("shutdown")
+async def shutdown_event():
+    await task_queue.save_tasks()
 
 # --- Pydantic Models ---
 class Message(BaseModel):
@@ -237,6 +530,24 @@ class TwitterURL(BaseModel):
 class LinkedInURL(BaseModel):
     url: str
 
+class CreateTaskRequest(BaseModel):
+    chat_id: str
+    description: str
+    priority: int
+    username: str
+    personality: Union[Dict, str, None]
+    use_personal_context: bool
+    internet: str
+
+class UpdateTaskRequest(BaseModel):
+    task_id: str
+    description: str
+    priority: int
+
+class DeleteTaskRequest(BaseModel):
+    # No request body needed as per the function signature, but including for potential future use or consistency
+    task_id: str
+
 # --- API Endpoints ---
 
 ## Root Endpoint
@@ -246,47 +557,15 @@ async def main():
     return {
         "message": "Hello, I am Sentient, your private, decentralized and interactive AI companion who feels human"
     }
-    
+
 @app.get("/get-history", status_code=200)
 async def get_history():
     """
-    Retrieve the chat history of the currently active chat.
-    Check for inactivity (10 minutes since last message) and create a new chat if needed.
+    Endpoint to retrieve the chat history. Calls the get_chat_history_messages function.
     """
-    async with db_lock:
-        chatsDb = await load_db()
-        active_chat_id = chatsDb["active_chat_id"]
-        current_time = datetime.datetime.now(timezone.utc)  # Updated to use datetime.now with UTC timezone
+    messages = await get_chat_history_messages()
+    return JSONResponse(status_code=200, content={"messages": messages})
 
-        # If no active chat exists, create a new one
-        if active_chat_id is None or not chatsDb["chats"]:
-            new_chat_id = f"chat_{chatsDb['next_chat_id']}"
-            chatsDb["next_chat_id"] += 1
-            new_chat = {"id": new_chat_id, "messages": []}
-            chatsDb["chats"].append(new_chat)
-            chatsDb["active_chat_id"] = new_chat_id
-            await save_db(chatsDb)
-            return JSONResponse(status_code=200, content={"messages": []})
-
-        # Find the active chat
-        active_chat = next((chat for chat in chatsDb["chats"] if chat["id"] == active_chat_id), None)
-        if active_chat and active_chat["messages"]:
-            last_message = active_chat["messages"][-1]
-            last_timestamp = datetime.datetime.fromisoformat(last_message["timestamp"].replace('Z', '+00:00'))
-            if (current_time - last_timestamp).total_seconds() > 600:  # 10 minutes = 600 seconds
-                # Inactivity period exceeded, create a new chat
-                new_chat_id = f"chat_{chatsDb['next_chat_id']}"
-                chatsDb["next_chat_id"] += 1
-                new_chat = {"id": new_chat_id, "messages": []}
-                chatsDb["chats"].append(new_chat)
-                chatsDb["active_chat_id"] = new_chat_id
-                await save_db(chatsDb)
-                return JSONResponse(status_code=200, content={"messages": []})
-
-        # Return messages from the active chat
-        active_chat = next((chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"]), None)
-        return JSONResponse(status_code=200, content={"messages": active_chat["messages"] if active_chat else []})
-    
 @app.post("/clear-chat-history", status_code=200)
 async def clear_chat_history():
     """Clear all chat history by resetting to the initial database structure."""
@@ -295,13 +574,13 @@ async def clear_chat_history():
         await save_db(chatsDb)
     return JSONResponse(status_code=200, content={"message": "Chat history cleared"})
 
-## Chat Endpoint (Combining agents and memory logic)
 @app.post("/chat", status_code=200)
 async def chat(message: Message):
     global embed_model, chat_runnable, fact_extraction_runnable, text_conversion_runnable
     global information_extraction_runnable, graph_analysis_runnable, graph_decision_runnable
     global query_classification_runnable, agent_runnable, text_description_runnable
-    global reflection_runnable, internet_query_reframe_runnable, internet_summary_runnable
+    global reflection_runnable, internet_query_reframe_runnable, internet_summary_runnable, priority_runnable
+    global unified_classification_runnable
 
     try:
         with open("userProfileDb.json", "r", encoding="utf-8") as f:
@@ -313,7 +592,6 @@ async def chat(message: Message):
             if active_chat_id is None:
                 raise HTTPException(status_code=400, detail="No active chat found. Please load the chat page first.")
 
-            # Find the active chat
             active_chat = next((chat for chat in chatsDb["chats"] if chat["id"] == active_chat_id), None)
             if active_chat is None:
                 raise HTTPException(status_code=400, detail="Active chat not found.")
@@ -321,10 +599,6 @@ async def chat(message: Message):
         chat_history = get_chat_history()
         if chat_history is None:
             raise HTTPException(status_code=500, detail="Failed to retrieve chat history")
-
-        chat_runnable = get_chat_runnable(chat_history)
-        agent_runnable = get_agent_runnable(chat_history)
-        unified_classification_runnable = get_unified_classification_runnable(chat_history)
 
         username = db["userData"]["personalInfo"]["name"]
         unified_output = unified_classification_runnable.invoke({"query": message.input})
@@ -353,7 +627,7 @@ async def chat(message: Message):
                 "memoryUsed": False,
                 "agentsUsed": False,
                 "internetUsed": False,
-                "timestamp": datetime.datetime.utcnow().isoformat() + 'Z'
+                "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
             }
             async with db_lock:
                 chatsDb = await load_db()
@@ -370,7 +644,7 @@ async def chat(message: Message):
             }) + "\n"
             await asyncio.sleep(0.05)
 
-            # Initialize assistant message
+            # Initialize assistant message for all categories
             assistant_msg = {
                 "id": str(int(time.time() * 1000)),
                 "message": "",
@@ -378,15 +652,55 @@ async def chat(message: Message):
                 "memoryUsed": False,
                 "agentsUsed": False,
                 "internetUsed": False,
-                "timestamp": datetime.datetime.utcnow().isoformat() + 'Z'
+                "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
             }
-            async with db_lock:
-                chatsDb = await load_db()
-                active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
-                active_chat["messages"].append(assistant_msg)
-                await save_db(chatsDb)
 
-            # Handle memory category: update memories first, then retrieve context
+            # Handle agent category
+            if category == "agent":
+                with open("userProfileDb.json", "r", encoding="utf-8") as f:
+                    db = json.load(f)
+                personality_description = db["userData"].get("personality", "None")
+                # Replace keyword-based priority with LLM-based priority
+                priority_response = priority_runnable.invoke({"task_description": transformed_input})
+
+                priority = priority_response["priority"]
+
+                print("Adding task to queue")
+
+                # Add task to queue and set "On it" message
+                await task_queue.add_task(
+                    chat_id=active_chat_id,
+                    description=transformed_input,
+                    priority=priority,
+                    username=username,
+                    personality=personality_description,
+                    use_personal_context=use_personal_context,  # Boolean flag
+                    internet=internet  # e.g., "Internet" or other value
+                )
+
+                print("Task added to queue")
+
+                assistant_msg["message"] = "On it"
+
+                print("Assistant message set")
+
+                async with db_lock:
+                    chatsDb = await load_db()
+                    active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
+                    active_chat["messages"].append(assistant_msg)
+                    await save_db(chatsDb)
+
+                yield json.dumps({
+                    "type": "assistantMessage",
+                    "message": "On it",
+                    "memoryUsed": False,
+                    "agentsUsed": False,
+                    "internetUsed": False
+                }) + "\n"
+                await asyncio.sleep(0.05)
+                return  # End response for agent category
+
+            # Handle memory category: update and retrieve context
             if category == "memory":
                 if pricing_plan == "free" and credits <= 0:
                     yield json.dumps({"type": "intermediary", "message": "Retrieving memories..."}) + "\n"
@@ -401,24 +715,16 @@ async def chat(message: Message):
                         crud_graph_operations(point, graph_driver, embed_model, query_classification_runnable, information_extraction_runnable, graph_analysis_runnable, graph_decision_runnable, text_description_runnable)
                     yield json.dumps({"type": "intermediary", "message": "Retrieving memories..."}) + "\n"
                     user_context = query_user_profile(transformed_input, graph_driver, embed_model, text_conversion_runnable, query_classification_runnable)
-            # For chat and agent, retrieve context if use_personal_context is true
-            elif use_personal_context:
+            # For chat category, retrieve context if needed
+            elif category == "chat" and use_personal_context:
                 yield json.dumps({"type": "intermediary", "message": "Retrieving memories..."}) + "\n"
                 memory_used = True
                 user_context = query_user_profile(transformed_input, graph_driver, embed_model, text_conversion_runnable, query_classification_runnable)
 
             # Handle internet search if required
             if internet == "Internet":
-                if pricing_plan == "free":
-                    if credits > 0:
-                        yield json.dumps({"type": "intermediary", "message": "Searching the internet..."}) + "\n"
-                        reframed_query = get_reframed_internet_query(internet_query_reframe_runnable, transformed_input)
-                        search_results = get_search_results(reframed_query)
-                        internet_context = get_search_summary(internet_summary_runnable, search_results)
-                        internet_used = True
-                        pro_used = True
-                    else:
-                        note = "Sorry friend, could have searched the internet for more context, but your daily credits have expired. You can always upgrade to pro from the settings page"
+                if pricing_plan == "free" and credits <= 0:
+                    note = "Sorry friend, could have searched the internet for more context, but your daily credits have expired. You can always upgrade to pro from the settings page"
                 else:
                     yield json.dumps({"type": "intermediary", "message": "Searching the internet..."}) + "\n"
                     reframed_query = get_reframed_internet_query(internet_query_reframe_runnable, transformed_input)
@@ -427,13 +733,22 @@ async def chat(message: Message):
                     internet_used = True
                     pro_used = True
 
-            # Generate response based on category
+            # Generate response for chat and memory categories
             if category in ["chat", "memory"]:
                 with open("userProfileDb.json", "r", encoding="utf-8") as f:
                     db = json.load(f)
                 personality_description = db["userData"].get("personality", "None")
+
                 assistant_msg["memoryUsed"] = memory_used
                 assistant_msg["internetUsed"] = internet_used
+                assistant_msg["agentsUsed"] = agents_used
+
+                async with db_lock:
+                    chatsDb = await load_db()
+                    active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
+                    active_chat["messages"].append(assistant_msg)
+                    await save_db(chatsDb)
+
                 async for token in generate_streaming_response(
                     chat_runnable,
                     inputs={
@@ -474,7 +789,7 @@ async def chat(message: Message):
                             await save_db(chatsDb)
                         yield json.dumps({
                             "type": "assistantStream",
-                            "token": "\n\n" + note,
+                            "token": "\n\n" + note if note else "",
                             "done": True,
                             "memoryUsed": memory_used,
                             "agentsUsed": agents_used,
@@ -484,249 +799,17 @@ async def chat(message: Message):
                         }) + "\n"
                     await asyncio.sleep(0.05)
 
-            elif category == "agent":
-                agents_used = True
-                assistant_msg["memoryUsed"] = memory_used
-                assistant_msg["internetUsed"] = internet_used
-                response = generate_response(agent_runnable, transformed_input, user_context, internet_context, username)
-
-                if "tool_calls" not in response or not isinstance(response["tool_calls"], list):
-                    assistant_msg["message"] = "Error: Invalid tool_calls format in response."
-                    async with db_lock:
-                        chatsDb = await load_db()
-                        active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
-                        for msg in active_chat["messages"]:
-                            if msg["id"] == assistant_msg["id"]:
-                                msg.update(assistant_msg)
-                                break
-                        await save_db(chatsDb)
-                    yield json.dumps({"type": "assistantMessage", "message": assistant_msg["message"]}) + "\n"
-                    return
-
-                previous_tool_result = None
-                all_tool_results = []
-                if len(response["tool_calls"]) > 1 and pricing_plan == "free":
-                    assistant_msg["message"] = "Sorry. This query requires multiple tools to be called. Flows are a pro feature and you have run out of daily Pro credits. You can upgrade to pro from the Settings page." + f"\n\n{note}"
-                    async with db_lock:
-                        chatsDb = await load_db()
-                        active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
-                        for msg in active_chat["messages"]:
-                            if msg["id"] == assistant_msg["id"]:
-                                msg.update(assistant_msg)
-                                break
-                        await save_db(chatsDb)
-                    if credits <= 0:
-                        yield json.dumps({"type": "assistantMessage", "message": assistant_msg["message"]}) + "\n"
-                        return
-                    else:
-                        pro_used = True
-
-                for tool_call in response["tool_calls"]:
-                    if tool_call["response_type"] != "tool_call":
-                        continue
-                    tool_name = tool_call["content"].get("tool_name")
-                    if tool_name != "gmail" and pricing_plan == "free" and credits <= 0:
-                        assistant_msg["message"] = "Sorry, but the query requires Sentient to use a tool that it can only use on the Pro plan. You have run out of daily credits for Pro and can upgrade your plan from the Settings page." + f"\n\n{note}"
-                        async with db_lock:
-                            chatsDb = await load_db()
-                            active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
-                            for msg in active_chat["messages"]:
-                                if msg["id"] == assistant_msg["id"]:
-                                    msg.update(assistant_msg)
-                                    break
-                            await save_db(chatsDb)
-                        yield json.dumps({"type": "assistantMessage", "message": assistant_msg["message"]}) + "\n"
-                        return
-                    elif tool_name != "gmail" and pricing_plan == "free":
-                        pro_used = True
-
-                    task_instruction = tool_call["content"].get("task_instruction")
-                    previous_tool_response_required = tool_call["content"].get("previous_tool_response", False)
-                    if not tool_name or not task_instruction:
-                        assistant_msg["message"] = "Error: Tool call is missing required fields."
-                        async with db_lock:
-                            chatsDb = await load_db()
-                            active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
-                            for msg in active_chat["messages"]:
-                                if msg["id"] == assistant_msg["id"]:
-                                    msg.update(assistant_msg)
-                                    break
-                            await save_db(chatsDb)
-                        yield json.dumps({"type": "assistantMessage", "message": assistant_msg["message"]}) + "\n"
-                        continue
-
-                    yield json.dumps({"type": "intermediary-flow-update", "message": f"Calling tool: {tool_name}..."}) + "\n"
-                    tool_handler = tool_handlers.get(tool_name)
-                    if not tool_handler:
-                        assistant_msg["message"] = f"Error: Tool {tool_name} not found."
-                        async with db_lock:
-                            chatsDb = await load_db()
-                            active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
-                            for msg in active_chat["messages"]:
-                                if msg["id"] == assistant_msg["id"]:
-                                    msg.update(assistant_msg)
-                                    break
-                            await save_db(chatsDb)
-                        yield json.dumps({"type": "assistantMessage", "message": assistant_msg["message"]}) + "\n"
-                        continue
-
-                    tool_input = {"input": task_instruction}
-                    if previous_tool_response_required and previous_tool_result:
-                        tool_input["previous_tool_response"] = previous_tool_result
-                    else:
-                        tool_input["previous_tool_response"] = "Not Required"
-
-                    try:
-                        tool_result_main = await tool_handler(tool_input)
-                        tool_result = tool_result_main["tool_result"] if "tool_result" in tool_result_main else tool_result_main
-                        if "tool_call_str" in tool_result_main and tool_result_main["tool_call_str"]:
-                            tool_name = tool_result_main["tool_call_str"]["tool_name"]
-                            if tool_name == "search_inbox":
-                                yield json.dumps({
-                                    "type": "toolResult",
-                                    "tool_name": tool_name,
-                                    "result": tool_result["result"],
-                                    "gmail_search_url": tool_result["result"]["gmail_search_url"]
-                                }) + "\n"
-                            elif tool_name == "get_email_details":
-                                yield json.dumps({
-                                    "type": "toolResult",
-                                    "tool_name": tool_name,
-                                    "result": tool_result["result"]
-                                }) + "\n"
-                        previous_tool_result = tool_result
-                        all_tool_results.append({"tool_name": tool_name, "task_instruction": task_instruction, "tool_result": tool_result})
-                    except Exception as e:
-                        assistant_msg["message"] = f"Error executing tool {tool_name}: {str(e)}"
-                        async with db_lock:
-                            chatsDb = await load_db()
-                            active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
-                            for msg in active_chat["messages"]:
-                                if msg["id"] == assistant_msg["id"]:
-                                    msg.update(assistant_msg)
-                                    break
-                            await save_db(chatsDb)
-                        yield json.dumps({"type": "assistantMessage", "message": assistant_msg["message"]}) + "\n"
-                        continue
-
-                yield json.dumps({"type": "intermediary-flow-end"}) + "\n"
-                assistant_msg["agentsUsed"] = agents_used
-                try:
-                    if len(all_tool_results) == 1 and all_tool_results[0]["tool_name"] == "search_inbox":
-                        filtered_tool_result = {
-                            "response": all_tool_results[0]["tool_result"]["result"]["response"],
-                            "email_data": [{key: email[key] for key in email if key != "body"} for email in all_tool_results[0]["tool_result"]["result"]["email_data"]],
-                            "gmail_search_url": all_tool_results[0]["tool_result"]["result"]["gmail_search_url"]
-                        }
-                        async for token in generate_streaming_response(
-                            inbox_summarizer_runnable,
-                            inputs={"tool_result": filtered_tool_result},
-                            stream=True
-                        ):
-                            if isinstance(token, str):
-                                assistant_msg["message"] += token
-                                async with db_lock:
-                                    chatsDb = await load_db()
-                                    active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
-                                    for msg in active_chat["messages"]:
-                                        if msg["id"] == assistant_msg["id"]:
-                                            msg["message"] = assistant_msg["message"]
-                                            break
-                                    await save_db(chatsDb)
-                                yield json.dumps({
-                                    "type": "assistantStream",
-                                    "token": token,
-                                    "done": False,
-                                    "messageId": assistant_msg["id"]
-                                }) + "\n"
-                            else:
-                                if note:
-                                    assistant_msg["message"] += "\n\n" + note
-                                async with db_lock:
-                                    chatsDb = await load_db()
-                                    active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
-                                    for msg in active_chat["messages"]:
-                                        if msg["id"] == assistant_msg["id"]:
-                                            msg.update(assistant_msg)
-                                            break
-                                    await save_db(chatsDb)
-                                yield json.dumps({
-                                    "type": "assistantStream",
-                                    "token": "\n\n" + note,
-                                    "done": True,
-                                    "memoryUsed": memory_used,
-                                    "agentsUsed": agents_used,
-                                    "internetUsed": internet_used,
-                                    "proUsed": pro_used,
-                                    "messageId": assistant_msg["id"]
-                                }) + "\n"
-                            await asyncio.sleep(0.05)
-                    else:
-                        async for token in generate_streaming_response(
-                            reflection_runnable,
-                            inputs={"tool_results": all_tool_results},
-                            stream=True
-                        ):
-                            if isinstance(token, str):
-                                assistant_msg["message"] += token
-                                async with db_lock:
-                                    chatsDb = await load_db()
-                                    active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
-                                    for msg in active_chat["messages"]:
-                                        if msg["id"] == assistant_msg["id"]:
-                                            msg["message"] = assistant_msg["message"]
-                                            break
-                                    await save_db(chatsDb)
-                                yield json.dumps({
-                                    "type": "assistantStream",
-                                    "token": token,
-                                    "done": False,
-                                    "messageId": assistant_msg["id"]
-                                }) + "\n"
-                            else:
-                                if note:
-                                    assistant_msg["message"] += "\n\n" + note
-                                async with db_lock:
-                                    chatsDb = await load_db()
-                                    active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
-                                    for msg in active_chat["messages"]:
-                                        if msg["id"] == assistant_msg["id"]:
-                                            msg.update(assistant_msg)
-                                            break
-                                    await save_db(chatsDb)
-                                yield json.dumps({
-                                    "type": "assistantStream",
-                                    "token": "\n\n" + note,
-                                    "done": True,
-                                    "memoryUsed": memory_used,
-                                    "agentsUsed": agents_used,
-                                    "internetUsed": internet_used,
-                                    "proUsed": pro_used,
-                                    "messageId": assistant_msg["id"]
-                                }) + "\n"
-                            await asyncio.sleep(0.05)
-                except Exception as e:
-                    assistant_msg["message"] = f"Error during reflection: {str(e)}"
-                    async with db_lock:
-                        chatsDb = await load_db()
-                        active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
-                        for msg in active_chat["messages"]:
-                            if msg["id"] == assistant_msg["id"]:
-                                msg.update(assistant_msg)
-                                break
-                        await save_db(chatsDb)
-                    yield json.dumps({"type": "assistantMessage", "message": assistant_msg["message"]}) + "\n"
-
         return StreamingResponse(response_generator(), media_type="application/json")
 
     except Exception as e:
         print(f"Error in chat: {str(e)}")
         return JSONResponse(status_code=500, content={"message": str(e)})
-    
+
 ## Agents Endpoints
 @app.post("/elaborator", status_code=200)
 async def elaborate(message: ElaboratorMessage):
     """Elaborates on an input string based on a specified purpose."""
+    print ("MESSAGE TO BE ELABORATED: ", message.input)
     try:
         elaborator_runnable = get_tool_runnable(
             elaborator_system_prompt_template,
@@ -734,7 +817,9 @@ async def elaborate(message: ElaboratorMessage):
             None,
             ["query", "purpose"]
         )
+        print ("Elaborator runnable: ", elaborator_runnable)
         output = elaborator_runnable.invoke({"query": message.input, "purpose": message.purpose})
+        print (f"Elaborator output: {output}")
         return JSONResponse(status_code=200, content={"message": output})
     except Exception as e:
         return JSONResponse(status_code=500, content={"message": str(e)})
@@ -754,9 +839,9 @@ async def gmail_tool(tool_call: ToolCall) -> Dict[str, Any]:
             ["query", "username", "previous_tool_response"]
         )
         tool_call_str = tool_runnable.invoke({
-            "query": tool_call.input,
+            "query": tool_call["input"],
             "username": username,
-            "previous_tool_response": tool_call.previous_tool_response
+            "previous_tool_response": tool_call["previous_tool_response"]
         })
         tool_result = await parse_and_execute_tool_calls(tool_call_str)
         return {"tool_result": tool_result, "tool_call_str": tool_call_str}
@@ -774,8 +859,8 @@ async def drive_tool(tool_call: ToolCall) -> Dict[str, Any]:
             ["query", "previous_tool_response"]
         )
         tool_call_str = tool_runnable.invoke({
-            "query": tool_call.input,
-            "previous_tool_response": tool_call.previous_tool_response
+            "query": tool_call["input"],
+            "previous_tool_response": tool_call["previous_tool_response"]
         })
         tool_result = await parse_and_execute_tool_calls(tool_call_str)
         return {"tool_result": tool_result, "tool_call_str": None}
@@ -911,7 +996,7 @@ async def gslides_tool(tool_call: ToolCall) -> Dict[str, Any]:
     except Exception as e:  # Handle exceptions during gslides tool execution
         print(f"Error calling gslides tool: {e}")
         return {"status": "failure", "error": str(e)}  # Return error status and message
-    
+
 @register_tool("gcalendar")
 async def gcalendar_tool(tool_call: ToolCall) -> Dict[str, Any]:
     """
@@ -1414,7 +1499,7 @@ async def create_graph():
                         extracted_texts.append({"text": text_content, "source": file_name})
         if not extracted_texts:
             return JSONResponse(status_code=400, content={"message": "No content found in input documents."})
-        
+
         with graph_driver.session() as session:
             session.run("MATCH (n) DETACH DELETE n")
         build_initial_knowledge_graph(
@@ -1466,7 +1551,7 @@ async def create_document():
         trait_descriptions = []
         for trait in personality_type:
             if trait in PERSONALITY_DESCRIPTIONS:
-                description = f"{trait}: {PERSONITY_DESCRIPTIONS[trait]}"
+                description = f"{trait}: {PERSONALITY_DESCRIPTIONS[trait]}"
                 trait_descriptions.append(description)
                 filename = f"{username.lower()}_{trait.lower()}.txt"
                 summarized_paragraph = text_summarizer_runnable.invoke({"user_name": username, "text": description})
@@ -1474,19 +1559,19 @@ async def create_document():
                     file.write(summarized_paragraph)
 
         unified_personality_description = f"{username}'s Personality:\n\n" + "\n".join(trait_descriptions)
-        
+
         if structured_linkedin_profile:
             linkedin_file = os.path.join(input_dir, f"{username.lower()}_linkedin_profile.txt")
             summarized_paragraph = text_summarizer_runnable.invoke({"user_name": username, "text": structured_linkedin_profile})
             with open(linkedin_file, "w", encoding="utf-8") as file:
                 file.write(summarized_paragraph)
-        
+
         if reddit_profile:
             reddit_file = os.path.join(input_dir, f"{username.lower()}_reddit_profile.txt")
             summarized_paragraph = text_summarizer_runnable.invoke({"user_name": username, "text": "Interests: " + ",".join(reddit_profile)})
             with open(reddit_file, "w", encoding="utf-8") as file:
                 file.write(summarized_paragraph)
-        
+
         if twitter_profile:
             twitter_file = os.path.join(input_dir, f"{username.lower()}_twitter_profile.txt")
             summarized_paragraph = text_summarizer_runnable.invoke({"user_name": username, "text": "Interests: " + ",".join(twitter_profile)})
@@ -1514,6 +1599,79 @@ async def customize_graph(request: GraphRequest):
         return JSONResponse(status_code=200, content={"message": "Graph customized successfully."})
     except Exception as e:
         return JSONResponse(status_code=500, content={"message": str(e)})
+
+@app.get("/fetch-tasks", status_code=200)
+async def get_tasks():
+    """Return the current state of all tasks."""
+    tasks = await task_queue.get_all_tasks()
+    return JSONResponse(content={"tasks": tasks})
+
+@app.post("/add-task", status_code=201)
+async def add_task(task_request: dict):
+    """
+    Adds a new task with dynamically determined chat_id, personality, use_personal_context, and internet.
+    """
+    try:
+        async with db_lock:
+            chatsDb = await load_db()
+            active_chat_id = chatsDb.get("active_chat_id")
+            if not active_chat_id:
+                raise HTTPException(status_code=400, detail="No active chat found.")
+
+        user_profile = load_user_profile()
+        username = user_profile["userData"]["personalInfo"].get("name", "default_user")
+        personality = user_profile["userData"].get("personality", "default_personality")
+
+        unified_output = unified_classification_runnable.invoke({"query": task_request["description"]})
+        use_personal_context = unified_output["use_personal_context"]
+        internet = unified_output["internet"]
+
+        priority_response = priority_runnable.invoke({"task_description": task_request["description"]})
+        priority = priority_response["priority"]
+
+        task_id = await task_queue.add_task(
+            chat_id=active_chat_id,
+            description=task_request["description"],
+            priority=priority,
+            username=username,
+            personality=personality,
+            use_personal_context=use_personal_context,
+            internet=internet
+        )
+
+        return JSONResponse(content={"task_id": task_id})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.post("/update-task", status_code=200)
+async def update_task(update_request: UpdateTaskRequest): # Use UpdateTaskRequest as dependency
+    try:
+        await task_queue.update_task(update_request.task_id, update_request.description, update_request.priority)
+        return JSONResponse(content={"message": "Task updated successfully"})
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/delete-task", status_code=200)
+async def delete_task(delete_request: DeleteTaskRequest): # Use DeleteTaskRequest as dependency (even though it's empty)
+    try:
+        await task_queue.delete_task(delete_request.task_id)
+        return JSONResponse(content={"message": "Task deleted successfully"})
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            # You can process messages received from the client here if needed
+            # For now, we are primarily sending messages from the server to client
+            pass # Or print(f"Client sent message: {data}")
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+        # Handle disconnection if needed
+        # print("Client disconnected")
 
 STARTUP_TIME = time.time() - START_TIME
 print(f"Server startup time: {STARTUP_TIME:.2f} seconds")

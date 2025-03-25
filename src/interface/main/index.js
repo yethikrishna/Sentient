@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from "electron"
+import { app, BrowserWindow, ipcMain, dialog, Notification } from "electron"
 import path, { dirname } from "path"
 import { fileURLToPath } from "url"
 import fetch from "node-fetch"
@@ -26,6 +26,7 @@ import dotenv from "dotenv"
 import pkg from "electron-updater"
 const { autoUpdater } = pkg
 import serve from "electron-serve"
+import WebSocket from "ws"
 
 /**
  * @file Main process file for the Electron application.
@@ -104,6 +105,41 @@ if (app.isPackaged) {
 	chatsDbPath = path.resolve(__dirname, "../../chatsDb.json")
 	userProfileDbPath = path.resolve(__dirname, "../../userProfileDb.json")
 	appOutDir = path.join(__dirname, "../out")
+}
+
+let ws = new WebSocket("ws://localhost:5000/ws") // Replace with your FastAPI server URL if different
+
+ws.onopen = () => {
+	console.log("WebSocket connection opened with FastAPI")
+	// Optionally send a message to the server upon connection
+	// ws.send('Electron client connected');
+}
+
+ws.onmessage = (event) => {
+	const messageData = JSON.parse(event.data)
+	console.log("WebSocket message received:", messageData)
+
+	if (messageData.type === "task_completed") {
+		const { task_id, description, result } = messageData
+		new Notification({
+			title: "Task Completed!",
+			body: `Task "${description}" (ID: ${task_id}) completed successfully.\nResult: ${result.substring(0, 100)}...` // Limit result preview for notification
+		}).show()
+	} else if (messageData.type === "task_error") {
+		const { task_id, description, error } = messageData
+		new Notification({
+			title: "Task Error!",
+			body: `Task "${description}" (ID: ${task_id}) encountered an error.\nError: ${error}`
+		}).show()
+	}
+}
+
+ws.onclose = () => {
+	console.log("WebSocket connection closed")
+}
+
+ws.onerror = (error) => {
+	console.error("WebSocket error:", error)
 }
 
 // Load environment variables from .env file
@@ -1037,5 +1073,76 @@ ipcMain.handle("delete-subgraph", async (event, { source_name }) => {
 	} catch (error) {
 		console.log(`Error deleting subgraph: ${error}`)
 		return { status: "failure", error: error.message }
+	}
+})
+
+ipcMain.handle("fetch-tasks", async () => {
+	try {
+		const response = await fetch("http://localhost:5000/fetch-tasks")
+		if (!response.ok) {
+			throw new Error(`HTTP error! status: ${response.status}`)
+		}
+		return await response.json()
+	} catch (error) {
+		console.error("Error fetching tasks:", error)
+		return { error: error.message }
+	}
+})
+
+ipcMain.handle("add-task", async (event, taskData) => {
+	try {
+		const response = await fetch("http://localhost:5000/add-task", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(taskData)
+		})
+		if (!response.ok) {
+			throw new Error(`HTTP error! status: ${response.status}`)
+		}
+		return await response.json()
+	} catch (error) {
+		console.error("Error adding task:", error)
+		return { error: error.message }
+	}
+})
+
+ipcMain.handle(
+	"update-task",
+	async (event, { taskId, description, priority }) => {
+		try {
+			const response = await fetch(
+				`http://localhost:5000/update-task`, // Changed to POST endpoint for update
+				{
+					method: "POST", // Changed method to POST
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ task_id: taskId, description, priority }) // Included taskId in the body
+				}
+			)
+			if (!response.ok) {
+				throw new Error(`HTTP error! status: ${response.status}`)
+			}
+			return await response.json()
+		} catch (error) {
+			console.error("Error updating task:", error)
+			return { error: error.message }
+		}
+	}
+)
+
+ipcMain.handle("delete-task", async (event, taskId) => {
+	try {
+		const response = await fetch(`http://localhost:5000/delete-task`, {
+			// Changed to POST endpoint for delete
+			method: "POST", // Changed method to POST
+			headers: { "Content-Type": "application/json" }, // Added Content-Type header as we are sending JSON body
+			body: JSON.stringify({ task_id: taskId }) // Included taskId in the body
+		})
+		if (!response.ok) {
+			throw new Error(`HTTP error! status: ${response.status}`)
+		}
+		return await response.json()
+	} catch (error) {
+		console.error("Error deleting task:", error)
+		return { error: error.message }
 	}
 })

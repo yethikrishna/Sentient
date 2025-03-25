@@ -101,8 +101,9 @@ def get_agent_runnable(chat_history: List[Dict[str, str]]) -> BaseRunnable:
         user_prompt_template=agent_user_prompt_template,
         input_variables=[
             "query",
+            "name",
             "user_context",
-            "internet_contextname", # Note: Typo in original function 'internet_contextname' is kept for consistency
+            "internet_context", # Note: Typo in original function 'internet_contextname' is kept for consistency
             "personality",
         ],
         required_format=agent_required_format,
@@ -164,7 +165,7 @@ def get_tool_runnable(
         user_prompt_template=user_prompt_template,
         input_variables=input_variables,
         required_format=required_format,
-        response_type="json",
+        response_type= "json" if required_format else "chat",
     )
     """Configures the Runnable instance for tool execution, expecting JSON responses and operating stateless."""
 
@@ -176,39 +177,35 @@ def get_reflection_runnable() -> BaseRunnable:
     Factory function to get the appropriate Runnable class for reflection tasks based on the selected model.
 
     Determines the model provider and returns a Runnable configured for reflection,
-    with streaming chat responses and stateless operation. Reflection tasks are typically stateless and benefit
-    from streaming responses for immediate feedback.
+    with non-streaming chat responses and stateless operation.
 
     Returns:
-        BaseRunnable: A Runnable instance configured for reflection tasks. This instance is set up for streaming
-                      chat responses and operates in a stateless manner, suitable for independent reflection calls.
+        BaseRunnable: A Runnable instance configured for reflection tasks.
     """
     model_mapping: Dict[str, Tuple[Optional[str], Type[BaseRunnable]]] = {
         "openai": (os.getenv("OPENAI_API_URL"), OpenAIRunnable),
         "claude": (os.getenv("CLAUDE_API_URL"), ClaudeRunnable),
         "gemini": (os.getenv("GEMINI_API_URL"), GeminiRunnable),
     }
-    """Mapping of model providers to their API URLs and Runnable classes."""
 
     provider: Optional[str] = None
-    model_name, provider=get_selected_model()
+    model_name, provider = get_selected_model()
 
     if provider and provider in model_mapping:
         model_url, runnable_class = model_mapping[provider]
     else:
         model_url = os.getenv("BASE_MODEL_URL")
-        runnable_class = OllamaRunnable # Or potentially CustomRunnable
+        runnable_class = OllamaRunnable  # Default fallback
 
-    runnable: BaseRunnable = runnable_class( # Enforce CustomRunnable for reflection features
+    runnable: BaseRunnable = runnable_class(
         model_url=model_url,
         model_name=model_name,
         system_prompt_template=reflection_system_prompt_template,
         user_prompt_template=reflection_user_prompt_template,
         input_variables=["tool_results"],
         response_type="chat",
-        stream=True,
+        stream=False,  # Changed to False for non-streaming output
     )
-    """Configures the Runnable instance for reflection tasks, using streaming chat responses and operating stateless."""
 
     return runnable
 
@@ -251,5 +248,42 @@ def get_inbox_summarizer_runnable() -> BaseRunnable:
         stream=True,
     )
     """Configures the Runnable instance for inbox summarization, using streaming chat responses and operating stateless."""
+
+    return runnable
+
+def get_priority_runnable() -> BaseRunnable:
+    """
+    Creates a Runnable instance for determining task priority using an LLM.
+
+    Returns:
+        BaseRunnable: A configured runnable for priority determination.
+    """
+    # Model selection logic (adapt to your existing setup)
+    model_mapping: Dict[str, Tuple[Optional[str], Type[BaseRunnable]]] = {
+        "openai": (os.getenv("OPENAI_API_URL"), OpenAIRunnable),
+        "claude": (os.getenv("CLAUDE_API_URL"), ClaudeRunnable),
+        "gemini": (os.getenv("GEMINI_API_URL"), GeminiRunnable),
+    }
+
+    provider: Optional[str] = None
+    model_name, provider = get_selected_model()  # Assume this function exists in your codebase
+
+    if provider and provider in model_mapping:
+        model_url, runnable_class = model_mapping[provider]
+    else:
+        model_url = os.getenv("BASE_MODEL_URL")
+        runnable_class = OllamaRunnable  # Default fallback
+
+    # Create the runnable
+    runnable: BaseRunnable = runnable_class(
+        model_url=model_url,
+        model_name=model_name,
+        system_prompt_template=priority_system_prompt_template,
+        user_prompt_template=priority_user_prompt_template,
+        input_variables=["task_description"],
+        required_format=priority_required_format,
+        response_type="json",
+        stream=False,  # We want a single, non-streaming response
+    )
 
     return runnable

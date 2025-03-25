@@ -44,9 +44,12 @@ sqlite3.register_converter("timestamp", convert_timestamp)
 
 class MemoryManager:
     def __init__(self, db_path: str = "memory.db", model_name: str = os.environ["BASE_MODEL_REPO_ID"]):
+        print("Initializing MemoryManager...")
         self.db_path = db_path
         self.model_name = model_name
+        print("Loading SentenceTransformer model...")
         self.embedding_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+        print("SentenceTransformer model loaded.")
         self.categories = {
             "PERSONAL": ["home", "hobby", "diary", "self", "goals", "habit", "routine", "personal"],
             "WORK": ["office", "business", "client", "report", "presentation", "deadline", "manager", "workplace"],
@@ -62,12 +65,16 @@ class MemoryManager:
             "ENTERTAINMENT": ["movie", "game", "music", "party", "book"],
             "TASKS": ["todo", "deadline", "appointment", "schedule", "reminder"]
         }
+        print("Initializing database...")
         self.initialize_database()
+        print("MemoryManager initialized.")
 
     def initialize_database(self):
+        print("Initializing SQLite database...")
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         for category in self.categories.keys():
+            print(f"Creating table for category: {category.lower()}...")
             cursor.execute(f'''
             CREATE TABLE IF NOT EXISTS {category.lower()} (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -81,11 +88,16 @@ class MemoryManager:
                 is_active BOOLEAN DEFAULT 1
             )
             ''')
+            print(f"Table for category: {category.lower()} created.")
         conn.commit()
         conn.close()
+        print("SQLite database initialized.")
 
     def compute_embedding(self, text: str) -> bytes:
-        return np.array(self.embedding_model.encode(text)).tobytes()
+        print(f"Computing embedding for text: '{text[:50]}...'")
+        embedding = np.array(self.embedding_model.encode(text)).tobytes()
+        print("Embedding computed.")
+        return embedding
 
     def bytes_to_array(self, embedding_bytes: bytes) -> np.ndarray:
         return np.frombuffer(embedding_bytes, dtype=np.float32)
@@ -94,19 +106,25 @@ class MemoryManager:
         return np.dot(a, b) / (norm(a) * norm(b))
 
     def extract_keywords(self, text: str) -> List[str]:
+        print(f"Extracting keywords from text: '{text[:50]}...'")
         doc = nlp(text.lower())
         keywords = [ent.text for ent in doc.ents]
         keywords.extend([token.lemma_ for token in doc if token.pos_ in ['NOUN', 'VERB'] and not token.is_stop and len(token.text) > 2])
-        return list(set(keywords))
+        unique_keywords = list(set(keywords))
+        print(f"Extracted keywords: {unique_keywords}")
+        return unique_keywords
 
     def determine_category(self, keywords: List[str]) -> str:
+        print(f"Determining category from keywords: {keywords}")
         category_scores = {category: 0 for category in self.categories}
         for keyword in keywords:
             for category, category_keywords in self.categories.items():
                 if any(cat_keyword in keyword for cat_keyword in category_keywords):
                     category_scores[category] += 1
         max_score = max(category_scores.values())
-        return "tasks" if max_score == 0 else max(category_scores.items(), key=lambda x: x[1])[0]
+        determined_category = "tasks" if max_score == 0 else max(category_scores.items(), key=lambda x: x[1])[0]
+        print(f"Determined category: {determined_category}")
+        return determined_category
 
     def expiry_date_decision(self, query: str) -> Dict:
         today = date.today()
@@ -124,7 +142,9 @@ class MemoryManager:
                 input_variables=["query", "formatted_date"],
                 response_type="json"
             )
+            print(f"Invoking expiry date decision for query: '{query[:50]}...'")
             response = runnable.invoke({"query": query, "formatted_date": formatted_date})
+            print(f"Expiry date decision response: {response}")
             return response if isinstance(response, dict) else {"retention_days": 7}
         except Exception as e:
             print(f"Error in expiry_date_decision: {e}")
@@ -142,7 +162,9 @@ class MemoryManager:
                 response_type="json",
                 required_format=extract_memory_required_format
             )
+            print(f"Invoking memory extraction for query: '{current_query[:50]}...'")
             response = runnable.invoke({"current_query": current_query, "date_today": date_today})
+            print(f"Memory extraction response: {response}")
             return response if isinstance(response, dict) else {"memories": []}
         except Exception as e:
             print(f"Error in extract_and_invoke_memory: {e}")
@@ -174,7 +196,9 @@ class MemoryManager:
                         response_type="json",
                         required_format=update_required_format
                     )
+                    print(f"Invoking memory update decision for query: '{mem_text[:50]}...'")
                     response = runnable.invoke({"current_query": mem_text, "memory_context": memory_context})
+                    print(f"Memory update decision response: {response}")
                     return response if isinstance(response, dict) else {"update": []}
                 except Exception as e:
                     print(f"Error in get_processed_json_response_update: {e}")
@@ -212,7 +236,7 @@ class MemoryManager:
             conn.close()
 
     def store_memory(self, user_id: str, text: str, retention_days: Dict, category: str) -> bool:
-        print(f"Attempting to store memory: '{text}' in category '{category}'")  # Debug log
+        print(f"Attempting to store memory: '{text[:50]}...' in category '{category}'")
         try:
             keywords = self.extract_keywords(text)
             embedding = self.compute_embedding(text)
@@ -225,7 +249,7 @@ class MemoryManager:
             VALUES (?, ?, ?, ?, ?, ?)
             ''', (user_id, text, ','.join(keywords), embedding, current_time, expiry_time))
             conn.commit()
-            print(f"Inserted memory into {category.lower()}: '{text}' with expiry at {expiry_time}")
+            print(f"Inserted memory into {category.lower()}: '{text[:50]}...' with expiry at {expiry_time}")
             conn.close()
             return True
         except Exception as e:
@@ -233,7 +257,7 @@ class MemoryManager:
             return False
 
     def get_relevant_memories(self, user_id: str, query: str, category: str, similarity_threshold: float = 0.5) -> List[Dict]:
-        print(f"Retrieving memories for user '{user_id}' in category '{category}'")  # Debug log
+        print(f"Retrieving memories for user '{user_id}' in category '{category}' for query: '{query[:50]}...'")
         query_embedding = self.embedding_model.encode(query)
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
@@ -253,18 +277,32 @@ class MemoryManager:
                 })
         conn.close()
         memories.sort(key=lambda x: x['similarity'], reverse=True)
-        print(f"Retrieved {len(memories)} relevant memories for query '{query}' in category '{category}'")
+        print(f"Retrieved {len(memories)} relevant memories for query '{query[:50]}...' in category '{category}'")
         return memories
 
     def process_user_query(self, user_id: str, query: str) -> str:
+        print(f"Processing user query: '{query}' for user ID: '{user_id}'")
         query_keywords = self.extract_keywords(query)
-        category = self.determine_category(query_keywords)
-        relevant_memories = self.get_relevant_memories(user_id, query, category)
-        memory_context = "\n".join([f"- {memory['text']}" for memory in relevant_memories])
+        determined_category = self.determine_category(query_keywords)
+        relevant_memories = self.get_relevant_memories(user_id, query, determined_category)
+
+        if not relevant_memories:
+            print(f"No relevant memories found in category '{determined_category}'. Falling back to 'personal' category.")
+            relevant_memories_personal = self.get_relevant_memories(user_id, query, 'personal')
+            if relevant_memories_personal:
+                print(f"Found relevant memories in 'personal' category.")
+                memory_context = "\n".join([f"- {memory['text']}" for memory in relevant_memories_personal])
+            else:
+                print("No relevant memories found in 'personal' category either.")
+                memory_context = "" # No context available
+        else:
+            print(f"Found relevant memories in category '{determined_category}'.")
+            memory_context = "\n".join([f"- {memory['text']}" for memory in relevant_memories])
+
         print(f"Memory context for query '{query}':\n{memory_context}")
 
         if not memory_context:
-            # Fallback response
+            # Fallback response when no context is available
             response = "I don’t have any stored memories about that."
         else:
             runnable = OllamaRunnable(
@@ -275,18 +313,23 @@ class MemoryManager:
                 input_variables=["query", "memory_context"],
                 response_type="text"
             )
+            print("Invoking LLM to answer query using memory context.")
             response = runnable.invoke({"query": query, "memory_context": memory_context})
+            print(f"LLM response: '{response}'")
         return response
 
     def cleanup_expired_memories(self):
+        print("Cleaning up expired memories...")
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             current_time = datetime.datetime.now()
             for category in self.categories.keys():
+                print(f"Cleaning up expired memories in category: {category.lower()}...")
                 cursor.execute(f'DELETE FROM {category.lower()} WHERE expiry_at < ?', (current_time,))
                 print(f"Deleted {cursor.rowcount} expired memories from {category.lower()}")
             conn.commit()
             conn.close()
+            print("Expired memory cleanup completed.")
         except Exception as e:
             print(f"Error during memory cleanup: {e}")

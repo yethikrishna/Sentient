@@ -12,7 +12,7 @@ from .helpers import *
 from .prompts import *
 from model.app.base import *
 
-load_dotenv()
+load_dotenv("model/.env")
 
 nlp = spacy.load("en_core_web_sm")
 
@@ -106,7 +106,7 @@ class MemoryManager:
                 if any(cat_keyword in keyword for cat_keyword in category_keywords):
                     category_scores[category] += 1
         max_score = max(category_scores.values())
-        return "TASKS" if max_score == 0 else max(category_scores.items(), key=lambda x: x[1])[0]
+        return "tasks" if max_score == 0 else max(category_scores.items(), key=lambda x: x[1])[0]
 
     def expiry_date_decision(self, query: str) -> Dict:
         today = date.today()
@@ -151,67 +151,65 @@ class MemoryManager:
     def update_memory(self, user_id: str, current_query: str) -> Optional[Dict]:
         memories = self.extract_and_invoke_memory(current_query)
         for mem in memories.get('memories', []):
-            memory_type = self.query_classification(mem['text'])
             category = mem['category'].lower()
-            if memory_type == "Short Term":
-                relevant_memories = self.get_relevant_memories(user_id, mem['text'], category)
-                if not relevant_memories:
-                    retention_days = self.expiry_date_decision(mem['text'])
-                    self.store_memory(user_id, mem['text'], retention_days, category)
-                    continue
+            relevant_memories = self.get_relevant_memories(user_id, mem['text'], category)
+            if not relevant_memories:
+                retention_days = self.expiry_date_decision(mem['text'])
+                self.store_memory(user_id, mem['text'], retention_days, category)
+                continue
 
-                memory_context = [
-                    f"Memory {idx+1}: {memory['text']} (ID: {memory['id']}, Created: {memory['created_at']}, Expires: {memory['expiry_at']})"
-                    for idx, memory in enumerate(relevant_memories)
-                ]
+            memory_context = [
+                f"Memory {idx+1}: {memory['text']} (ID: {memory['id']}, Created: {memory['created_at']}, Expires: {memory['expiry_at']})"
+                for idx, memory in enumerate(relevant_memories)
+            ]
 
-                def get_processed_json_response_update(mem_text: str, memory_context: List[str]) -> Dict:
-                    try:
-                        runnable = OllamaRunnable(
-                            model_url="http://localhost:11434/api/chat",
-                            model_name=self.model_name,
-                            system_prompt_template=update_decision_system_prompt,
-                            user_prompt_template=update_user_prompt_template,
-                            input_variables=["current_query", "memory_context"],
-                            response_type="json",
-                            required_format=update_required_format
-                        )
-                        response = runnable.invoke({"current_query": mem_text, "memory_context": memory_context})
-                        return response if isinstance(response, dict) else {"update": []}
-                    except Exception as e:
-                        print(f"Error in get_processed_json_response_update: {e}")
-                        return {"update": []}
+            def get_processed_json_response_update(mem_text: str, memory_context: List[str]) -> Dict:
+                try:
+                    runnable = OllamaRunnable(
+                        model_url="http://localhost:11434/api/chat",
+                        model_name=self.model_name,
+                        system_prompt_template=update_decision_system_prompt,
+                        user_prompt_template=update_user_prompt_template,
+                        input_variables=["current_query", "memory_context"],
+                        response_type="json",
+                        required_format=update_required_format
+                    )
+                    response = runnable.invoke({"current_query": mem_text, "memory_context": memory_context})
+                    return response if isinstance(response, dict) else {"update": []}
+                except Exception as e:
+                    print(f"Error in get_processed_json_response_update: {e}")
+                    return {"update": []}
 
-                def get_memory_category(cursor: sqlite3.Cursor, memory_id: int) -> Optional[str]:
-                    category_tables = list(self.categories.keys())
-                    for cat in category_tables:
-                        cursor.execute(f'SELECT 1 FROM {cat.lower()} WHERE id = ?', (memory_id,))
-                        if cursor.fetchone():
-                            return cat.lower()
-                    return None
+            def get_memory_category(cursor: sqlite3.Cursor, memory_id: int) -> Optional[str]:
+                category_tables = list(self.categories.keys())
+                for cat in category_tables:
+                    cursor.execute(f'SELECT 1 FROM {cat.lower()} WHERE id = ?', (memory_id,))
+                    if cursor.fetchone():
+                        return cat.lower()
+                return None
 
-                update_details = get_processed_json_response_update(mem['text'], memory_context)
-                conn = sqlite3.connect(self.db_path)
-                cursor = conn.cursor()
-                updates = update_details.get('update', [])
-                if updates:
-                    for update in updates:
-                        memory_id = update["id"]
-                        updated_text = update["text"]
-                        original_category = get_memory_category(cursor, memory_id)
-                        if not original_category:
-                            continue
-                        new_embedding = self.compute_embedding(updated_text)
-                        query_keywords = self.extract_keywords(updated_text)
-                        expiry_info = self.expiry_date_decision(updated_text)
-                        retention_days = expiry_info.get("retention_days", 7)
-                        cursor.execute(f'''
-                        UPDATE {original_category}
-                        SET original_text = ?, embedding = ?, keywords = ?, expiry_at = datetime('now', '+{retention_days} days')
-                        WHERE id = ?
-                        ''', (updated_text, new_embedding, ','.join(query_keywords), memory_id))
-                conn.commit()
-                conn.close()
+            update_details = get_processed_json_response_update(mem['text'], memory_context)
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            updates = update_details.get('update', [])
+            if updates:
+                for update in updates:
+                    memory_id = update["id"]
+                    updated_text = update["text"]
+                    original_category = get_memory_category(cursor, memory_id)
+                    if not original_category:
+                        continue
+                    new_embedding = self.compute_embedding(updated_text)
+                    query_keywords = self.extract_keywords(updated_text)
+                    expiry_info = self.expiry_date_decision(updated_text)
+                    retention_days = expiry_info.get("retention_days", 7)
+                    cursor.execute(f'''
+                    UPDATE {original_category}
+                    SET original_text = ?, embedding = ?, keywords = ?, expiry_at = datetime('now', '+{retention_days} days')
+                    WHERE id = ?
+                    ''', (updated_text, new_embedding, ','.join(query_keywords), memory_id))
+            conn.commit()
+            conn.close()
 
     def store_memory(self, user_id: str, text: str, retention_days: Dict, category: str) -> bool:
         print(f"Attempting to store memory: '{text}' in category '{category}'")  # Debug log
@@ -220,7 +218,7 @@ class MemoryManager:
             embedding = self.compute_embedding(text)
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            current_time = datetime.now()
+            current_time = datetime.datetime.now()
             expiry_time = current_time + timedelta(days=int(retention_days.get("retention_days", 7)))
             cursor.execute(f'''
             INSERT INTO {category.lower()} (user_id, original_text, keywords, embedding, created_at, expiry_at)
@@ -267,7 +265,7 @@ class MemoryManager:
 
         if not memory_context:
             # Fallback response
-            response = "I don’t have any stored memories about that. How can I assist you further?"
+            response = "I don’t have any stored memories about that."
         else:
             runnable = OllamaRunnable(
                 model_url="http://localhost:11434/api/chat",

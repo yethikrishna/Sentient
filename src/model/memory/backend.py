@@ -43,7 +43,7 @@ class MemoryBackend:
             You are an AI designed to classify user-provided facts into 'Short Term' or 'Long Term' memory types.
             - 'Short Term' memories are transient (e.g., tasks, recent events) and typically expire within days or weeks.
             - 'Long Term' memories are persistent (e.g., preferences, personal traits) and stored indefinitely.
-            Provide your classification as a string: "Short Term" or "Long Term".
+            Provide your classification as a string: "Short Term" or "Long Term". Do not add quotes. Simply respond with the memory type.
             """,
             user_prompt_template="Classify this fact: {fact}",
             input_variables=["fact"],
@@ -59,7 +59,7 @@ class MemoryBackend:
             You are an AI designed to classify user queries into 'Short Term' or 'Long Term' memory types based on the kind of information being requested.
             - 'Short Term' queries are about recent events, tasks, or transient information (e.g., days or weeks). Examples: "What did I have for lunch yesterday?" or "Do I have meetings tomorrow?"
             - 'Long Term' queries are about persistent information, preferences, or knowledge (e.g., habits, traits). Examples: "What's my favorite color?" or "What do I usually order at restaurants?"
-            Provide your classification as a string: "Short Term" or "Long Term".
+            Provide your classification as a string: "Short Term" or "Long Term". Do not add quotes. Simply respond with the memory type.
             """,
             user_prompt_template="Classify this query: {query}",
             input_variables=["query"],
@@ -73,16 +73,23 @@ class MemoryBackend:
                 model_url="http://localhost:11434/api/chat/",
                 model_name="llama3.2:3b",
                 system_prompt_template="""
-                You are an AI assistant tasked with extracting the factual statement from a user's request to remember something. 
+                You are an AI assistant tasked with extracting any factual statements from a user's query. These facts will be saved in a memory storage about the user and so they should not be modified in any way by you.
                 Extract the complete fact exactly as stated, without adding assumptions, commentary, or partial extractions. 
-                Return only the factual statement.
+                Do not deviate from the task. Do not add any additional information. Do not remove any information from the user query.
 
                 Examples:
-                - Input: "can you remember that I have a meeting tomorrow"
-                Output: "I have a meeting tomorrow"
-                - Input: "please note that my favorite color is blue"
-                Output: "my favorite color is blue"
+                - Input: I am quite busy tomorrow but I will find time to go out for lunch with my dear friend Sarthak - its been a while since I caught up with him.
+                Output: I am going out for lunch with Sarthak tomorrow.
+                - Input: I think I'm going to buy the blue shirt because my favourite color is blue.
+                Output: my favorite color is blue
 
+                RETURN ONLY FACTUAL STATEMENTS EXTRACTED FROM THE USER QUERY. DO NOT RETURN TEXT THAT IS NOT A FACTUAL STATEMENT. DO NOT SAY THINGS LIKE "I AM NOT AWARE OF ANY INFORMATION" OR "I CANNOT HELP WITH THAT".
+                
+                IF THE USER IS ASKING A QUESTION, RETURN THE QUESTION ITSELF. DO NOT RETURN THE QUESTION OR ATTEMPT TO ANSWER THE QUESTION. DO NOT CHANGE QUESTIONS INTO ASSERTIVE SENTENCES. 
+                Example:
+                - Input: What meetings do I have to attend tomorrow?
+                Output: What meetings do I have to attend tomorrow?
+                
                 Extract the factual statement from this query:
                 """,
                 user_prompt_template="{query}",
@@ -124,7 +131,7 @@ class MemoryBackend:
             expiry_info = self.memory_manager.expiry_date_decision(fact)
             retention_days = expiry_info.get("retention_days", 7)
             memory_info = self.memory_manager.extract_and_invoke_memory(fact)
-            category = memory_info.get("memories", [{}])[0].get("category", "TASKS")
+            category = memory_info.get("memories", [{}])[0].get("category", "tasks")
             self.memory_manager.store_memory(user_id, fact, {"retention_days": retention_days}, category)
         else:
             crud_graph_operations(

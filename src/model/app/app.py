@@ -436,6 +436,7 @@ async def chat(message: Message):
                 personality_description = db["userData"].get("personality", "None")
                 assistant_msg["memoryUsed"] = memory_used
                 assistant_msg["internetUsed"] = internet_used
+                print ("USER CONTEXT: ", user_context)
                 async for token in generate_streaming_response(
                     chat_runnable,
                     inputs={

@@ -241,3 +241,4 @@ chatsDb.json
 userProfileDb.json
 tasks.json
 ruff_cache
+.db

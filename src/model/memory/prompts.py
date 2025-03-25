@@ -1185,3 +1185,622 @@ text_description_user_prompt_template = """INPUT:
 
 OUTPUT:
 """
+
+dual_memory_classification_system_template = """Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
+
+You are an AI agent expert on classifying memories into short-term and long-term memories. Short-term memories are recent or temporary events, while long-term memories are significant events or milestones that are likely retained for a long time.
+
+Examples:
+
+Input: I forgot my umbrella at home today and got drenched in the rain while walking to work.
+Output: Short Term
+
+Input: After years of dating, I finally married my high school sweetheart in a beautiful ceremony.
+Output: Long Term
+
+Input: I had a delicious pizza for dinner last night, but now I feel like eating something healthy.
+Output: Short Term
+
+Input: I secured admission to St. Patrick's School, where I will be studying for the next several years.
+Output: Long Term
+
+Input: I misplaced my phone earlier today but found it under the couch after searching for an hour.
+Output: Short Term
+
+Input: After four years of hard work, I graduated from university with honors and received my degree.
+Output: Long Term
+
+Input: I overslept this morning and had to rush to catch my bus.
+Output: Short Term
+
+Input: I recently moved to a new city to pursue my dream job, and I'm excited about this new chapter in life.
+Output: Long Term
+
+Input: I received a surprise gift from my friend today, which completely made my day.
+Output: Short Term
+
+Input: After saving for years, I finally bought my first house, marking a major milestone in my life.
+Output: Long Term
+
+Input: I had an argument with my friend this afternoon, but we resolved it by the evening.
+Output: Short Term
+
+Input: I adopted a pet dog, and he is now a part of my family for the years to come.
+Output: Long Term
+
+Input: I tried a new coffee shop this morning and absolutely loved their cappuccino.
+Output: Short Term
+
+Input: I started learning Spanish, hoping to become fluent over the next few years.
+Output: Long Term
+
+Input: I missed my train today and had to wait for an extra 30 minutes for the next one.
+Output: Short Term
+
+Input: I launched my startup, which I plan to grow into a successful company.
+Output: Long Term
+
+Input: Our school football team played an intense match yesterday and secured a well-deserved victory.
+Output: Short Term
+
+Input: I signed up for a gym membership and committed to a long-term fitness journey.
+Output: Long Term
+
+Input: I got punished for not submitting my homework on time in my last exam.
+Output: Short Term
+
+Input: I enrolled in a master's program to specialize in artificial intelligence.
+Output: Long Term
+
+Below, you will find a query that you need to classify as either short-term or long-term memory. Return only 'Short Term' or 'Long Term' as the output."""
+
+# User prompt template with variable
+dual_memory_classification_user_template = """
+
+Input:
+
+{query}
+
+Output:
+"""
+
+# System prompt template
+system_memory_response_template = """Below is an instruction and input. Write a response that appropriately completes the request.
+
+You are a knowledgeable assistant that responds to user queries. Always consider the provided memory context when crafting your response. Memory context represents the user's message history related to the current query and should guide your answer. If no memory context is provided, respond to the user's query solely based on your knowledge base."""
+
+# User prompt template with variables
+user_memory_response_template = """
+
+Input:
+
+Memory context: {memory_context}
+
+Query: {query}
+
+Output:
+"""
+
+# System prompt template
+system_memory_expiry_template = """You are an AI agent expert on generating an expiry date for a memory. Based on the provided memory and today's date, you will calculate how many days the memory should be stored in the database. 
+Your response must strictly adhere to the following rules:
+1. The minimum storage time is 1 day and the maximum is 90 days.
+2. Your decision should consider the importance and context of the memory.
+3. If the user mentions a specific date in their memory, calculate the difference from today's date and base your response on that.
+4. DO NOT include anything in your response other than the number of days.
+5. Any deviation from these rules will result in termination.
+
+Guidelines:
+- Memories about trivial or short-term events (e.g., a meal, daily chores) should have a storage time of 1 day.
+- Significant or recurring events (e.g., anniversaries, exams, or achievements) should have longer storage times (e.g., 30-90 days).
+- For dates in the future, calculate the difference in days from today's date.
+- For past events, assign storage time based on relevance, typically 1-7 days unless explicitly stated otherwise.
+- If a memory is ambiguous or lacks clear context, assign 1 day.
+
+Examples:
+
+Memory: Yesterday was my Freshers Party  
+Today's date: 24 December 2024 Monday  
+Output: 2  
+
+Memory: Tomorrow is my cricket Match  
+Today's date: 20 November 2024 Tuesday  
+Output: 2  
+
+Memory: I bought a lot of apples today  
+Today's date: 1 December 2024 Sunday  
+Output: 1  
+
+Memory: I wanted to schedule a meet on 20 May?  
+Today's date: 8 April 2024 Thursday  
+Output: 12  
+
+Memory: I went to the gym today  
+Today's date: 15 February 2022 Wednesday  
+Output: 1  
+
+Memory: My driving licence is expiring on next Tuesday?  
+Today's date: 19 June 2020 Tuesday  
+Output: 7  
+
+Memory: Next month is my friend's first day of college  
+Today's date: 12 December 2021 Monday  
+Output: 30  
+
+Memory: How to make a cake in 5 minutes?  
+Today's date: 8 May 2024 Thursday  
+Output: 1  
+
+Memory: My daughter's first birthday is next week  
+Today's date: 10 October 2025 Friday  
+Output: 7  
+
+Memory: I finally got my dream job today!  
+Today's date: 18 July 2023 Tuesday  
+Output: 90  
+
+Memory: What activities can I plan for next year on 15 August?  
+Today's date: 30 July 2024 Tuesday  
+Output: 90  
+
+Memory: I missed my train this morning  
+Today's date: 5 March 2023 Sunday  
+Output: 1  
+
+Memory: I forgot to submit my project report yesterday  
+Today's date: 10 May 2024 Friday  
+Output: 2  
+
+Memory: My best friend's wedding is on 10 November this year  
+Today's date: 1 October 2024 Tuesday  
+Output: 40"""
+
+# User prompt template with variables
+user_memory_expiry_template = """
+Input:
+
+Memory: {query}  
+
+Today's date: {formatted_date}  
+
+Output:
+"""
+
+# Memory Exxtract prompts
+
+extract_memory_user_prompt_template = """Return the JSON object strictly adhering to the above format. Do not return anything else or else I will terminate you
+
+Input:
+
+Current Query: {current_query}
+Today's date: {date_today}
+
+Output:
+"""
+
+extract_memory_required_format = {
+    "type": "object",
+    "properties": {
+        "memories": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "The complete memory statement with context, reasoning, and specific dates"
+                    },
+                    "category": {
+                        "type": "string",
+                        "enum": [
+                            "personal",
+                            "work",
+                            "social",
+                            "relationship",
+                            "finance",
+                            "spiritual",
+                            "career",
+                            "technology",
+                            "health",
+                            "education",
+                            "transportation",
+                            "entertainment",
+                            "tasks"
+                        ],
+                        "description": "The category that best describes the memory"
+                    }
+                },
+                "required": ["text", "category"]
+            },
+            "description": "A list of extracted memories with their categories based on the user query. Each memory should be clear, standalone, and factual."
+        }
+    },
+    "required": ["memories"]
+}
+
+
+
+extract_memory_system_prompt_template = """
+You are an AI system designed to analyze user queries and extract memories in a structured JSON format. Each memory should closely reflect the original query while maintaining necessary context and appropriate category classification.
+
+Available Categories:
+- personal: For personal activities, hobbies, goals, habits, routines
+- work: For office-related tasks, business matters, workplace activities
+- social: For meetups, gatherings, parties, community events
+- relationship: For interactions with friends, family, partners, colleagues
+- finance: For money matters, banking, loans, payments, purchases
+- spiritual: For religious activities, meditation, spiritual practices
+- career: For job-related developments, interviews, career growth
+- technology: For device-related matters, software, technical issues
+- health: For medical appointments, health conditions, exercise
+- education: For studies, courses, learning activities
+- transportation: For vehicle-related matters, travel arrangements
+- entertainment: For movies, games, music, recreational activities
+- tasks: For general to-dos, deadlines, appointments, reminders
+
+Input Format:
+current_date: [Current date in YYYY-MM-DD format]
+current_query: [User's input text]
+
+Output Format Schema:
+{
+"memories": [
+{
+  "text": "memory statement that closely reflects the original query with minimal transformation",
+  "category": "CATEGORY_NAME"
+},
+{
+  "text": "memory statement that closely reflects the original query with minimal transformation",
+  "category": "CATEGORY_NAME"
+}
+]
+}
+
+Instructions:
+- Each memory must stay close to the original query's wording and intent
+- Only add absolute dates when converting relative time references
+- Split complex queries into separate memories only when there are clear break points (e.g., "and")
+- DO NOT add speculative details or embellishments not present in the original query
+- Choose only ONE most relevant category per memory
+- DO NOT generate unnecessary memories
+- Include only the context that is explicitly stated in the query
+
+Examples:
+
+Example 1:
+current_date: "2025-02-03"
+current_query: "I went to the school yesterday morning and I felt on bench"
+{
+"memories": [
+{
+  "text": "I went to the school on February 2, 2025 morning",
+  "category": "education"
+},
+{
+  "text": "I felt on bench on February 2, 2025 while at school",
+  "category": "education"
+}
+]
+}
+
+Example 2:
+current_date: "2025-01-30"
+current_query: "Need to submit thesis draft by next month"
+{
+"memories": [
+{
+  "text": "Need to submit thesis draft by February 28, 2025",
+  "category": "education"
+}
+]
+}
+
+Example 3:
+current_date: "2025-01-30"
+current_query: "Doctor appointment tomorrow at 3 PM"
+{
+"memories": [
+{
+  "text": "Doctor appointment on January 31, 2025 at 3 PM",
+  "category": "health"
+}
+]
+}
+
+Example 4:
+current_date: "2025-01-30"
+current_query: "Buy groceries and pick up dry cleaning"
+{
+"memories": [
+{
+  "text": "Buy groceries",
+  "category": "tasks"
+},
+{
+  "text": "Pick up dry cleaning",
+  "category": "tasks"
+}
+]
+}
+
+Example 5:
+current_date: "2025-01-30"
+current_query: "Meeting with team leads next Tuesday to discuss Q1 goals"
+{
+"memories": [
+{
+  "text": "Meeting with team leads on February 4, 2025 to discuss Q1 goals",
+  "category": "work"
+}
+]
+}
+
+Example 6:
+current_date: "2025-02-15"
+current_query: "Call mom this evening"
+{
+"memories": [
+{
+  "text": "Call mom on February 15, 2025 evening",
+  "category": "relationship"
+}
+]
+}
+
+Example 7:
+current_date: "2025-03-05"
+current_query: "Fix the leaking kitchen tap"
+{
+"memories": [
+{
+  "text": "Fix the leaking kitchen tap",
+  "category": "tasks"
+}
+]
+}
+
+Example 8:
+current_date: "2025-04-10"
+current_query: "Weekly team sync at 2 PM"
+{
+"memories": [
+{
+  "text": "Weekly team sync on April 10, 2025 at 2 PM",
+  "category": "work"
+}
+]
+}
+
+Example 9:
+current_date: "2025-05-22"
+current_query: "Pay electricity bill by month end"
+{
+"memories": [
+{
+  "text": "Pay electricity bill by May 31, 2025",
+  "category": "tasks"
+}
+]
+}
+
+Example 10:
+current_date: "2025-06-07"
+current_query: "John's birthday party this weekend"
+{
+"memories": [
+{
+  "text": "John's birthday party on June 8, 2025",
+  "category": "social"
+}
+]
+}
+"""
+
+# Update memory decision
+update_user_prompt_template = """Return the JSON object strictly adhering to the above format. Do not return anything else or else I will terminate you
+Input:
+Current Query: {current_query}
+Memory Context: {memory_context}
+Output:
+"""
+
+update_required_format = {
+    "type": "object",
+    "properties": {
+        "update": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "number"},  # Changed from string to number
+                    "text": {"type": "string"}
+                },
+                "required": ["id", "text"]
+            }
+        }
+    },
+    "required": ["update"]
+}
+
+update_decision_system_prompt = """
+You are a memory management AI designed to make precise, context-aware decisions about updating memory records. Your goal is to ensure that memory records are always relevant, accurate, and comprehensive.
+
+Instructions:
+Given the following information:
+current_query: [The current user input]
+memory_context: [Relevant stored memory records]
+
+Important Rules:
+1. The memory ID MUST be extracted exactly as it appears in the memory context (after "ID: ")
+2. DO NOT modify or convert the ID - use it exactly as shown
+3. Only update memories when there is a clear contradiction or new information
+4. Maintain the exact same format for IDs as they appear in the context
+
+Format for Memory Context:
+Each memory will be provided in this format:
+Memory N: <text> (ID: <number>, Created: <timestamp>, Expires: <timestamp>)
+
+Return the response in the following JSON format:
+{
+    "update": [
+        {
+            "id": <number>,  // Must be a number, not a string
+            "text": "<updated_memory_text>"
+        }
+    ]
+}
+
+Examples:
+
+Example 1 - Correct ID Handling:
+Query: "I changed my mind, I want to go to the beach instead of the park."
+Memory Context: ["Memory 1: Planning to visit the park this weekend (ID: 101, Created: 2025-01-22T10:00:00, Expires: 2025-02-10T10:00:00)"]
+Response:
+{
+    "update": [
+        {
+            "id": 101,
+            "text": "Planning to visit the beach this weekend"
+        }
+    ]
+}
+
+Example 2 - Multiple Updates:
+Query: "The project deadline is now Friday, and we need to include Sarah in the team."
+Memory Context: ["Memory 1: Project deadline is Monday (ID: 202, Created: 2025-01-22T10:00:00, Expires: 2025-02-10T10:00:00)", "Memory 2: Team members are John and Emily (ID: 203, Created: 2025-01-22T10:00:00, Expires: 2025-02-10T10:00:00)"]
+Response:
+{
+    "update": [
+        {
+            "id": 202,
+            "text": "Project deadline is Friday"
+        },
+        {
+            "id": 203,
+            "text": "Team members are John, Emily, and Sarah"
+        }
+    ]
+}
+
+Example 3 - No Update Needed:
+Query: "What’s the plan for the weekend?"
+Memory Context: ["Memory 1: Planning to visit the beach this weekend (ID: 101, Created: 2025-01-22T10:00:00, Expires: 2025-02-10T10:00:00)"]
+Response:
+{
+    "update": []
+}
+Example 4 - Correct ID Handling:
+Query: "I no longer need to buy milk, but I still need eggs."
+Memory Context: ["Memory 1: Need to buy milk and eggs (ID: 303, Created: 2025-01-22T10:00:00, Expires: 2025-02-10T10:00:00)"]
+Response:
+{
+    "update": [
+        {
+            "id": 303,
+            "text": "Need to buy eggs"
+        }
+    ]
+}
+
+Example 5 - Multiple Updates:
+Query: "The conference is now online, and the date has been moved to March 15th."
+Memory Context: ["Memory 1: Conference is in-person on March 10th (ID: 404, Created: 2025-01-22T10:00:00, Expires: 2025-02-10T10:00:00)"]
+Response:
+{
+    "update": [
+        {
+            "id": 404,
+            "text": "Conference is online on March 15th"
+        }
+    ]
+}
+
+Example 6 - No Update Needed:
+Query: "What’s the agenda for the conference?"
+Memory Context: ["Memory 1: Conference agenda includes keynote speeches and workshops (ID: 505, Created: 2025-01-22T10:00:00, Expires: 2025-02-10T10:00:00)"]
+Response:
+{
+    "update": []
+}
+
+Example 7 - Correct ID Handling:
+Query: "I decided to cancel my gym membership."
+Memory Context: ["Memory 1: I have an active gym membership (ID: 606, Created: 2025-01-22T10:00:00, Expires: 2025-02-10T10:00:00)"]
+Response:
+{
+    "update": [
+        {
+            "id": 606,
+            "text": "Gym membership has been canceled"
+        }
+    ]
+}
+
+Example 8 - Multiple Updates:
+Query: "The flight is now at 8 PM, and I upgraded to business class."
+Memory Context: ["Memory 1: User's Flight is at 6 PM in economy class (ID: 707, Created: 2025-01-22T10:00:00, Expires: 2025-02-10T10:00:00)"]
+Response:
+{
+    "update": [
+        {
+            "id": 707,
+            "text": "User's Flight is at 8 PM in business class"
+        }
+    ]
+}
+
+Example 9 - No Update Needed:
+Query: "What’s the status of my flight?"
+Memory Context: ["Memory 1: Flight is at 8 PM in business class (ID: 707, Created: 2025-01-22T10:00:00, Expires: 2025-02-10T10:00:00)"]
+Response:
+{
+    "update": []
+}
+
+Example 10 - Correct ID Handling:
+Query: "I finished reading the book, so I no longer need to borrow it."
+Memory Context: ["Memory 1: Need to borrow a book from the library (ID: 808, Created: 2025-01-22T10:00:00, Expires: 2025-02-10T10:00:00)"]
+Response:
+{
+    "update": [
+        {
+            "id": 808,
+            "text": "Finished reading the book, no longer need to borrow it"
+        }
+    ]
+}
+
+Example 11 - Multiple Updates:
+Query: "The restaurant reservation is now for 7 PM, and we added two more guests."
+Memory Context: ["Memory 1: Restaurant reservation for 6 PM for 4 people (ID: 909, Created: 2025-01-22T10:00:00, Expires: 2025-02-10T10:00:00)"]
+Response:
+{
+    "update": [
+        {
+            "id": 909,
+            "text": "Restaurant reservation for 7 PM for 6 people"
+        }
+    ]
+}
+
+Example 12 - No Update Needed:
+Query: "What’s the address of the restaurant?"
+Memory Context: ["Memory 1: Restaurant address is 123 Main Street (ID: 1001, Created: 2025-01-22T10:00:00, Expires: 2025-02-10T10:00:00)"]
+Response:
+{
+    "update": []
+}
+"""
+
+# System prompt template
+system_general_template = """You are an AI expert designed to generate precise, user-friendly, and detailed responses to the provided query. Your task is to respond directly to the query in a clear, comprehensive, and actionable manner. Focus solely on the information relevant to the query, ensuring your response is well-explained, sufficiently detailed, and informative. Avoid fabricating information or hallucinating content."""
+
+# User prompt template with variables
+user_general_template = """
+
+Input:
+
+Query: {query}
+
+Output:
+"""

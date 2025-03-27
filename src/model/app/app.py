@@ -57,6 +57,8 @@ from model.chat.runnables import *
 from model.chat.prompts import *
 from model.chat.functions import *
 
+from model.context.gmail import GmailContextEngine
+
 
 # Load environment variables from .env file
 load_dotenv("model/.env")
@@ -333,7 +335,6 @@ async def process_memory_operations():
     while True:
         operation = await memory_backend.memory_queue.get_next_operation()
         
-        print(f"Processing memory operation: {operation}")
         if operation:
             try:
                 user_id = operation["user_id"]

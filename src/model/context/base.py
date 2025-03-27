@@ -4,11 +4,13 @@ from datetime import datetime
 import asyncio
 import os
 import time
+from model.app.helpers import load_db, save_db  # Import here to avoid circular import
 
 class BaseContextEngine(ABC):
     """Abstract base class for context engines handling various data sources."""
-    
+
     def __init__(self, user_id, task_queue, memory_backend, websocket_manager, db_lock):
+        print(f"BaseContextEngine.__init__ started for user_id: {user_id}")
         self.user_id = user_id
         self.task_queue = task_queue
         self.memory_backend = memory_backend
@@ -16,32 +18,59 @@ class BaseContextEngine(ABC):
         self.db_lock = db_lock
         self.context_file = "context.json"
         self.context = self.load_context()
+        print(f"BaseContextEngine.__init__ finished for user_id: {user_id}")
 
     def load_context(self):
         """Load the context from a JSON file, or return an empty dict if it doesn't exist."""
+        print("BaseContextEngine.load_context started")
         if os.path.exists(self.context_file):
+            print(f"Context file '{self.context_file}' exists, loading context.")
             with open(self.context_file, 'r') as f:
-                return json.load(f)
-        return {}
+                context = json.load(f)
+                print(f"Context loaded: {context}")
+                print("BaseContextEngine.load_context finished (context loaded)")
+                return context
+        else:
+            print(f"Context file '{self.context_file}' does not exist, returning empty context.")
+            print("BaseContextEngine.load_context finished (empty context)")
+            return {}
 
-    def save_context(self):
+    async def save_context(self):
         """Save the current context to the JSON file."""
+        print("BaseContextEngine.save_context started")
+        print(f"Saving context: {self.context}")
         with open(self.context_file, 'w') as f:
             json.dump(self.context, f, indent=4)
+        print("BaseContextEngine.save_context finished")
 
     async def start(self):
         """Start the engine, running periodically every hour."""
+        print("BaseContextEngine.start started")
         while True:
+            print("BaseContextEngine.start - running engine iteration")
             await self.run_engine()
-            await asyncio.sleep(3600)  # Check every hour
+            print("BaseContextEngine.start - engine iteration finished, sleeping for 3600 seconds")
+            await asyncio.sleep(6)  # Check every hour
 
     async def run_engine(self):
         """Orchestrate fetching, processing, and generating outputs."""
+        self.context = self.load_context()
+        print("BaseContextEngine.run_engine started")
+        print("BaseContextEngine.run_engine - fetching new data")
         new_data = await self.fetch_new_data()
         if new_data:
-            processed_data = self.process_new_data(new_data)
-            output = self.generate_output(processed_data)
+            print("BaseContextEngine.run_engine - new data fetched:", new_data)
+            print("BaseContextEngine.run_engine - processing new data")
+            processed_data = await self.process_new_data(new_data)
+            print("BaseContextEngine.run_engine - processed data:", processed_data)
+            print("BaseContextEngine.run_engine - generating output")
+            output = await self.generate_output(processed_data)
+            print("BaseContextEngine.run_engine - generated output:", output)
+            print("BaseContextEngine.run_engine - executing outputs")
             await self.execute_outputs(output)
+        else:
+            print("BaseContextEngine.run_engine - no new data fetched")
+        print("BaseContextEngine.run_engine finished")
 
     @abstractmethod
     async def fetch_new_data(self):
@@ -49,97 +78,114 @@ class BaseContextEngine(ABC):
         pass
 
     @abstractmethod
-    def process_new_data(self, new_data):
+    async def process_new_data(self, new_data):
         """Process the fetched data into a format suitable for the runnable."""
         pass
 
     @abstractmethod
-    def get_runnable(self):
+    async def get_runnable(self):
         """Return the data source-specific runnable for generating outputs."""
         pass
 
     @abstractmethod
-    def get_category(self):
+    async def get_category(self):
         """Return the memory category for this data source."""
         pass
 
-    def generate_output(self, processed_data):
+    async def generate_output(self, processed_data):
         """Generate tasks, memory operations, and messages using the runnable."""
-        runnable = self.get_runnable()
-        related_memories = self.memory_backend.retrieve_memory(self.user_id, category=self.get_category())
+        print("BaseContextEngine.generate_output started")
+        runnable = await self.get_runnable()
+        print("BaseContextEngine.generate_output - got runnable:", runnable)
+        print("BaseContextEngine.generate_output - retrieving related memories")
+        related_memories = await self.memory_backend.retrieve_memory(self.user_id, query=await self.get_category())
+        print("BaseContextEngine.generate_output - retrieved related memories:", related_memories)
+        print("BaseContextEngine.generate_output - getting ongoing tasks")
         ongoing_tasks = [task for task in await self.task_queue.get_all_tasks() if task["status"] in ["pending", "processing"]]
+        print("BaseContextEngine.generate_output - ongoing tasks:", ongoing_tasks)
+        print("BaseContextEngine.generate_output - getting chat history")
         chat_history = await self.get_chat_history()
-        memories_str = "\n".join([mem["text"] for mem in related_memories])
-        tasks_str = "\n".join([task["description"] for task in ongoing_tasks])
-        chat_str = "\n".join([f"{'User' if msg['isUser'] else 'Assistant'}: {msg['message']}" for msg in chat_history])
-        output = runnable.invoke({
+        print("BaseContextEngine.generate_output - chat history:", chat_history)
+
+        related_memories_list = related_memories if related_memories is not None else [] # Handle None case
+        memories_str = "\n".join([mem["text"] for mem in related_memories_list])
+
+        ongoing_tasks_list = ongoing_tasks if ongoing_tasks is not None else [] # Handle None case
+        tasks_str = "\n".join([task["description"] for task in ongoing_tasks_list])
+
+        chat_history_list = chat_history if chat_history is not None else [] # Handle None case
+        chat_str = "\n".join([f"{'User' if msg['isUser'] else 'Assistant'}: {msg['message']}" for msg in chat_history_list])
+
+        print("BaseContextEngine.generate_output - invoking runnable")
+        output = runnable.invoke({ # Use ainvoke for async runnable
             "new_information": processed_data,
             "related_memories": memories_str,
             "ongoing_tasks": tasks_str,
             "chat_history": chat_str
         })
-        return json.loads(output)
+        print("BaseContextEngine.generate_output - runnable output:", output)
+        print("BaseContextEngine.generate_output finished")
+        return output
 
     async def get_chat_history(self):
         """Retrieve the last 10 messages from the active chat."""
+        print("BaseContextEngine.get_chat_history started")
         async with self.db_lock:
-            from app import load_db  # Import here to avoid circular import
+            print("BaseContextEngine.get_chat_history - acquired db_lock")
             chatsDb = await load_db()
+            print("BaseContextEngine.get_chat_history - loaded chatsDb")
             active_chat_id = chatsDb["active_chat_id"]
+            print(f"BaseContextEngine.get_chat_history - active_chat_id: {active_chat_id}")
             active_chat = next((chat for chat in chatsDb["chats"] if chat["id"] == active_chat_id), None)
-            return active_chat["messages"][-10:] if active_chat else []
+            if active_chat:
+                history = active_chat["messages"][-10:]
+                print(f"BaseContextEngine.get_chat_history - returning last 10 messages: {history}")
+                print("BaseContextEngine.get_chat_history finished")
+                return history
+            else:
+                print("BaseContextEngine.get_chat_history - no active chat found, returning empty list")
+                print("BaseContextEngine.get_chat_history finished")
+                return []
 
     async def execute_outputs(self, output):
         """Execute the generated tasks, memory operations, and messages."""
+        print("BaseContextEngine.execute_outputs started")
         tasks = output.get("tasks", [])
         memory_ops = output.get("memory_operations", [])
         messages = output.get("messages", [])
 
+        print("BaseContextEngine.execute_outputs - tasks:", tasks)
+        print("BaseContextEngine.execute_outputs - memory_operations:", memory_ops)
+        print("BaseContextEngine.execute_outputs - messages:", messages)
+
         # Add tasks to the task queue
-        for task in tasks:
-            await self.task_queue.add_task(
-                chat_id="context_engine",
-                description=task["description"],
-                priority=task["priority"],
-                username=self.user_id,
-                personality=None,
-                use_personal_context=False,
-                internet="None"
-            )
+        # for task in tasks:
+        #     print("BaseContextEngine.execute_outputs - adding task to queue:", task)
+        #     await self.task_queue.add_task(
+        #         chat_id="context_engine",
+        #         description=task["description"],
+        #         priority=task["priority"],
+        #         username=self.user_id,
+        #         personality=None,
+        #         use_personal_context=False,
+        #         internet="None"
+        #     )
 
         # Add memory operations to the memory queue
         for op in memory_ops:
-            if op["operation"] == "add":
-                await self.memory_backend.memory_queue.add_operation({
-                    "type": "add",
-                    "user_id": self.user_id,
-                    "text": op["text"],
-                    "category": op["category"],
-                    "retention_days": op["retention_days"]
-                })
-            elif op["operation"] == "update":
-                await self.memory_backend.memory_queue.add_operation({
-                    "type": "update",
-                    "user_id": self.user_id,
-                    "category": op["category"],
-                    "id": op["id"],
-                    "text": op["text"],
-                    "retention_days": op["retention_days"]
-                })
-            elif op["operation"] == "delete":
-                await self.memory_backend.memory_queue.add_operation({
-                    "type": "delete",
-                    "user_id": self.user_id,
-                    "category": op["category"],
-                    "id": op["id"]
-                })
+            print("BaseContextEngine.execute_outputs - processing memory operation:", op)
+            print("BaseContextEngine.execute_outputs - adding memory operation to queue (add):", op)
+            await self.memory_backend.memory_queue.add_operation(self.user_id, op["text"])
 
         # Add messages to the chat database and send notifications
-        from app import save_db, load_db
         for message in messages:
+            print("BaseContextEngine.execute_outputs - processing message:", message)
             async with self.db_lock:
+                print("BaseContextEngine.execute_outputs - acquired db_lock for message processing")
                 chatsDb = await load_db()
+                print("BaseContextEngine.execute_outputs - loaded chatsDb for message processing")
                 active_chat_id = chatsDb["active_chat_id"]
+                print(f"BaseContextEngine.execute_outputs - active_chat_id for message processing: {active_chat_id}")
                 active_chat = next((chat for chat in chatsDb["chats"] if chat["id"] == active_chat_id), None)
                 if active_chat:
                     new_message = {
@@ -149,11 +195,16 @@ class BaseContextEngine(ABC):
                         "isUser": False,
                         "timestamp": datetime.utcnow().isoformat() + "Z"
                     }
+                    print("BaseContextEngine.execute_outputs - adding new message to active chat:", new_message)
                     active_chat["messages"].append(new_message)
                     await save_db(chatsDb)
+                    print("BaseContextEngine.execute_outputs - saved chatsDb after adding message")
                     notification = {
                         "type": "new_message",
                         "message": message
                     }
+                    print("BaseContextEngine.execute_outputs - broadcasting notification:", notification)
                     await self.websocket_manager.broadcast(json.dumps(notification))
-                    
+                else:
+                    print("BaseContextEngine.execute_outputs - no active chat found, cannot add message")
+        print("BaseContextEngine.execute_outputs finished")

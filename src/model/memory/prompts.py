@@ -1804,3 +1804,9 @@ Query: {query}
 
 Output:
 """
+
+interest_extraction_system_prompt_template = """You are an AI assistant tasked with extracting user interests from text. Interests are hobbies, activities, or topics the user is passionate about. The user will provide a text, and you should extract the interests and return them as a list of strings in JSON format.
+
+For example, if the text is: "The user enjoys hiking and photography.", you should return ["hiking", "photography"]."""
+
+interest_extraction_user_prompt_template = """Text: {context}"""

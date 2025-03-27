@@ -1,4 +1,4 @@
-context_engine_required_format = {
+gmail_context_engine_required_format = {
   "type": "object",
   "properties": {
     "tasks": {
@@ -41,15 +41,23 @@ context_engine_required_format = {
       },
       "description": "List of memory operations"
     },
-    "messages": {
-      "type": "array",
-      "items": {
+    "message": {
         "type": "string",
         "description": "Message to the user"
       },
-      "description": "List of messages"
-    }
   },
   "additionalProperties": False,
   "description": "JSON format for tasks, memory operations and messages"
+}
+
+internet_search_context_engine_required_format = {
+  "type": "object",
+  "properties": {
+    "message": {
+        "type": "string",
+        "description": "Message to the user"
+    }
+  },
+  "additionalProperties": False,
+  "description": "JSON format for only messages"
 }

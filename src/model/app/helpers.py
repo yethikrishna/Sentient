@@ -361,3 +361,30 @@ def write_to_log(message: str):
             f"Error writing to log file: {error}"
         )  # Print error message if writing to log file fails
         
+CHAT_DB = "chatsDb.json"
+initial_db = {
+    "chats": [],
+    "active_chat_id": None,
+    "next_chat_id": 1
+}
+
+async def load_db():
+    """Load the database from chatsDb.json, initializing if it doesn't exist or is invalid."""
+    try:
+        with open(CHAT_DB, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            if "chats" not in data:
+                data["chats"] = []
+            if "active_chat_id" not in data:
+                data["active_chat_id"] = None
+            if "next_chat_id" not in data:
+                data["next_chat_id"] = 1
+            return data
+    except (FileNotFoundError, json.JSONDecodeError):
+        print("DB NOT FOUND! Initializing with default structure.")
+        return initial_db
+    
+async def save_db(data):
+    """Save the data to chatsDb.json."""
+    with open(CHAT_DB, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=4)

@@ -131,6 +131,25 @@ ws.onmessage = (event) => {
 			title: "Task Error!",
 			body: `Task "${description}" (ID: ${task_id}) encountered an error.\nError: ${error}`
 		}).show()
+	} else if (messageData.type === "memory_operation_completed") {
+		const { operation_id, status, fact } = messageData
+		new Notification({
+			title: "Memory Operation Completed!",
+			body: `Memory operation (ID: ${operation_id}) was successful.\nFact: ${fact.substring(0, 100)}...` // Limit fact preview
+		}).show()
+	} else if (messageData.type === "memory_operation_error") {
+		const { operation_id, error, fact } = messageData
+		new Notification({
+			title: "Memory Operation Error!",
+			body: `Memory operation (ID: ${operation_id}) encountered an error.\nError: ${error}\nFact: ${fact.substring(0, 100)}...` // Limit fact preview
+		}).show()
+	} else if (messageData.type === "new_message") {
+		const { message } = messageData
+		console.log("New message received:", message)
+		new Notification({
+			title: "New Message!",
+			body: message.substring(0, 100) + "..." // Show a preview of the message
+		}).show()
 	}
 }
 

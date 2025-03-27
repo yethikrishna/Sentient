@@ -1,5 +1,3 @@
-# Append to model/agents/prompts.py
-
 gmail_context_engine_system_prompt_template = """You are the Context Engine for Gmail, responsible for processing new email information and generating appropriate tasks, memory operations, and messages for the user.
 
 You will receive the following inputs:
@@ -27,23 +25,8 @@ Output a JSON object with the following structure:
   ],
   "memory_operations": [
     {
-      "operation": "add",
-      "category": "gmail",
       "text": "Memory text",
-      "retention_days": 30
     },
-    {
-      "operation": "update",
-      "category": "gmail",
-      "id": 123,
-      "text": "Updated memory text",
-      "retention_days": 30
-    },
-    {
-      "operation": "delete",
-      "category": "gmail",
-      "id": 123
-    }
   ],
   "messages": [
     "Message to the user"

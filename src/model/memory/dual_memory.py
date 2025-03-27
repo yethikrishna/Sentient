@@ -303,7 +303,7 @@ class MemoryManager:
 
         if not memory_context:
             # Fallback response when no context is available
-            response = "I don’t have any stored memories about that."
+            response = None
         else:
             runnable = OllamaRunnable(
                 model_url="http://localhost:11434/api/chat",
@@ -333,3 +333,82 @@ class MemoryManager:
             print("Expired memory cleanup completed.")
         except Exception as e:
             print(f"Error during memory cleanup: {e}")
+
+    def delete_memory(self, user_id: str, category: str, memory_id: int):
+        """Delete a memory by ID and category."""
+        if category.lower() not in [cat.lower() for cat in self.categories.keys()]:
+            raise ValueError("Invalid category")
+        
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Verify memory exists and belongs to the user
+        cursor.execute(f'SELECT user_id FROM {category.lower()} WHERE id = ?', (memory_id,))
+        result = cursor.fetchone()
+        if not result or result[0] != user_id:
+            conn.close()
+            raise ValueError("Memory not found or not owned by the user")
+        
+        cursor.execute(f'DELETE FROM {category.lower()} WHERE id = ?', (memory_id,))
+        conn.commit()
+        conn.close()
+        print(f"Deleted memory ID {memory_id} from {category.lower()}")
+
+    def fetch_memories_by_category(self, user_id: str, category: str, limit: int = 50) -> List[Dict]:
+        """
+        Fetch memories for a specific user and category from the SQLite database.
+        
+        Args:
+            user_id (str): The ID of the user
+            category (str): Memory category to fetch
+            limit (int, optional): Maximum number of memories to retrieve. Defaults to 50.
+        
+        Returns:
+            List[Dict]: List of memory dictionaries
+        """
+        print(f"Fetching memories for user '{user_id}' in category '{category}'")
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            category = category.lower()
+            if category not in [cat.lower() for cat in self.categories.keys()]:
+                print(f"Invalid category: {category}")
+                return []
+            
+            cursor.execute(f'''
+            SELECT id, original_text, keywords, created_at, expiry_at
+            FROM {category}
+            WHERE user_id = ? AND is_active = 1 AND datetime('now') < expiry_at
+            ORDER BY created_at DESC
+            LIMIT ?
+            ''', (user_id, limit))
+            
+            memories = [
+                {
+                    'id': row[0],
+                    'original_text': row[1],
+                    'keywords': row[2].split(','),
+                    'created_at': row[3],
+                    'expiry_at': row[4],
+                    'category': category  # Added category field
+                }
+                for row in cursor.fetchall()
+            ]
+            
+            print(f"Retrieved {len(memories)} memories")
+            return memories
+        
+        except Exception as e:
+            print(f"Error fetching memories: {e}")
+            return []
+        finally:
+            conn.close()
+            
+    def clear_all_memories(self, user_id: str):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        for table in self.categories.values():
+            cursor.execute(f'DELETE FROM {table.lower()} WHERE user_id = ?', (user_id,))
+        conn.commit()
+        conn.close()

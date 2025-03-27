@@ -3,17 +3,17 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 import os
 from dotenv import load_dotenv
 import json
-
-from .runnables import *
-from .functions import *
-from .dual_memory import MemoryManager
+from model.memory.runnables import *
+from model.memory.functions import *
+from model.memory.dual_memory import MemoryManager
+from  model.memory.base import *  # Import the new MemoryQueue
 from model.app.base import *
 
 load_dotenv("model/.env")
 
 class MemoryBackend:
     def __init__(self):
-        """Initialize the memory backend with both long-term and short-term agents."""
+        """Initialize the memory backend with both long-term and short-term agents and MemoryQueue."""
         print("Initializing MemoryBackend...")
         # Long-term memory (Neo4j)
         print("Initializing HuggingFaceEmbedding...")
@@ -45,6 +45,11 @@ class MemoryBackend:
         self.memory_type_runnable = self._initialize_memory_type_classifier()
         self.query_memory_type_runnable = self._initialize_query_memory_type_classifier()
         print("Memory type classifiers initialized.")
+
+        # Initialize MemoryQueue
+        print("Initializing MemoryQueue...")
+        self.memory_queue = MemoryQueue()
+        print("MemoryQueue initialized.")
         print("MemoryBackend initialization complete.")
 
     def _initialize_memory_type_classifier(self):
@@ -89,25 +94,19 @@ class MemoryBackend:
         """Extract multiple factual statements from a memory-related query."""
         print(f"Extracting memory facts for query: '{query}'")
         try:
-
             with open("userProfileDb.json", "r", encoding="utf-8") as f:
                 user_db = json.load(f)
-
             username = user_db["userData"]["personalInfo"]["name"]
-
             response = self.fact_extraction_runnable.invoke({"paragraph": query, "username": username})
-            print(f"Raw fact extraction response: {response}")  # Debug log
-
-            # Ensure the response is a valid JSON array
+            print(f"Raw fact extraction response: {response}")
             facts = response
             if not isinstance(facts, list):
                 raise ValueError("Extracted facts are not in list format")
-
             print(f"Extracted facts: {facts}")
             return facts
         except Exception as e:
             print(f"Error extracting memory facts: {e}")
-            return []  # Return an empty list if extraction fails
+            return []
 
     def classify_memory(self, fact: str) -> str:
         """Classify a fact as short-term or long-term."""
@@ -120,22 +119,24 @@ class MemoryBackend:
         except Exception as e:
             print(f"Error classifying memory: {e}")
             print("Defaulting to Long Term memory.")
-            return "Long Term"  # Default to long-term if classification fails
+            return "Long Term"
 
     def classify_query_memory_type(self, query: str) -> str:
         """Classify a query as short-term or long-term."""
         print(f"Classifying query memory type for query: '{query}'")
         try:
             response = self.query_memory_type_runnable.invoke({"query": query})
+            print(response)
             classification = response.strip()
+            print(classification)
             print(f"Query memory type classification response: '{response}', Classified as: '{classification}'")
             return classification
         except Exception as e:
             print(f"Error classifying query memory type: {e}")
             print("Defaulting to Long Term query type.")
-            return "Long Term"  # Default to long-term if classification fails
+            return "Long Term"
 
-    def store_memory(self, user_id: str, query: str):
+    async def store_memory(self, user_id: str, query: str):
         """Extract and store multiple facts in the appropriate memory system."""
         print(f"Storing memory for user ID: '{user_id}', query: '{query}'")
         facts = self.extract_memory_facts(query)
@@ -165,32 +166,8 @@ class MemoryBackend:
                 )
                 print("Fact stored in Long Term memory (Neo4j).")
         print("Memory storage process completed.")
-
-    def retrieve_memory(self, user_id: str, query: str) -> str:
-        """Retrieve relevant memories from the appropriate store based on query classification."""
-        print(f"Retrieving memory for user ID: '{user_id}', query: '{query}'")
-        memory_type = self.classify_query_memory_type(query)
-        print(f"Query classified as: {memory_type} memory query.")
-
-        if memory_type == "Short Term":
-            print("Retrieving from Short Term memory...")
-            context = self.memory_manager.process_user_query(user_id, query)
-            if context and context != "I'm having trouble processing your question. Please try again.":
-                print(f"Retrieved short-term context: {context}")
-                return context
-            else:
-                print("No relevant short-term memories found.")
-                return "I don't have any relevant short-term memories for that query."
-        else:
-            print("Retrieving from Long Term memory (Neo4j)...")
-            context = query_user_profile(
-                query, self.graph_driver, self.embed_model,
-                self.text_conv_runnable, self.query_class_runnable
-            )
-            print(f"Retrieved long-term context: {context}")
-            return context
-
-    def update_memory(self, user_id: str, query: str):
+    
+    async def update_memory(self, user_id: str, query: str):
         """Extract and update multiple facts in the memory system."""
         print(f"Updating memory for user ID: '{user_id}', query: '{query}'")
         facts = self.extract_memory_facts(query)
@@ -216,6 +193,32 @@ class MemoryBackend:
                 )
                 print("Long Term memory (Neo4j) updated.")
         print("Memory update process completed.")
+
+    async def retrieve_memory(self, user_id: str, query: str) -> str:
+        """Retrieve relevant memories synchronously from the appropriate store."""
+        print(f"Retrieving memory for user ID: '{user_id}', query: '{query}'")
+        memory_type = self.classify_query_memory_type(query)
+        print(f"Query classified as: {memory_type} memory query.")
+        if memory_type == "Short Term":
+            print("Retrieving from Short Term memory...")
+            context = self.memory_manager.process_user_query(user_id, query)
+            if context and context != "I'm having trouble processing your question. Please try again.":
+                print(f"Retrieved short-term context: {context}")
+                return context
+            else:
+                print("No relevant short-term memories found.")
+                return None
+        else:
+            print("Retrieving from Long Term memory (Neo4j)...")
+            context = query_user_profile(
+                query, self.graph_driver, self.embed_model,
+                self.text_conv_runnable, self.query_class_runnable
+            )
+            print(f"Retrieved long-term context: {context}")
+            return context
+    
+    async def add_operation(self, user_id: str, query: str):
+        await self.memory_queue.add_operation(user_id, query)
 
     def cleanup(self):
         """Clean up expired short-term memories."""

@@ -37,6 +37,7 @@ from model.memory.prompts import *
 from model.memory.constants import *
 from model.memory.formats import *
 from model.memory.backend import MemoryBackend
+from model.memory.dual_memory import MemoryManager
 
 from model.utils.helpers import *
 
@@ -92,7 +93,11 @@ query_classification_runnable = get_query_classification_runnable()
 fact_extraction_runnable = get_fact_extraction_runnable()
 text_summarizer_runnable = get_text_summarizer_runnable()
 text_description_runnable = get_text_description_runnable()
+chat_history = get_chat_history()
 
+chat_runnable = get_chat_runnable(chat_history)
+agent_runnable = get_agent_runnable(chat_history)
+unified_classification_runnable = get_unified_classification_runnable(chat_history)
 # Initialize runnables from scraper
 reddit_runnable = get_reddit_runnable()
 twitter_runnable = get_twitter_runnable()
@@ -158,8 +163,23 @@ initial_db = {
 
 def load_user_profile():
     """Load user profile data from userProfileDb.json."""
-    with open("userProfileDb.json", "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(USER_PROFILE_DB, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {"userData": {}} # Return empty structure if file not found, similar to initial state
+    except json.JSONDecodeError:
+        return {"userData": {}} # Handle case where JSON is corrupted or empty
+
+def write_user_profile(data):
+    """Write user profile data to userProfileDb.json."""
+    try:
+        with open(USER_PROFILE_DB, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4) # Use indent for pretty printing
+        return True
+    except Exception as e:
+        print(f"Error writing to database: {e}")
+        return False
     
 memory_backend = MemoryBackend()
 memory_backend.cleanup()
@@ -283,7 +303,6 @@ async def process_queue():
                 await manager.broadcast(json.dumps(task_completion_message))
                 print(f"WebSocket message sent for task completion: {task['task_id']}")
 
-
             except asyncio.CancelledError:
                 await task_queue.complete_task(task["task_id"], error="Task was cancelled")
                 # --- WebSocket Message on Cancellation ---
@@ -308,6 +327,39 @@ async def process_queue():
                 }
                 await manager.broadcast(json.dumps(task_error_message))
                 print(f"WebSocket message sent for task error: {task['task_id']} - Error: {error_str}")
+        await asyncio.sleep(0.1)
+
+async def process_memory_operations():
+    while True:
+        operation = await memory_backend.memory_queue.get_next_operation()
+        
+        print(f"Processing memory operation: {operation}")
+        if operation:
+            try:
+                user_id = operation["user_id"]
+                memory_data = operation["memory_data"]
+
+                await memory_backend.update_memory(user_id, memory_data)
+
+                await memory_backend.memory_queue.complete_operation(operation["operation_id"], result="Success")
+                
+                notification = {
+                    "type": "memory_operation_completed",
+                    "operation_id": operation["operation_id"],
+                    "status": "success",
+                    "fact": memory_data
+                }
+                
+                await manager.broadcast(json.dumps(notification))
+            except Exception as e:
+                await memory_backend.memory_queue.complete_operation(operation["operation_id"], error=str(e))
+                notification = {
+                    "type": "memory_operation_error",
+                    "operation_id": operation["operation_id"],
+                    "error": str(e),
+                    "fact": memory_data
+                }
+                await manager.broadcast(json.dumps(notification))
         await asyncio.sleep(0.1)
 
 async def execute_agent_task(task: dict) -> str:
@@ -442,12 +494,6 @@ async def add_result_to_chat(chat_id: str, result: str, isUser: bool, task_descr
             chat["messages"].append(result_message)
             await save_db(chatsDb)
 
-chat_history = get_chat_history()
-
-chat_runnable = get_chat_runnable(chat_history)
-agent_runnable = get_agent_runnable(chat_history)
-unified_classification_runnable = get_unified_classification_runnable(chat_history)
-
 # --- FastAPI Application Setup ---
 app = FastAPI(
     title="Sentient API",
@@ -465,21 +511,18 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-# Load tasks on startup
 @app.on_event("startup")
 async def startup_event():
     await task_queue.load_tasks()
-
-# Start the queue processor on app startup
-@app.on_event("startup")
-async def startup_event():
+    await memory_backend.memory_queue.load_operations()
     asyncio.create_task(process_queue())
-    asyncio.create_task(cleanup_tasks_periodically()) # Start periodic cleanup task
+    asyncio.create_task(process_memory_operations())
+    asyncio.create_task(cleanup_tasks_periodically())
 
-# Optional: Save tasks on shutdown (not strictly necessary since we save after each operation)
 @app.on_event("shutdown")
 async def shutdown_event():
     await task_queue.save_tasks()
+    await memory_backend.memory_queue.save_operations()
 
 # --- Pydantic Models ---
 class Message(BaseModel):
@@ -551,6 +594,35 @@ class UpdateTaskRequest(BaseModel):
 class DeleteTaskRequest(BaseModel):
     # No request body needed as per the function signature, but including for potential future use or consistency
     task_id: str
+    
+class GetShortTermMemoriesRequest(BaseModel):
+    user_id: str
+    category: str
+    limit: int
+    
+class UpdateUserDataRequest(BaseModel):
+    data: Dict[str, Any]
+
+class AddUserDataRequest(BaseModel):
+    data: Dict[str, Any]
+
+class AddMemoryRequest(BaseModel):
+    user_id: str
+    text: str
+    category: str
+    retention_days: int
+
+class UpdateMemoryRequest(BaseModel):
+    user_id: str
+    category: str
+    id: int
+    text: str
+    retention_days: int
+
+class DeleteMemoryRequest(BaseModel):
+    user_id: str
+    category: str
+    id: int
 
 # --- API Endpoints ---
 
@@ -576,6 +648,11 @@ async def clear_chat_history():
     async with db_lock:
         chatsDb = initial_db.copy()
         await save_db(chatsDb)
+        
+    chat_runnable.clear_history()
+    agent_runnable.clear_history()
+    unified_classification_runnable.clear_history()
+    
     return JSONResponse(status_code=200, content={"message": "Chat history cleared"})
 
 @app.post("/chat", status_code=200)
@@ -601,11 +678,18 @@ async def chat(message: Message):
                 raise HTTPException(status_code=400, detail="Active chat not found.")
 
         chat_history = get_chat_history()
+
+        chat_runnable = get_chat_runnable(chat_history)
+        agent_runnable = get_agent_runnable(chat_history)
+        unified_classification_runnable = get_unified_classification_runnable(chat_history)
+        
         if chat_history is None:
             raise HTTPException(status_code=500, detail="Failed to retrieve chat history")
 
         username = db["userData"]["personalInfo"]["name"]
         unified_output = unified_classification_runnable.invoke({"query": message.input})
+        
+        print("Unified output: ", unified_output)
         category = unified_output["category"]
         use_personal_context = unified_output["use_personal_context"]
         internet = unified_output["internet"]
@@ -623,7 +707,6 @@ async def chat(message: Message):
             pro_used = False
             note = ""
 
-            # Add user message to active chat
             user_msg = {
                 "id": str(int(time.time() * 1000)),
                 "message": message.input,
@@ -648,7 +731,6 @@ async def chat(message: Message):
             }) + "\n"
             await asyncio.sleep(0.05)
 
-            # Initialize assistant message for all categories
             assistant_msg = {
                 "id": str(int(time.time() * 1000)),
                 "message": "",
@@ -659,35 +741,26 @@ async def chat(message: Message):
                 "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
             }
 
-            # Handle agent category
             if category == "agent":
                 with open("userProfileDb.json", "r", encoding="utf-8") as f:
                     db = json.load(f)
                 personality_description = db["userData"].get("personality", "None")
-                # Replace keyword-based priority with LLM-based priority
                 priority_response = priority_runnable.invoke({"task_description": transformed_input})
-
                 priority = priority_response["priority"]
 
                 print("Adding task to queue")
-
-                # Add task to queue and set "On it" message
                 await task_queue.add_task(
                     chat_id=active_chat_id,
                     description=transformed_input,
                     priority=priority,
                     username=username,
                     personality=personality_description,
-                    use_personal_context=use_personal_context,  # Boolean flag
-                    internet=internet  # e.g., "Internet" or other value
+                    use_personal_context=use_personal_context,
+                    internet=internet
                 )
-
                 print("Task added to queue")
 
                 assistant_msg["message"] = "On it"
-
-                print("Assistant message set")
-
                 async with db_lock:
                     chatsDb = await load_db()
                     active_chat = next(chat for chat in chatsDb["chats"] if chat["id"] == chatsDb["active_chat_id"])
@@ -702,27 +775,25 @@ async def chat(message: Message):
                     "internetUsed": False
                 }) + "\n"
                 await asyncio.sleep(0.05)
-                return  # End response for agent category
+                return
 
-            # Handle memory category: update and retrieve context
             if category == "memory":
                 if pricing_plan == "free" and credits <= 0:
                     yield json.dumps({"type": "intermediary", "message": "Retrieving memories..."}) + "\n"
                     user_context = memory_backend.retrieve_memory(username, transformed_input)
                     note = "Sorry friend, memory updates are a pro feature and your daily credits have expired. Upgrade to pro in settings!"
                 else:
-                    yield json.dumps({"type": "intermediary", "message": "Updating memories..."}) + "\n"
+                    yield json.dumps({"type": "intermediary", "message": "Retrieving memories..."}) + "\n"
                     memory_used = True
                     pro_used = True
-                    memory_backend.update_memory(username, transformed_input)
-                    yield json.dumps({"type": "intermediary", "message": "Retrieving memories..."}) + "\n"
                     user_context = memory_backend.retrieve_memory(username, transformed_input)
+                    # Queue memory update in the background
+                    asyncio.create_task(memory_backend.add_operation(username, transformed_input))
             elif use_personal_context:
                 yield json.dumps({"type": "intermediary", "message": "Retrieving memories..."}) + "\n"
                 memory_used = True
                 user_context = memory_backend.retrieve_memory(username, transformed_input)
 
-            # Handle internet search if required
             if internet == "Internet":
                 if pricing_plan == "free" and credits <= 0:
                     note = "Sorry friend, could have searched the internet for more context, but your daily credits have expired. You can always upgrade to pro from the settings page"
@@ -734,7 +805,6 @@ async def chat(message: Message):
                     internet_used = True
                     pro_used = True
 
-            # Generate response for chat and memory categories
             if category in ["chat", "memory"]:
                 with open("userProfileDb.json", "r", encoding="utf-8") as f:
                     db = json.load(f)
@@ -742,7 +812,7 @@ async def chat(message: Message):
 
                 assistant_msg["memoryUsed"] = memory_used
                 assistant_msg["internetUsed"] = internet_used
-                print ("USER CONTEXT: ", user_context)
+                print("USER CONTEXT: ", user_context)
                 async for token in generate_streaming_response(
                     chat_runnable,
                     inputs={
@@ -763,6 +833,8 @@ async def chat(message: Message):
                                 if msg["id"] == assistant_msg["id"]:
                                     msg["message"] = assistant_msg["message"]
                                     break
+                            else:
+                                active_chat["messages"].append(assistant_msg)
                             await save_db(chatsDb)
                         yield json.dumps({
                             "type": "assistantStream",
@@ -780,6 +852,8 @@ async def chat(message: Message):
                                 if msg["id"] == assistant_msg["id"]:
                                     msg.update(assistant_msg)
                                     break
+                            else:
+                                active_chat["messages"].append(assistant_msg)
                             await save_db(chatsDb)
                         yield json.dumps({
                             "type": "assistantStream",
@@ -1652,6 +1726,148 @@ async def delete_task(delete_request: DeleteTaskRequest): # Use DeleteTaskReques
         return JSONResponse(content={"message": "Task deleted successfully"})
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    
+@app.post("/get-short-term-memories")
+async def get_short_term_memories(request: GetShortTermMemoriesRequest) -> List[Dict]:
+    try:
+        memories = memory_backend.memory_manager.fetch_memories_by_category(
+            user_id=request.user_id, 
+            category=request.category, 
+            limit=request.limit
+        )
+        return memories
+    except Exception as e:
+        print(f"Error in get_memories endpoint: {e}")
+        return []
+
+@app.post("/add-short-term-memory")
+async def add_memory(request: AddMemoryRequest):
+    """Add a new memory."""
+    try:
+        memory_id = memory_backend.memory_manager.store_memory(
+            request.user_id, request.text, request.category, request.retention_days
+        )
+        return {"memory_id": memory_id}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error adding memory: {e}")
+
+@app.post("/update-short-term-memory")
+async def update_memory(request: UpdateMemoryRequest):
+    """Update an existing memory."""
+    try:
+        memory_backend.memory_manager.update_memory(
+            request.user_id, request.category, request.id, request.text, request.retention_days
+        )
+        return {"message": "Memory updated successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating memory: {e}")
+
+@app.post("/delete-short-term-memory")
+async def delete_memory(request: DeleteMemoryRequest):
+    """Delete a memory."""
+    try:
+        memory_backend.memory_manager.delete_memory(
+            request.user_id, request.category, request.id
+        )
+        return {"message": "Memory deleted successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting memory: {e}")
+    
+@app.post("/clear-all-memories")
+async def clear_all_memories(request: Dict):
+    user_id = request.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id is required")
+    try:
+        memory_backend.memory_manager.clear_all_memories(user_id)
+        return {"message": "All memories cleared successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+# Endpoint for "set-db-data"
+@app.post("/set-db-data")
+async def set_db_data(request: UpdateUserDataRequest) -> Dict[str, Any]:
+    """
+    Set data in the user profile database.
+    Merges the provided data with the existing userData.
+
+    - **data**: An object containing the data to be set.
+    """
+    try:
+        db_data = load_user_profile()
+        db_data["userData"] = {
+            **(db_data.get("userData", {})), # Ensure userData exists, default to empty object
+            **(request.data) # Merge new data
+        }
+        if write_user_profile(db_data):
+            return {"message": "Data stored successfully", "status": 200}
+        else:
+            raise HTTPException(status_code=500, detail="Error storing data")
+    except Exception as e:
+        print(f"Error setting data: {e}")
+        raise HTTPException(status_code=500, detail="Error storing data")
+
+# Endpoint for "add-db-data"
+@app.post("/add-db-data")
+async def add_db_data(request: AddUserDataRequest) -> Dict[str, Any]:
+    """
+    Add data to the user profile database.
+    Handles array and object merging similar to the Electron IPC handler.
+
+    - **data**: An object containing the data to be added.
+    """
+    try:
+        db_data = load_user_profile()
+        existing_data = db_data.get("userData", {}) # Ensure userData exists, default to empty object
+        data_to_add = request.data
+
+        for key, value in data_to_add.items():
+            if key in existing_data:
+                if isinstance(existing_data[key], list) and isinstance(value, list):
+                    # For arrays, merge and remove duplicates
+                    existing_data[key] = list(set(existing_data[key] + value))
+                elif isinstance(existing_data[key], dict) and isinstance(value, dict):
+                    # For objects, merge properties
+                    existing_data[key] = {**existing_data[key], **value}
+                else:
+                    # For other types, simply overwrite or set new value
+                    existing_data[key] = value
+            else:
+                # If key doesn't exist, set new value
+                existing_data[key] = value
+
+        db_data["userData"] = existing_data # Update userData in db_data
+        if write_user_profile(db_data):
+            return {"message": "Data added successfully", "status": 200}
+        else:
+            raise HTTPException(status_code=500, detail="Error adding data")
+    except Exception as e:
+        print(f"Error adding data: {e}")
+        raise HTTPException(status_code=500, detail="Error adding data")
+
+# Endpoint for "get-db-data"
+@app.post("/get-db-data")
+async def get_db_data() -> Dict[str, Any]: # Request is just for consistency, not used
+    """
+    Get all user profile database data.
+    Returns the userData and the database path.
+    """
+    try:
+        db_data = load_user_profile()
+        user_data = db_data.get("userData", {}) # Ensure userData exists, default to empty object
+        return {
+            "data": user_data,
+            "status": 200
+        }
+    except Exception as e:
+        print(f"Error fetching data: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching data")
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

@@ -7,13 +7,12 @@ import asyncio
 import pickle
 import multiprocessing
 import requests
-from datetime import datetime, timezone, timedelta
-from tzlocal import get_localzone
+from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, Any, Dict, List, AsyncGenerator
+from typing import Optional, Any, Dict, List
 from neo4j import GraphDatabase
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -37,7 +36,6 @@ from model.memory.prompts import *
 from model.memory.constants import *
 from model.memory.formats import *
 from model.memory.backend import MemoryBackend
-from model.memory.dual_memory import MemoryManager
 
 from model.utils.helpers import *
 
@@ -58,7 +56,7 @@ from model.chat.prompts import *
 from model.chat.functions import *
 
 from model.context.gmail import GmailContextEngine
-
+from model.context.internet import InternetSearchContextEngine
 
 # Load environment variables from .env file
 load_dotenv("model/.env")
@@ -77,6 +75,28 @@ graph_driver = GraphDatabase.driver(
     uri=os.environ["NEO4J_URI"],
     auth=(os.environ["NEO4J_USERNAME"], os.environ["NEO4J_PASSWORD"])
 )
+
+class WebSocketManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def send_personal_message(self, message: str, websocket: WebSocket):
+        await websocket.send_text(message)
+
+    async def broadcast(self, message: str):
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(message)
+            except Exception as e:
+                print(f"Error broadcasting message to connection: {e}")
+                self.disconnect(connection) # Remove broken connection
 
 manager = WebSocketManager()
 
@@ -254,28 +274,6 @@ async def get_chat_history_messages() -> List[Dict[str, Any]]:
             return filtered_messages
         else:
             return []
-
-class WebSocketManager:
-    def __init__(self):
-        self.active_connections: List[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
-
-    async def send_personal_message(self, message: str, websocket: WebSocket):
-        await websocket.send_text(message)
-
-    async def broadcast(self, message: str):
-        for connection in self.active_connections:
-            try:
-                await connection.send_text(message)
-            except Exception as e:
-                print(f"Error broadcasting message to connection: {e}")
-                self.disconnect(connection) # Remove broken connection
 
 async def cleanup_tasks_periodically():
     """Periodically clean up old completed tasks."""
@@ -516,20 +514,18 @@ app.add_middleware(
 async def startup_event():
     await task_queue.load_tasks()
     await memory_backend.memory_queue.load_operations()
-    asyncio.create_task(process_queue())  # Assume this exists
-    asyncio.create_task(process_memory_operations())  # Assume this exists
-    asyncio.create_task(cleanup_tasks_periodically())  # Assume this exists
+    asyncio.create_task(process_queue())
+    asyncio.create_task(process_memory_operations())
+    asyncio.create_task(cleanup_tasks_periodically())
     
-    # Initialize and start the Context Engines for enabled data sources
     user_id = "user1"  # Replace with dynamic user ID retrieval if needed
-    enabled_data_sources = ["gmail"]  # Add more as needed, e.g., ["gmail", "internet_search"]
+    enabled_data_sources = ["gmail", "internet_search"]  # Add internet_search here
     
     for source in enabled_data_sources:
         if source == "gmail":
             engine = GmailContextEngine(user_id, task_queue, memory_backend, manager, db_lock)
-        # Example for future expansion:
-        # elif source == "internet_search":
-        #     engine = InternetSearchContextEngine(user_id, task_queue, memory_backend, manager, db_lock)
+        elif source == "internet_search":
+            engine = InternetSearchContextEngine(user_id, task_queue, memory_backend, manager, db_lock)
         else:
             continue  # Skip unrecognized sources
         asyncio.create_task(engine.start())

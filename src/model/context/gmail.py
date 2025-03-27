@@ -2,6 +2,7 @@ from model.context.base import BaseContextEngine
 from model.agents.functions import authenticate_gmail
 from model.context.runnables import get_gmail_context_runnable
 from datetime import datetime
+import asyncio
 
 class GmailContextEngine(BaseContextEngine):
     """Context Engine for processing Gmail data."""
@@ -15,6 +16,15 @@ class GmailContextEngine(BaseContextEngine):
         self.category = "gmail"
         print(f"GmailContextEngine.__init__ - category set to: {self.category}")
         print("GmailContextEngine.__init__ finished")
+    
+    async def start(self):
+        """Start the engine, running periodically every hour."""
+        print("BaseContextEngine.start started")
+        while True:
+            print("BaseContextEngine.start - running engine iteration")
+            await self.run_engine()
+            print("BaseContextEngine.start - engine iteration finished, sleeping for 3600 seconds")
+            await asyncio.sleep(3600)  # Check every hour
 
     async def fetch_new_data(self):
         """Fetch new emails from Gmail since the last check."""

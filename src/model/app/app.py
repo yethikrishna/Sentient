@@ -515,9 +515,23 @@ app.add_middleware(
 async def startup_event():
     await task_queue.load_tasks()
     await memory_backend.memory_queue.load_operations()
-    asyncio.create_task(process_queue())
-    asyncio.create_task(process_memory_operations())
-    asyncio.create_task(cleanup_tasks_periodically())
+    asyncio.create_task(process_queue())  # Assume this exists
+    asyncio.create_task(process_memory_operations())  # Assume this exists
+    asyncio.create_task(cleanup_tasks_periodically())  # Assume this exists
+    
+    # Initialize and start the Context Engines for enabled data sources
+    user_id = "user1"  # Replace with dynamic user ID retrieval if needed
+    enabled_data_sources = ["gmail"]  # Add more as needed, e.g., ["gmail", "internet_search"]
+    
+    for source in enabled_data_sources:
+        if source == "gmail":
+            engine = GmailContextEngine(user_id, task_queue, memory_backend, manager, db_lock)
+        # Example for future expansion:
+        # elif source == "internet_search":
+        #     engine = InternetSearchContextEngine(user_id, task_queue, memory_backend, manager, db_lock)
+        else:
+            continue  # Skip unrecognized sources
+        asyncio.create_task(engine.start())
 
 @app.on_event("shutdown")
 async def shutdown_event():

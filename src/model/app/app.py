@@ -57,6 +57,7 @@ from model.chat.functions import *
 
 from model.context.gmail import GmailContextEngine
 from model.context.internet import InternetSearchContextEngine
+from model.context.gcalendar import GCalendarContextEngine
 
 # Load environment variables from .env file
 load_dotenv("model/.env")
@@ -519,13 +520,15 @@ async def startup_event():
     asyncio.create_task(cleanup_tasks_periodically())
     
     user_id = "user1"  # Replace with dynamic user ID retrieval if needed
-    enabled_data_sources = ["gmail", "internet_search"]  # Add internet_search here
+    enabled_data_sources = ["gmail", "internet_search", "gcalendar"]  # Add gcalendar here
     
     for source in enabled_data_sources:
         if source == "gmail":
             engine = GmailContextEngine(user_id, task_queue, memory_backend, manager, db_lock)
         elif source == "internet_search":
             engine = InternetSearchContextEngine(user_id, task_queue, memory_backend, manager, db_lock)
+        elif source == "gcalendar":
+            engine = GCalendarContextEngine(user_id, task_queue, memory_backend, manager, db_lock)
         else:
             continue  # Skip unrecognized sources
         asyncio.create_task(engine.start())

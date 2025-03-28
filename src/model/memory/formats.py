@@ -187,3 +187,10 @@ query_classification_required_format = {
 }
 
 fact_extraction_required_format = {"type": "array", "items": {"type": "string"}}
+
+interest_extraction_required_format = {
+  "type": "array",
+  "items": {
+    "type": "string"
+  }
+}

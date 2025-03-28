@@ -194,10 +194,14 @@ class MemoryBackend:
                 print("Long Term memory (Neo4j) updated.")
         print("Memory update process completed.")
 
-    async def retrieve_memory(self, user_id: str, query: str) -> str:
+    async def retrieve_memory(self, user_id: str, query: str, type: str = None) -> str:
         """Retrieve relevant memories synchronously from the appropriate store."""
         print(f"Retrieving memory for user ID: '{user_id}', query: '{query}'")
-        memory_type = self.classify_query_memory_type(query)
+        if type == None:
+            memory_type = self.classify_query_memory_type(query)
+        else:
+            memory_type = type
+            
         print(f"Query classified as: {memory_type} memory query.")
         if memory_type == "Short Term":
             print("Retrieving from Short Term memory...")

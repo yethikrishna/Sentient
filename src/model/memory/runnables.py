@@ -243,6 +243,37 @@ def get_text_conversion_runnable() -> BaseRunnable:
 
     return text_conversion_runnable
 
+def get_interest_extraction_runnable():
+    """Configure and return a Runnable for extracting user interests from context."""
+    # Model selection logic (assumes get_selected_model exists)
+    model_mapping = {
+        "openai": (os.getenv("OPENAI_API_URL"), OpenAIRunnable),
+        "claude": (os.getenv("CLAUDE_API_URL"), ClaudeRunnable),
+        "gemini": (os.getenv("GEMINI_API_URL"), GeminiRunnable),
+    }
+    model_name, provider = get_selected_model()
+
+    # Choose the appropriate model provider or fallback
+    if provider and provider in model_mapping:
+        model_url, runnable_class = model_mapping[provider]
+    else:
+        model_url = os.getenv("BASE_MODEL_URL")
+        runnable_class = OllamaRunnable  # Default fallback
+
+    # Configure and return the runnable
+    interest_extraction_runnable = runnable_class(
+        model_url=model_url,
+        model_name=model_name,
+        system_prompt_template=interest_extraction_system_prompt_template,
+        user_prompt_template=interest_extraction_user_prompt_template,
+        input_variables=["context"],  # The variable to substitute in the user prompt
+        required_format=interest_extraction_required_format,
+        response_type="json",  # Expect JSON output
+        stateful=False,  # No need to maintain state for this task
+    )
+    
+    return interest_extraction_runnable
+
 
 def get_query_classification_runnable() -> BaseRunnable:
     """

@@ -112,7 +112,7 @@ We at [Existence](https://existence.technology) believe that AI won't simply die
 
 ### :dart: Features
 
--   Local-first, with support for Ollama 
+-   Local-first, with support for Ollama
 -   Multi-Model Support (Switch between multiple Ollama/Cloud models)
 -   MBTI Personality Test (Used to collect initial information about the user and their personality to personalize responses)
 -   LinkedIn, Reddit and X Integration for Personal Context

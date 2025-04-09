@@ -40,25 +40,25 @@
 
 # :notebook_with_decorative_cover: Table of Contents
 
--   [About The Project](#star2-about-the-project)
-    -   [Philosophy](#thought_balloon-philosophy)
-    -   [Screenshots](#camera-screenshots)
-    -   [Tech Stack](#space_invader-tech-stack)
-    -   [Features](#dart-features)
--   [Roadmap](#compass-roadmap)
--   [Getting Started](#toolbox-getting-started)
-    -   [Prerequisites](#bangbang-prerequisites-contributors)
-    -   [Installation](#gear-installation-users)
-    -   [Environment Variables](#-environment-variables-contributors)
-    -   [Run Locally](#running-run-locally-contributors)
--   [Usage](#eyes-usage)
--   [Contributing](#wave-contributing)
-    -   [Code of Conduct](#scroll-code-of-conduct)
--   [FAQ](#grey_question-faq)
--   [License](#warning-license)
--   [Contact](#handshake-contact)
--   [Acknowledgements](#gem-acknowledgements)
--   [Official Team](#heavy_check_mark-official-team)
+- [About The Project](#star2-about-the-project)
+  - [Philosophy](#thought_balloon-philosophy)
+  - [Screenshots](#camera-screenshots)
+  - [Tech Stack](#space_invader-tech-stack)
+  - [Features](#dart-features)
+- [Roadmap](#compass-roadmap)
+- [Getting Started](#toolbox-getting-started)
+  - [Prerequisites](#bangbang-prerequisites-contributors)
+  - [Installation](#gear-installation-users)
+  - [Environment Variables](#-environment-variables-contributors)
+  - [Run Locally](#running-run-locally-contributors)
+- [Usage](#eyes-usage)
+- [Contributing](#wave-contributing)
+  - [Code of Conduct](#scroll-code-of-conduct)
+- [FAQ](#grey_question-faq)
+- [License](#warning-license)
+- [Contact](#handshake-contact)
+- [Acknowledgements](#gem-acknowledgements)
+- [Official Team](#heavy_check_mark-official-team)
 
 <!-- About The Project -->
 
@@ -112,32 +112,32 @@ We at [Existence](https://existence.technology) believe that AI won't simply die
 
 ### :dart: Features
 
--   Local-first, with support for Ollama 
--   Multi-Model Support (Switch between multiple Ollama/Cloud models)
--   MBTI Personality Test (Used to collect initial information about the user and their personality to personalize responses)
--   LinkedIn, Reddit and X Integration for Personal Context
--   Self-Managed Graph Memory - Sentient can learn about the user from their interactions with it. Memories are saved in a knowledge-graph.
--   Agentic integrations for GSuite - Gmail, GCalendar, GDrive, GDocs, GSheets, GSlides support. Sentient can perform actions with all these tools.
--   Web Search capabilities - Sentient can search the web for additional context to answer queries (if required).
--   Multi-chat functionality (Context is maintained across chats)
--   Auto-updates for the app (App automatically updates to newer versions)
+- Local-first, with support for Ollama
+- Multi-Model Support (Switch between multiple Ollama/Cloud models)
+- MBTI Personality Test (Used to collect initial information about the user and their personality to personalize responses)
+- LinkedIn, Reddit and X Integration for Personal Context
+- Self-Managed Graph Memory - Sentient can learn about the user from their interactions with it. Memories are saved in a knowledge-graph.
+- Agentic integrations for GSuite - Gmail, GCalendar, GDrive, GDocs, GSheets, GSlides support. Sentient can perform actions with all these tools.
+- Web Search capabilities - Sentient can search the web for additional context to answer queries (if required).
+- Multi-chat functionality (Context is maintained across chats)
+- Auto-updates for the app (App automatically updates to newer versions)
 
 <!-- Roadmap -->
 
 ## :compass: Roadmap
 
--   [x] Solving stability issues with model inference - improving structured outputs, better error handling, and more
--   [ ] Dual Memory - Sentient will have a short-term memory and a long-term memory. The short-term memory will be stored in a relational DB and used to maintain reminders and other short-term information. Longer-term facts about the user will persist in the knowledge graph.
--   [ ] Intent - Sentient will be able to perform actions autonomously based on triggers from the short-term memory.
--   [ ] Tool-specific UI - for example, a tool that retrieves stock prices will also show a graph of the past trend of that particular ticker.
--   [ ] Better Internet Search - Internet search will include images, citations, direct links to sources and more.
--   [ ] More tools! - More tools will be added in the order of user requests. Current requests - Notion, LinkedIn, GitHub and WhatsApp.
--   [ ] Advanced Voice Mode - Users will be able to talk to Sentient!
--   [ ] Browser Use - Sentient will be able to control the browser and interact with websites to perform tasks
--   [ ] Mobile Companion App - Mobile app will be added to pull context about the user and what is going on in their life. Notifications and other data will be synced between the desktop and mobile apps.
--   [ ] Various options to host and use Sentient: Users will be able to use Sentient as only a desktop app (maximum privacy, no mobile app), self-hosted server (the desktop app acts a self-hosted server backend for the mobile app) or full cloud-hosted (Mobile app can be used independent of desktop app - server will be hosted and managed by the Sentient Team)
--   [ ] Full integration at the OS level - integrate context from what you are doing right now by sharing your screen with Sentient
--   [ ] Customizable Agentic Actions - users can create their own integrations using an easy-to-use interface. Users should also be able to trade custom Actions on a Marketplace.
+- [x] Solving stability issues with model inference - improving structured outputs, better error handling, and more
+- [ ] Dual Memory - Sentient will have a short-term memory and a long-term memory. The short-term memory will be stored in a relational DB and used to maintain reminders and other short-term information. Longer-term facts about the user will persist in the knowledge graph.
+- [ ] Intent - Sentient will be able to perform actions autonomously based on triggers from the short-term memory.
+- [ ] Tool-specific UI - for example, a tool that retrieves stock prices will also show a graph of the past trend of that particular ticker.
+- [ ] Better Internet Search - Internet search will include images, citations, direct links to sources and more.
+- [ ] More tools! - More tools will be added in the order of user requests. Current requests - Notion, LinkedIn, GitHub and WhatsApp.
+- [ ] Advanced Voice Mode - Users will be able to talk to Sentient!
+- [ ] Browser Use - Sentient will be able to control the browser and interact with websites to perform tasks
+- [ ] Mobile Companion App - Mobile app will be added to pull context about the user and what is going on in their life. Notifications and other data will be synced between the desktop and mobile apps.
+- [ ] Various options to host and use Sentient: Users will be able to use Sentient as only a desktop app (maximum privacy, no mobile app), self-hosted server (the desktop app acts a self-hosted server backend for the mobile app) or full cloud-hosted (Mobile app can be used independent of desktop app - server will be hosted and managed by the Sentient Team)
+- [ ] Full integration at the OS level - integrate context from what you are doing right now by sharing your screen with Sentient
+- [ ] Customizable Agentic Actions - users can create their own integrations using an easy-to-use interface. Users should also be able to trade custom Actions on a Marketplace.
 
 <!-- Getting Started -->
 
@@ -170,62 +170,62 @@ Go to the project directory
 
 Install the following to start contributing to Sentient:
 
--   npm: The ElectronJS frontend of the Sentient desktop app uses npm as its package manager.
+- npm: The ElectronJS frontend of the Sentient desktop app uses npm as its package manager.
 
-    Install the latest version of NodeJS and npm from [here.](https://nodejs.org/en/download)
+  Install the latest version of NodeJS and npm from [here.](https://nodejs.org/en/download)
 
-    After that, install all the required packages.
+  After that, install all the required packages.
 
-    ```bash
-     cd ./src/interface && npm install
-    ```
+  ```bash
+   cd ./src/interface && npm install
+  ```
 
--   python: Python will be needed to run the backend.
-    Install Python [from here.](https://www.python.org/downloads/) We recommend Python 3.11.
+- python: Python will be needed to run the backend.
+  Install Python [from here.](https://www.python.org/downloads/) We recommend Python 3.11.
 
-    After that, you will need to create a virtual environment and install all required packages. This venv will need to be activated whenever you want to run any scripts on the Python backend.
+  After that, you will need to create a virtual environment and install all required packages. This venv will need to be activated whenever you want to run any scripts on the Python backend.
 
-    ```bash
-     cd src/model && python3 -m venv venv
-     cd venv/bin && source activate
-     cd ../../ && pip install -r requirements.txt
-    ```
+  ```bash
+   cd src/model && python3 -m venv venv
+   cd venv/bin && source activate
+   cd ../../ && pip install -r requirements.txt
+  ```
 
--   Ollama: Download and install the latest version of Ollama [from here.](https://ollama.com/)
+- Ollama: Download and install the latest version of Ollama [from here.](https://ollama.com/)
 
-    After that, pull the model you wish to use from Ollama. For example,
+  After that, pull the model you wish to use from Ollama. For example,
 
-    ```bash
-     ollama pull llama3.2:3b
-    ```
+  ```bash
+   ollama pull llama3.2:3b
+  ```
 
--   Neo4j Community: Download Neo4j Community Edition [from here.](https://neo4j.com/deployment-center/)
+- Neo4j Community: Download Neo4j Community Edition [from here.](https://neo4j.com/deployment-center/)
 
-    Next, you will need to enable the APOC plugin.
-    After extracting Neo4j Community Edition, navigate to the labs folder. Copy the `apoc-x.x.x-core.jar` script to the plugins folder in the Neo4j folder.
-    Edit the neo4j.conf file to allow the use of APOC procedures:
+  Next, you will need to enable the APOC plugin.
+  After extracting Neo4j Community Edition, navigate to the labs folder. Copy the `apoc-x.x.x-core.jar` script to the plugins folder in the Neo4j folder.
+  Edit the neo4j.conf file to allow the use of APOC procedures:
 
-    ```bash
-    sudo nano /etc/neo4j/neo4j.conf
-    ```
+  ```bash
+  sudo nano /etc/neo4j/neo4j.conf
+  ```
 
-    Uncomment or add the following lines:
+  Uncomment or add the following lines:
 
-    ```ini
-    dbms.security.procedures.unrestricted=apoc.*
-    dbms.security.procedures.allowlist=apoc.*
-    dbms.unmanaged_extension_classes=apoc.export=/apoc
-    ```
+  ```ini
+  dbms.security.procedures.unrestricted=apoc.*
+  dbms.security.procedures.allowlist=apoc.*
+  dbms.unmanaged_extension_classes=apoc.export=/apoc
+  ```
 
-    You can run Neo4j community using the following commands
+  You can run Neo4j community using the following commands
 
-    ```bash
-      cd neo4j/bin && ./neo4j console
-    ```
+  ```bash
+    cd neo4j/bin && ./neo4j console
+  ```
 
-    While Neo4j is running, you can visit `http://localhost:7474/` to run Cypher Queries and interact with your knowledge graph.
+  While Neo4j is running, you can visit `http://localhost:7474/` to run Cypher Queries and interact with your knowledge graph.
 
-    ⚠️ On your first run of Neo4j Community, you will need to set a username and password. **Remember this password** as you will need to add it to the `.env` file on the Python backend.
+  ⚠️ On your first run of Neo4j Community, you will need to set a username and password. **Remember this password** as you will need to add it to the `.env` file on the Python backend.
 
 <!-- Environment Variables -->
 
@@ -335,11 +335,11 @@ Sentient is a personal companion that remembers information about you and uses t
 
 Sentient can already do a lot.
 
--   `"Hey Sentient, help me find a restaurant in Pune based on my food preferences.`
--   `What are the upcoming events in my Google Calendar?`
--   `Setup a lunch meeting with tom@email.com and add it to my Calendar`
--   `Create a pitch deck for my startup in Google Slides and email it to tom@email.com`
--   `Help me find new hobbies in my city`
+- `"Hey Sentient, help me find a restaurant in Pune based on my food preferences.`
+- `What are the upcoming events in my Google Calendar?`
+- `Setup a lunch meeting with tom@email.com and add it to my Calendar`
+- `Create a pitch deck for my startup in Google Slides and email it to tom@email.com`
+- `Help me find new hobbies in my city`
 
 📹 [Check out our ad!](https://www.youtube.com/watch?v=Oeqmg25yqDY)
 
@@ -365,29 +365,29 @@ Please read the [code of conduct](https://github.com/existence-master/Sentient/b
 
 ## :grey_question: FAQ
 
--   Do you need internet to run the app?
+- Do you need internet to run the app?
 
-    -   No. Since the app is fully local, you do not need internet to use the core features. You only need Internet to launch the app since Auth0 needs to authenticate you with your token. Of course, you will also need internet to perform most actions like adding events to your calendar, sending emails, etc.
+  - No. Since the app is fully local, you do not need internet to use the core features. You only need Internet to launch the app since Auth0 needs to authenticate you with your token. Of course, you will also need internet to perform most actions like adding events to your calendar, sending emails, etc.
 
--   Why is authentication needed?
+- Why is authentication needed?
 
-    -   We only ask for authentication so that we as developers can know who our users are. This can help us stay in touch with early users for development purposes.
+  - We only ask for authentication so that we as developers can know who our users are. This can help us stay in touch with early users for development purposes.
 
--   What data do you collect about me?
+- What data do you collect about me?
 
-    -   For auth, we have a standard email-password flow provided by Auth0 (also supports Google OAuth). So, the only data we collect is the email provided by users and their login history. This helps us understand how users are using the app, retention rates, daily signups and more. Read more about data collection in our [privacy policy.](https://existence-sentient.vercel.app/privacy)
+  - For auth, we have a standard email-password flow provided by Auth0 (also supports Google OAuth). So, the only data we collect is the email provided by users and their login history. This helps us understand how users are using the app, retention rates, daily signups and more. Read more about data collection in our [privacy policy.](https://existence-sentient.vercel.app/privacy)
 
--   What kind of hardware do I need to run the app?
+- What kind of hardware do I need to run the app?
 
-    -   To run Sentient - any decent CPU (Intel Core i5 or equivalent and above), 8GB of RAM and a GPU with 4-6GB of VRAM should be enough. A GPU is required for smooth local model inference. The app only runs on Windows for now. If you run the app from source/build your own versions with a different model, these system requirements will change.
+  - To run Sentient - any decent CPU (Intel Core i5 or equivalent and above), 8GB of RAM and a GPU with 4-6GB of VRAM should be enough. A GPU is required for smooth local model inference. The app only runs on Windows for now. If you run the app from source/build your own versions with a different model, these system requirements will change.
 
--   Why open source?
+- Why open source?
 
-    -   Since the app is going to be processing a lot of your personal information, maintaining transparency of the underlying code and processes is very important. The code needs to be available for everyone to freely view how their data is being managed in the app. We also want developers to be able to contribute to Sentient - they should be able to add missing integrations or features that they feel should be a part of Sentient. They should also be able to freely make their own forks of Sentient for different use-cases, provided they abide by the GNU AGPL license and open-source their work.
+  - Since the app is going to be processing a lot of your personal information, maintaining transparency of the underlying code and processes is very important. The code needs to be available for everyone to freely view how their data is being managed in the app. We also want developers to be able to contribute to Sentient - they should be able to add missing integrations or features that they feel should be a part of Sentient. They should also be able to freely make their own forks of Sentient for different use-cases, provided they abide by the GNU AGPL license and open-source their work.
 
--   Why AGPL?
+- Why AGPL?
 
-    -   We intentionally decided to go with a more restrictive license, specifically AGPL, rather than a permissive license (like MIT or Apache) since we do not want any closed-source, cloud-based competitors cropping up with our code at its core. Going with AGPL is our way of staying committed to our core principles of transparency and privacy while ensuring that others who use our code also follow the same principles.
+  - We intentionally decided to go with a more restrictive license, specifically AGPL, rather than a permissive license (like MIT or Apache) since we do not want any closed-source, cloud-based competitors cropping up with our code at its core. Going with AGPL is our way of staying committed to our core principles of transparency and privacy while ensuring that others who use our code also follow the same principles.
 
 <!-- License -->
 
@@ -407,12 +407,12 @@ Distributed under the GNU AGPL License. Check [our lisence](https://github.com/e
 
 Sentient wouldn't have been possible without
 
--   [Ollama](https://ollama.com/)
--   [Neo4j](https://neo4j.com/)
--   [FastAPI](https://fastapi.tiangolo.com/)
--   [Meta's Llama Models](https://www.llama.com/)
--   [ElectronJS](https://www.electronjs.org/)
--   [Next.js](https://nextjs.org/)
+- [Ollama](https://ollama.com/)
+- [Neo4j](https://neo4j.com/)
+- [FastAPI](https://fastapi.tiangolo.com/)
+- [Meta's Llama Models](https://www.llama.com/)
+- [ElectronJS](https://www.electronjs.org/)
+- [Next.js](https://nextjs.org/)
 
 <!-- Official Team -->
 

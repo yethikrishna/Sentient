@@ -31,6 +31,8 @@
     <a href="https://github.com/existence-master/Sentient/issues/">Report Bug</a>
   <span> · </span>
     <a href="https://github.com/existence-master/Sentient/issues/">Request Feature</a>
+  <span> · </span>
+    <a href="https://www.youtube.com/watch?v=l481bvpCjbc">Watch our Ad!</a>
   </h4>
 </div>
 
@@ -75,27 +77,27 @@ We at [Existence](https://existence.technology) believe that AI won't simply die
 ### :camera: Screenshots
 
 <div align="center"> 
-  <img src="https://private-user-images.githubusercontent.com/59280736/431842199-b76c7a9a-1689-42de-93ed-5d04d6c7ad10.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDQzMTkyMTYsIm5iZiI6MTc0NDMxODkxNiwicGF0aCI6Ii81OTI4MDczNi80MzE4NDIxOTktYjc2YzdhOWEtMTY4OS00MmRlLTkzZWQtNWQwNGQ2YzdhZDEwLnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNTA0MTAlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjUwNDEwVDIxMDE1NlomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPTY2ZThhMDIyZmJkZWYxYzE5MzMyNTYzZDM5NjY0MmM3ZDc2NmJjMmYwNGU5MjUzMmJhYTE1NDU3NDhhZGIwODgmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.U2Bn6mIdJF2SvXpJ9fyKe2c36-feA2wKtvQNcYjaEYY" alt="screenshot" />
+  <img src="https://i.postimg.cc/jqNX99VF/image.png" alt="screenshot" />
   <p align="center">Context is streamed in from your apps - Sentient uses this context to 👇</p>
 </div>
 <div align="center"> 
-  <img src="https://private-user-images.githubusercontent.com/59280736/431841076-c7337318-38e2-4515-848d-df6ce9ec8685.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDQzMTkyMTYsIm5iZiI6MTc0NDMxODkxNiwicGF0aCI6Ii81OTI4MDczNi80MzE4NDEwNzYtYzczMzczMTgtMzhlMi00NTE1LTg0OGQtZGY2Y2U5ZWM4Njg1LnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNTA0MTAlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjUwNDEwVDIxMDE1NlomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPWFkYmIzYWJkMDExMmU0NzllMmZmNjU0NmUyNzIyYzJlZjUwMzM1ZDY0NjY0NjlhYTM4ODNiOGNmNDRkYzhhZTQmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.s87SsI2uPocqdoRQK-b_1R89ApFKnvOoVzislh77bAw" alt="screenshot" />
+  <img src="https://i.postimg.cc/FRVMVKxj/image.png" alt="screenshot" />
   <p align="center">Learn Long-Term Memories about you</p>
 </div>
 <div align="center"> 
-  <img src="https://private-user-images.githubusercontent.com/59280736/431841142-33edc431-6be9-45b3-9b9c-5262f459ede6.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDQzMTkyMTYsIm5iZiI6MTc0NDMxODkxNiwicGF0aCI6Ii81OTI4MDczNi80MzE4NDExNDItMzNlZGM0MzEtNmJlOS00NWIzLTliOWMtNTI2MmY0NTllZGU2LnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNTA0MTAlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjUwNDEwVDIxMDE1NlomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPTFlOTVhMWEyODVhMWZmN2ZmMzNjMGMyZWMxZjQwYzFkNGM4OGZhZTQ4YjVkYTc5MmRhY2ZmZGQxZTBmOTY4NjUmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.GUEsRDZzletVFm4uKBQhRehk4l2FhzEJuX5jFnglbZ4" alt="screenshot" />
+  <img src="https://i.postimg.cc/hth7Fzzt/image.png" alt="screenshot" />
   <p align="center">Learn Short-Term Memories about you</p>
 </div>
 <div align="center"> 
-  <img src="https://private-user-images.githubusercontent.com/59280736/431841274-ea980432-1357-451b-93d2-d952a65f4607.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDQzMTkyMTYsIm5iZiI6MTc0NDMxODkxNiwicGF0aCI6Ii81OTI4MDczNi80MzE4NDEyNzQtZWE5ODA0MzItMTM1Ny00NTFiLTkzZDItZDk1MmE2NWY0NjA3LnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNTA0MTAlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjUwNDEwVDIxMDE1NlomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPTZjMTM5OWRlMGI1ODI0Zjg4YmJiYjk2MDBmMWNjNDdhMDRjODM2YjBhNjJjY2JiMzMxMGNlM2UzYjU5OGFmYzcmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.F76G4nymktipQtkQZQ_9sfmMFKiQ1AH-0hMoPWt0DQE" alt="screenshot" />
+  <img src="https://i.postimg.cc/FFM9FYBK/image.png" alt="screenshot" />
   <p align="center">Perform Actions for you, asynchronously and by combining all the different tools it needs to complete a task.</p>
 </div>
 <div align="center"> 
-  <img src="https://private-user-images.githubusercontent.com/59280736/431842176-c1ec90b6-edcc-4f9c-bc94-aa2e40b6422f.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDQzMTkyMTYsIm5iZiI6MTc0NDMxODkxNiwicGF0aCI6Ii81OTI4MDczNi80MzE4NDIxNzYtYzFlYzkwYjYtZWRjYy00ZjljLWJjOTQtYWEyZTQwYjY0MjJmLnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNTA0MTAlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjUwNDEwVDIxMDE1NlomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPWRkZGMyY2Y1NTkyMDk1YjY4NWEwZjY1NDUxNWQ5NDc2NWU1OTAwZmM3ZjVjYWNmZDQzYWE1ZGNkMjJiYjQ3ZDImWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.4djs4rCVqHY4L5_gshezAiMNgIcLui_eiFbZc8rsKrY" alt="screenshot" />
+  <img src="https://i.postimg.cc/TPpSW9yv/image.png" alt="screenshot" />
   <p align="center">You can also voice-call Sentient anytime for a low-latency, human-like interactive experience.</p>
 </div>
 <div align="center"> 
-  <img src="https://private-user-images.githubusercontent.com/59280736/431842396-03af93ff-6acd-44c7-a973-dca20ac205bd.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDQzMTkyMTYsIm5iZiI6MTc0NDMxODkxNiwicGF0aCI6Ii81OTI4MDczNi80MzE4NDIzOTYtMDNhZjkzZmYtNmFjZC00NGM3LWE5NzMtZGNhMjBhYzIwNWJkLnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNTA0MTAlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjUwNDEwVDIxMDE1NlomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPWZmNGNkZjI5OTQ1YmFjNmYzMmIzNThiOWEyZmIyZTBiMjVlMjczNTc2NmY3MjU1NjkzOTMwNjUwYzgyZDliMzImWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.XCieUKi8dB-r8H75QHWKwX7UBtC6m1NXbSFxbUV_lkI" alt="screenshot" />
+  <img src="https://i.postimg.cc/tJSWPhZ8/image.png" alt="screenshot" />
   <p align="center">Your profile can also be enriched with data from other social media sites.</p>
 </div>
 

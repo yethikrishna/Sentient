@@ -137,7 +137,7 @@ import asyncio
 from llama_cpp import Llama
 
 # Set the path to your GGUF model file (update this to the correct path)
-MODEL_PATH = "./models/orpheus-3b-0.1-ft-q4_k_m.gguf"  # Replace with your GGUF file path
+MODEL_PATH = "../voice/models/orpheus-3b-0.1-ft-q4_k_m.gguf"  # Replace with your GGUF file path
 
 # Number of layers to offload to GPU (adjust based on your GPU memory, e.g., 30 for 8GB VRAM)
 N_GPU_LAYERS = 20
@@ -160,6 +160,23 @@ DEFAULT_VOICE = "tara"  # Best voice according to documentation
 START_TOKEN_ID = 128259
 END_TOKEN_IDS = [128009, 128260, 128261, 128257]
 CUSTOM_TOKEN_PREFIX = "<custom_token_"
+
+# Default text to be spoken if no text is provided
+DEFAULT_TEXT = "This is a default sentence."
+BATCH_SENTENCES = [
+    "Good morning Kabeer!",
+    "You've got a busy day ahead.",
+    "Meetings, presentations and even a night out with the boys! <chuckle>",
+    "You ready to crush this?",
+]
+
+def create_filename(sentence, max_words=3, max_length=50):
+    words = sentence.split()[:max_words]
+    base = "_".join(words)
+    safe_base = "".join(c for c in base if c.isalnum() or c in ("_", "-"))
+    if len(safe_base) > max_length:
+        safe_base = safe_base[:max_length]
+    return safe_base + ".wav"
 
 def format_prompt(prompt, voice=DEFAULT_VOICE):
     """Format prompt for Orpheus model with voice prefix and special tokens."""
@@ -351,55 +368,76 @@ def list_available_voices():
     print("<laugh>, <chuckle>, <sigh>, <cough>, <sniffle>, <groan>, <yawn>, <gasp>")
 
 def main():
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description="Orpheus Text-to-Speech using local GGUF model")
-    parser.add_argument("--text", type=str, help="Text to convert to speech")
-    parser.add_argument("--voice", type=str, default=DEFAULT_VOICE, help=f"Voice to use (default: {DEFAULT_VOICE})")
-    parser.add_argument("--output", type=str, help="Output WAV file path")
+    parser = argparse.ArgumentParser(description="Generate speech from text.")
+    parser.add_argument("text", nargs="*", help="Text to convert to speech")
+    parser.add_argument("--voice", default="default_voice", help="Voice to use")
+    parser.add_argument("--output", help="Output file or directory (in batch mode)")
+    parser.add_argument("--batch", action="store_true", help="Process predefined batch of sentences")
+    parser.add_argument("--temperature", type=float, default=0.7, help="Temperature for generation")
+    parser.add_argument("--top_p", type=float, default=0.9, help="Top-p sampling")
+    parser.add_argument("--repetition_penalty", type=float, default=1.0, help="Repetition penalty")
     parser.add_argument("--list-voices", action="store_true", help="List available voices")
-    parser.add_argument("--temperature", type=float, default=TEMPERATURE, help="Temperature for generation")
-    parser.add_argument("--top_p", type=float, default=TOP_P, help="Top-p sampling parameter")
-    parser.add_argument("--repetition_penalty", type=float, default=REPETITION_PENALTY, 
-                       help="Repetition penalty (>=1.1 required for stable generation)")
     
     args = parser.parse_args()
-    
+
     if args.list_voices:
         list_available_voices()
         return
-    
-    # Use text from command line or prompt user
-    prompt = args.text
-    if not prompt:
-        if len(sys.argv) > 1 and sys.argv[1] not in ("--voice", "--output", "--temperature", "--top_p", "--repetition_penalty"):
-            prompt = " ".join([arg for arg in sys.argv[1:] if not arg.startswith("--")])
+
+    if args.batch:
+        # Batch mode
+        if args.output:
+            batch_dir = args.output
+            if not os.path.isdir(batch_dir):
+                os.makedirs(batch_dir, exist_ok=True)
         else:
-            prompt = input("Enter text to synthesize: ")
-            if not prompt:
-                prompt = "Hello, I am Orpheus, an AI assistant with emotional speech capabilities."
-    
-    # Default output file if none provided
-    output_file = args.output
-    if not output_file:
-        os.makedirs("outputs", exist_ok=True)
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        output_file = f"outputs/{args.voice}_{timestamp}.wav"
-        print(f"No output file specified. Saving to {output_file}")
-    
-    # Generate speech
-    start_time = time.time()
-    audio_segments = generate_speech_from_api(
-        prompt=prompt,
-        voice=args.voice,
-        temperature=args.temperature,
-        top_p=args.top_p,
-        repetition_penalty=args.repetition_penalty,
-        output_file=output_file
-    )
-    end_time = time.time()
-    
-    print(f"Speech generation completed in {end_time - start_time:.2f} seconds")
-    print(f"Audio saved to {output_file}")
+            batch_dir = "outputs"
+            os.makedirs(batch_dir, exist_ok=True)
+
+        for sentence in BATCH_SENTENCES:
+            filename = create_filename(sentence)
+            output_file = os.path.join(batch_dir, filename)
+            print(f"Generating audio for: {sentence}")
+            start_time = time.time()
+            audio_segments = generate_speech_from_api(
+                prompt=sentence,
+                voice=args.voice,
+                temperature=args.temperature,
+                top_p=args.top_p,
+                repetition_penalty=args.repetition_penalty,
+                output_file=output_file
+            )
+            end_time = time.time()
+            print(f"Speech generation for '{sentence}' completed in {end_time - start_time:.2f} seconds")
+            print(f"Audio saved to {output_file}")
+    else:
+        # Non-batch mode
+        if args.text:
+            prompt = " ".join(args.text)
+        else:
+            prompt = DEFAULT_TEXT
+            print(f"No text provided. Using default text: {DEFAULT_TEXT}")
+
+        if args.output:
+            output_file = args.output
+        else:
+            os.makedirs("outputs", exist_ok=True)
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            output_file = f"outputs/{args.voice}_{timestamp}.wav"
+            print(f"No output file specified. Saving to {output_file}")
+
+        start_time = time.time()
+        audio_segments = generate_speech_from_api(
+            prompt=prompt,
+            voice=args.voice,
+            temperature=args.temperature,
+            top_p=args.top_p,
+            repetition_penalty=args.repetition_penalty,
+            output_file=output_file
+        )
+        end_time = time.time()
+        print(f"Speech generation completed in {end_time - start_time:.2f} seconds")
+        print(f"Audio saved to {output_file}")
 
 if __name__ == "__main__":
     main()

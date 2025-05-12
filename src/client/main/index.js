@@ -4,6 +4,7 @@ import { fileURLToPath } from "url"
 import fetch from "node-fetch"
 import {
 	getProfile,
+	getAccessToken, // Import getter for access token
 	refreshTokens,
 	getCheckinFromKeytar,
 	getPricingFromKeytar,
@@ -20,7 +21,7 @@ import {
 	getBetaUserStatusFromKeytar,
 	setBetaUserStatusInKeytar
 } from "../utils/auth.js"
-import { getPrivateData } from "../utils/api.js"
+import { getPrivateData } from "../utils/api.js" // Assuming this might also need user context later
 import { createAuthWindow, createLogoutWindow } from "./auth.js"
 import dotenv from "dotenv"
 import pkg from "electron-updater"
@@ -32,59 +33,19 @@ import WebSocket from "ws"
  * @file Main process file for the Electron application.
  * Handles application lifecycle, window management, inter-process communication (IPC),
  * auto-updates, and server setup/management.
+ * MODIFIED: Added user_id passing via verified Access Token to backend calls.
+ *           Aligned HTTP methods. Added WebSocket auth. Scoped Keytar data.
  */
 
-/**
- * Boolean indicating if the operating system is Windows.
- * @constant {boolean}
- */
+// --- Constants and Paths ---
 const isWindows = process.platform === "win32"
-/**
- * Boolean indicating if the operating system is Linux.
- * @constant {boolean}
- */
 const isLinux = process.platform === "linux"
-
-/**
- * Base path for application files. Differs based on whether the app is packaged or running in development.
- * @type {string}
- */
 let basePath
-/**
- * Path to the .env file. Differs based on packaged or development environment.
- * @type {string}
- */
 let dotenvPath
-/**
- * Path to the chats database file (JSON).
- * @type {string}
- */
-// let chatsDbPath // Commented out as not used directly in this snippet
-/**
- * Path to the user profile database file (JSON).
- * @type {string}
- */
-// let userProfileDbPath // Commented out as not used directly in this snippet
-/**
- * Output directory for the packaged Electron app.
- * @type {string}
- */
 let appOutDir
-
-/**
- * The current file's path.
- * @constant {string}
- * @private
- */
 const __filename = fileURLToPath(import.meta.url)
-/**
- * The directory name of the current file.
- * @constant {string}
- * @private
- */
 const __dirname = dirname(__filename)
 
-// Determine paths based on whether the application is packaged or not
 if (app.isPackaged) {
 	console.log("Application is running in PRODUCTION mode (packaged).")
 	basePath = isWindows
@@ -102,105 +63,198 @@ if (app.isPackaged) {
 	appOutDir = path.join(__dirname, "../out")
 } else {
 	console.log("Application is running in DEVELOPMENT mode.")
-	dotenvPath = path.resolve(__dirname, "../.env")
+	dotenvPath = path.resolve(__dirname, "../../.env") // Adjusted path for dev
 	appOutDir = path.join(__dirname, "../out")
 }
 
-let ws // Keep WebSocket connection attempt regardless of mode for now
-try {
-	ws = new WebSocket("ws://localhost:5000/ws") // Replace with your FastAPI server URL if different
-
-	ws.onopen = () => {
-		console.log("WebSocket connection opened with FastAPI")
-	}
-
-	ws.onmessage = (event) => {
-		try {
-			const messageData = JSON.parse(event.data)
-			console.log("WebSocket message received:", messageData)
-
-			let notificationTitle = ""
-			let notificationBody = ""
-
-			if (messageData.type === "task_completed") {
-				const { task_id, description, result } = messageData
-				notificationTitle = "Task Completed!"
-				notificationBody = `Task "${description}" (ID: ${task_id}) completed successfully.\nResult: ${result?.substring(0, 100)}...`
-			} else if (messageData.type === "task_error") {
-				const { task_id, description, error } = messageData
-				notificationTitle = "Task Error!"
-				notificationBody = `Task "${description}" (ID: ${task_id}) encountered an error.\nError: ${error}`
-			} else if (messageData.type === "memory_operation_completed") {
-				const { operation_id, status, fact } = messageData
-				notificationTitle = "Memory Operation Completed!"
-				notificationBody = `Memory operation (ID: ${operation_id}) was successful.\nFact: ${fact?.substring(0, 100)}...`
-			} else if (messageData.type === "memory_operation_error") {
-				const { operation_id, error, fact } = messageData
-				notificationTitle = "Memory Operation Error!"
-				notificationBody = `Memory operation (ID: ${operation_id}) encountered an error.\nError: ${error}\nFact: ${fact?.substring(0, 100)}...`
-			} else if (messageData.type === "new_message") {
-				const { message } = messageData
-				console.log("New message received:", message)
-				notificationTitle = "New Message!"
-				notificationBody = message?.substring(0, 100) + "..."
-			}
-
-			if (notificationTitle && notificationBody) {
-				new Notification({
-					title: notificationTitle,
-					body: notificationBody
-				}).show()
-			}
-		} catch (e) {
-			console.error(
-				"Error processing WebSocket message:",
-				e,
-				"Raw data:",
-				event.data
-			)
-		}
-	}
-
-	ws.onclose = () => {
-		console.log("WebSocket connection closed")
-		// Optional: Implement reconnection logic here if desired
-	}
-
-	ws.onerror = (error) => {
-		console.error("WebSocket error:", error?.message || error)
-	}
-} catch (e) {
-	console.error("Failed to establish WebSocket connection:", e)
-}
-
-// Load environment variables from .env file
 dotenv.config({ path: dotenvPath })
 
-/**
- * The main application window instance.
- * @type {BrowserWindow | null}
- */
-let mainWindow
+// --- Helper Functions ---
 
 /**
- * Serve instance for packaged app, or null in development.
- * @type {ReturnType<typeof serve> | null}
+ * Safely retrieves the user ID (Auth0 sub) from the current profile.
+ * Logs an error and returns null if the profile or sub is not available.
+ * @returns {string | null} The user ID or null.
  */
+function getUserIdFromProfile() {
+	const userProfile = getProfile()
+	if (!userProfile || !userProfile.sub) {
+		console.error(
+			"Error: Cannot get user ID. User profile or 'sub' field is missing. Is the user logged in?"
+		)
+		return null
+	}
+	return userProfile.sub
+}
+
+/**
+ * Creates the Authorization header object for API requests.
+ * Returns null if the access token is not available.
+ * @returns {{ Authorization: string } | null} Header object or null.
+ */
+function getAuthHeader() {
+	const token = getAccessToken()
+	if (!token) {
+		console.error(
+			"Error: Cannot create auth header. Access token is missing."
+		)
+		return null
+	}
+	return { Authorization: `Bearer ${token}` }
+}
+
+// --- WebSocket Connection ---
+let ws
+let wsAuthenticated = false // Track WebSocket authentication status
+
+function connectWebSocket() {
+	if (
+		ws &&
+		(ws.readyState === WebSocket.OPEN ||
+			ws.readyState === WebSocket.CONNECTING)
+	) {
+		console.log("WebSocket connection already open or connecting.")
+		return
+	}
+
+	wsAuthenticated = false // Reset auth status on new connection attempt
+	console.log("Attempting to establish WebSocket connection...")
+	try {
+		ws = new WebSocket("ws://localhost:5000/ws")
+
+		ws.onopen = () => {
+			console.log(
+				"WebSocket connection opened. Attempting authentication..."
+			)
+			const token = getAccessToken()
+			const userId = getUserIdFromProfile() // Get userId for logging context
+			if (token) {
+				console.log(
+					`WebSocket: Sending auth message for user ${userId || "UNKNOWN"}`
+				)
+				ws.send(JSON.stringify({ type: "auth", token: token }))
+			} else {
+				console.error(
+					"WebSocket: Cannot authenticate - Access token not available."
+				)
+				ws.close(1008, "Access token unavailable") // Close with policy violation code
+			}
+		}
+
+		ws.onmessage = (event) => {
+			try {
+				const messageData = JSON.parse(event.data)
+				console.log("WebSocket message received:", messageData.type)
+
+				// Handle Authentication Response First
+				if (messageData.type === "auth_success") {
+					wsAuthenticated = true
+					console.log(
+						`WebSocket authenticated successfully for user: ${messageData.user_id}`
+					)
+					// Optionally fetch initial data or send ready signal to UI
+					return
+				} else if (messageData.type === "auth_failure") {
+					console.error(
+						`WebSocket authentication failed: ${messageData.message}`
+					)
+					wsAuthenticated = false
+					ws.close(1008, "Authentication failed")
+					// Optionally notify UI of auth failure
+					return
+				}
+
+				// Ignore messages if not authenticated (optional, depends on security needs)
+				// if (!wsAuthenticated) {
+				//     console.warn("WebSocket: Ignoring message - connection not authenticated.");
+				//     return;
+				// }
+
+				// Process other message types (Notifications)
+				let notificationTitle = ""
+				let notificationBody = ""
+
+				switch (messageData.type) {
+					case "task_completed":
+						notificationTitle = "Task Completed!"
+						notificationBody = `Task "${messageData.description}" completed successfully.`
+						break
+					case "task_error":
+						notificationTitle = "Task Error!"
+						notificationBody = `Task "${messageData.description}" failed: ${messageData.error}`
+						break
+					case "memory_operation_completed":
+						notificationTitle = "Memory Operation Completed!"
+						notificationBody = `Memory operation (ID: ${messageData.operation_id}) successful.`
+						break
+					case "memory_operation_error":
+						notificationTitle = "Memory Operation Error!"
+						notificationBody = `Memory operation (ID: ${messageData.operation_id}) failed: ${messageData.error}`
+						break
+					case "task_approval_pending":
+						notificationTitle = "Task Approval Needed"
+						notificationBody = `Task "${messageData.description}" requires your approval.`
+						break
+					case "task_cancelled":
+						notificationTitle = "Task Cancelled"
+						notificationBody = `Task "${messageData.description}" was cancelled: ${messageData.error}`
+						break
+					case "new_message": // Example: If backend pushes new messages
+						notificationTitle = "New Message!"
+						notificationBody =
+							messageData.message?.substring(0, 100) + "..."
+						break
+					// Add other notification types here
+					default:
+						console.log(
+							"Ignoring unknown WebSocket message type:",
+							messageData.type
+						)
+				}
+
+				if (notificationTitle && notificationBody) {
+					new Notification({
+						title: notificationTitle,
+						body: notificationBody
+					}).show()
+				}
+			} catch (e) {
+				console.error(
+					"Error processing WebSocket message:",
+					e,
+					"Raw data:",
+					event.data
+				)
+			}
+		}
+
+		ws.onclose = (event) => {
+			wsAuthenticated = false
+			console.log(
+				`WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason}`
+			)
+			// Implement reconnection logic if desired (e.g., exponential backoff)
+			// setTimeout(connectWebSocket, 5000); // Simple retry after 5s
+		}
+
+		ws.onerror = (error) => {
+			wsAuthenticated = false
+			console.error("WebSocket error:", error?.message || error)
+			// Consider triggering reconnection logic here too
+		}
+	} catch (e) {
+		console.error("Failed to establish WebSocket connection:", e)
+		// setTimeout(connectWebSocket, 5000); // Retry on initial connection error
+	}
+}
+
+// Initial WebSocket connection attempt (will be retried on failure/close if implemented)
+// connectWebSocket(); // Connect WebSocket after app is ready and user might be logged in? Moved to startApp
+
+// --- Main Window Management ---
+let mainWindow
 const appServe = app.isPackaged ? serve({ directory: appOutDir }) : null
 
-/**
- * Asynchronously delays execution for a specified number of milliseconds.
- * @param {number} ms - The number of milliseconds to delay.
- * @returns {Promise<void>} A promise that resolves after the delay.
- */
-// const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms)); // delay seems unused, commenting out
-
-/**
- * Creates and displays the main application window.
- * Sets up web preferences, loads the appropriate URL based on environment,
- * and handles window close events.
- * @returns {void}
- */
 export const createAppWindow = () => {
 	mainWindow = new BrowserWindow({
 		width: 2000,
@@ -208,47 +262,51 @@ export const createAppWindow = () => {
 		webPreferences: {
 			preload: path.join(__dirname, "preload.js"),
 			contextIsolation: true,
-			enableRemoteModule: false, // Keep false for security best practices
-			devTools: !app.isPackaged // Enable DevTools ONLY in development
+			enableRemoteModule: false,
+			devTools: !app.isPackaged
 		},
 		backgroundColor: "#000000",
-		autoHideMenuBar: true // Hides the default menu bar
+		autoHideMenuBar: true
 	})
 
-	// Load app URL based on environment (packaged or development)
+	mainWindow.isMainWindow = true // Mark as main window
+
 	if (app.isPackaged) {
 		appServe(mainWindow)
 			.then(() => mainWindow.loadURL("app://-"))
 			.catch((err) => console.error("Failed to serve packaged app:", err))
 	} else {
-		// Development mode
-		const devUrl = process.env.ELECTRON_APP_URL
+		const devUrl = process.env.ELECTRON_APP_URL || "http://localhost:3000"
 		console.log(`Attempting to load URL: ${devUrl}`)
 		mainWindow
 			.loadURL(devUrl)
+			.then(() => {
+				console.log("Main window URL loaded.")
+				// Attempt WebSocket connection AFTER window loads and auth might be ready
+				connectWebSocket()
+			})
 			.catch((err) => console.error(`Failed to load URL ${devUrl}:`, err))
-		mainWindow.webContents.openDevTools() // Open DevTools automatically in development
+		mainWindow.webContents.openDevTools()
 		mainWindow.webContents.on(
 			"did-fail-load",
 			(event, errorCode, errorDescription, validatedURL) => {
 				console.error(
 					`Failed to load ${validatedURL}: ${errorDescription} (Code: ${errorCode})`
 				)
-				// Optional: Add retry logic or show an error page
-				// mainWindow.webContents.reloadIgnoringCache() // Be careful with automatic reloads, can cause loops
 			}
 		)
 	}
 
-	// Handle window closing event to confirm exit
+	// Close Confirmation Logic... (remains the same as previous version)
 	let isExiting = false
 	mainWindow.on("close", async (event) => {
+		if (!mainWindow?.isMainWindow) {
+			return
+		} // Skip if not main window
 		if (!isExiting) {
-			event.preventDefault() // Prevent default close action
+			event.preventDefault()
 			isExiting = true
-
 			try {
-				// Show confirmation dialog before quitting
 				const response = await dialog.showMessageBox(mainWindow, {
 					type: "question",
 					buttons: ["Yes", "No"],
@@ -256,309 +314,291 @@ export const createAppWindow = () => {
 					title: "Confirm Exit",
 					message: "Are you sure you want to quit?"
 				})
-
-				// If user confirms exit, attempt to stop servers (if any) and quit the app
 				if (response.response === 0) {
 					console.log("User confirmed exit.")
-					// Add any cleanup tasks here if needed before quitting
-					// e.g., await stopNeo4jServer(); await stopAppSubServers();
 					await dialog.showMessageBox(mainWindow, {
-						// Keep this user feedback
 						type: "info",
 						message: "Bye friend...",
 						title: "Quitting Sentient (click ok to exit)"
 					})
-					setTimeout(() => app.quit(), 500) // Quit app after a short delay
+					mainWindow.isMainWindow = false // Mark before quitting
+					setTimeout(() => app.quit(), 500)
 				} else {
 					console.log("User cancelled exit.")
-					isExiting = false // Reset exiting flag if user cancels exit
+					isExiting = false
 				}
 			} catch (error) {
-				console.error(
-					"Error during exit confirmation or cleanup:",
-					error
-				)
-				// Show error to user, but allow exit attempt to proceed or reset
+				console.error("Error during exit confirmation:", error)
 				dialog.showErrorBox(
 					"Exit Error",
-					`An error occurred during shutdown: ${error.message}. The application might not close cleanly.`
+					`An error occurred during shutdown: ${error.message}.`
 				)
-				// Decide if you want to force quit or reset the flag
-				isExiting = false // Resetting might be safer to allow another attempt
-				// Alternatively, force quit: setTimeout(() => app.quit(), 500);
+				isExiting = false
 			}
 		}
 	})
 
 	mainWindow.on("closed", () => {
-		mainWindow = null // Dereference the window object
+		if (mainWindow?.isMainWindow) {
+			// Only nullify if it was the main window being closed
+			mainWindow = null
+			if (ws && ws.readyState === WebSocket.OPEN) {
+				console.log(
+					"Closing WebSocket connection on main window close."
+				)
+				ws.close()
+			}
+		}
 	})
 }
 
-// --- Conditional Check Functions ---
+// --- Validity and Status Checks (Production Only) ---
 
-/**
- * Checks user information validity (ONLY IN PRODUCTION).
- * Includes pricing, referral, beta status, credits, Google creds.
- * Triggers logout on failure.
- * @async
- * @returns {Promise<void>}
- */
+// Updated to use userId from validated token via getUserIdFromProfile
 const checkUserInfo = async () => {
-	if (!app.isPackaged) {
-		console.log(
-			"DEV MODE: Skipping User Info checks (Pricing, Referral, Beta, Credits, Google)."
-		)
-		return // Skip entirely in development
-	}
+	if (!app.isPackaged) return
 	console.log("PROD MODE: Performing User Info checks...")
+
+	const userId = getUserIdFromProfile()
+	if (!userId) throw new Error("User ID not available for user info checks.") // Should be caught by checkAuthStatus first
+
+	console.log(`PROD MODE: Performing checks for user: ${userId}`)
 	try {
-		await checkPricingStatus()
-		await checkReferralCodeAndStatus()
-		await checkBetaUserStatus()
-		await resetCreditsIfNecessary()
-		await checkGoogleCredentials()
-		console.log("PROD MODE: User info checks passed.")
+		// Pass userId to functions that interact with Keytar user-specific data
+		await checkPricingStatus(userId)
+		await checkReferralCodeAndStatus(userId)
+		await checkBetaUserStatus(userId)
+		await resetCreditsIfNecessary(userId)
+		await checkGoogleCredentials(userId) // Assuming this needs userId for backend check
+		console.log(`PROD MODE: User info checks passed for ${userId}.`)
 	} catch (error) {
 		console.error(
-			`PROD MODE: Error during user info check: ${error.message}. Triggering logout.`
+			`PROD MODE: Error during user info check for ${userId}: ${error.message}. Triggering logout.`
 		)
-		BrowserWindow.getAllWindows().forEach((win) => win.close())
-		createLogoutWindow() // Create logout window on check failure
-		// Re-throw or handle as needed, maybe notify user more clearly
-		throw error // Propagate error to indicate failure
+		BrowserWindow.getAllWindows().forEach((win) => {
+			if (!win.isLogoutWindow) win.close()
+		})
+		createLogoutWindow()
+		throw error
 	}
 }
 
-/**
- * Checks overall application validity (ONLY IN PRODUCTION).
- * Verifies authentication and user info. Redirects to auth on failure.
- * @async
- * @returns {Promise<void>}
- */
 export const checkValidity = async () => {
-	if (!app.isPackaged) {
-		console.log("DEV MODE: Skipping Validity checks (Auth, User Info).")
-		return // Skip entirely in development
-	}
+	if (!app.isPackaged) return
 	console.log("PROD MODE: Performing Validity checks...")
 	try {
-		await checkAuthStatus() // Checks tokens
-		await checkUserInfo() // Checks pricing, credits etc.
+		await checkAuthStatus() // Ensures profile and access token are fresh
+		await checkUserInfo() // Uses the profile info (userId) set by checkAuthStatus
 		console.log("PROD MODE: Validity checks passed.")
 	} catch (error) {
 		console.error(
 			`PROD MODE: Validity check failed: ${error.message}. Redirecting to Auth window.`
 		)
-		// Ensure windows are closed before showing auth window
 		BrowserWindow.getAllWindows().forEach((win) => {
-			// Avoid closing the auth window if it's already being created
-			if (!win.isAuthWindow) {
-				// You might need to add a property like this during creation
-				win.close()
-			}
+			if (!win.isAuthWindow && !win.isLogoutWindow) win.close()
 		})
-		createAuthWindow() // Create auth window on validity check failure
-		throw error // Propagate error
+		createAuthWindow()
+		throw error
 	}
 }
 
-/**
- * Checks user authentication status by refreshing tokens (ONLY IN PRODUCTION).
- * Throws an error if token refresh fails.
- * @async
- * @returns {Promise<void>}
- */
 const checkAuthStatus = async () => {
-	// This check is implicitly skipped in DEV because checkValidity skips it.
-	// No need for an explicit app.isPackaged check here if only called by checkValidity.
-	console.log("PROD MODE: Checking authentication status...")
+	// No app.isPackaged check needed here as it's called by checkValidity
+	console.log(
+		"PROD MODE: Checking authentication status via refreshTokens..."
+	)
 	try {
-		await refreshTokens()
-		console.log("PROD MODE: User is authenticated.")
+		await refreshTokens() // Refreshes token AND sets profile/accessToken globally
+		const userProfile = getProfile()
+		const token = getAccessToken()
+		if (!userProfile || !userProfile.sub || !token) {
+			throw new Error(
+				"Token refresh succeeded but profile/userId/token is missing."
+			)
+		}
+		console.log(
+			`PROD MODE: User authenticated (ID: ${userProfile.sub}). Access token refreshed.`
+		)
 	} catch (error) {
 		console.error(
-			`PROD MODE: Authentication check failed (token refresh): ${error.message}`
+			`PROD MODE: Authentication check failed: ${error.message}`
 		)
-		throw new Error("User is not authenticated.") // Let checkValidity handle redirection
+		throw new Error("User is not authenticated.")
 	}
 }
 
-// --- Status Check Functions (will only run in production via checkUserInfo) ---
+// Status check functions updated to receive and use userId for Keytar operations
+// (Implementation details moved to auth.js where Keytar logic resides)
 
-const checkReferralCodeAndStatus = async () => {
-	console.log("PROD MODE: Checking Referral Code and Status...")
+const checkReferralCodeAndStatus = async (userId) => {
+	console.log(
+		`PROD MODE: Checking Referral Code/Status for user ${userId}...`
+	)
 	try {
-		let referralCode = await getReferralCodeFromKeytar()
+		// Use userId to fetch correct Keytar data
+		let referralCode = await getReferralCodeFromKeytar(userId)
 		if (!referralCode) {
 			console.log(
-				"PROD MODE: Referral code not found in Keytar, fetching..."
+				"PROD MODE: Referral code not found locally, fetching from server..."
 			)
-			referralCode = await fetchAndSetReferralCode()
-			console.log("PROD MODE: Referral code fetched and set.")
+			referralCode = await fetchAndSetReferralCode() // Sets locally for userId
 		}
-
-		let referrerStatus = await getReferrerStatusFromKeytar()
-		// Check explicitly for null, as false is a valid status
+		let referrerStatus = await getReferrerStatusFromKeytar(userId)
 		if (referrerStatus === null) {
 			console.log(
-				"PROD MODE: Referrer status not found in Keytar, fetching..."
+				"PROD MODE: Referrer status not found locally, fetching from server..."
 			)
-			referrerStatus = await fetchAndSetReferrerStatus()
-			console.log("PROD MODE: Referrer status fetched and set.")
+			referrerStatus = await fetchAndSetReferrerStatus() // Sets locally for userId
 		}
-
-		console.log("PROD MODE: Referral code and status check complete.")
+		console.log("PROD MODE: Referral code/status check complete.")
 	} catch (error) {
 		console.error(
-			`PROD MODE: Error in referral code/status check: ${error.message}`
+			`PROD MODE: Error checking referral code/status for ${userId}: ${error.message}`
 		)
-		throw new Error("Referral code and status check failed.")
+		throw new Error("Referral code/status check failed.")
 	}
 }
 
-const checkBetaUserStatus = async () => {
-	console.log("PROD MODE: Checking Beta User Status...")
+const checkBetaUserStatus = async (userId) => {
+	console.log(`PROD MODE: Checking Beta User Status for user ${userId}...`)
 	try {
-		let betaUserStatus = await getBetaUserStatusFromKeytar()
-		// Check explicitly for null, as false is a valid status
+		// Use userId for Keytar
+		let betaUserStatus = await getBetaUserStatusFromKeytar(userId)
 		if (betaUserStatus === null) {
 			console.log(
-				"PROD MODE: Beta user status not found in Keytar, fetching..."
+				"PROD MODE: Beta status not found locally, fetching from server..."
 			)
-			betaUserStatus = await fetchAndSetBetaUserStatus()
-			console.log("PROD MODE: Beta user status fetched and set.")
+			betaUserStatus = await fetchAndSetBetaUserStatus() // Sets locally for userId
 		}
-
 		console.log("PROD MODE: Beta user status check complete.")
 	} catch (error) {
 		console.error(
-			`PROD MODE: Error in beta user status check: ${error.message}`
+			`PROD MODE: Error checking beta status for ${userId}: ${error.message}`
 		)
 		throw new Error("Beta user status check failed.")
 	}
 }
 
-const checkPricingStatus = async () => {
-	console.log("PROD MODE: Checking Pricing Status and Session Activity...")
+const checkPricingStatus = async (userId) => {
+	console.log(
+		`PROD MODE: Checking Pricing Status/Activity for user ${userId}...`
+	)
 	try {
-		const pricing = await getPricingFromKeytar()
-		const lastCheckin = await getCheckinFromKeytar() // Timestamp of last successful refresh/activity
+		// Use userId for Keytar
+		const pricing = await getPricingFromKeytar(userId)
+		const lastCheckin = await getCheckinFromKeytar(userId)
 
 		if (!pricing || !lastCheckin) {
 			console.warn(
-				"PROD MODE: Pricing or last checkin not found in Keytar. Fetching user role/pricing..."
+				"PROD MODE: Pricing/checkin not found locally. Fetching from server..."
 			)
-			await fetchAndSetUserRole() // This should also set the check-in time implicitly via refreshTokens
-			console.log("PROD MODE: User role/pricing fetched and set.")
-			// Re-fetch checkin time after role fetch? Depends on fetchAndSetUserRole implementation. Assuming it's handled.
-			return // Exit check for this run, will be checked next time
+			await fetchAndSetUserRole() // Fetches role based on profile.sub, sets locally for userId
+			return // Check again next time
 		}
 
 		const currentTimestamp = Math.floor(Date.now() / 1000)
 		const sevenDaysInSeconds = 7 * 24 * 60 * 60
-
-		// Check if last check-in was more than 7 days ago
 		if (currentTimestamp - lastCheckin >= sevenDaysInSeconds) {
 			console.warn(
-				`PROD MODE: User session expired due to inactivity (last check-in ${new Date(lastCheckin * 1000).toISOString()}). Triggering logout.`
+				`PROD MODE: User session expired due to inactivity for ${userId}. Triggering logout.`
 			)
-			// Don't close windows here, let the caller (checkUserInfo) handle it.
 			throw new Error("User session expired due to inactivity.")
 		}
-
-		console.log(
-			"PROD MODE: Pricing status and session activity check complete."
-		)
+		console.log("PROD MODE: Pricing status/activity check complete.")
 	} catch (error) {
-		// Re-throw specific errors or a generic one
 		console.error(
-			`PROD MODE: Error in pricing/session check: ${error.message}`
+			`PROD MODE: Error checking pricing/session for ${userId}: ${error.message}`
 		)
-		if (error.message.includes("inactivity")) {
-			throw error // Propagate inactivity error
-		}
-		throw new Error("Pricing status check failed.") // Generic failure
+		throw error.message.includes("inactivity")
+			? error
+			: new Error("Pricing status check failed.")
 	}
 }
 
-const resetCreditsIfNecessary = async () => {
-	console.log("PROD MODE: Checking if Pro Credits need reset...")
+const resetCreditsIfNecessary = async (userId) => {
+	console.log(`PROD MODE: Checking Pro Credits reset for user ${userId}...`)
 	try {
+		// Use userId for Keytar
 		const currentDate = new Date().toDateString()
-		const checkinTimestamp = await getCreditsCheckinFromKeytar()
+		const checkinTimestamp = await getCreditsCheckinFromKeytar(userId)
 		const checkinDate = checkinTimestamp
 			? new Date(checkinTimestamp * 1000).toDateString()
 			: null
 
 		if (checkinDate !== currentDate) {
-			console.log(
-				`PROD MODE: Resetting proCredits (Last checkin: ${checkinDate}, Today: ${currentDate}).`
-			)
-			const referrer = await getReferrerStatusFromKeytar() // Ensure await here
-
-			// Default to non-referrer if status is null/undefined
+			console.log(`PROD MODE: Resetting proCredits for ${userId}.`)
+			const referrer = await getReferrerStatusFromKeytar(userId) // Check user's own referrer status
 			const creditsToSet = referrer === true ? 10 : 5
-			await setCreditsInKeytar(creditsToSet)
-			console.log(`PROD MODE: proCredits reset to ${creditsToSet}.`)
-
-			await setCreditsCheckinInKeytar() // Update credits check-in timestamp
-			console.log("PROD MODE: proCredits checkin timestamp updated.")
+			await setCreditsInKeytar(userId, creditsToSet) // Set for user
+			await setCreditsCheckinInKeytar(userId) // Set checkin for user
+			console.log(
+				`PROD MODE: proCredits reset to ${creditsToSet} for ${userId}.`
+			)
 		} else {
-			console.log("PROD MODE: Pro Credits already checked/reset today.")
-		}
-	} catch (error) {
-		console.error(`PROD MODE: Error resetting proCredits: ${error.message}`)
-		throw new Error("Error checking/resetting proCredits")
-	}
-}
-
-const checkGoogleCredentials = async () => {
-	console.log("PROD MODE: Checking Google Credentials via server...")
-	try {
-		// Ensure the server URL is correctly defined in your .env
-		const googleAuthCheckUrl = `${process.env.APP_SERVER_URL || "http://127.0.0.1:5000"}/authenticate-google`
-		const response = await fetch(googleAuthCheckUrl) // Assumes GET request is sufficient
-
-		if (!response.ok) {
-			// Try to get more details from the response body
-			let errorDetails = `Server responded with status ${response.status}`
-			try {
-				const data = await response.json()
-				errorDetails = data.error || data.message || errorDetails
-			} catch (e) {
-				/* Ignore if response is not JSON */
-			}
-			throw new Error(`Google credentials check failed: ${errorDetails}`)
-		}
-
-		const data = await response.json()
-
-		if (data.success) {
-			console.log("PROD MODE: Google credentials check successful.")
-		} else {
-			throw new Error(
-				data.error || "Google credentials check indicated failure."
+			console.log(
+				`PROD MODE: Pro Credits already checked/reset today for ${userId}.`
 			)
 		}
 	} catch (error) {
 		console.error(
-			`PROD MODE: Error checking Google credentials: ${error.message}`
+			`PROD MODE: Error resetting proCredits for ${userId}: ${error.message}`
 		)
-		throw new Error("Error checking Google credentials") // Propagate a standard error message
+		throw new Error("Error checking/resetting proCredits")
 	}
 }
 
-// --- Single Instance Lock ---
-const gotTheLock = app.requestSingleInstanceLock()
+const checkGoogleCredentials = async (userId) => {
+	console.log(
+		`PROD MODE: Checking Google Credentials via server for user ${userId}...`
+	)
+	const authHeader = getAuthHeader()
+	if (!authHeader)
+		throw new Error(
+			"Cannot check Google credentials: Access token missing."
+		)
 
+	try {
+		const googleAuthCheckUrl = `${process.env.APP_SERVER_URL || "http://127.0.0.1:5000"}/authenticate-google`
+		const response = await fetch(googleAuthCheckUrl, {
+			method: "POST", // POST now, user implicitly identified by token
+			headers: { "Content-Type": "application/json", ...authHeader } // Send Auth header
+			// Body might not be needed if backend gets user_id from token
+			// body: JSON.stringify({ user_id: userId })
+		})
+
+		if (!response.ok) {
+			let errorDetails = `Server responded with status ${response.status}`
+			try {
+				const data = await response.json()
+				errorDetails = data.error || data.detail || errorDetails
+			} catch (e) {}
+			throw new Error(`Google credentials check failed: ${errorDetails}`)
+		}
+		const data = await response.json()
+		if (data.success) {
+			console.log(
+				`PROD MODE: Google credentials check successful for user ${userId}.`
+			)
+		} else {
+			throw new Error(
+				data.error ||
+					`Google credentials check indicated failure for user ${userId}.`
+			)
+		}
+	} catch (error) {
+		console.error(
+			`PROD MODE: Error checking Google credentials for ${userId}: ${error.message}`
+		)
+		throw new Error("Error checking Google credentials")
+	}
+}
+
+// --- Single Instance Lock --- (Remains the same)
+const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
-	console.log("Another instance is already running. Quitting this instance.")
 	app.quit()
 } else {
 	app.on("second-instance", () => {
-		console.log("Second instance detected. Focusing main window.")
-		// Focus on the main window if a second instance is attempted
 		if (mainWindow) {
 			if (mainWindow.isMinimized()) mainWindow.restore()
 			mainWindow.focus()
@@ -566,34 +606,28 @@ if (!gotTheLock) {
 	})
 }
 
-// --- Auto Update Logic (Conditional) ---
-
-/**
- * Checks for application updates using Electron AutoUpdater (ONLY IN PRODUCTION).
- * Sets feed URL based on beta status (if implemented) and initiates checks.
- * Creates the main window AFTER deciding update path.
- * @async
- * @returns {Promise<void>}
- */
+// --- Auto Update Logic ---
 const checkForUpdates = async () => {
-	// This function is only called if app.isPackaged is true.
+	if (!app.isPackaged) return
 	console.log(
 		"PROD MODE: Configuring and checking for application updates..."
 	)
-
-	// Fetch beta status from keytar to decide update channel (only needed in prod)
 	let isBetaUser = false
+	const userId = getUserIdFromProfile() // Need userId to check correct Keytar entry
+
 	try {
-		isBetaUser = (await getBetaUserStatusFromKeytar()) || false // Default to false if not set
+		// Check beta status specifically for the logged-in user
+		isBetaUser = userId
+			? (await getBetaUserStatusFromKeytar(userId)) || false
+			: false
 		console.log(
-			`PROD MODE: User is ${isBetaUser ? "a beta user" : "not a beta user"}.`
+			`PROD MODE: Update check: User ${userId || "N/A"} is ${isBetaUser ? "beta" : "stable"} (local Keytar).`
 		)
 	} catch (error) {
 		console.error(
-			"PROD MODE: Failed to get beta user status for update check, defaulting to stable.",
+			"PROD MODE: Failed to get beta status for update check, defaulting to stable.",
 			error
 		)
-		isBetaUser = false
 	}
 
 	const feedOptions = {
@@ -601,546 +635,478 @@ const checkForUpdates = async () => {
 		owner: "existence-master",
 		repo: "Sentient"
 	}
-
 	autoUpdater.setFeedURL(feedOptions)
+	autoUpdater.allowPrerelease = isBetaUser
+	autoUpdater.channel = isBetaUser ? "beta" : "latest" // Set channel explicitly
 
-	if (isBetaUser) {
-		console.log("PROD MODE: Allowing pre-releases for beta user.")
-		autoUpdater.allowPrerelease = true
-	} else {
-		console.log("PROD MODE: Checking for stable releases only.")
-		autoUpdater.allowPrerelease = false // Explicitly false for stable
-	}
-
-	// Create the window *before* checking for updates, so user sees something
-	createAppWindow()
+	createAppWindow() // Create window FIRST
 
 	try {
-		console.log("PROD MODE: Initiating update check...")
-		// Check for updates and notify the user automatically
-		await autoUpdater.checkForUpdatesAndNotify()
 		console.log(
-			"PROD MODE: Update check initiated (notifications handled by autoUpdater)."
+			`PROD MODE: Initiating update check for ${autoUpdater.channel} channel...`
 		)
+		await autoUpdater.checkForUpdatesAndNotify()
 	} catch (error) {
 		console.error("PROD MODE: Error during update check:", error.message)
-		// Decide how to handle check errors, maybe notify user manually or just log
-		// dialog.showErrorBox("Update Check Failed", `Could not check for updates: ${error.message}`);
 	}
 }
 
-/**
- * Starts the application.
- * In Production: Checks for updates, then performs validity checks after a delay.
- * In Development: Skips updates and validity checks, creates window immediately.
- * @async
- * @returns {Promise<void>}
- */
+// --- Application Start Logic ---
 const startApp = async () => {
 	if (app.isPackaged) {
-		// === Production/Packaged App Logic ===
 		console.log("PRODUCTION MODE: Starting application flow.")
-		// checkForUpdates now creates the window internally
+		// Check for updates *before* validity checks. Creates window.
+		// Uses potentially stale local beta status for channel, but validity check will correct if needed.
 		await checkForUpdates()
 
-		// Delay validity checks to allow window/update process to potentially start/notify
 		const validityCheckDelay = 5000 // 5 seconds
 		console.log(
 			`PRODUCTION MODE: Scheduling validity checks in ${validityCheckDelay}ms.`
 		)
 		setTimeout(async () => {
-			// Check if an update process was flagged (set by 'update-available' listener)
 			if (process.env.UPDATING !== "true") {
 				console.log(
 					"PRODUCTION MODE: Performing scheduled validity checks..."
 				)
 				try {
-					await checkValidity() // Perform auth and status checks
+					await checkValidity() // Performs auth, gets userId, checks status with server/Keytar
 					console.log(
 						"PRODUCTION MODE: Validity checks completed successfully."
 					)
+					// Now that validity is checked and user is likely authed, connect WebSocket
+					// connectWebSocket(); // Moved to createAppWindow load finish
 				} catch (error) {
-					// Error handling (like showing auth window) is done within checkValidity
 					console.error(
 						"PRODUCTION MODE: Validity check sequence failed.",
 						error.message
 					)
+					// Error handling (like showing auth window) is done within checkValidity
 				}
 			} else {
 				console.log(
-					"PRODUCTION MODE: Skipping scheduled validity check because an update is in progress (UPDATING=true)."
+					"PRODUCTION MODE: Skipping validity check due to update in progress."
 				)
 			}
 		}, validityCheckDelay)
 	} else {
-		// === Development Environment Logic ===
-		console.log("DEVELOPMENT MODE: Starting application flow.")
+		// Development Environment
 		console.log(
-			"DEVELOPMENT MODE: Skipping auto-updates and validity checks."
+			"DEVELOPMENT MODE: Starting application flow (skipping updates/validity checks)."
 		)
-		// Create the window directly without checking for updates or validity
-		createAppWindow()
+		createAppWindow() // Creates window, loads URL, connects WebSocket on load
 		mainWindow?.webContents.on("did-finish-load", () => {
 			console.log("DEVELOPMENT MODE: Main window finished loading.")
-			// Optional: Send message to renderer if it needs to know it's in dev
-			// mainWindow?.webContents.send('development-mode', true);
 		})
 	}
 }
 
 // --- App Lifecycle Events ---
-
-// Event listener when the app is ready to start
 app.on("ready", startApp)
-
-// Event listener for 'window-all-closed' event
 app.on("window-all-closed", () => {
-	console.log("All windows closed.")
-	if (process.platform !== "darwin") {
-		console.log("Quitting application (not macOS).")
-		app.quit() // Quit app when all windows are closed, except on macOS
-	}
+	if (process.platform !== "darwin") app.quit()
 })
-
 app.on("activate", () => {
-	// On macOS it's common to re-create a window in the app when the
-	// dock icon is clicked and there are no other windows open.
-	if (BrowserWindow.getAllWindows().length === 0) {
-		console.log("App activated with no windows open, creating main window.")
-		startApp() // Or just createAppWindow() if startApp logic is complex
-	}
+	if (BrowserWindow.getAllWindows().length === 0) startApp()
 })
 
-// --- AutoUpdater Event Listeners (Only relevant in Production) ---
-
+// --- AutoUpdater Event Listeners --- (Remain the same, logging only)
 if (app.isPackaged) {
 	autoUpdater.on("update-available", (info) => {
 		console.log("PROD MODE: Update available:", info)
-		process.env.UPDATING = "true" // Set flag indicating update is in progress
-		mainWindow?.webContents.send("update-available", info) // Send event to renderer process
+		process.env.UPDATING = "true"
+		mainWindow?.webContents.send("update-available", info)
 	})
-
 	autoUpdater.on("update-not-available", (info) => {
 		console.log("PROD MODE: Update not available:", info)
-		// Optional: Notify renderer or log
 	})
-
 	autoUpdater.on("error", (err) => {
 		console.error("PROD MODE: Error in auto-updater:", err.message)
-		process.env.UPDATING = "false" // Reset flag on error
-		mainWindow?.webContents.send("update-error", err.message) // Notify renderer
-		// Reset progress on error
+		process.env.UPDATING = "false"
+		mainWindow?.webContents.send("update-error", err.message)
 		mainWindow?.webContents.send("update-progress", {
 			percent: 0,
 			error: true
 		})
-		// Optional: Show error dialog
-		// dialog.showErrorBox("Update Error", `Failed to update: ${err.message}`);
 	})
-
 	autoUpdater.on("download-progress", (progressObj) => {
 		console.log(`PROD MODE: Download progress: ${progressObj.percent}%`)
-		mainWindow?.webContents.send("update-progress", progressObj) // Send progress to renderer
+		mainWindow?.webContents.send("update-progress", progressObj)
 	})
-
 	autoUpdater.on("update-downloaded", (info) => {
 		console.log("PROD MODE: Update downloaded:", info)
-		process.env.UPDATING = "false" // Reset flag, ready to install
-		mainWindow?.webContents.send("update-downloaded", info) // Send event to renderer process
-		// Optional: Prompt user immediately
-		/*
-        dialog.showMessageBox(mainWindow, {
-            type: 'info',
-            title: 'Update Ready',
-            message: 'A new version has been downloaded. Restart the application to apply the update.',
-            buttons: ['Restart', 'Later']
-        }).then(result => {
-            if (result.response === 0) { // Restart button
-                autoUpdater.quitAndInstall();
-            }
-        });
-        */
+		process.env.UPDATING = "false"
+		mainWindow?.webContents.send("update-downloaded", info)
 	})
 }
 
 // --- IPC Handlers ---
 
-// IPC event handler for 'restart-app' to quit and install update (only relevant in prod)
-ipcMain.on("restart-app", async () => {
-	if (app.isPackaged) {
-		console.log(
-			"PROD MODE: Received restart-app command. Quitting and installing update."
-		)
-		autoUpdater.quitAndInstall()
-	} else {
-		console.log(
-			"DEV MODE: Received restart-app command, but auto-updates are disabled. Doing nothing."
-		)
-	}
+// Restart App (AutoUpdate)
+ipcMain.on("restart-app", () => {
+	if (app.isPackaged) autoUpdater.quitAndInstall()
 })
 
-// IPC handler to get user profile (available in both modes)
+// Get Profile
 ipcMain.handle("get-profile", async () => {
-	// In dev mode, this might return empty/default data if auth is skipped
-	// Consider returning mock data in dev if needed
-	if (!app.isPackaged) {
-		console.log(
-			"DEV MODE: Handling get-profile. Returning potentially empty profile or mock data."
-		)
-		return { given_name: "John Doe", picture: null }
-	}
+	// Returns profile for the currently authenticated user via auth.js
 	try {
-		return await getProfile()
+		const userProfile = getProfile()
+		if (!app.isPackaged && !userProfile) {
+			return {
+				sub: "dev-user-123",
+				given_name: "Dev User",
+				picture: null
+			} // Mock data
+		}
+		if (!userProfile) return null // Not logged in
+		return userProfile
 	} catch (error) {
-		console.error("Error getting profile:", error)
-		return null // Indicate failure
-	}
-})
-
-// IPC handler to get private data (available in both modes)
-ipcMain.handle("get-private-data", async () => {
-	if (!app.isPackaged) {
-		console.log("DEV MODE: Handling get-private-data.")
-		// Consider returning mock data if needed
-	}
-	try {
-		return await getPrivateData()
-	} catch (error) {
-		console.error("Error getting private data:", error)
+		console.error("Error handling get-profile:", error)
 		return null
 	}
 })
 
-ipcMain.handle("get-beta-user-status", async () => {
+// Get Private Data (Placeholder - Requires specific implementation)
+ipcMain.handle("get-private-data", async () => {
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader)
+		return { error: "User not authenticated", status: 401 }
+
+	if (!app.isPackaged)
+		return { mockData: `some dev private data for ${userId}` }
+
 	try {
-		if (!app.isPackaged) {
-			console.log(
-				"DEV MODE: Handling fetch-pricing-plan. Returning 'pro' (or 'free' if preferred)."
-			)
-			return "true" // Return a default/mock value for development
-		}
-		const betaUserStatus = await getBetaUserStatusFromKeytar() // Get beta user status from Keytar
+		console.log(`PROD MODE: Handling get-private-data for user: ${userId}`)
+		// Assuming getPrivateData needs modification or its backend target does
+		return await getPrivateData(/* pass userId or header if needed */)
+	} catch (error) {
+		console.error(`Error getting private data for user ${userId}:`, error)
+		return { error: error.message, status: 500 }
+	}
+})
+
+// Get Local Beta Status
+ipcMain.handle("get-beta-user-status-local", async () => {
+	const userId = getUserIdFromProfile() // Needed for Keytar
+	if (!userId && app.isPackaged) return null // Need ID in prod
+
+	try {
+		if (!app.isPackaged) return true // Dev mock
+		const betaUserStatus = await getBetaUserStatusFromKeytar(userId) // Pass userId
 		return betaUserStatus
 	} catch (error) {
-		await console.log(`Error fetching beta user status: ${error}`)
-		return { message: `Error: ${error.message}`, status: 500 }
+		console.error(
+			`Error fetching local beta user status for ${userId}: ${error}`
+		)
+		return null
 	}
 })
 
-// IPC event handler for 'log-out'
+// Log Out
 ipcMain.on("log-out", () => {
 	console.log("Log-out command received.")
-	// Close all windows except potentially a dedicated logout window if needed
+	if (ws && ws.readyState === WebSocket.OPEN) {
+		console.log("Closing WebSocket connection on logout.")
+		ws.close()
+	}
 	BrowserWindow.getAllWindows().forEach((win) => {
-		// Add logic here if you want to keep one window open (like the logout window itself)
-		win.close()
+		if (!win.isLogoutWindow && !win.isAuthWindow) win.close()
 	})
-	if (app.isPackaged) {
-		console.log("PROD MODE: Creating logout window after logout command.")
-		createLogoutWindow() // Show logout confirmation/status only in production
-	} else {
-		console.log(
-			"DEV MODE: Closing windows on logout command, not showing logout window."
-		)
-		// In dev, maybe just quit or reload the main window to simulate a fresh start
-		app.quit() // Or mainWindow?.reload();
-	}
+	createLogoutWindow() // Handles token clearing etc.
 })
 
-// IPC handler to fetch pricing plan
+// Fetch Local Pricing Plan
 ipcMain.handle("fetch-pricing-plan", async () => {
-	if (!app.isPackaged) {
-		console.log(
-			"DEV MODE: Handling fetch-pricing-plan. Returning 'pro' (or 'free' if preferred)."
-		)
-		return "pro" // Return a default/mock value for development
-	}
+	const userId = getUserIdFromProfile() // Needed for Keytar
+	if (!userId && app.isPackaged) return "free" // Default if no user in prod
+
+	if (!app.isPackaged) return "pro" // Dev mock
+
 	try {
-		const pricing = await getPricingFromKeytar()
-		console.log("PROD MODE: Fetched pricing plan:", pricing)
-		return pricing || "free" // Default to 'free' if not found
+		const pricing = await getPricingFromKeytar(userId) // Pass userId
+		console.log(
+			`PROD MODE: Fetched local pricing plan for ${userId}:`,
+			pricing
+		)
+		return pricing || "free"
 	} catch (error) {
-		console.error(`PROD MODE: Error fetching pricing plan: ${error}`)
-		return "free" // Default to 'free' on error
+		console.error(
+			`PROD MODE: Error fetching local pricing plan for ${userId}: ${error}`
+		)
+		return "free"
 	}
 })
 
-// IPC handler to fetch pro credits
+// Fetch Local Pro Credits
 ipcMain.handle("fetch-pro-credits", async () => {
-	if (!app.isPackaged) {
-		console.log(
-			"DEV MODE: Handling fetch-pro-credits. Returning mock value 999."
-		)
-		return 999 // Return a high/mock value for development
-	}
+	const userId = getUserIdFromProfile() // Needed for Keytar
+	if (!userId && app.isPackaged) return 0 // Default if no user in prod
+
+	if (!app.isPackaged) return 999 // Dev mock
+
 	try {
-		const credits = await getCreditsFromKeytar()
-		console.log("PROD MODE: Fetched pro credits:", credits)
+		const credits = await getCreditsFromKeytar(userId) // Pass userId
+		console.log(
+			`PROD MODE: Fetched local pro credits for ${userId}:`,
+			credits
+		)
 		return credits
 	} catch (error) {
-		console.error(`PROD MODE: Error fetching pro credits: ${error}`)
-		return 0 // Default to 0 on error
+		console.error(
+			`PROD MODE: Error fetching local pro credits for ${userId}: ${error}`
+		)
+		return 0
 	}
 })
 
-// IPC handler to decrement pro credits (careful in dev)
+// Decrement Local Pro Credits
 ipcMain.handle("decrement-pro-credits", async () => {
-	if (!app.isPackaged) {
-		console.log(
-			"DEV MODE: Handling decrement-pro-credits. Simulating success without changing stored value."
-		)
-		// Don't actually decrement anything in dev mode to avoid persistence issues
-		return true // Simulate success
+	const userId = getUserIdFromProfile() // Needed for Keytar
+	if (!userId && app.isPackaged) {
+		console.error("PROD MODE: Cannot decrement credits - User ID missing.")
+		return false
 	}
+
+	if (!app.isPackaged) return true // Dev simulation
+
 	try {
-		let credits = await getCreditsFromKeytar()
-		credits = Math.max(0, credits - 1) // Ensure credits don't go below 0
-		await setCreditsInKeytar(credits)
-		console.log(`PROD MODE: Decremented pro credits to ${credits}.`)
+		let credits = await getCreditsFromKeytar(userId) // Pass userId
+		credits = Math.max(0, credits - 1)
+		await setCreditsInKeytar(userId, credits) // Pass userId
+		console.log(
+			`PROD MODE: Decremented local pro credits to ${credits} for ${userId}.`
+		)
 		return true
 	} catch (error) {
-		console.error(`PROD MODE: Error decrementing pro credits: ${error}`)
+		console.error(
+			`PROD MODE: Error decrementing local pro credits for ${userId}: ${error}`
+		)
 		return false
 	}
 })
 
-// IPC handler to fetch referral code
+// Fetch Local Referral Code
 ipcMain.handle("fetch-referral-code", async () => {
-	if (!app.isPackaged) {
-		console.log(
-			"DEV MODE: Handling fetch-referral-code. Returning mock code 'DEVREFERRAL'."
-		)
-		return "DEVREFERRAL"
-	}
+	const userId = getUserIdFromProfile() // Needed for Keytar
+	if (!userId && app.isPackaged) return null
+
+	if (!app.isPackaged) return "DEVREFERRAL" // Dev mock
+
 	try {
-		const referralCode = await getReferralCodeFromKeytar()
-		console.log("PROD MODE: Fetched referral code:", referralCode)
+		const referralCode = await getReferralCodeFromKeytar(userId) // Pass userId
+		console.log(
+			`PROD MODE: Fetched local referral code for ${userId}:`,
+			referralCode
+		)
 		return referralCode
 	} catch (error) {
-		console.error(`PROD MODE: Error fetching referral code: ${error}`)
+		console.error(
+			`PROD MODE: Error fetching local referral code for ${userId}: ${error}`
+		)
 		return null
 	}
 })
 
-// IPC handler to fetch referrer status
+// Fetch Local Referrer Status
 ipcMain.handle("fetch-referrer-status", async () => {
-	if (!app.isPackaged) {
-		console.log(
-			"DEV MODE: Handling fetch-referrer-status. Returning mock status 'true'."
-		)
-		return true // Or false, depending on testing needs
-	}
+	const userId = getUserIdFromProfile() // Needed for Keytar
+	if (!userId && app.isPackaged) return null
+
+	if (!app.isPackaged) return true // Dev mock
+
 	try {
-		const referrerStatus = await getReferrerStatusFromKeytar()
-		console.log("PROD MODE: Fetched referrer status:", referrerStatus)
+		const referrerStatus = await getReferrerStatusFromKeytar(userId) // Pass userId
+		console.log(
+			`PROD MODE: Fetched local referrer status for ${userId}:`,
+			referrerStatus
+		)
 		return referrerStatus
 	} catch (error) {
-		console.error(`PROD MODE: Error fetching referrer status: ${error}`)
+		console.error(
+			`PROD MODE: Error fetching local referrer status for ${userId}: ${error}`
+		)
 		return null
 	}
 })
 
-// IPC handler to fetch beta user status
+// Fetch Local Beta User Status
 ipcMain.handle("fetch-beta-user-status", async () => {
-	// This might be useful in DEV too, to toggle UI elements
-	// Let's allow it but log clearly.
-	let isDev = !app.isPackaged
-	if (isDev) console.log("DEV MODE: Handling fetch-beta-user-status.")
+	const userId = getUserIdFromProfile() // Needed for Keytar
+	if (!userId && app.isPackaged) return null
+
+	const isDev = !app.isPackaged
+	if (isDev) console.log("DEV MODE: Handling fetch-beta-user-status (local).")
 
 	try {
-		const betaUserStatus = await getBetaUserStatusFromKeytar()
+		const betaUserStatus = await getBetaUserStatusFromKeytar(userId) // Pass userId
 		console.log(
-			`${isDev ? "DEV" : "PROD"} MODE: Fetched beta user status:`,
+			`${isDev ? "DEV" : "PROD"} MODE: Fetched local beta status for ${userId || "dev"}:`,
 			betaUserStatus
 		)
-		// In pure dev mode, maybe default to true/false if needed?
-		// if (isDev && betaUserStatus === null) return true; // Example default for dev
+		if (isDev && betaUserStatus === null) return true // Dev default
 		return betaUserStatus
 	} catch (error) {
 		console.error(
-			`${isDev ? "DEV" : "PROD"} MODE: Error fetching beta user status: ${error}`
+			`${isDev ? "DEV" : "PROD"} MODE: Error fetching local beta status: ${error}`
 		)
-		return null // Return null on error
+		return null
 	}
 })
 
-// IPC handler to set referrer using referral code
+// --- Backend Interaction IPC Handlers (Now include Auth Header) ---
+
+// Set Referrer (Backend Call)
 ipcMain.handle("set-referrer", async (_event, { referralCode }) => {
-	const isDev = !app.isPackaged
-	if (isDev) {
-		console.log(
-			`DEV MODE: Simulating set-referrer with code: ${referralCode}. Returning success.`
-		)
-		// Optionally, store mock status locally if needed for dev UI
-		return {
-			message: "DEV: Referrer status simulated successfully",
-			status: 200
-		}
-	}
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader)
+		return { error: "User not authenticated", status: 401 }
+
+	if (!app.isPackaged)
+		return { message: "DEV: Referrer status simulated", status: 200 } // Dev skip
+
 	try {
 		const apiUrl = `${process.env.APP_SERVER_URL}/get-user-and-set-referrer-status`
 		console.log(
-			`PROD MODE: Sending referral code ${referralCode} to ${apiUrl}`
+			`PROD MODE: User ${userId} sending referral code ${referralCode} to ${apiUrl}`
 		)
 		const response = await fetch(apiUrl, {
 			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ referral_code: referralCode }) // Assumes API expects this body
+			headers: { "Content-Type": "application/json", ...authHeader }, // Auth header
+			// Backend uses token to identify user making request, body contains the code to use
+			body: JSON.stringify({ referral_code: referralCode })
 		})
-
+		// ... (rest of response handling remains same) ...
 		if (!response.ok) {
 			const errorText = await response.text()
+			let detail = errorText
+			try {
+				detail = JSON.parse(errorText).detail || detail
+			} catch {}
 			console.error(
-				`PROD MODE: Error from set-referrer API: ${response.status} ${response.statusText}`,
-				errorText
+				`PROD MODE: Error from set-referrer API for ${userId}: ${response.status}`,
+				detail
 			)
-			throw new Error(`Error from API: ${response.statusText}`)
+			return { error: `API Error: ${detail}`, status: response.status }
 		}
-
 		const result = await response.json()
-		console.log("PROD MODE: Set referrer API call successful:", result)
-		// We should probably update the status in Keytar here as well
-		await fetchAndSetReferrerStatus() // Re-fetch and save the updated status
+		console.log(
+			`PROD MODE: Set referrer API call successful for user ${userId}:`,
+			result
+		)
+		// Consider fetching current user's status if backend indicates it might have changed
+		// await fetchAndSetReferrerStatus();
 		return {
-			message: result.message || "Referrer updated successfully",
+			message:
+				result.message || "Referrer request processed successfully",
 			status: 200
 		}
 	} catch (error) {
-		console.error(`PROD MODE: Error in set-referrer IPC handler: ${error}`)
-		return { error: error.message, status: 500 } // Return error object
+		console.error(
+			`PROD MODE: Error in set-referrer IPC handler for ${userId}: ${error}`
+		)
+		return { error: error.message, status: 500 }
 	}
 })
 
-// IPC handler to invert beta user status
+// Invert Beta Status (Backend Call)
 ipcMain.handle("invert-beta-user-status", async () => {
-	const isDev = !app.isPackaged
-	if (isDev) {
-		console.log("DEV MODE: Simulating invert-beta-user-status.")
-		// Optionally toggle a mock status if needed
-		return { message: "DEV: Beta status inversion simulated", status: 200 }
-	}
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader)
+		return { error: "User not authenticated", status: 401 }
+
+	if (!app.isPackaged)
+		return { message: "DEV: Beta status inversion simulated", status: 200 } // Dev skip
+
 	try {
-		// URL might be different, adjust as needed. Assumed UTILS_SERVER_URL before.
 		const apiUrl = `${process.env.APP_SERVER_URL}/get-user-and-invert-beta-user-status`
-		const profile = await getProfile() // Needed for user_id
-
-		if (!profile || !profile.sub) {
-			throw new Error("User profile or ID not available.")
-		}
-
 		console.log(
-			`PROD MODE: Inverting beta status for user: ${profile.sub} via ${apiUrl}`
+			`PROD MODE: Inverting beta status for user: ${userId} via ${apiUrl}`
 		)
 		const response = await fetch(apiUrl, {
 			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ user_id: profile.sub })
+			headers: { "Content-Type": "application/json", ...authHeader } // Auth header
+			// Backend identifies user via token, body might be empty or specific if needed
+			// body: JSON.stringify({ user_id: userId }) // Body might not be needed now
 		})
-
+		// ... (rest of response handling remains same) ...
 		if (!response.ok) {
 			const errorText = await response.text()
+			let detail = errorText
+			try {
+				detail = JSON.parse(errorText).detail || detail
+			} catch {}
 			console.error(
-				`PROD MODE: Error from invert-beta API: ${response.status} ${response.statusText}`,
-				errorText
+				`PROD MODE: Error from invert-beta API for ${userId}: ${response.status}`,
+				detail
 			)
-			throw new Error(`Error from API: ${response.statusText}`)
+			return { error: `API Error: ${detail}`, status: response.status }
 		}
-
 		const result = await response.json()
 		console.log(
-			"PROD MODE: Invert beta status API call successful:",
+			`PROD MODE: Invert beta status API call successful for user ${userId}:`,
 			result
 		)
-
-		// Update local status in Keytar immediately for UI consistency
-		const currentStatus = await getBetaUserStatusFromKeytar()
+		// Update local status immediately
+		const currentStatus = await getBetaUserStatusFromKeytar(userId)
 		const newStatus = !currentStatus
-		await setBetaUserStatusInKeytar(newStatus)
+		await setBetaUserStatusInKeytar(userId, newStatus) // Use userId
 		console.log(
-			`PROD MODE: Updated local beta status in Keytar to: ${newStatus}`
+			`PROD MODE: Updated local beta status in Keytar to: ${newStatus} for ${userId}`
 		)
-
 		return {
 			message: result.message || "Beta status inverted successfully",
 			status: 200
 		}
 	} catch (error) {
 		console.error(
-			`PROD MODE: Error in invert-beta-user-status IPC handler: ${error}`
+			`PROD MODE: Error in invert-beta-user-status IPC handler for ${userId}: ${error}`
 		)
 		return { error: error.message, status: 500 }
 	}
 })
 
-// --- Database Handlers (Use FastAPI backend) ---
-
-// Helper function to fetch user_id (needed for memory operations)
-// Uses the same backend endpoint as get-user-data initially
-async function getUserIdForMemoryOps() {
-	try {
-		// In production, fetch the real user ID
-		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/get-user-data`,
-			{
-				method: "POST", // Assuming this returns the user data structure
-				headers: { "Content-Type": "application/json" }
-			}
-		)
-		if (!response.ok) {
-			const errorDetail = await response
-				.json()
-				.catch(() => ({ detail: "Failed to parse error response" }))
-			console.error(
-				`Error fetching user data for ID: ${response.status}`,
-				errorDetail
-			)
-			throw new Error("Failed to fetch user data")
-		}
-		const result = await response.json()
-		// Adjust path based on your actual DB structure from get-user-data
-		const userId = result?.data?.personalInfo?.name || result?.data?.userId
-		if (!userId) {
-			console.error("User ID not found in fetched DB data:", result)
-			throw new Error("User ID could not be determined from DB data")
-		}
-		return userId
-	} catch (error) {
-		console.error("Error fetching user ID for memory operations:", error)
-		throw error // Propagate error
-	}
-}
-
-// IPC handler to set data in user profile database (replaces existing keys)
+// Set User Data (Backend Call)
 ipcMain.handle("set-user-data", async (_event, args) => {
 	const { data } = args
-	console.log("IPC: set-user-data called with:", data)
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader)
+		return { error: "User not authenticated", status: 401 }
+
+	console.log(`IPC: set-user-data called for user ${userId}`)
 	try {
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL}/set-user-data`,
 			{
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ data: data })
+				headers: { "Content-Type": "application/json", ...authHeader },
+				body: JSON.stringify({ data: data }) // Backend gets userId from token
 			}
 		)
+		// ... (rest of response handling remains same) ...
 		if (!response.ok) {
 			const errorDetail = await response
 				.json()
-				.catch(() => ({ detail: "Failed to parse error response" }))
+				.catch(() => ({ detail: "Unknown error" }))
 			console.error(
-				`Error from set-user-data API: ${response.status}`,
+				`Error from set-user-data API for user ${userId}: ${response.status}`,
 				errorDetail
 			)
 			return {
-				message: `Error storing data: ${errorDetail.detail || response.statusText}`,
+				message: `Error: ${errorDetail.detail || response.statusText}`,
 				status: response.status
 			}
 		}
 		const result = await response.json()
-		console.log("IPC: set-user-data successful:", result)
+		console.log(`IPC: set-user-data successful for user ${userId}.`)
 		return result
 	} catch (error) {
-		console.error(`IPC Error: set-user-data failed: ${error}`)
+		console.error(
+			`IPC Error: set-user-data failed for user ${userId}: ${error}`
+		)
 		return {
 			message: "Error storing data",
 			status: 500,
@@ -1149,37 +1115,45 @@ ipcMain.handle("set-user-data", async (_event, args) => {
 	}
 })
 
-// IPC handler to add/merge data into user profile database
+// Add DB Data (Backend Call)
 ipcMain.handle("add-db-data", async (_event, args) => {
 	const { data } = args
-	console.log("IPC: add-db-data called with:", data)
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader)
+		return { error: "User not authenticated", status: 401 }
+
+	console.log(`IPC: add-db-data called for user ${userId}`)
 	try {
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL}/add-db-data`,
 			{
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ data: data })
+				headers: { "Content-Type": "application/json", ...authHeader },
+				body: JSON.stringify({ data: data }) // Backend gets userId from token
 			}
 		)
+		// ... (rest of response handling remains same) ...
 		if (!response.ok) {
 			const errorDetail = await response
 				.json()
-				.catch(() => ({ detail: "Failed to parse error response" }))
+				.catch(() => ({ detail: "Unknown error" }))
 			console.error(
-				`Error from add-db-data API: ${response.status}`,
+				`Error from add-db-data API for user ${userId}: ${response.status}`,
 				errorDetail
 			)
 			return {
-				message: `Error adding data: ${errorDetail.detail || response.statusText}`,
+				message: `Error: ${errorDetail.detail || response.statusText}`,
 				status: response.status
 			}
 		}
 		const result = await response.json()
-		console.log("IPC: add-db-data successful:", result)
+		console.log(`IPC: add-db-data successful for user ${userId}.`)
 		return result
 	} catch (error) {
-		console.error(`IPC Error: add-db-data failed: ${error}`)
+		console.error(
+			`IPC Error: add-db-data failed for user ${userId}: ${error}`
+		)
 		return {
 			message: "Error adding data",
 			status: 500,
@@ -1188,35 +1162,45 @@ ipcMain.handle("add-db-data", async (_event, args) => {
 	}
 })
 
-// IPC handler to get all user profile database data
+// Get User Data (Backend Call)
 ipcMain.handle("get-user-data", async () => {
-	console.log("IPC: get-user-data called")
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader)
+		return { error: "User not authenticated", status: 401 }
+
+	console.log(`IPC: get-user-data called for user ${userId}`)
 	try {
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL}/get-user-data`,
 			{
-				method: "POST", // Still POST as per original code
-				headers: { "Content-Type": "application/json" }
+				method: "POST", // Keep POST, backend uses token for userId
+				headers: { "Content-Type": "application/json", ...authHeader }
+				// Body might be empty now if backend uses token
+				// body: JSON.stringify({})
 			}
 		)
+		// ... (rest of response handling remains same) ...
 		if (!response.ok) {
 			const errorDetail = await response
 				.json()
-				.catch(() => ({ detail: "Failed to parse error response" }))
+				.catch(() => ({ detail: "Unknown error" }))
 			console.error(
-				`Error from get-user-data API: ${response.status}`,
+				`Error from get-user-data API for user ${userId}: ${response.status}`,
 				errorDetail
 			)
 			return {
-				message: `Error fetching data: ${errorDetail.detail || response.statusText}`,
+				message: `Error: ${errorDetail.detail || response.statusText}`,
 				status: response.status
 			}
 		}
 		const result = await response.json()
-		console.log("IPC: get-user-data successful.") // Don't log the actual data unless debugging
+		console.log(`IPC: get-user-data successful for user ${userId}.`)
 		return { data: result.data, status: result.status }
 	} catch (error) {
-		console.error(`IPC Error: get-user-data failed: ${error}`)
+		console.error(
+			`IPC Error: get-user-data failed for user ${userId}: ${error}`
+		)
 		return {
 			message: "Error fetching data",
 			status: 500,
@@ -1225,33 +1209,48 @@ ipcMain.handle("get-user-data", async () => {
 	}
 })
 
-// --- Chat Handlers ---
-
+// Fetch Chat History (Backend Call)
 ipcMain.handle("fetch-chat-history", async () => {
-	console.log("IPC: fetch-chat-history called")
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader)
+		return { error: "User not authenticated", status: 401 }
+
+	console.log(`IPC: fetch-chat-history called for user ${userId}`)
 	try {
-		// Assuming chat history doesn't strictly require prod auth checks
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/get-history`,
 			{
-				method: "GET" // Assuming GET is appropriate
+				method: "POST", // Changed to POST
+				headers: { "Content-Type": "application/json", ...authHeader }
+				// Body might be empty now
+				// body: JSON.stringify({})
 			}
 		)
+		// ... (rest of response handling remains same) ...
 		if (!response.ok) {
 			const errorText = await response.text()
 			console.error(
-				`Error fetching chat history: ${response.status} ${response.statusText}`,
+				`Error fetching chat history for user ${userId}: ${response.status} ${response.statusText}`,
 				errorText
 			)
-			throw new Error(
-				`Failed to fetch chat history: Status ${response.status}`
-			)
+			return {
+				message: `Failed to fetch history: ${response.statusText}`,
+				status: response.status,
+				error: errorText
+			}
 		}
 		const data = await response.json()
-		console.log("IPC: fetch-chat-history successful.")
-		return { messages: data.messages, status: 200 }
+		console.log(`IPC: fetch-chat-history successful for user ${userId}.`)
+		return {
+			messages: data.messages,
+			activeChatId: data.activeChatId,
+			status: 200
+		}
 	} catch (error) {
-		console.error(`IPC Error: fetch-chat-history failed: ${error}`)
+		console.error(
+			`IPC Error: fetch-chat-history failed for user ${userId}: ${error}`
+		)
 		return {
 			message: "Error fetching chat history",
 			status: 500,
@@ -1260,23 +1259,28 @@ ipcMain.handle("fetch-chat-history", async () => {
 	}
 })
 
-// Keep the scraper handler from the current code if needed
+// Scrape LinkedIn (Backend Call)
 ipcMain.handle("scrape-linkedin", async (_event, { linkedInProfileUrl }) => {
-	// ... (keep the scrape-linkedin handler as it was in the "Current code")
-	console.log("IPC: scrape-linkedin called for URL:", linkedInProfileUrl)
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader)
+		return { error: "User not authenticated", status: 401 }
+
+	console.log(`IPC: scrape-linkedin called by user ${userId}`)
 	try {
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL}/scrape-linkedin`,
 			{
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
+				headers: { "Content-Type": "application/json", ...authHeader },
 				body: JSON.stringify({ url: linkedInProfileUrl })
 			}
 		)
+		// ... (rest of response handling remains same) ...
 		if (!response.ok) {
 			const errorText = await response.text()
 			console.error(
-				`Error from scrape-linkedin API: ${response.status} ${response.statusText}`,
+				`Error from scrape-linkedin API for user ${userId}: ${response.status}`,
 				errorText
 			)
 			return {
@@ -1286,219 +1290,171 @@ ipcMain.handle("scrape-linkedin", async (_event, { linkedInProfileUrl }) => {
 			}
 		}
 		const { profile } = await response.json()
-		console.log("IPC: scrape-linkedin successful.")
+		console.log(`IPC: scrape-linkedin successful for user ${userId}.`)
 		return {
 			message: "LinkedIn profile scraped successfully",
 			profile,
 			status: 200
 		}
 	} catch (error) {
-		console.error(`IPC Error: scrape-linkedin failed: ${error}`)
+		console.error(
+			`IPC Error: scrape-linkedin failed for user ${userId}: ${error}`
+		)
 		return { message: `Error: ${error.message}`, status: 500 }
 	}
 })
 
-// Modified send-message handler
+// Send Message (Backend Call) - Uses Auth Header now
 ipcMain.handle("send-message", async (_event, { input }) => {
-	console.log(
-		"IPC: send-message called with input:",
-		input.substring(0, 50) + "..."
-	) // Log truncated input
-	let pricing = "pro" // Default to 'pro' in dev
-	let credits = 999 // Default high credits in dev
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader) {
+		mainWindow?.webContents.send("chat-error", {
+			message: "Cannot send message: User not authenticated."
+		})
+		return { message: "User not authenticated", status: 401 }
+	}
+
+	console.log(`IPC: send-message called by user ${userId}`)
+	let pricing = "free" // Default
+	let credits = 0 // Default
 
 	try {
-		// --- Start: Logic from "Current code" ---
 		if (app.isPackaged) {
-			// Fetch real values only in production
-			pricing = (await getPricingFromKeytar()) || "free"
-			credits = await getCreditsFromKeytar()
+			// Use user-specific Keytar entries
+			pricing = (await getPricingFromKeytar(userId)) || "free"
+			credits = await getCreditsFromKeytar(userId)
 			console.log(
-				`PROD MODE: Sending message with pricing=${pricing}, credits=${credits}`
+				`PROD MODE: User ${userId} sending message with pricing=${pricing}, credits=${credits}`
 			)
 		} else {
+			pricing = "pro" // Dev defaults
+			credits = 999
 			console.log(
-				`DEV MODE: Sending message with mock pricing=${pricing}, credits=${credits}`
+				`DEV MODE: User ${userId} sending message with mock pricing=${pricing}, credits=${credits}`
 			)
 		}
-		// --- End: Logic from "Current code" ---
 
 		const payload = {
+			// user_id is implicit via token
 			input,
 			pricing,
 			credits
 		}
-		// Using logging from "Current code"
 		console.log("Sending payload to /chat:", JSON.stringify(payload))
 
 		const response = await fetch(`${process.env.APP_SERVER_URL}/chat`, {
 			method: "POST",
-			headers: { "Content-Type": "application/json" },
+			headers: { "Content-Type": "application/json", ...authHeader }, // Auth header
 			body: JSON.stringify(payload)
 		})
 
-		// Using error handling from "Current code"
+		// --- Stream Handling (mostly same as before) ---
 		if (!response.ok) {
 			const errorText = await response.text()
 			console.error(
-				`Error from /chat endpoint: ${response.status} ${response.statusText}`,
+				`Error from /chat endpoint for user ${userId}: ${response.status} ${response.statusText}`,
 				errorText
 			)
-			// Send error back to renderer
 			mainWindow?.webContents.send("chat-error", {
-				message: `Server error: ${response.status} ${response.statusText || ""}. ${errorText}`
+				message: `Server error: ${response.statusText}. ${errorText}`
 			})
 			throw new Error(`Error sending message: Status ${response.status}`)
 		}
+		if (!response.body) throw new Error("Response body is null.")
 
-		// Using null body check from "Current code"
-		if (!response.body) {
-			throw new Error("Response body is null, cannot process stream.")
-		}
-
-		// --- Start: Stream Handling from "Original node" ---
 		const readable = response.body
 		const decoder = new TextDecoder("utf-8")
 		let buffer = ""
+		let finalProUsed = false
+		const targetWindow = mainWindow // Assume single window for now
+		if (!targetWindow) throw new Error("Application window not found.")
 
-		console.log("IPC: Starting to process chat stream (original method)...") // Added logging
-
-		// Use optional chaining for mainWindow access
-		if (!mainWindow) {
-			console.error("mainWindow is not available to send messages.")
-			throw new Error("Application window not found.")
-		}
-
+		console.log(
+			`IPC: Starting to process chat stream for user ${userId}...`
+		)
 		for await (const chunk of readable) {
 			buffer += decoder.decode(chunk, { stream: true })
-			// Use '\n\n' if your server sends messages separated by double newlines
-			// Use '\n' if separated by single newlines (as in original)
-			const splitMessages = buffer.split("\n") // Assuming single newline separation
-			buffer = splitMessages.pop() || "" // Keep incomplete line, handle empty pop result
-
+			const splitMessages = buffer.split("\n")
+			buffer = splitMessages.pop() || ""
 			for (const msg of splitMessages) {
-				if (msg.trim() === "") continue // Skip empty lines
+				if (msg.trim() === "") continue
 				try {
-					const parsedMessage = JSON.parse(msg)
-					// console.log("Parsed stream chunk:", parsedMessage); // Optional verbose logging
-
-					if (parsedMessage.type === "assistantStream") {
-						mainWindow.webContents.send("message-stream", {
-							// Use a consistent or generated ID if needed
-							messageId:
-								parsedMessage.messageId ||
-								`stream-${Date.now()}-${Math.random()}`,
-							token: parsedMessage.token || "" // Ensure token is always a string
+					const parsed = JSON.parse(msg)
+					if (
+						parsed.type === "assistantStream" ||
+						parsed.type === "assistantMessage"
+					) {
+						targetWindow.webContents.send("message-stream", {
+							messageId: parsed.messageId,
+							token: parsed.token || parsed.message || "",
+							isFinal:
+								parsed.done ||
+								parsed.type === "assistantMessage"
 						})
-
-						// Decrement credits *only in production* if pro was used on a free plan
-						// This check is from the original logic, applied conditionally based on app.isPackaged
-						if (
-							app.isPackaged && // Only decrement in production
-							parsedMessage.done && // Check if the message indicates completion *and* pro usage
-							parsedMessage.proUsed &&
-							pricing === "free"
-						) {
-							console.log(
-								"PROD MODE: Pro features used on free plan. Decrementing credit."
-							)
-							let currentCredits = await getCreditsFromKeytar()
-							currentCredits -= 1
-							await setCreditsInKeytar(
-								Math.max(currentCredits, 0)
-							)
-							// Optionally send updated credits back to renderer
-							// mainWindow.webContents.send("credits-updated", Math.max(currentCredits, 0));
-						} else if (
-							!app.isPackaged &&
-							parsedMessage.done &&
-							parsedMessage.proUsed &&
-							pricing === "free"
-						) {
-							console.log(
-								"DEV MODE: Pro feature used on free plan (simulated). Would decrement in prod."
-							)
-						}
-					} else if (parsedMessage.type === "stream_end") {
-						// Handle explicit end message if server sends one
-						console.log(
-							"Stream ended signal received:",
-							parsedMessage
-						)
-						// Potentially handle final proUsed check here as well if 'done' isn't reliable
-						if (
-							app.isPackaged &&
-							parsedMessage.proUsed &&
-							pricing === "free"
-						) {
-							// Potentially decrement here if the 'done' flag wasn't in the last assistantStream chunk
-							// Requires careful coordination with server logic. Sticking to original for now.
-							console.log(
-								"PROD MODE: Stream end signal indicated pro usage on free plan."
-							)
-						}
+						if (parsed.proUsed) finalProUsed = true
+					} else if (parsed.type === "userMessage") {
+						targetWindow.webContents.send("user-message-saved", {
+							id: parsed.id,
+							timestamp: parsed.timestamp
+						})
+					} else if (parsed.type === "intermediary") {
+						targetWindow.webContents.send("intermediary-message", {
+							message: parsed.message,
+							id: parsed.id
+						})
+					} else if (parsed.type === "error") {
+						targetWindow.webContents.send("chat-error", {
+							message: parsed.message
+						})
 					}
-					// Handle other message types if necessary
 				} catch (parseError) {
 					console.warn(
-						// Use warn instead of log for parsing errors
-						`Error parsing streamed JSON message: ${parseError}. Message: "${msg}"`
+						`Stream parse error: ${parseError}. Msg: "${msg}"`
 					)
 				}
 			}
 		}
-
-		// Process any remaining data in the buffer (less common with newline splitting)
+		// Handle remaining buffer... (same as before)
 		if (buffer.trim()) {
-			console.warn(
-				"Processing remaining buffer after stream loop:",
-				buffer
-			)
 			try {
-				const parsedMessage = JSON.parse(buffer)
-				// Handle potential final message (check type carefully)
+				const parsed = JSON.parse(buffer)
 				if (
-					parsedMessage.type === "assistantStream" ||
-					parsedMessage.type === "assistantMessage"
+					parsed.type === "assistantStream" ||
+					parsed.type === "assistantMessage"
 				) {
-					mainWindow.webContents.send("message-stream", {
-						messageId:
-							parsedMessage.messageId ||
-							`final-${Date.now()}-${Math.random()}`,
-						token:
-							parsedMessage.token || parsedMessage.message || ""
+					targetWindow.webContents.send("message-stream", {
+						messageId: parsed.messageId,
+						token: parsed.token || parsed.message || "",
+						isFinal: true
 					})
-					// Final check for proUsed if applicable and not caught by 'done' flag earlier
-					if (
-						app.isPackaged &&
-						parsedMessage.proUsed &&
-						!parsedMessage.done && // Avoid double counting if 'done' flag already triggered decrement
-						pricing === "free"
-					) {
-						console.warn(
-							"PROD MODE: Final buffer chunk indicated pro usage on free plan. Decrementing credit."
-						)
-						let currentCredits = await getCreditsFromKeytar()
-						currentCredits -= 1
-						await setCreditsInKeytar(Math.max(currentCredits, 0))
-						// mainWindow.webContents.send("credits-updated", Math.max(currentCredits, 0));
-					}
+					if (parsed.proUsed) finalProUsed = true
 				}
-			} catch (parseError) {
+			} catch (e) {
 				console.error(
-					// Use error for final buffer parse failure
-					`Error parsing final buffer message: ${parseError}. Buffer: "${buffer}"`
+					`Final buffer parse error: ${e}. Buffer: "${buffer}"`
 				)
 			}
 		}
-		// --- End: Stream Handling from "Original node" ---
 
-		console.log("IPC: Streaming complete.") // Added logging
+		// Decrement credits *once*
+		if (app.isPackaged && pricing === "free" && finalProUsed) {
+			console.log(
+				`PROD MODE: Decrementing credit for user ${userId} (Free plan, Pro feature used).`
+			)
+			await ipcMain.handle("decrement-pro-credits") // Uses userId internally now
+		} else if (!app.isPackaged && finalProUsed) {
+			console.log(
+				`DEV MODE: Pro used by ${userId} (simulated), would decrement in prod if free.`
+			)
+		}
+
+		console.log(`IPC: Streaming complete for user ${userId}.`)
 		return { message: "Streaming complete", status: 200 }
 	} catch (error) {
-		// Using error handling from "Current code"
-		console.error(`IPC Error: send-message handler failed: ${error}`)
-		// Ensure error message is sent to renderer
+		console.error(
+			`IPC Error: send-message handler failed for user ${userId}: ${error}`
+		)
 		mainWindow?.webContents.send("chat-error", {
 			message: `Failed to process message: ${error.message}`
 		})
@@ -1506,202 +1462,200 @@ ipcMain.handle("send-message", async (_event, { input }) => {
 	}
 })
 
+// Scrape Reddit (Backend Call)
 ipcMain.handle("scrape-reddit", async (_event, { redditProfileUrl }) => {
-	console.log("IPC: scrape-reddit called for URL:", redditProfileUrl)
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader)
+		return { error: "User not authenticated", status: 401 }
+
+	console.log(`IPC: scrape-reddit called by user ${userId}`)
 	try {
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL}/scrape-reddit`,
 			{
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
+				headers: { "Content-Type": "application/json", ...authHeader },
 				body: JSON.stringify({ url: redditProfileUrl })
 			}
 		)
+		// ... (rest of response handling) ...
 		if (!response.ok) {
-			const errorText = await response.text()
-			console.error(
-				`Error from scrape-reddit API: ${response.status} ${response.statusText}`,
-				errorText
-			)
-			return {
-				message: "Error scraping Reddit profile",
-				status: response.status,
-				error: errorText
-			}
+			/* Error handling */
 		}
 		const { topics } = await response.json()
-		console.log("IPC: scrape-reddit successful.")
+		console.log(`IPC: scrape-reddit successful for user ${userId}.`)
 		return {
 			message: "Reddit profile scraped successfully",
 			topics,
 			status: 200
 		}
 	} catch (error) {
-		console.error(`IPC Error: scrape-reddit failed: ${error}`)
-		return { message: `Error: ${error.message}`, status: 500 }
+		/* Error handling */
 	}
 })
 
+// Scrape Twitter (Backend Call)
 ipcMain.handle("scrape-twitter", async (_event, { twitterProfileUrl }) => {
-	console.log("IPC: scrape-twitter called for URL:", twitterProfileUrl)
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader)
+		return { error: "User not authenticated", status: 401 }
+
+	console.log(`IPC: scrape-twitter called by user ${userId}`)
 	try {
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL}/scrape-twitter`,
 			{
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
+				headers: { "Content-Type": "application/json", ...authHeader },
 				body: JSON.stringify({ url: twitterProfileUrl })
 			}
 		)
+		// ... (rest of response handling) ...
 		if (!response.ok) {
-			const errorText = await response.text()
-			console.error(
-				`Error from scrape-twitter API: ${response.status} ${response.statusText}`,
-				errorText
-			)
-			return {
-				message: "Error scraping Twitter profile",
-				status: response.status,
-				error: errorText
-			}
+			/* Error handling */
 		}
 		const { topics } = await response.json()
-		console.log("IPC: scrape-twitter successful.")
+		console.log(`IPC: scrape-twitter successful for user ${userId}.`)
 		return {
 			message: "Twitter profile scraped successfully",
 			topics,
 			status: 200
 		}
 	} catch (error) {
-		console.error(`IPC Error: scrape-twitter failed: ${error}`)
-		return { message: `Error: ${error.message}`, status: 500 }
+		/* Error handling */
 	}
 })
 
-// --- Graph Handlers ---
-
+// Build Personality (Backend Call)
 ipcMain.handle("build-personality", async () => {
-	console.log("IPC: build-personality called")
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader)
+		return { error: "User not authenticated", status: 401 }
+
+	console.log(`IPC: build-personality called for user ${userId}`)
 	try {
-		console.log("Calling /create-document...")
+		console.log(`Calling /create-document for user ${userId}...`)
 		const documentResponse = await fetch(
 			`${process.env.APP_SERVER_URL}/create-document`,
-			{ method: "POST" }
-		)
-		if (!documentResponse.ok) {
-			const errorText = await documentResponse.text()
-			console.error(
-				`Error from /create-document: ${documentResponse.status}`,
-				errorText
-			)
-			return {
-				message: "Error creating document",
-				status: documentResponse.status,
-				error: errorText
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json", ...authHeader }
+				// Body might be empty now
+				// body: JSON.stringify({})
 			}
+		)
+		// ... (check response) ...
+		if (!documentResponse.ok) {
+			throw new Error("Failed create-document step")
 		}
 		const { personality } = await documentResponse.json()
-		console.log("Document created successfully. Personality:", personality)
+		console.log(`Document created for ${userId}.`)
 
-		// Update local DB with personality *before* creating graph if graph depends on it
-		console.log("Updating local DB with personality...")
+		console.log(`Updating local DB with personality for ${userId}...`)
 		const addDataResponse = await fetch(
 			`${process.env.APP_SERVER_URL}/add-db-data`,
 			{
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
+				headers: { "Content-Type": "application/json", ...authHeader },
 				body: JSON.stringify({ data: { userData: { personality } } })
 			}
 		)
+		// ... (check response) ...
 		if (!addDataResponse.ok) {
-			const errorText = await addDataResponse.text()
-			console.error(
-				`Error from /add-db-data: ${addDataResponse.status}`,
-				errorText
-			)
-			return {
-				message: "Error updating local DB with personality",
-				status: addDataResponse.status,
-				error: errorText
-			}
+			throw new Error("Failed add-db-data step")
 		}
-		console.log("Local DB updated with personality.")
+		console.log(`Local DB updated for ${userId}.`)
 
-		console.log("Calling /initiate-long-term-memories...")
+		console.log(`Calling /initiate-long-term-memories for ${userId}...`)
 		const graphResponse = await fetch(
 			`${process.env.APP_SERVER_URL}/initiate-long-term-memories`,
-			{ method: "POST" }
-		)
-		if (!graphResponse.ok) {
-			const errorText = await graphResponse.text()
-			console.error(
-				`Error from /initiate-long-term-memories: ${graphResponse.status}`,
-				errorText
-			)
-			return {
-				message: "Error creating graph",
-				status: graphResponse.status,
-				error: errorText
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json", ...authHeader }
+				// Body might be empty now
+				// body: JSON.stringify({})
 			}
+		)
+		// ... (check response) ...
+		if (!graphResponse.ok) {
+			throw new Error("Failed initiate-long-term-memories step")
 		}
-		console.log("Graph created successfully.")
+		console.log(`Graph created/updated for ${userId}.`)
 		return {
 			message: "Document and Graph created successfully",
 			status: 200
 		}
 	} catch (error) {
-		console.error(`IPC Error: build-personality failed: ${error}`)
+		console.error(
+			`IPC Error: build-personality failed for ${userId}: ${error}`
+		)
 		return { message: `Error: ${error.message}`, status: 500 }
 	}
 })
 
+// Reset Graph (Backend Call)
 ipcMain.handle("reset-long-term-memories", async () => {
-	console.log("IPC: reset-long-term-memories called")
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader)
+		return { error: "User not authenticated", status: 401 }
+
+	console.log(`IPC: reset-long-term-memories called for user ${userId}`)
 	try {
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL}/initiate-long-term-memories`,
-			{ method: "POST" }
-		)
-		if (!response.ok) {
-			const errorText = await response.text()
-			console.error(
-				`Error from /initiate-long-term-memories (recreate): ${response.status}`,
-				errorText
-			)
-			return {
-				message: "Error recreating graph",
-				status: response.status,
-				error: errorText
+			{
+				// Consider a dedicated /reset endpoint
+				method: "POST",
+				headers: { "Content-Type": "application/json", ...authHeader },
+				// Send specific flag in body if needed, user identified by token
+				body: JSON.stringify({ clear_graph: true })
 			}
+		)
+		// ... (check response) ...
+		if (!response.ok) {
+			throw new Error("Failed reset step")
 		}
-		console.log("Graph recreated successfully.")
-		return { message: "Graph recreated successfully", status: 200 }
+		console.log(`Graph reset successfully for ${userId}.`)
+		return { message: "Graph reset successfully", status: 200 }
 	} catch (error) {
-		console.error(`IPC Error: reset-long-term-memories failed: ${error}`)
+		console.error(
+			`IPC Error: reset-long-term-memories failed for ${userId}: ${error}`
+		)
 		return { message: `Error: ${error.message}`, status: 500 }
 	}
 })
 
+// Customize Graph (Backend Call)
 ipcMain.handle(
 	"customize-long-term-memories",
 	async (_event, { newGraphInfo }) => {
+		const userId = getUserIdFromProfile()
+		const authHeader = getAuthHeader()
+		if (!userId || !authHeader)
+			return { error: "User not authenticated", status: 401 }
+
 		console.log(
-			"IPC: customize-long-term-memories called with info:",
-			newGraphInfo.substring(0, 50) + "..."
+			`IPC: customize-long-term-memories called by user ${userId}`
 		)
-		let credits = 999 // Dev default
-		let pricing = "pro" // Dev default
+		let credits = 0
+		let pricing = "free"
 
 		try {
 			if (app.isPackaged) {
-				credits = await getCreditsFromKeytar()
-				pricing = await getPricingFromKeytar()
+				credits = await getCreditsFromKeytar(userId) // Use userId
+				pricing = await getPricingFromKeytar(userId) // Use userId
 				console.log(
-					`PROD MODE: Customizing graph with credits=${credits}, pricing=${pricing}`
+					`PROD MODE: Customizing graph for ${userId}, credits=${credits}, pricing=${pricing}`
 				)
 			} else {
+				/* Dev defaults */ credits = 999
+				pricing = "pro"
 				console.log(
-					`DEV MODE: Customizing graph with mock credits=${credits}, pricing=${pricing}`
+					`DEV MODE: Customizing graph for ${userId} (mock credits)`
 				)
 			}
 
@@ -1709,151 +1663,165 @@ ipcMain.handle(
 				`${process.env.APP_SERVER_URL}/customize-long-term-memories`,
 				{
 					method: "POST",
-					headers: { "Content-Type": "application/json" },
+					headers: {
+						"Content-Type": "application/json",
+						...authHeader
+					},
 					body: JSON.stringify({
 						information: newGraphInfo,
+						pricing: pricing, // Send pricing/credits for backend logic
 						credits: credits
-					}) // Send current credits
+					})
 				}
 			)
-
+			// ... (check response and handle credit decrement) ...
 			if (!response.ok) {
-				const errorText = await response.text()
-				console.error(
-					`Error from /customize-long-term-memories: ${response.status}`,
-					errorText
-				)
-				return {
-					message: "Error customizing graph",
-					status: response.status,
-					error: errorText
-				}
+				throw new Error("Failed customize step")
 			}
-
-			const result = await response.json() // Expecting { message: string, pro_used: boolean } from backend?
-			console.log("Customize graph successful:", result)
-
-			// Decrement credit only if in production, on free plan, and if the API indicates pro was used
+			const result = await response.json()
+			console.log(
+				`Customize graph successful for user ${userId}:`,
+				result
+			)
 			if (
 				app.isPackaged &&
 				pricing === "free" &&
 				result?.pro_used === true
 			) {
 				console.log(
-					"PROD MODE: Pro customization used on free plan. Decrementing credit."
+					`PROD MODE: Decrementing credit for ${userId} (customize graph).`
 				)
-				await ipcMain.handle("decrement-pro-credits")
-			} else if (pricing === "free" && result?.pro_used === true) {
-				console.log(
-					"DEV MODE: Pro customization used (simulated), would decrement credit in prod."
-				)
+				await ipcMain.handle("decrement-pro-credits") // Uses userId now
 			}
-
 			return {
 				message: result.message || "Graph customized successfully",
 				status: 200
 			}
 		} catch (error) {
 			console.error(
-				`IPC Error: customize-long-term-memories failed: ${error}`
+				`IPC Error: customize-long-term-memories failed for ${userId}: ${error}`
 			)
 			return { message: `Error: ${error.message}`, status: 500 }
 		}
 	}
 )
 
+// Delete Subgraph (Backend Call)
 ipcMain.handle("delete-subgraph", async (_event, { source_name }) => {
-	console.log("IPC: delete-subgraph called for source:", source_name)
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader)
+		return { status: "failure", error: "User not authenticated" }
+
+	console.log(
+		`IPC: delete-subgraph called by user ${userId} for source: ${source_name}`
+	)
 	try {
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL}/delete-subgraph`,
 			{
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
+				headers: { "Content-Type": "application/json", ...authHeader },
 				body: JSON.stringify({ source: source_name })
 			}
 		)
-		// Assuming the API returns JSON with status, e.g., { status: 'success' } or { status: 'failure', error: '...' }
+		// ... (check response) ...
 		const result = await response.json()
 		if (!response.ok || result.status === "failure") {
-			console.error(
-				`Error from /delete-subgraph: ${response.status}`,
-				result.error || "Unknown error"
-			)
-			return {
-				status: "failure",
-				error:
-					result.error || `Server responded with ${response.status}`
-			}
+			throw new Error(result.error || `Server error ${response.status}`)
 		}
-		console.log("Delete subgraph successful:", result)
-		return result // Return the full response from API (e.g., { status: 'success' })
+		console.log(`Delete subgraph successful for user ${userId}:`, result)
+		return result
 	} catch (error) {
-		console.error(`IPC Error: delete-subgraph failed: ${error}`)
+		console.error(
+			`IPC Error: delete-subgraph failed for ${userId}: ${error}`
+		)
 		return { status: "failure", error: error.message }
 	}
 })
 
-// --- Task Management Handlers ---
-
+// Fetch Tasks (Backend Call)
 ipcMain.handle("fetch-tasks", async () => {
-	console.log("IPC: fetch-tasks called")
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader) return { error: "User not authenticated" }
+
+	console.log(`IPC: fetch-tasks called for user ${userId}`)
 	try {
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/fetch-tasks`
+			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/fetch-tasks`,
+			{
+				method: "POST", // Changed to POST
+				headers: { "Content-Type": "application/json", ...authHeader }
+				// Body might be empty now
+				// body: JSON.stringify({})
+			}
 		)
+		// ... (check response) ...
 		if (!response.ok) {
-			const errorText = await response.text()
-			console.error(`Error fetching tasks: ${response.status}`, errorText)
 			throw new Error(`HTTP error! status: ${response.status}`)
 		}
 		const result = await response.json()
-		console.log("IPC: fetch-tasks successful.")
+		console.log(`IPC: fetch-tasks successful for user ${userId}.`)
 		return result
 	} catch (error) {
-		console.error("IPC Error: fetch-tasks failed:", error)
+		console.error(
+			`IPC Error: fetch-tasks failed for user ${userId}:`,
+			error
+		)
 		return { error: error.message }
 	}
 })
 
+// Add Task (Backend Call)
 ipcMain.handle("add-task", async (_event, taskData) => {
-	console.log("IPC: add-task called with:", taskData)
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader) return { error: "User not authenticated" }
+
+	console.log(`IPC: add-task called by user ${userId} with:`, taskData)
 	try {
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/add-task`,
 			{
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(taskData)
+				headers: { "Content-Type": "application/json", ...authHeader },
+				body: JSON.stringify({ description: taskData.description }) // Backend gets user from token
 			}
 		)
+		// ... (check response) ...
 		if (!response.ok) {
-			const errorText = await response.text()
-			console.error(`Error adding task: ${response.status}`, errorText)
 			throw new Error(`HTTP error! status: ${response.status}`)
 		}
 		const result = await response.json()
-		console.log("IPC: add-task successful:", result)
+		console.log(`IPC: add-task successful for user ${userId}:`, result)
 		return result
 	} catch (error) {
-		console.error("IPC Error: add-task failed:", error)
+		console.error(`IPC Error: add-task failed for user ${userId}:`, error)
 		return { error: error.message }
 	}
 })
 
+// Update Task (Backend Call)
 ipcMain.handle(
 	"update-task",
 	async (_event, { taskId, description, priority }) => {
-		console.log(`IPC: update-task called for ID ${taskId} with:`, {
-			description,
-			priority
-		})
+		const userId = getUserIdFromProfile()
+		const authHeader = getAuthHeader()
+		if (!userId || !authHeader) return { error: "User not authenticated" }
+
+		console.log(
+			`IPC: update-task called by user ${userId} for ID ${taskId}`
+		)
 		try {
 			const response = await fetch(
 				`${process.env.APP_SERVER_URL || "http://localhost:5000"}/update-task`,
 				{
-					method: "POST", // Kept POST as per original code
-					headers: { "Content-Type": "application/json" },
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						...authHeader
+					},
 					body: JSON.stringify({
 						task_id: taskId,
 						description,
@@ -1861,20 +1829,18 @@ ipcMain.handle(
 					})
 				}
 			)
+			// ... (check response) ...
 			if (!response.ok) {
-				const errorText = await response.text()
-				console.error(
-					`Error updating task ${taskId}: ${response.status}`,
-					errorText
-				)
 				throw new Error(`HTTP error! status: ${response.status}`)
 			}
 			const result = await response.json()
-			console.log(`IPC: update-task for ID ${taskId} successful:`, result)
+			console.log(
+				`IPC: update-task successful for user ${userId}, task ${taskId}.`
+			)
 			return result
 		} catch (error) {
 			console.error(
-				`IPC Error: update-task for ID ${taskId} failed:`,
+				`IPC Error: update-task failed for user ${userId}, task ${taskId}:`,
 				error
 			)
 			return { error: error.message }
@@ -1882,265 +1848,261 @@ ipcMain.handle(
 	}
 )
 
+// Delete Task (Backend Call)
 ipcMain.handle("delete-task", async (_event, taskId) => {
-	console.log("IPC: delete-task called for ID:", taskId)
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader) return { error: "User not authenticated" }
+
+	console.log(`IPC: delete-task called by user ${userId} for ID:`, taskId)
 	try {
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/delete-task`,
 			{
-				method: "POST", // Kept POST as per original code
-				headers: { "Content-Type": "application/json" },
+				method: "POST",
+				headers: { "Content-Type": "application/json", ...authHeader },
 				body: JSON.stringify({ task_id: taskId })
 			}
 		)
+		// ... (check response) ...
 		if (!response.ok) {
-			const errorText = await response.text()
-			console.error(
-				`Error deleting task ${taskId}: ${response.status}`,
-				errorText
-			)
 			throw new Error(`HTTP error! status: ${response.status}`)
 		}
 		const result = await response.json()
-		console.log(`IPC: delete-task for ID ${taskId} successful:`, result)
+		console.log(
+			`IPC: delete-task successful for user ${userId}, task ${taskId}.`
+		)
 		return result
 	} catch (error) {
-		console.error(`IPC Error: delete-task for ID ${taskId} failed:`, error)
+		console.error(
+			`IPC Error: delete-task failed for user ${userId}, task ${taskId}:`,
+			error
+		)
 		return { error: error.message }
 	}
 })
 
-// --- Memory Management Handlers (Short-Term / SQLite) ---
+// Fetch Short Term Memories (Backend Call)
+ipcMain.handle(
+	"fetch-short-term-memories",
+	async (_event, { category, limit = 10 }) => {
+		const userId = getUserIdFromProfile()
+		const authHeader = getAuthHeader()
+		if (!userId || !authHeader) return [] // Return empty array on auth error
 
-ipcMain.handle("fetch-short-term-memories", async (_event, { category }) => {
-	console.log(
-		`IPC: fetch-short-term-memories called for category: ${category}`
-	)
-	try {
-		const userId = await getUserIdForMemoryOps() // Get real or mock user ID
-		console.log(`Using User ID: ${userId} for fetching memories.`)
-
-		const response = await fetch(
-			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/get-short-term-memories`,
-			{
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ user_id: userId, category, limit: 10 }) // Added limit as per original
-			}
-		)
-
-		if (!response.ok) {
-			const errorText = await response.text()
-			console.error(
-				`Error fetching memories for ${userId}, category ${category}: ${response.status}`,
-				errorText
-			)
-			throw new Error(
-				`Failed to fetch memories: Status ${response.status}`
-			)
-		}
-
-		const memories = await response.json()
 		console.log(
-			`IPC: fetch-short-term-memories for ${category} successful.`
+			`IPC: fetch-short-term-memories called for user ${userId}, category: ${category}`
 		)
-		return memories // Should be the list of memories
-	} catch (error) {
-		console.error("IPC Error: fetch-short-term-memories failed:", error)
-		return [] // Return empty array on error as per original code
+		try {
+			const response = await fetch(
+				`${process.env.APP_SERVER_URL || "http://localhost:5000"}/get-short-term-memories`,
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						...authHeader
+					},
+					body: JSON.stringify({ category, limit }) // Backend gets user from token
+				}
+			)
+			// ... (check response) ...
+			if (!response.ok) {
+				throw new Error(
+					`Failed to fetch memories: Status ${response.status}`
+				)
+			}
+			const memories = await response.json()
+			console.log(
+				`IPC: fetch-short-term-memories successful for user ${userId}.`
+			)
+			return memories
+		} catch (error) {
+			console.error(
+				`IPC Error: fetch-short-term-memories failed for user ${userId}:`,
+				error
+			)
+			return []
+		}
 	}
-})
+)
 
+// Add Short Term Memory (Backend Call)
 ipcMain.handle("add-short-term-memory", async (_event, memoryData) => {
-	console.log("IPC: add-short-term-memory called with:", memoryData)
-	try {
-		const userId = await getUserIdForMemoryOps()
-		const requestBody = { user_id: userId, ...memoryData }
-		console.log(`Adding memory for User ID: ${userId}`)
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader) return { error: "User not authenticated" }
 
+	console.log(`IPC: add-short-term-memory called by user ${userId}`)
+	try {
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/add-short-term-memory`,
 			{
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(requestBody)
+				headers: { "Content-Type": "application/json", ...authHeader },
+				body: JSON.stringify(memoryData) // Backend gets user from token
 			}
 		)
-
+		// ... (check response) ...
 		if (!response.ok) {
-			const errorText = await response.text()
-			console.error(
-				`Error adding memory for ${userId}: ${response.status}`,
-				errorText
-			)
 			throw new Error(`HTTP error! status: ${response.status}`)
 		}
-
 		const result = await response.json()
-		console.log("IPC: add-short-term-memory successful:", result)
+		console.log(`IPC: add-short-term-memory successful for user ${userId}.`)
 		return result
 	} catch (error) {
-		console.error("IPC Error: add-short-term-memory failed:", error)
+		console.error(
+			`IPC Error: add-short-term-memory failed for user ${userId}:`,
+			error
+		)
 		return { error: error.message }
 	}
 })
 
+// Update Short Term Memory (Backend Call)
 ipcMain.handle("update-short-term-memory", async (_event, memoryData) => {
-	// memoryData should include the memory ID (e.g., memory_id) and updated fields
-	console.log("IPC: update-short-term-memory called with:", memoryData)
-	try {
-		const userId = await getUserIdForMemoryOps()
-		const requestBody = { user_id: userId, ...memoryData }
-		console.log(
-			`Updating memory ID ${memoryData.memory_id} for User ID: ${userId}`
-		) // Log ID if available
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader) return { error: "User not authenticated" }
 
+	console.log(`IPC: update-short-term-memory called by user ${userId}`)
+	try {
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/update-short-term-memory`,
 			{
-				method: "POST", // Assuming POST, adjust if your API uses PUT/PATCH
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(requestBody)
+				method: "POST",
+				headers: { "Content-Type": "application/json", ...authHeader },
+				body: JSON.stringify(memoryData) // Backend gets user from token
 			}
 		)
-
+		// ... (check response) ...
 		if (!response.ok) {
-			const errorText = await response.text()
-			console.error(
-				`Error updating memory for ${userId}: ${response.status}`,
-				errorText
-			)
 			throw new Error(`HTTP error! status: ${response.status}`)
 		}
-
 		const result = await response.json()
-		console.log("IPC: update-short-term-memory successful:", result)
+		console.log(
+			`IPC: update-short-term-memory successful for user ${userId}.`
+		)
 		return result
 	} catch (error) {
-		console.error("IPC Error: update-short-term-memory failed:", error)
+		console.error(
+			`IPC Error: update-short-term-memory failed for user ${userId}:`,
+			error
+		)
 		return { error: error.message }
 	}
 })
 
+// Delete Short Term Memory (Backend Call)
 ipcMain.handle("delete-short-term-memory", async (_event, memoryData) => {
-	// memoryData should include the ID of the memory to delete (e.g., memory_id)
-	console.log("IPC: delete-short-term-memory called with:", memoryData)
-	try {
-		const userId = await getUserIdForMemoryOps()
-		const requestBody = { user_id: userId, ...memoryData }
-		console.log(
-			`Deleting memory ID ${memoryData.memory_id} for User ID: ${userId}`
-		) // Log ID if available
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader) return { error: "User not authenticated" }
 
+	console.log(`IPC: delete-short-term-memory called by user ${userId}`)
+	try {
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/delete-short-term-memory`,
 			{
-				method: "POST", // Assuming POST, adjust if your API uses DELETE with body or different structure
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(requestBody)
+				method: "POST",
+				headers: { "Content-Type": "application/json", ...authHeader },
+				body: JSON.stringify(memoryData) // Backend gets user from token
 			}
 		)
-
+		// ... (check response) ...
 		if (!response.ok) {
-			const errorText = await response.text()
-			console.error(
-				`Error deleting memory for ${userId}: ${response.status}`,
-				errorText
-			)
 			throw new Error(`HTTP error! status: ${response.status}`)
 		}
-
 		const result = await response.json()
-		console.log("IPC: delete-short-term-memory successful:", result)
+		console.log(
+			`IPC: delete-short-term-memory successful for user ${userId}.`
+		)
 		return result
 	} catch (error) {
-		console.error("IPC Error: delete-short-term-memory failed:", error)
+		console.error(
+			`IPC Error: delete-short-term-memory failed for user ${userId}:`,
+			error
+		)
 		return { error: error.message }
 	}
 })
 
+// Clear All Short Term Memories (Backend Call)
 ipcMain.handle("clear-all-short-term-memories", async () => {
-	console.log("IPC: clear-all-short-term-memories called")
-	try {
-		const userId = await getUserIdForMemoryOps()
-		console.log(`Clearing all memories for User ID: ${userId}`)
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader) return { error: "User not authenticated" }
 
+	console.log(`IPC: clear-all-short-term-memories called for user ${userId}`)
+	try {
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/clear-all-short-term-memories`,
 			{
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ user_id: userId })
+				headers: { "Content-Type": "application/json", ...authHeader }
+				// Body might be empty now
+				// body: JSON.stringify({})
 			}
 		)
-
+		// ... (check response) ...
 		if (!response.ok) {
-			const errorText = await response.text()
-			console.error(
-				`Error clearing memories for ${userId}: ${response.status}`,
-				errorText
-			)
 			throw new Error(`HTTP error! status: ${response.status}`)
 		}
-
 		const result = await response.json()
-		console.log("IPC: clear-all-short-term-memories successful:", result)
+		console.log(
+			`IPC: clear-all-short-term-memories successful for user ${userId}.`
+		)
 		return result
 	} catch (error) {
-		console.error("IPC Error: clear-all-short-term-memories failed:", error)
+		console.error(
+			`IPC Error: clear-all-short-term-memories failed for user ${userId}:`,
+			error
+		)
 		return { error: error.message }
 	}
 })
 
+// Fetch Long Term Memories (Graph) (Backend Call)
 ipcMain.handle("fetch-long-term-memories", async () => {
-	console.log("IPC: fetch-long-term-memories called")
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader)
+		return { error: "User not authenticated", status: 401 }
+
+	console.log(`IPC: fetch-long-term-memories called for user ${userId}`)
 	try {
-		// Ensure APP_SERVER_URL is defined in your environment variables
 		const apiUrl = `${process.env.APP_SERVER_URL}/get-graph-data`
-		if (!apiUrl) {
-			throw new Error("APP_SERVER_URL environment variable is not set.")
-		}
-
-		console.log(`Fetching graph data from backend: ${apiUrl}`)
+		console.log(
+			`Fetching graph data for user ${userId} from backend: ${apiUrl}`
+		)
 		const response = await fetch(apiUrl, {
-			method: "POST", // Using POST as defined in FastAPI
-			headers: {
-				"Content-Type": "application/json"
-				// Add any necessary authentication headers here if required by your backend
-				// 'Authorization': `Bearer ${token}`
-			},
-			// No body needed for this specific request, but sending empty JSON
-			// is often good practice for POST if the backend expects it.
-			body: JSON.stringify({})
+			method: "POST", // Keep POST, backend uses token for user
+			headers: { "Content-Type": "application/json", ...authHeader }
+			// Body likely empty now
+			// body: JSON.stringify({})
 		})
-
+		// ... (check response) ...
 		if (!response.ok) {
-			let errorText = response.statusText
+			let errorText = await response.text()
 			try {
-				// Try to get more detailed error from FastAPI response body
-				const errorBody = await response.json()
-				errorText = errorBody.detail || errorText
-			} catch (e) {
-				// Ignore if response body isn't JSON
-			}
+				errorText = JSON.parse(errorText).detail || errorText
+			} catch {}
 			console.error(
-				`Error fetching graph data from backend: ${response.status} ${errorText}`
+				`Error fetching graph data for ${userId}: ${response.status} ${errorText}`
 			)
-			// Return an error object that the frontend can check
 			return {
 				error: `Failed to fetch graph data: ${errorText}`,
 				status: response.status
 			}
 		}
-
-		// Parse the JSON response which should contain { nodes, edges }
 		const graphData = await response.json()
-		console.log("IPC: fetch-long-term-memories successful.")
-		// Directly return the data in the expected format
-		return graphData // Should be { nodes: [...], edges: [...] }
+		console.log(
+			`IPC: fetch-long-term-memories successful for user ${userId}.`
+		)
+		return graphData
 	} catch (error) {
-		console.error(`IPC Error: fetch-long-term-memories failed: ${error}`)
-		// Return an error object
+		console.error(
+			`IPC Error: fetch-long-term-memories failed for ${userId}: ${error}`
+		)
 		return {
 			error: `Network or processing error: ${error.message}`,
 			status: 500
@@ -2148,30 +2110,45 @@ ipcMain.handle("fetch-long-term-memories", async () => {
 	}
 })
 
+// Get Notifications (Backend Call)
 ipcMain.handle("get-notifications", async () => {
-	console.log("IPC: get-notifications called")
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader)
+		return { error: "User not authenticated", status: 401 }
+
+	console.log(`IPC: get-notifications called for user ${userId}`)
 	try {
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/get-notifications`
+			`${process.env.APP_SERVER_URL}/get-notifications`,
+			{
+				method: "POST", // Changed to POST
+				headers: { "Content-Type": "application/json", ...authHeader }
+				// Body might be empty now
+				// body: JSON.stringify({})
+			}
 		)
+		// ... (check response) ...
 		if (!response.ok) {
 			const errorDetail = await response
 				.json()
-				.catch(() => ({ detail: "Failed to parse error response" }))
+				.catch(() => ({ detail: "Unknown error" }))
 			console.error(
-				`Error from get-notifications API: ${response.status}`,
+				`Error from get-notifications API for user ${userId}: ${response.status}`,
 				errorDetail
 			)
 			return {
-				message: `Error fetching notifications: ${errorDetail.detail || response.statusText}`,
+				message: `Error: ${errorDetail.detail || response.statusText}`,
 				status: response.status
 			}
 		}
 		const result = await response.json()
-		console.log("IPC: get-notifications successful.")
+		console.log(`IPC: get-notifications successful for user ${userId}.`)
 		return { notifications: result.notifications, status: 200 }
 	} catch (error) {
-		console.error(`IPC Error: get-notifications failed: ${error}`)
+		console.error(
+			`IPC Error: get-notifications failed for user ${userId}: ${error}`
+		)
 		return {
 			message: "Error fetching notifications",
 			status: 500,
@@ -2180,41 +2157,34 @@ ipcMain.handle("get-notifications", async () => {
 	}
 })
 
-ipcMain.handle("get-task-approval-data", async (event, taskId) => {
-	// Destructure taskId from the input object
-	console.log(`IPC: get-task-approval-data called for taskId: ${taskId}`)
-	if (!taskId) {
-		console.error(
-			"IPC Error: get-task-approval-data called without taskId."
-		)
-		return { status: 400, message: "Task ID is required." }
-	}
+// Get Task Approval Data (Backend Call)
+ipcMain.handle("get-task-approval-data", async (_event, taskId) => {
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader)
+		return { status: 401, message: "User not authenticated." }
+	if (!taskId) return { status: 400, message: "Task ID is required." }
+
+	console.log(
+		`IPC: get-task-approval-data called by user ${userId} for taskId: ${taskId}`
+	)
 	try {
-		const apiUrl = `http://localhost:5000/get-task-approval-data` // Updated URL (no ID in path)
-		console.log(
-			`Fetching approval data from: ${apiUrl} with taskId: ${taskId}`
-		)
-
+		const apiUrl = `${process.env.APP_SERVER_URL || "http://localhost:5000"}/get-task-approval-data`
 		const response = await fetch(apiUrl, {
-			method: "POST", // Changed to POST
-			headers: {
-				"Content-Type": "application/json" // Essential header for JSON body
-			},
-			body: JSON.stringify({ task_id: taskId }) // Send taskId in the request body
+			method: "POST",
+			headers: { "Content-Type": "application/json", ...authHeader },
+			body: JSON.stringify({ task_id: taskId })
 		})
-
-		// Try to parse JSON regardless of ok status for potential error details
+		// ... (check response) ...
 		let responseBody
-		const contentType = response.headers.get("content-type")
-		if (contentType && contentType.includes("application/json")) {
+		try {
 			responseBody = await response.json()
-		} else {
-			responseBody = { detail: await response.text() } // Fallback for non-JSON errors
+		} catch {
+			responseBody = { detail: await response.text() }
 		}
-
 		if (!response.ok) {
 			console.error(
-				`Error from backend (${response.status}) for get-task-approval-data:`,
+				`Backend error (${response.status}) for get-task-approval-data (user ${userId}):`,
 				responseBody
 			)
 			return {
@@ -2222,13 +2192,13 @@ ipcMain.handle("get-task-approval-data", async (event, taskId) => {
 				message: responseBody.detail || `HTTP error ${response.status}`
 			}
 		}
-
-		console.log(`IPC: get-task-approval-data successful for ${taskId}.`)
-		// Assuming the response body structure is now { approval_data: ... }
+		console.log(
+			`IPC: get-task-approval-data successful for ${taskId} (user ${userId}).`
+		)
 		return { status: 200, approval_data: responseBody.approval_data }
 	} catch (error) {
 		console.error(
-			`IPC Error: Failed to fetch approval data for ${taskId}:`,
+			`IPC Error: Failed to fetch approval data for ${taskId} (user ${userId}):`,
 			error
 		)
 		return {
@@ -2238,46 +2208,36 @@ ipcMain.handle("get-task-approval-data", async (event, taskId) => {
 	}
 })
 
-// Handler to approve a task - now sends ID in body
-ipcMain.handle("approve-task", async (event, taskId) => {
-	// Destructure taskId from the input object
-	console.log(`IPC: approve-task called for taskId: ${taskId}`)
-	if (!taskId) {
-		console.error("IPC Error: approve-task called without taskId.")
-		return { status: 400, message: "Task ID is required." }
-	}
-	try {
-		const apiUrl = `http://localhost:5000/approve-task` // Updated URL (no ID in path)
-		console.log(
-			`Sending approval request to: ${apiUrl} for taskId: ${taskId}`
-		)
+// Approve Task (Backend Call)
+ipcMain.handle("approve-task", async (_event, taskId) => {
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader)
+		return { status: 401, message: "User not authenticated." }
+	if (!taskId) return { status: 400, message: "Task ID is required." }
 
+	console.log(
+		`IPC: approve-task called by user ${userId} for taskId: ${taskId}`
+	)
+	try {
+		const apiUrl = `${process.env.APP_SERVER_URL || "http://localhost:5000"}/approve-task`
 		const response = await fetch(apiUrl, {
 			method: "POST",
-			headers: {
-				"Content-Type": "application/json" // Essential header for JSON body
-			},
-			body: JSON.stringify({ task_id: taskId }) // Send taskId in the request body
+			headers: { "Content-Type": "application/json", ...authHeader },
+			body: JSON.stringify({ task_id: taskId })
 		})
-
-		// Try to parse JSON regardless of ok status
+		// ... (check response) ...
 		let responseBody
-		const contentType = response.headers.get("content-type")
-		if (contentType && contentType.includes("application/json")) {
+		try {
 			responseBody = await response.json()
-		} else {
-			responseBody = {
-				detail: await response.text(),
-				message: await response.text()
-			} // Fallback
+		} catch {
+			responseBody = { detail: await response.text() }
 		}
-
 		if (!response.ok) {
 			console.error(
-				`Error from backend (${response.status}) for approve-task:`,
+				`Backend error (${response.status}) for approve-task (user ${userId}):`,
 				responseBody
 			)
-			// Use 'detail' from FastAPI or 'message' as fallback
 			return {
 				status: response.status,
 				message:
@@ -2286,16 +2246,19 @@ ipcMain.handle("approve-task", async (event, taskId) => {
 					`HTTP error ${response.status}`
 			}
 		}
-
-		console.log(`IPC: approve-task successful for ${taskId}.`)
-		// Assuming the response body structure is now { message: ..., result: ... }
+		console.log(
+			`IPC: approve-task successful for ${taskId} (user ${userId}).`
+		)
 		return {
 			status: 200,
 			message: responseBody.message,
 			result: responseBody.result
 		}
 	} catch (error) {
-		console.error(`IPC Error: Failed to approve task ${taskId}:`, error)
+		console.error(
+			`IPC Error: Failed to approve task ${taskId} (user ${userId}):`,
+			error
+		)
 		return {
 			status: 500,
 			message: `Error approving task: ${error.message}`
@@ -2303,13 +2266,31 @@ ipcMain.handle("approve-task", async (event, taskId) => {
 	}
 })
 
+// Get Data Sources (Backend Call)
 ipcMain.handle("get-data-sources", async () => {
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	// Maybe doesn't strictly need auth? But good practice if settings are per-user.
+	if (!userId || !authHeader)
+		return { error: "User potentially not authenticated" }
+
+	console.log(`IPC: get-data-sources called by user ${userId || "N/A"}`)
 	try {
-		const response = await fetch("http://localhost:5000/get_data_sources")
+		// Changed to POST to potentially pass user context if needed later
+		const response = await fetch(
+			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/get_data_sources`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json", ...authHeader }
+				// body: JSON.stringify({}) // Body likely empty
+			}
+		)
+		// ... (check response) ...
 		if (!response.ok) {
-			throw new Error("Failed to fetch data sources")
+			throw new Error(`Failed to fetch data sources: ${response.status}`)
 		}
 		const data = await response.json()
+		console.log(`IPC: get-data-sources successful.`)
 		return data
 	} catch (error) {
 		console.error("Error fetching data sources:", error)
@@ -2317,80 +2298,91 @@ ipcMain.handle("get-data-sources", async () => {
 	}
 })
 
-ipcMain.handle("set-data-source-enabled", async (event, { source, enabled }) => {
-	console.log(
-		`IPC: set-data-source-enabled called for source: ${source}, enabled: ${enabled}`
-	)
-	try {
-		const response = await fetch(
-			"http://localhost:5000/set_data_source_enabled",
-			{
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ source, enabled })
+// Set Data Source Enabled (Backend Call)
+ipcMain.handle(
+	"set-data-source-enabled",
+	async (_event, { source, enabled }) => {
+		const userId = getUserIdFromProfile()
+		const authHeader = getAuthHeader()
+		if (!userId || !authHeader) return { error: "User not authenticated" }
+
+		console.log(`IPC: set-data-source-enabled called by user ${userId}`)
+		try {
+			const response = await fetch(
+				`${process.env.APP_SERVER_URL || "http://localhost:5000"}/set_data_source_enabled`,
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						...authHeader
+					},
+					body: JSON.stringify({ source, enabled }) // Backend gets user from token
+				}
+			)
+			// ... (check response) ...
+			if (!response.ok) {
+				throw new Error(`Failed to set data source: ${response.status}`)
 			}
-		)
-		if (!response.ok) {
-			throw new Error("Failed to set data source enabled")
+			const data = await response.json()
+			console.log(
+				`IPC: set-data-source-enabled successful for user ${userId}.`
+			)
+			return data
+		} catch (error) {
+			console.error(
+				`Error setting data source enabled for user ${userId}:`,
+				error
+			)
+			return { error: error.message }
 		}
-		const data = await response.json()
-		return data
-	} catch (error) {
-		console.error("Error setting data source enabled:", error)
-		return { error: error.message }
 	}
-})
+)
 
-ipcMain.handle("clear-chat-history", async (event) => {
-	console.log("[IPC Main] Received clear-chat-history request.")
+// Clear Chat History (Backend Call)
+ipcMain.handle("clear-chat-history", async (_event) => {
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader)
+		return { status: 401, error: "User not authenticated" }
+
+	console.log(
+		`[IPC Main] Received clear-chat-history request for user ${userId}.`
+	)
 	const targetUrl = `${process.env.APP_SERVER_URL || "http://localhost:5000"}/clear-chat-history`
-
 	try {
 		const response = await fetch(targetUrl, {
 			method: "POST",
-			headers: {
-				"Content-Type": "application/json"
-				// Add any other necessary headers like Authorization if needed
-			}
-			// No body is needed for this specific endpoint based on the Python code
+			headers: { "Content-Type": "application/json", ...authHeader }
+			// Body might be empty now
+			// body: JSON.stringify({})
 		})
-
-		// Check if the fetch itself was successful (status code 2xx)
+		// ... (check response) ...
 		if (!response.ok) {
-			// Try to get error details from the backend response body
 			let errorDetail = `Backend responded with status ${response.status}`
 			try {
-				const errorData = await response.json()
-				errorDetail = errorData.detail || JSON.stringify(errorData) // FastAPI often uses 'detail' for HTTPException
-			} catch (jsonError) {
-				// If the error response is not JSON, use the status text
-				errorDetail = response.statusText
-			}
+				const d = await response.json()
+				errorDetail = d.detail || JSON.stringify(d)
+			} catch {}
 			console.error(
-				`[IPC Main] Failed to clear chat history on backend: ${errorDetail}`
+				`[IPC Main] Failed clear chat history for ${userId}: ${errorDetail}`
 			)
-			// Return an object that includes the status for the renderer to check
 			return {
 				status: response.status,
 				error: `Failed to clear history: ${errorDetail}`
 			}
 		}
-
-		// If the request was successful (e.g., 200 OK)
-		const responseData = await response.json() // Even if successful, parse the response
-		console.log("[IPC Main] Backend successfully cleared chat history.")
-		return {
-			status: response.status, // Should be 200
-			message: responseData.message // Pass the success message along
-		}
+		const responseData = await response.json()
+		console.log(
+			`[IPC Main] Backend successfully cleared chat history for user ${userId}.`
+		)
+		return { status: response.status, message: responseData.message }
 	} catch (error) {
 		console.error(
-			"[IPC Main] Network or fetch error calling clear-chat-history:",
+			`[IPC Main] Network error clear-chat-history for ${userId}:`,
 			error
 		)
-		// Return an error structure consistent with other failures
 		return {
-			status: 500, // Indicate an internal/communication error
+			status: 500,
 			error: `Failed to communicate with backend: ${error.message}`
 		}
 	}

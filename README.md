@@ -49,10 +49,8 @@
   - [Features](#dart-features)
 - [Roadmap](#compass-roadmap)
 - [Getting Started](#toolbox-getting-started)
-  - [Prerequisites](#bangbang-prerequisites-contributors)
-  - [Installation](#gear-installation-users)
-  - [Environment Variables](#-environment-variables-contributors)
-  - [Run Locally](#running-run-locally-contributors)
+  - [For Contributors (default branch)](#for-contributors-default-branch)
+  - [For Self-Hosting (self-host branch)](#for-self-hosting-self-host-branch)
 - [Usage](#eyes-usage)
 - [Contributing](#wave-contributing)
   - [Code of Conduct](#scroll-code-of-conduct)
@@ -161,193 +159,145 @@ We at [Existence](https://existence.technology) believe that AI won't simply die
 
 ## :toolbox: Getting Started
 
-<!-- Installation -->
+Choose your path below.  
+- **Contributors**: Follow along in the **default** branch.  
+- **Self-Hosters**: Switch to the **self-host** branch to get the self-hostable version with identical instructions.
 
-### :gear: Installation (Users)
+---
 
-If you're not interested in contributing to the project or self-hosting and simply want to use Sentient, join the [Early Adopters Group](https://chat.whatsapp.com/IOHxuf2W8cKEuyZrMo8DOJ). You can also join our paid waitlist for $3 - to do this, contact [@itsskofficial](https://github.com/itsskofficial). Users on the paid waitlist will be the first to get access to the full cloud version of Sentient via a closed beta.
+### For Contributors (default branch)
 
-If you are interested in contributing to the app or simply running the current latest version from source, you can proceed with the following steps 👇
+If you're here to **contribute** to Sentient—adding features, fixing bugs, improving docs—follow these steps on the **default** branch.
 
-<!-- Prerequisites -->
+1. **Clone the repo**  
+   ```bash
+   git clone https://github.com/existence-master/Sentient.git
+   cd Sentient
+   ```
 
-### :bangbang: Prerequisites (Contributors)
+2. **Prerequisites**
 
-#### The following instructions are for Linux-based machines, but they remain fundamentally the same for Windows & Mac. Only things like venv configs and activations change on Windows, the rest of the process is pretty much the same.
+   * **Node.js & npm**
+     Install from [nodejs.org](https://nodejs.org/en/download).
+   * **Python 3.11+**
+     Install from [python.org](https://www.python.org/downloads/).
+   * **Ollama** (for text models)
+     Install from [ollama.com](https://ollama.com/).
+   * **Neo4j Community Edition** (for the knowledge graph)
+     Download from [neo4j.com](https://neo4j.com/deployment-center/).
 
-Clone the project
+3. **Frontend setup**
 
-```bash
-  git clone https://github.com/existence-master/Sentient.git
-```
+   ```bash
+   cd src/client
+   npm install
+   ```
 
-Go to the project directory
+4. **Backend setup**
 
-```bash
-  cd Sentient
-```
+   ```bash
+   cd src/server
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   ```
 
-Install the following to start contributing to Sentient:
+   > ⚠️ If you encounter numpy errors, first install with the latest numpy (2.x), then downgrade to 1.26.4.
 
-- npm: The ElectronJS frontend of the Sentient desktop app uses npm as its package manager.
+5. **Ollama models**
 
-  Install the latest version of NodeJS and npm from [here.](https://nodejs.org/en/download)
-
-  After that, install all the required packages.
-
-  ```bash
-   cd ./src/client && npm install
-  ```
-
-- python: Python will be needed to run the backend.
-  Install Python [from here.](https://www.python.org/downloads/) We recommend Python 3.11.
-
-  After that, you will need to create a virtual environment and install all required packages. This venv will need to be activated whenever you want to run the Python server (backend).
-
-  ```bash
-   cd src/server && python3 -m venv venv
-   cd venv/bin && source activate
-   cd ../../ && pip install -r requirements.txt
-  ```
-
-  `⚠️ If you get a numpy dependency error while installing the requirements, first install the requirements with the latest numpy version (2.x). After the installation of requirements completes, install a numpy 1.x version (backend has been tested and works successfully on numpy 1.26.4) and you will be ready to go. This is probably not the best practise, but this works for now.`
-
-  `⚠️ If you intend to use Advanced Voice Mode, you MUST download and install llama-cpp-python with CUDA support (if you have an NVIDIA GPU) using the commented out pip command in the requirements.txt file. Otherwise, simply download and install the llama-cpp-python package with pip for simple CPU-only support. This line is commented out in the requirements file to allow users to download and install the appropriate version based on their preference (CPU only/GPU accelerated).`
-
-- Ollama: Download and install the latest version of Ollama [from here.](https://ollama.com/)
-
-  After that, pull the model you wish to use from Ollama. For example,
-
-  ```bash
+   ```bash
    ollama pull llama3.2:3b
-  ```
+   ```
 
-  `⚠️ By default, the backend is configured with Llama 3.2 3B. We found this SLM to be really versatile and works really well for our usage, as compared to other SLMs. However a lot of new SLMs like Cogito are being dropped everyday so we will probably be changing the model soon. If you wish to use a different model, simply find all the places where llama3.2:3b has been set in the Python backend scripts and change it to the tag of the model you have pulled from Ollama.`
+   *Tip*: To use another model, update `BASE_MODEL_REPO_ID` in your `.env` accordingly.
 
-- Neo4j Community: Download Neo4j Community Edition [from here.](https://neo4j.com/deployment-center/)
+6. **Neo4j APOC plugin**
 
-  Next, you will need to enable the APOC plugin.
-  After extracting Neo4j Community Edition, navigate to the labs folder. Copy the `apoc-x.x.x-core.jar` script to the plugins folder in the Neo4j folder.
-  Edit the neo4j.conf file to allow the use of APOC procedures:
+   * Copy `apoc-x.x.x-core.jar` into `neo4j/plugins`.
+   * In `neo4j/conf/neo4j.conf`:
 
-  ```bash
-  sudo nano /etc/neo4j/neo4j.conf
-  ```
+     ```ini
+     dbms.security.procedures.unrestricted=apoc.*
+     dbms.security.procedures.allowlist=apoc.*
+     dbms.unmanaged_extension_classes=apoc.export=/apoc
+     ```
 
-  Uncomment or add the following lines:
+7. **Environment variables**
 
-  ```ini
-  dbms.security.procedures.unrestricted=apoc.*
-  dbms.security.procedures.allowlist=apoc.*
-  dbms.unmanaged_extension_classes=apoc.export=/apoc
-  ```
+   * **Frontend**: create `src/interface/.env`:
 
-  You can run Neo4j community using the following commands
+     ```env
+     ELECTRON_APP_URL="http://localhost:3000"
+     APP_SERVER_URL="http://127.0.0.1:5000"
+     NEO4J_SERVER_URL="http://localhost:7474"
+     BASE_MODEL_REPO_ID="llama3.2:3b"
+     AUTH0_DOMAIN="your-auth0-domain"
+     AUTH0_CLIENT_ID="your-auth0-client-id"
+     ```
+   * **Backend**: create `src/server/.env`:
 
-  ```bash
-    cd neo4j/bin && ./neo4j console
-  ```
+     ```env
+     NEO4J_URI=bolt://localhost:7687
+     NEO4J_USERNAME=neo4j
+     NEO4J_PASSWORD=your-password
+     EMBEDDING_MODEL_REPO_ID=sentence-transformers/all-MiniLM-L6-v2
+     BASE_MODEL_URL=http://localhost:11434/api/chat
+     BASE_MODEL_REPO_ID=llama3.2:3b
+     GOOGLE_CLIENT_ID=…
+     GOOGLE_CLIENT_SECRET=…
+     BRAVE_SUBSCRIPTION_TOKEN=…
+     AES_SECRET_KEY=…
+     AES_IV=…
+     ```
 
-  While Neo4j is running, you can visit `http://localhost:7474/` to run Cypher Queries and interact with your knowledge graph.
+   > ⚠️ If you need example keys, see the discussion “Request Environment Variables” in Issues.
 
-  `⚠️ On your first run of Neo4j Community, you will need to set a username and password. **Remember this password** as you will need to add it to the .env file on the Python backend.`
+8. **Run everything**
 
-- Download the Voice Model (Orpheus TTS 3B)
+   * Start Neo4j:
 
-  For using Advanced Voice Mode, you need to manually download [this model](https://huggingface.co/isaiahbjork/orpheus-3b-0.1-ft-Q4_K_M-GGUF) from Huggingface. Whisper is automatically downloaded by Sentient via fasterwhisper.
+     ```bash
+     cd neo4j/bin && ./neo4j console
+     ```
+   * Start backend:
 
-  The model linked above is a Q4 quantization of the Orpheus 3B model. If you have even more VRAM at your disposal, you can go for the [Q8 quant](https://huggingface.co/Mungert/orpheus-3b-0.1-ft-GGUF).
+     ```bash
+     cd src/server
+     source venv/bin/activate
+     python -m server.app.app
+     ```
+   * Start Electron client:
 
-  Download the GGUF files - these models are run using llama-cpp-python.
+     ```bash
+     cd src/client
+     npm run dev
+     ```
 
-  Place the model files here:
-  `src/server/voice/models`
+---
 
-  and ensure that the correct model name is set in the Python scripts on the backend. By default, the app is configured to use the 8-bit quant using the same name that it has when you download it from HuggingFace.
+### For Self-Hosting (self-host branch)
 
-  `⚠️ If you do not have enough VRAM and voice mode is not that important to you, you can comment out/remove the voice mode loading functionality in the main app.py located at src/server/app/app.py`
+If you just want to **self-host** Sentient—no contributions needed—switch to the `self-host` branch. The instructions are **identical** to the contributors guide above, but this branch is tailored for self-hosting deployments.
 
-<!-- Environment Variables -->
+1. **Switch branches**
 
-### 🔒: Environment Variables (Contributors)
+   ```bash
+   git clone https://github.com/existence-master/Sentient.git
+   cd Sentient
+   git checkout self-host
+   ```
 
-You will need the following environment variables to run the project locally. For sensitive keys like Auth0, GCP, Brave Search you can create your own accounts and populate your own keys or comment in the discussion titled ['Request Environment Variables (.env) Here'](https://github.com/existence-master/Sentient/discussions/13) if you want pre-setup keys
+2. **Follow all steps** in the **Contributors** section above, starting at “Prerequisites.”
 
-For the Electron Frontend, you will need to create a `.env` file in the `src/interface` folder. Populate that `.env` file with the following variables (examples given).
+   * Install dependencies
+   * Pull Ollama models
+   * Configure Neo4j & environment files
+   * Run Neo4j, backend, and client
 
-```.emv.template
-  ELECTRON_APP_URL= "http://localhost:3000"
-  APP_SERVER_URL= "http://127.0.0.1:5000"
-  APP_SERVER_LOADED= "false"
-  APP_SERVER_INITIATED= "false"
-  NEO4J_SERVER_URL= "http://localhost:7474"
-  NEO4J_SERVER_STARTED= "false"
-  BASE_MODEL_REPO_ID= "llama3.2:3b"
-  AUTH0_DOMAIN = "abcdxyz.us.auth0.com"
-  AUTH0_CLIENT_ID = "abcd1234"
-```
+> **Tip**: The `self-host` branch will always mirror the default branch’s setup instructions. Any updates to installation or configuration in the default branch will be back-ported here for self-hosting users.
 
-For the Python Backend, you will need to create a `.env` file and place it in the `src/model` folder. Populate that `.env` file with the following variables (examples given).
-
-```.emv.template
-  NEO4J_URI=bolt://localhost:7687
-  NEO4J_USERNAME=neo4j
-  NEO4J_PASSWORD=abcd1234
-  EMBEDDING_MODEL_REPO_ID=sentence-transformers/all-MiniLM-L6-v2
-  BASE_MODEL_URL=http://localhost:11434/api/chat
-  BASE_MODEL_REPO_ID=llama3.2:3b
-  LINKEDIN_USERNAME=email@address.com
-  LINKEDIN_PASSWORD=password123
-  BRAVE_SUBSCRIPTION_TOKEN=YOUR_TOKEN_HERE
-  BRAVE_BASE_URL=https://api.search.brave.com/res/v1/web/search
-  GOOGLE_CLIENT_ID=YOUR_GOOGLE_CLIENT_ID_HERE
-  GOOGLE_PROJECT_ID=YOUR_PROJECT_ID
-  GOOGLE_AUTH_URI=https://accounts.google.com/o/oauth2/auth
-  GOOGLE_TOKEN_URI=https://oauth2.googleapis.com/token
-  GOOGLE_AUTH_PROVIDER_CERT_URL=https://www.googleapis.com/oauth2/v1/certs
-  GOOGLE_CLIENT_SECRET=YOUR_SECRET_HERE
-  GOOGLE_REDIRECT_URIS=http://localhost
-  AES_SECRET_KEY=YOUR_SECRET_KEY_HERE (256 bits or 32 chars)
-  AES_IV=YOUR_IV_HERE (256 bits or 32 chars)
-  AUTH0_DOMAIN=abcdxyz.us.auth0.com
-  AUTH0_MANAGEMENT_CLIENT_ID=YOUR_MANAGEMENT_CLIENT_ID
-  AUTH0_MANAGEMENT_CLIENT_SECRET=YOUR_MANAGEMENT_CLIENT_SECRET
-```
-
-`⚠️ If you face some issues with Auth0 setup, please contact us via our Whatsapp Group or reach out to one of the lead contributors [@Kabeer2004](https://github.com/Kabeer2004), [@itsskofficial](https://github.com/itsskofficial) or [@abhijeetsuryawanshi12](https://github.com/abhijeetsuryawanshi12)`
-
-<!-- Run Locally -->
-
-### :running: Run Locally (Contributors)
-
-**Install dependencies**
-
-Ensure that you have installed all the dependencies as outlined in the [Prerequisites Section](#bangbang-prerequisites).
-
-**Start Neo4j**
-
-Start Neo4j Community Edition first.
-
-```bash
-cd neo4j/bin && ./neo4j console
-```
-
-**Start the Python backend server.**
-
-```bash
-  cd src/server/venv/bin/ && source activate
-  cd ../../ && python -m server.app.app
-```
-
-Once the Python server has fully started up, start the Electron client.
-
-```bash
-  cd src/interface && npm run dev
-```
-
-`❗ You are free to package and bundle your own versions of the app that may or may not contain any modifications. However, if you do make any modifications, you must comply with the AGPL license and open-source your version as well.`
-
-<!-- Usage -->
+---
 
 ## :eyes: Usage
 
@@ -357,11 +307,11 @@ Sentient is a proactive companion that pulls context from the different apps you
 
 Sentient can also do a lot based on simple user commands.
 
-- `"Hey Sentient, help me find a restaurant in Pune based on my food preferences.`
-- `What are the upcoming events in my Google Calendar?`
-- `Setup a lunch meeting with tom@email.com and add it to my Calendar`
-- `Create a pitch deck for my startup in Google Slides and email it to tom@email.com`
-- `Help me find new hobbies in my city`
+* `"Hey Sentient, help me find a restaurant in Pune based on my food preferences.`
+* `What are the upcoming events in my Google Calendar?`
+* `Setup a lunch meeting with tom@email.com and add it to my Calendar`
+* `Create a pitch deck for my startup in Google Slides and email it to tom@email.com`
+* `Help me find new hobbies in my city`
 
 📹 [Check out our ad!](https://www.youtube.com/watch?v=Oeqmg25yqDY)
 
@@ -387,60 +337,48 @@ Please read the [code of conduct](https://github.com/existence-master/Sentient/b
 
 ## :grey_question: FAQ
 
-- When will the cloud version launch?
+* **When will the cloud version launch?**
+  We are working as fast as we can to bring it to life! Join our [WhatsApp Community](https://chat.whatsapp.com/IOHxuf2W8cKEuyZrMo8DOJ) to get daily updates and more!
 
-  - We are working as fast as we can to bring it to life! Join our [WhatsApp Community](https://chat.whatsapp.com/IOHxuf2W8cKEuyZrMo8DOJ) to get daily updates and more!
+* **What data do you collect about me?**
+  For auth, we have a standard email–password flow provided by Auth0 (also supports Google OAuth). We only collect your email and login history. Read more in our [privacy policy](https://existence-sentient.vercel.app/privacy).
 
-- What data do you collect about me?
+* **What hardware do I need?**
 
-  - For auth, we have a standard email-password flow provided by Auth0 (also supports Google OAuth). So, the only data we collect is the email provided by users and their login history. This helps us understand how users are using the app, retention rates, daily signups and more. Read more about data collection in our [privacy policy.](https://existence-sentient.vercel.app/privacy).
+  * **Text mode**: CPU (Intel i5 or equivalent), 8 GB RAM, GPU with 4–6 GB VRAM.
+  * **Voice mode**: Additional VRAM depending on your Orpheus 3B quant.
 
-- What kind of hardware do I need to run the app locally/self-host it?
-
-  - To run Sentient - any decent CPU (Intel Core i5 or equivalent and above), 8GB of RAM and a GPU with 4-6GB of VRAM should be enough for text only. For voice, additional VRAM will be required based on the quant you choose for Orpheus 3B. A GPU is necessary for fast local model inference. You can self-host/run locally on Windows, Linux or Mac.
-
-- Why open source?
-
-  - Since the app is going to be processing a lot of your personal information, maintaining transparency of the underlying code and processes is very important. The code needs to be available for everyone to freely view how their data is being managed in the app. We also want developers to be able to contribute to Sentient - they should be able to add missing integrations or features that they feel should be a part of Sentient. They should also be able to freely make their own forks of Sentient for different use-cases, provided they abide by the GNU AGPL license and open-source their work. 
-
-- Why AGPL?
-
-  - We intentionally decided to go with a more restrictive license, specifically AGPL, rather than a permissive license (like MIT or Apache) since we do not want any other closed-source, cloud-based competitors cropping up with our code at its core. Going with AGPL is our way of staying committed to our core principles of transparency and privacy while ensuring that others who use our code also follow the same principles.
+* **Why open source & AGPL?**
+  Transparency around personal data is core to our philosophy. AGPL ensures derivatives also remain open, preventing closed-source forks.
 
 <!-- License -->
 
 ## :warning: License
 
-Distributed under the GNU AGPL License. Check [our lisence](https://github.com/existence-master/Sentient/blob/master/LICENSE.txt) for more information.
+Distributed under the GNU AGPL License. See [LICENSE.txt](https://github.com/existence-master/Sentient/blob/master/LICENSE.txt) for details.
 
 <!-- Contact -->
 
 ## :handshake: Contact
 
-[existence.sentient@gmail.com](existence.sentient@gmail.com)
+[existence.sentient@gmail.com](mailto:existence.sentient@gmail.com)
 
 <!-- Acknowledgments -->
 
 ## :gem: Acknowledgements
 
-Sentient wouldn't have been possible without
+Sentient wouldn't have been possible without:
 
-- [Ollama](https://ollama.com/)
-- [Neo4j](https://neo4j.com/)
-- [FastAPI](https://fastapi.tiangolo.com/)
-- [Meta's Llama Models](https://www.llama.com/)
-- [ElectronJS](https://www.electronjs.org/)
-- [Next.js](https://nextjs.org/)
+* [Ollama](https://ollama.com/)
+* [Neo4j](https://neo4j.com/)
+* [FastAPI](https://fastapi.tiangolo.com/)
+* [Meta's Llama Models](https://www.llama.com/)
+* [ElectronJS](https://www.electronjs.org/)
+* [Next.js](https://nextjs.org/)
 
 <!-- Official Team -->
 
 ## :heavy_check_mark: Official Team
-
-The official team behind Sentient
-
-<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section. -->
-<!-- prettier-ignore-start -->
-<!-- markdownlint-disable -->
 
 <table>
   <tr>
@@ -448,37 +386,22 @@ The official team behind Sentient
        <a href="https://github.com/itsskofficial">
          <img src="https://avatars.githubusercontent.com/u/65887545?v=4?s=100" width="100px;" alt=""/>
          <br />
-         <sub>
-           <b>
-             itsskofficial
-           </b>
-         </sub>
+         <sub><b>itsskofficial</b></sub>
        </a>
-       <br />
      </td>  
      <td align="center">
        <a href="https://github.com/kabeer2004">
          <img src="https://avatars.githubusercontent.com/u/59280736?v=4" width="100px;" alt=""/>
          <br />
-         <sub>
-           <b>
-             kabeer2004
-           </b>
-         </sub>
+         <sub><b>kabeer2004</b></sub>
        </a>
-       <br />
      </td>  
-      <td align="center">
+     <td align="center">
        <a href="https://github.com/abhijeetsuryawanshi12">
          <img src="https://avatars.githubusercontent.com/u/108229267?v=4" width="100px;" alt=""/>
          <br />
-         <sub>
-           <b>
-             abhijeetsuryawanshi12
-           </b>
-         </sub>
+         <sub><b>abhijeetsuryawanshi12</b></sub>
        </a>
-       <br />
      </td>
   </tr>
 </table>

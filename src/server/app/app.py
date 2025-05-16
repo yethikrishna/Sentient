@@ -542,7 +542,7 @@ print(f"[INIT] {datetime.now()}: Tool handlers registry initialized.")
 # Instantiate the task queue globally
 # This queue will manage background tasks, notifying users via WebSockets.
 print(f"[INIT] {datetime.now()}: Initializing TaskQueue...")
-task_queue = TaskQueue(manager) # Pass WebSocket manager for notifications
+task_queue = TaskQueue() # Pass WebSocket manager for notifications
 print(f"[INIT] {datetime.now()}: TaskQueue initialized.")
 
 # --- Voice Model Initializations ---
@@ -600,7 +600,7 @@ print(f"[CONFIG] {datetime.now()}: Initial chat DB structure defined.")
 # Initialize MemoryBackend
 # This backend handles operations related to the agent's memory.
 print(f"[INIT] {datetime.now()}: Initializing MemoryBackend...")
-memory_backend = MemoryBackend(manager) # Pass WebSocket manager for potential notifications
+memory_backend = MemoryBackend() # Pass WebSocket manager for potential notifications
 print(f"[INIT] {datetime.now()}: MemoryBackend initialized. Performing cleanup...")
 # Cleanup operations for memory might depend on user context, so deferred for now.
 # memory_backend.cleanup()

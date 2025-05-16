@@ -433,7 +433,7 @@ export const createAppWindow = () => {
  * @throws {Error} If `userId` is not available or any check fails.
  */
 const checkUserInfo = async () => {
-	if (!app.isPackaged) return // Only run in production
+	// if (!app.isPackaged) return // Only run in production
 	console.log("PRODUCTION MODE: Performing User Information checks...")
 
 	const userId = getUserIdFromProfile() // Get ID from freshly validated profile
@@ -478,7 +478,7 @@ const checkUserInfo = async () => {
  * @throws {Error} If `checkAuthStatus` or `checkUserInfo` fails.
  */
 export const checkValidity = async () => {
-	if (!app.isPackaged) return // Only run in production
+	// if (!app.isPackaged) return // Only run in production
 	console.log("PRODUCTION MODE: Performing application validity checks...")
 	try {
 		await checkAuthStatus() // Ensures tokens are fresh and profile (with userId) is set
@@ -868,15 +868,35 @@ const startApp = async () => {
 			}
 		}, validityCheckDelay)
 	} else {
-		// Development Environment: Simpler startup
+		// Development Environment: Simpler startup, but now includes token refresh attempt
 		console.log(
 			"DEVELOPMENT MODE: Starting application (skipping updates and production validity checks)."
 		)
-		createAppWindow() // Creates window, loads URL, and connects WebSocket on `did-finish-load`
+		try {
+			console.log(
+				"[ELECTRON] [DEV_MODE] Attempting to refresh tokens on startup..."
+			)
+			await refreshTokens() // Try to restore session
+			console.log(
+				`[ELECTRON] [DEV_MODE] Token refresh attempt completed. User ID: ${getProfile() ? getProfile().sub : "null"}, Access Token Available: ${!!getAccessToken()}`
+			)
+		} catch (error) {
+			// This catch is important: if refreshTokens fails (e.g., no stored token, or it's invalid),
+			// we log it but don't halt the app. The app will proceed in an unauthenticated state.
+			console.warn(
+				`[ELECTRON] [DEV_MODE] Failed to refresh tokens on startup (this is normal if not logged in or refresh token is expired/invalid): ${error.message}`
+			)
+			// accessToken and profile will remain null in auth.js
+		}
+
+		createAppWindow() // Creates window, loads URL.
+		// connectWebSocket will be called inside createAppWindow after the URL loads.
+		// If refreshTokens succeeded, connectWebSocket should now have a token.
 		mainWindow?.webContents.on("did-finish-load", () => {
 			console.log(
 				"DEVELOPMENT MODE: Main application window finished loading."
 			)
+			// Note: connectWebSocket() is called within createAppWindow's loadURL().then() for dev
 		})
 	}
 }

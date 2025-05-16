@@ -43,7 +43,7 @@ if (app.isPackaged) {
 	)
 } else {
 	// Development: Running from source
-	dotenvPath = path.resolve(__dirname, "../../.env") // Relative to this file, up two levels to project root
+	dotenvPath = path.resolve(__dirname, "../.env") // Relative to this file, up two levels to project root
 	console.log(
 		`[auth.js] DEVELOPMENT: Loading .env from dev path: ${dotenvPath}`
 	)
@@ -63,6 +63,7 @@ if (dotenvResult.error) {
 const auth0Domain = process.env.AUTH0_DOMAIN // Auth0 tenant domain
 const clientId = process.env.AUTH0_CLIENT_ID // Auth0 application client ID
 const appServerUrl = process.env.APP_SERVER_URL || "http://localhost:5000" // Backend server URL
+const auth0Audience = process.env.AUTH0_AUDIENCE
 
 // --- Keytar Configuration ---
 const keytarService = "electron-openid-oauth" // Main service name for Keytar entries
@@ -108,10 +109,20 @@ export function getAuthenticationURL() {
 		)
 		throw new Error("Auth0 domain and/or client ID are not configured.")
 	}
+
+	if (!auth0Audience) {
+		// <<<--- ADD THIS CHECK
+		console.error(
+			"[auth.js] Auth0 Audience (AUTH0_AUDIENCE) is missing in environment variables. This is crucial for getting an API-specific access token."
+		)
+		throw new Error(
+			"Auth0 Audience is not configured. Please set AUTH0_AUDIENCE in your .env file."
+		)
+	}
 	// Scopes: openid (required), profile (user info), offline_access (to get refresh token), email
 	// Response type: code (for Authorization Code Grant flow)
 	// Redirect URI: Where Auth0 redirects after authentication
-	return `https://${auth0Domain}/authorize?scope=openid profile offline_access email&response_type=code&client_id=${clientId}&redirect_uri=http://localhost/callback`
+	return `https://${auth0Domain}/authorize?audience=${encodeURIComponent(auth0Audience)}&scope=openid profile offline_access email&response_type=code&client_id=${clientId}&redirect_uri=http://localhost/callback`
 }
 
 /**
@@ -230,6 +241,17 @@ export async function refreshTokens() {
 		)
 	}
 
+	if (!auth0Audience) {
+		// <<<--- ADD THIS CHECK (important for refresh)
+		console.error(
+			"[auth.js] Auth0 Audience is missing for refreshTokens. Cannot request API-specific token."
+		)
+		await logout()
+		throw new Error(
+			"Auth0 Audience configuration is missing for token refresh."
+		)
+	}
+
 	let decryptedToken
 	try {
 		console.log("[auth.js] Decrypting stored refresh token...")
@@ -254,7 +276,8 @@ export async function refreshTokens() {
 		body: JSON.stringify({
 			grant_type: "refresh_token",
 			client_id: clientId,
-			refresh_token: decryptedToken // Send the decrypted refresh token
+			refresh_token: decryptedToken, // Send the decrypted refresh token
+			audience: auth0Audience
 		})
 	}
 
@@ -351,11 +374,24 @@ export async function loadTokens(callbackURL) {
 		throw new Error("Authorization code is missing in the callback URL.")
 	}
 
+
+    if (!auth0Audience) {
+		// <<<--- ADD THIS CHECK (important for token exchange)
+		console.error(
+			"[auth.js] Auth0 Audience is missing for loadTokens. Cannot request API-specific token."
+		)
+		await logout()
+		throw new Error(
+			"Auth0 Audience configuration is missing for token exchange."
+		)
+	}
+
 	const params = {
 		grant_type: "authorization_code",
 		client_id: clientId,
 		code: code,
-		redirect_uri: "http://localhost/callback" // Must match the redirect URI used in the /authorize request
+		redirect_uri: "http://localhost/callback", // Must match the redirect URI used in the /authorize request
+		audience: auth0Audience
 	}
 	const options = {
 		method: "POST",

@@ -173,191 +173,211 @@ class Auth:
     """
 
     async def get_current_user(self, token: str = Depends(oauth2_scheme)) -> str:
-        """
-        FastAPI dependency to validate an incoming JWT token and return the user_id (subject claim).
-        This function is typically used in route definitions to protect endpoints.
-
-        Args:
-            token: The JWT token extracted from the Authorization header by `oauth2_scheme`.
-
-        Raises:
-            HTTPException (401): If the token is invalid, expired, or credentials cannot be validated.
-            HTTPException (403): If the token is valid but lacks required permissions (optional).
-
-        Returns:
-            str: The user_id (Auth0 'sub' claim) if the token is valid.
-        """
+        # ... (credentials_exception, permission_exception defined as before) ...
         credentials_exception = HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-        # Example permission exception, can be used if scope checking is implemented
-        permission_exception = HTTPException(
+        permission_exception = HTTPException( # Keep if you plan to use scope checks
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permission denied",
         )
 
         try:
-            # Get the unverified header from the token to find the 'kid' (Key ID)
+            print("TOKEN: ", token) # Debugging line to check the token
             unverified_header = jwt.get_unverified_header(token)
-            rsa_key = {}
-            # Find the corresponding public key in the fetched JWKS using the 'kid'
-            for key in jwks["keys"]:
-                if key["kid"] == unverified_header["kid"]:
-                    rsa_key = {
-                        "kty": key["kty"], "kid": key["kid"], "use": key["use"],
-                        "n": key["n"], "e": key["e"]
-                    }
-            if not rsa_key:
-                print("[AUTH_VALIDATION] Signing key not found in JWKS for kid:", unverified_header["kid"])
+            print(f"[AUTH_DEBUG] Unverified header: {unverified_header}")
+
+            if "kid" not in unverified_header:
+                print("[AUTH_VALIDATION_ERROR] 'kid' not found in token header.")
                 raise credentials_exception
 
-            # Decode and validate the token using the public key
+            token_kid = unverified_header["kid"] # Store for clarity
+
+            # DEBUG JWKS structure
+            # print(f"[AUTH_DEBUG] Type of jwks: {type(jwks)}") # Optional: if you suspect jwks itself
+            if not isinstance(jwks, dict) or "keys" not in jwks or not isinstance(jwks["keys"], list):
+                print(f"[AUTH_VALIDATION_ERROR] JWKS structure is invalid. JWKS content: {str(jwks)[:200]}...")
+                raise credentials_exception 
+
+            rsa_key_data = {} # Renamed from rsa_key to avoid confusion with the output for jwt.decode
+            found_matching_key = False
+            for key_index, key_entry in enumerate(jwks["keys"]):
+                # print(f"[AUTH_DEBUG] JWKS key_entry at index {key_index}: {str(key_entry)[:200]}...") # Can be verbose
+                if not isinstance(key_entry, dict):
+                    print(f"[AUTH_WARN] JWKS key_entry at index {key_index} is not a dictionary. Skipping.")
+                    continue
+                
+                if "kid" not in key_entry:
+                    print(f"[AUTH_WARN] Key_entry at index {key_index} in JWKS is missing 'kid'. Content: {key_entry}. Skipping.")
+                    continue
+
+                if key_entry["kid"] == token_kid:
+                    required_rsa_components = ["kty", "kid", "use", "n", "e"]
+                    if all(comp in key_entry for comp in required_rsa_components):
+                        rsa_key_data = {comp: key_entry[comp] for comp in required_rsa_components}
+                        found_matching_key = True
+                        # print(f"[AUTH_DEBUG] Found matching RSA key in JWKS for kid: {token_kid}")
+                        break 
+                    else:
+                        print(f"[AUTH_WARN] Matching 'kid' ({token_kid}) found, but key_entry is missing some RSA components. Key: {key_entry}")
+                        # This key is unusable, let loop continue if there are other keys
+            
+            if not found_matching_key or not rsa_key_data:
+                print(f"[AUTH_VALIDATION_ERROR] RSA key not found or not usable in JWKS for kid: {token_kid}")
+                raise credentials_exception
+            
             payload = jwt.decode(
                 token,
-                rsa_key,
+                rsa_key_data, # Use the constructed key data
                 algorithms=ALGORITHMS,
-                audience=AUTH0_AUDIENCE, # Verify the token is intended for this API
-                issuer=f"https://{AUTH0_DOMAIN}/" # Verify the token issuer
+                audience=AUTH0_AUDIENCE,
+                issuer=f"https://{AUTH0_DOMAIN}/"
             )
 
-            user_id: str = payload.get("sub") # 'sub' claim usually holds the user ID
+            user_id: str = payload.get("sub")
             if user_id is None:
-                print("[AUTH_VALIDATION] Token payload missing 'sub' (user_id).")
+                print("[AUTH_VALIDATION_ERROR] Token payload missing 'sub' (user_id).")
                 raise credentials_exception
-
-            # Optional: Check for specific scopes/permissions if needed
-            # scopes = payload.get("scope", "").split()
-            # if "read:messages" not in scopes: # Example scope check
-            #     raise permission_exception
-
+            
             # print(f"[AUTH_VALIDATION] Token validated successfully for user: {user_id}")
-            return user_id # Return the user ID
+            return user_id
 
         except JWTError as e:
-            print(f"[AUTH_VALIDATION] JWT Error: {e}")
+            print(f"[AUTH_VALIDATION_ERROR] JWT Error: {e}")
             raise credentials_exception
-        except JOSEError as e: # jose specific errors, often related to key issues
-             print(f"[AUTH_VALIDATION] JOSE Error (likely key issue): {e}")
+        except JOSEError as e:
+             print(f"[AUTH_VALIDATION_ERROR] JOSE Error (likely key issue): {e}")
              raise credentials_exception
-        except Exception as e: # Catch-all for unexpected errors during validation
-             print(f"[AUTH_VALIDATION] Unexpected validation error: {e}")
+        except HTTPException: # Re-raise HTTPExceptions if they are raised internally
+            raise
+        except Exception as e:
+             print(f"[AUTH_VALIDATION_ERROR] Unexpected validation error in get_current_user: {e}")
              traceback.print_exc()
              raise credentials_exception
 
     async def ws_authenticate(self, websocket: WebSocket) -> Optional[str]:
-        """
-        Authenticates a WebSocket connection.
-        Expects the client to send an auth message with a token shortly after connecting.
-
-        Args:
-            websocket: The WebSocket connection instance.
-
-        Returns:
-            Optional[str]: The user_id if authentication is successful, None otherwise.
-                           The WebSocket connection will be closed on failure.
-        """
+        # ... (existing try-except structure for WebSocket messages) ...
         try:
-            # Receive the initial authentication message from the client
             auth_data = await websocket.receive_text()
             message = json.loads(auth_data)
 
-            # Check if the message type is 'auth' and a token is provided
             if message.get("type") != "auth":
+                await websocket.send_text(json.dumps({"type": "auth_failure", "message": "Auth message expected"}))
                 await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Auth message expected")
                 return None
 
             token = message.get("token")
             if not token:
+                await websocket.send_text(json.dumps({"type": "auth_failure", "message": "Token missing in auth message"}))
                 await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Token missing in auth message")
                 return None
 
-            # Validate the token using the helper method
-            user_id = await self.get_current_user_from_token(token)
+            user_id = await self.get_current_user_from_token(token) # This will now raise HTTPException on failure
 
-            if user_id:
+            # This 'if user_id:' block is now effectively always true if no exception was raised.
+            # The 'else' branch is theoretically unreachable if get_current_user_from_token always raises on failure.
+            if user_id: 
                  await websocket.send_text(json.dumps({"type": "auth_success", "user_id": user_id}))
                  print(f"[WS_AUTH] WebSocket authenticated for user: {user_id}")
                  return user_id
-            else:
-                 # This path should ideally not be reached if get_current_user_from_token raises
-                 # HTTPException on failure, which it does. Kept as a fallback.
-                 await websocket.send_text(json.dumps({"type": "auth_failure", "message": "Invalid token"}))
-                 await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid token")
-                 return None
+            # else: # This else branch is unlikely to be hit due to HTTPException from get_current_user_from_token
+            #      print(f"[WS_AUTH] Authentication failed: Invalid token (user_id is None).") # Should not happen
+            #      await websocket.send_text(json.dumps({"type": "auth_failure", "message": "Invalid token"}))
+            #      await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid token")
+            #      return None
 
         except WebSocketDisconnect:
             print("[WS_AUTH] Client disconnected during authentication.")
             return None
         except json.JSONDecodeError:
-            print("[WS_AUTH] Received non-JSON auth message.")
+            print("[WS_AUTH_ERROR] Received non-JSON auth message.")
             await websocket.close(code=status.WS_1003_UNSUPPORTED_DATA, reason="Invalid JSON format")
             return None
-        except HTTPException as e: # Catch validation errors from get_current_user_from_token
-             print(f"[WS_AUTH] Authentication failed: {e.detail}")
+        except HTTPException as e: 
+             print(f"[WS_AUTH_ERROR] Authentication failed: {e.detail}")
              await websocket.send_text(json.dumps({"type": "auth_failure", "message": e.detail}))
-             await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason=e.detail)
+             # Ensure reason is not excessively long for WebSocket close
+             close_reason = e.detail[:123] if e.detail else "Authentication failed"
+             await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason=close_reason)
              return None
         except Exception as e:
-            print(f"[WS_AUTH] Unexpected error during WebSocket authentication: {e}")
+            print(f"[WS_AUTH_ERROR] Unexpected error during WebSocket authentication: {e}")
             traceback.print_exc()
             try:
-                 # Attempt to close the WebSocket gracefully on server error
                  await websocket.close(code=status.WS_1011_INTERNAL_ERROR, reason="Internal server error")
-            except:
-                pass # Ignore errors during close if already closed or problematic
+            except: # NOSONAR
+                pass 
             return None
 
-    async def get_current_user_from_token(self, token: str) -> Optional[str]:
-        """
-        Helper method to validate a token string directly.
-        This is used by `ws_authenticate` to avoid dependency injection issues.
 
-        Args:
-            token: The JWT token string.
-
-        Returns:
-            Optional[str]: The user_id ('sub' claim) if the token is valid, None otherwise.
-
-        Raises:
-            HTTPException: If the token is invalid.
-        """
+    async def get_current_user_from_token(self, token: str) -> Optional[str]: # Return type is str, Optional for consistency but it raises.
         credentials_exception = HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials"
         )
         try:
             unverified_header = jwt.get_unverified_header(token)
-            rsa_key = {}
-            for key in jwks["keys"]:
-                if key["kid"] == unverified_header["kid"]:
-                    rsa_key = {
-                        "kty": key["kty"], "kid": key["kid"], "use": key["use"],
-                        "n": key["n"], "e": key["e"]
-                    }
-            if not rsa_key:
+            # print(f"[AUTH_HELPER_DEBUG] Unverified header: {unverified_header}")
+
+            if "kid" not in unverified_header:
+                print("[AUTH_HELPER_ERROR] 'kid' not found in token header.")
                 raise credentials_exception
 
+            token_kid = unverified_header["kid"]
+
+            if not isinstance(jwks, dict) or "keys" not in jwks or not isinstance(jwks["keys"], list):
+                print(f"[AUTH_HELPER_ERROR] JWKS structure is invalid. JWKS content: {str(jwks)[:200]}...")
+                raise credentials_exception 
+
+            rsa_key_data = {}
+            found_matching_key = False
+            for key_index, key_entry in enumerate(jwks["keys"]):
+                if not isinstance(key_entry, dict):
+                    # print(f"[AUTH_HELPER_WARN] JWKS key_entry at index {key_index} is not a dictionary. Skipping.")
+                    continue
+                
+                if "kid" not in key_entry:
+                    # print(f"[AUTH_HELPER_WARN] Key_entry at index {key_index} in JWKS is missing 'kid'. Content: {key_entry}. Skipping.")
+                    continue
+
+                if key_entry["kid"] == token_kid:
+                    required_rsa_components = ["kty", "kid", "use", "n", "e"]
+                    if all(comp in key_entry for comp in required_rsa_components):
+                        rsa_key_data = {comp: key_entry[comp] for comp in required_rsa_components}
+                        found_matching_key = True
+                        break 
+                    # else:
+                        # print(f"[AUTH_HELPER_WARN] Matching 'kid' ({token_kid}) found, but key_entry is missing RSA components. Key: {key_entry}")
+            
+            if not found_matching_key or not rsa_key_data:
+                print(f"[AUTH_HELPER_ERROR] RSA key not found or not usable in JWKS for kid: {token_kid}")
+                raise credentials_exception
+            
             payload = jwt.decode(
                 token,
-                rsa_key,
+                rsa_key_data,
                 algorithms=ALGORITHMS,
                 audience=AUTH0_AUDIENCE,
                 issuer=f"https://{AUTH0_DOMAIN}/"
             )
             user_id: str = payload.get("sub")
             if user_id is None:
+                print("[AUTH_HELPER_ERROR] Token payload missing 'sub' (user_id).")
                 raise credentials_exception
             return user_id
         except JWTError as e:
-            print(f"[AUTH_HELPER] JWT Error: {e}")
+            print(f"[AUTH_HELPER_ERROR] JWT Error: {e}")
             raise credentials_exception
         except JOSEError as e:
-            print(f"[AUTH_HELPER] JOSE Error: {e}")
+            print(f"[AUTH_HELPER_ERROR] JOSE Error: {e}")
             raise credentials_exception
+        except HTTPException: # Re-raise HTTPExceptions
+            raise
         except Exception as e:
-            print(f"[AUTH_HELPER] Unexpected validation error: {e}")
+            print(f"[AUTH_HELPER_ERROR] Unexpected validation error in get_current_user_from_token: {e}")
+            traceback.print_exc()
             raise credentials_exception
 
 # Instantiate the Auth class for use in dependencies

@@ -2,7 +2,7 @@
 
 ![README Banner](./.github/assets/banner.png)
 
-<h1>Your personal, private & interactive AI companion</h1>
+<h1>Your proactive AI companion</h1>
   
 <!-- Badges -->
 <p>

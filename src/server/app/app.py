@@ -1,9 +1,9 @@
 # Record script start time for performance monitoring and logging
 import time
-from datetime import datetime, timezone # Moved for early use and combined
+import datetime # Moved for early use and combined
 
 START_TIME = time.time()
-print(f"[STARTUP] {datetime.now()}: Script execution started.")
+print(f"[STARTUP] {datetime.datetime.now()}: Script execution started.")
 
 # --- Core Python and System Imports ---
 import os
@@ -14,7 +14,6 @@ import multiprocessing
 import traceback # For detailed error printing
 
 # --- Third-Party Library Imports ---
-from tzlocal import get_localzone # Keep if needed elsewhere, but use explicit UTC for DB timestamps
 from fastapi import (
     FastAPI,
     HTTPException,
@@ -55,11 +54,11 @@ import gradio as gr # Still needed for FastRTC internals (real-time communicatio
 from fastrtc import Stream, ReplyOnPause, AlgoOptions, SileroVadOptions # For FastRTC components
 import httpx # For asynchronous HTTP requests
 
-print(f"[STARTUP] {datetime.now()}: Basic imports completed.")
+print(f"[STARTUP] {datetime.datetime.now()}: Basic imports completed.")
 
 # --- Application-Specific Module Imports ---
 # Assuming APPROVAL_PENDING_SIGNAL and PERSONALITY_DESCRIPTIONS are defined in these imports
-print(f"[STARTUP] {datetime.now()}: Importing model components...")
+print(f"[STARTUP] {datetime.datetime.now()}: Importing model components...")
 from server.agents.runnables import *
 from server.agents.functions import *
 from server.agents.prompts import *
@@ -108,18 +107,18 @@ from server.voice.stt import FasterWhisperSTT
 from server.voice.orpheus_tts import OrpheusTTS, TTSOptions, VoiceId, AVAILABLE_VOICES
 
 # --- Environment Variable Loading ---
-print(f"[STARTUP] {datetime.now()}: Loading environment variables from server/.env...")
+print(f"[STARTUP] {datetime.datetime.now()}: Loading environment variables from server/.env...")
 dotenv_path = os.path.join(os.path.dirname(__file__), ".env")
 load_dotenv(dotenv_path=dotenv_path)
-print(f"[STARTUP] {datetime.now()}: Environment variables loaded from {dotenv_path}")
+print(f"[STARTUP] {datetime.datetime.now()}: Environment variables loaded from {dotenv_path}")
 
 # --- Asyncio Configuration ---
-print(f"[STARTUP] {datetime.now()}: Applying nest_asyncio...")
+print(f"[STARTUP] {datetime.datetime.now()}: Applying nest_asyncio...")
 nest_asyncio.apply()
-print(f"[STARTUP] {datetime.now()}: nest_asyncio applied.")
+print(f"[STARTUP] {datetime.datetime.now()}: nest_asyncio applied.")
 
 # --- Global Initializations ---
-print(f"[INIT] {datetime.now()}: Starting global initializations...")
+print(f"[INIT] {datetime.datetime.now()}: Starting global initializations...")
 DATA_SOURCES = ["gmail", "internet_search", "gcalendar"]
 
 # --- Auth0 Configuration & JWKS (JSON Web Key Set) ---
@@ -134,11 +133,11 @@ if not AUTH0_DOMAIN or not AUTH0_AUDIENCE:
 
 jwks_url = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
 try:
-    print(f"[INIT] {datetime.now()}: Fetching JWKS from {jwks_url}...")
+    print(f"[INIT] {datetime.datetime.now()}: Fetching JWKS from {jwks_url}...")
     jwks_response = requests.get(jwks_url)
     jwks_response.raise_for_status()
     jwks = jwks_response.json()
-    print(f"[INIT] {datetime.now()}: JWKS fetched successfully.")
+    print(f"[INIT] {datetime.datetime.now()}: JWKS fetched successfully.")
 except requests.exceptions.RequestException as e:
     print(f"[ERROR] FATAL: Could not fetch JWKS from Auth0: {e}")
     exit(1) # Exit if JWKS cannot be fetched
@@ -273,7 +272,7 @@ class Auth:
             return None
 
 auth = Auth()
-print(f"[INIT] {datetime.now()}: Authentication helper initialized for custom API.")
+print(f"[INIT] {datetime.datetime.now()}: Authentication helper initialized for custom API.")
 
 class PermissionChecker:
     def __init__(self, required_permissions: List[str]):
@@ -294,33 +293,33 @@ class PermissionChecker:
 
 
 # --- Initialize embedding model, Neo4j driver, WebSocketManager, runnables, TaskQueue, voice models etc. ---
-print(f"[INIT] {datetime.now()}: Initializing HuggingFace Embedding model ({os.environ.get('EMBEDDING_MODEL_REPO_ID', 'N/A')})...")
+print(f"[INIT] {datetime.datetime.now()}: Initializing HuggingFace Embedding model ({os.environ.get('EMBEDDING_MODEL_REPO_ID', 'N/A')})...")
 try:
     embed_model = HuggingFaceEmbedding(model_name=os.environ["EMBEDDING_MODEL_REPO_ID"])
-    print(f"[INIT] {datetime.now()}: HuggingFace Embedding model initialized.")
+    print(f"[INIT] {datetime.datetime.now()}: HuggingFace Embedding model initialized.")
 except KeyError:
-    print(f"[ERROR] {datetime.now()}: EMBEDDING_MODEL_REPO_ID not set. Embedding model not initialized.")
+    print(f"[ERROR] {datetime.datetime.now()}: EMBEDDING_MODEL_REPO_ID not set. Embedding model not initialized.")
     embed_model = None
 except Exception as e:
-    print(f"[ERROR] {datetime.now()}: Failed to initialize Embedding model: {e}")
+    print(f"[ERROR] {datetime.datetime.now()}: Failed to initialize Embedding model: {e}")
     embed_model = None
 
-print(f"[INIT] {datetime.now()}: Initializing Neo4j Graph Driver (URI: {os.environ.get('NEO4J_URI', 'N/A')})...")
+print(f"[INIT] {datetime.datetime.now()}: Initializing Neo4j Graph Driver (URI: {os.environ.get('NEO4J_URI', 'N/A')})...")
 try:
     graph_driver = GraphDatabase.driver(uri=os.environ["NEO4J_URI"], auth=(os.environ["NEO4J_USERNAME"], os.environ["NEO4J_PASSWORD"]))
     graph_driver.verify_connectivity()
-    print(f"[INIT] {datetime.now()}: Neo4j Graph Driver initialized and connected.")
+    print(f"[INIT] {datetime.datetime.now()}: Neo4j Graph Driver initialized and connected.")
 except KeyError:
-    print(f"[ERROR] {datetime.now()}: NEO4J_URI/USERNAME/PASSWORD not set. Neo4j Driver not initialized.")
+    print(f"[ERROR] {datetime.datetime.now()}: NEO4J_URI/USERNAME/PASSWORD not set. Neo4j Driver not initialized.")
     graph_driver = None
 except Exception as e:
-    print(f"[ERROR] {datetime.now()}: Failed to initialize Neo4j Driver: {e}")
+    print(f"[ERROR] {datetime.datetime.now()}: Failed to initialize Neo4j Driver: {e}")
     graph_driver = None
 
 class WebSocketManager:
     def __init__(self):
         self.active_connections: Dict[str, WebSocket] = {}
-        print(f"[WS_MANAGER] {datetime.now()}: WebSocketManager initialized.")
+        print(f"[WS_MANAGER] {datetime.datetime.now()}: WebSocketManager initialized.")
     async def connect(self, websocket: WebSocket, user_id: str):
         if user_id in self.active_connections:
             print(f"[WS_MANAGER] User {user_id} already connected. Closing old one.")
@@ -354,8 +353,8 @@ class WebSocketManager:
         await self.broadcast(json.dumps(data))
 
 manager = WebSocketManager()
-print(f"[INIT] {datetime.now()}: WebSocketManager instance created.")
-print(f"[INIT] {datetime.now()}: Initializing runnables...")
+print(f"[INIT] {datetime.datetime.now()}: WebSocketManager instance created.")
+print(f"[INIT] {datetime.datetime.now()}: Initializing runnables...")
 reflection_runnable = get_reflection_runnable()
 inbox_summarizer_runnable = get_inbox_summarizer_runnable()
 priority_runnable = get_priority_runnable()
@@ -376,16 +375,16 @@ reddit_runnable = get_reddit_runnable()
 twitter_runnable = get_twitter_runnable()
 internet_query_reframe_runnable = get_internet_query_reframe_runnable()
 internet_summary_runnable = get_internet_summary_runnable()
-print(f"[INIT] {datetime.now()}: Runnables initialization complete.")
+print(f"[INIT] {datetime.datetime.now()}: Runnables initialization complete.")
 tool_handlers: Dict[str, callable] = {}
-print(f"[INIT] {datetime.now()}: Tool handlers registry initialized.")
-print(f"[INIT] {datetime.now()}: Initializing TaskQueue...")
+print(f"[INIT] {datetime.datetime.now()}: Tool handlers registry initialized.")
+print(f"[INIT] {datetime.datetime.now()}: Initializing TaskQueue...")
 task_queue = TaskQueue()
-print(f"[INIT] {datetime.now()}: TaskQueue initialized.")
+print(f"[INIT] {datetime.datetime.now()}: TaskQueue initialized.")
 stt_model = None
 tts_model = None
 SELECTED_TTS_VOICE: VoiceId = "tara"
-print(f"[CONFIG] {datetime.now()}: Defining database file paths...")
+print(f"[CONFIG] {datetime.datetime.now()}: Defining database file paths...")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 USER_PROFILE_DB_DIR = os.path.join(BASE_DIR, "..", "..", "user_databases")
 CHAT_DB_DIR = os.path.join(BASE_DIR, "..", "..", "chat_databases")
@@ -399,30 +398,30 @@ def get_user_chat_db_path(user_id: str) -> str:
     return os.path.join(CHAT_DB_DIR, f"{user_id}_chats.json")
 def get_user_notifications_db_path(user_id: str) -> str:
     return os.path.join(NOTIFICATIONS_DB_DIR, f"{user_id}_notifications.json")
-print(f"[CONFIG] {datetime.now()}: User-specific database directories set.")
+print(f"[CONFIG] {datetime.datetime.now()}: User-specific database directories set.")
 db_lock = asyncio.Lock()
 notifications_db_lock = asyncio.Lock()
 profile_db_lock = asyncio.Lock()
-print(f"[INIT] {datetime.now()}: Global database locks initialized.")
+print(f"[INIT] {datetime.datetime.now()}: Global database locks initialized.")
 initial_db = {"chats": [], "active_chat_id": 0, "next_chat_id": 1}
-print(f"[CONFIG] {datetime.now()}: Initial chat DB structure defined.")
-print(f"[INIT] {datetime.now()}: Initializing MemoryBackend...")
+print(f"[CONFIG] {datetime.datetime.now()}: Initial chat DB structure defined.")
+print(f"[INIT] {datetime.datetime.now()}: Initializing MemoryBackend...")
 memory_backend = MemoryBackend()
-print(f"[INIT] {datetime.now()}: MemoryBackend initialized.")
+print(f"[INIT] {datetime.datetime.now()}: MemoryBackend initialized.")
 def register_tool(name: str):
     def decorator(func: callable):
         print(f"[TOOL_REGISTRY] Registering tool '{name}'")
         tool_handlers[name] = func
         return func
     return decorator
-print(f"[CONFIG] {datetime.now()}: Setting up Google OAuth2 configuration...")
+print(f"[CONFIG] {datetime.datetime.now()}: Setting up Google OAuth2 configuration...")
 SCOPES = ["https://www.googleapis.com/auth/gmail.send", "https://www.googleapis.com/auth/gmail.compose", "https://www.googleapis.com/auth/gmail.modify", "https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/documents", "https://www.googleapis.com/auth/calendar", "https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/presentations", "https://www.googleapis.com/auth/drive", "https://mail.google.com/"]
 CREDENTIALS_DICT = {"installed": {"client_id": os.environ.get("GOOGLE_CLIENT_ID"), "project_id": os.environ.get("GOOGLE_PROJECT_ID"), "auth_uri": os.environ.get("GOOGLE_AUTH_URI"), "token_uri": os.environ.get("GOOGLE_TOKEN_URI"), "auth_provider_x509_cert_url": os.environ.get("GOOGLE_AUTH_PROVIDER_x509_CERT_URL"), "client_secret": os.environ.get("GOOGLE_CLIENT_SECRET"), "redirect_uris": ["http://localhost"]}}
-print(f"[CONFIG] {datetime.now()}: Google OAuth2 config complete.")
+print(f"[CONFIG] {datetime.datetime.now()}: Google OAuth2 config complete.")
 MANAGEMENT_CLIENT_ID = os.getenv("AUTH0_MANAGEMENT_CLIENT_ID_M2M")
 MANAGEMENT_CLIENT_SECRET = os.getenv("AUTH0_MANAGEMENT_CLIENT_SECRET_M2M")
 MANAGEMENT_API_AUDIENCE = os.getenv("AUTH0_MANAGEMENT_API_AUDIENCE") # e.g. https://YOUR_DOMAIN/api/v2/
-print(f"[CONFIG] {datetime.now()}: Auth0 Management API (M2M) config loaded.")
+print(f"[CONFIG] {datetime.datetime.now()}: Auth0 Management API (M2M) config loaded.")
 
 # --- Helper Functions (User-Specific File Operations) ---
 async def load_user_profile(user_id: str) -> Dict[str, Any]:
@@ -510,7 +509,7 @@ async def get_chat_history_messages(user_id: str) -> List[Dict[str, Any]]:
         chatsDb = await load_db(user_id)
         active_chat_id = chatsDb.get("active_chat_id", 0)
         next_chat_id = chatsDb.get("next_chat_id", 1)
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.datetime.now(timezone.utc)
         existing_chats = chatsDb.get("chats", [])
         active_chat = None
         if active_chat_id == 0:
@@ -563,7 +562,7 @@ async def add_message_to_db(user_id: str, chat_id: Union[int, str], message_text
             active_chat = next((c for c in chatsDb.get("chats", []) if c.get("id") == target_chat_id), None)
             if active_chat:
                 message_id = str(int(time.time() * 1000))
-                new_message = {"id": message_id, "message": message_text, "isUser": is_user, "isVisible": is_visible, "timestamp": datetime.now(timezone.utc).isoformat(), **kwargs}
+                new_message = {"id": message_id, "message": message_text, "isUser": is_user, "isVisible": is_visible, "timestamp": datetime.datetime.now(timezone.utc).isoformat(), **kwargs}
                 new_message = {k: v for k, v in new_message.items() if v is not None}
                 if "messages" not in active_chat:
                     active_chat["messages"] = []
@@ -718,11 +717,11 @@ async def execute_agent_task(user_id: str, task: dict) -> str:
     return final_result_str
 
 # --- FastAPI Application Setup ---
-print(f"[FASTAPI] {datetime.now()}: Initializing FastAPI app...")
+print(f"[FASTAPI] {datetime.datetime.now()}: Initializing FastAPI app...")
 app = FastAPI(title="Sentient API", description="API for Sentient application.", version="1.0.0", docs_url="/docs", redoc_url=None)
-print(f"[FASTAPI] {datetime.now()}: FastAPI app initialized.")
+print(f"[FASTAPI] {datetime.datetime.now()}: FastAPI app initialized.")
 app.add_middleware(CORSMiddleware, allow_origins=["app://.", "http://localhost:3000", "http://localhost"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
-print(f"[FASTAPI] {datetime.now()}: CORS middleware added.")
+print(f"[FASTAPI] {datetime.datetime.now()}: CORS middleware added.")
 
 @app.on_event("startup")
 async def startup_event():
@@ -886,10 +885,10 @@ async def chat(message: Message, user_id: str = Depends(PermissionChecker(requir
             if not user_msg_id:
                 yield json.dumps({"type":"error", "message":"Failed to save message."})+"\n"
                 return
-            yield json.dumps({"type": "userMessage", "id": user_msg_id, "message": message.input, "timestamp": datetime.now(timezone.utc).isoformat()}) + "\n"
+            yield json.dumps({"type": "userMessage", "id": user_msg_id, "message": message.input, "timestamp": datetime.datetime.now(timezone.utc).isoformat()}) + "\n"
             await asyncio.sleep(0.01) # Allow UI to render user message
             assistant_msg_id_ts = str(int(time.time() * 1000))
-            assistant_msg_base = {"id": assistant_msg_id_ts, "message": "", "isUser": False, "memoryUsed": False, "agentsUsed": False, "internetUsed": False, "timestamp": datetime.now(timezone.utc).isoformat(), "isVisible": True}
+            assistant_msg_base = {"id": assistant_msg_id_ts, "message": "", "isUser": False, "memoryUsed": False, "agentsUsed": False, "internetUsed": False, "timestamp": datetime.datetime.now(timezone.utc).isoformat(), "isVisible": True}
 
             if category == "agent":
                 agents_used = True
@@ -1831,7 +1830,7 @@ voice_stream_handler = Stream(
     modality="audio"
 )
 voice_stream_handler.mount(app, path="/voice") # Mounts the Gradio/FastRTC interface
-print(f"[FASTAPI] {datetime.now()}: FastRTC voice stream mounted at /voice.")
+print(f"[FASTAPI] {datetime.datetime.now()}: FastRTC voice stream mounted at /voice.")
 
 # --- Main Execution Block ---
 if __name__ == "__main__":

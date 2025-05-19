@@ -102,7 +102,8 @@ networkx==3.4.2
 nltk==3.9.1
 ntscraper==0.3.17
 numba==0.61.0
-numpy==1.26.4
+numpy==2.0.2
+# also install numpy==1.26.4
 oauthlib==3.2.2
 onnxruntime==1.21.0
 orjson==3.10.16
@@ -194,3 +195,4 @@ wrapt==1.17.2
 wrapt_timeout_decorator==1.5.1
 yarl==1.18.3
 # pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/<cuda-version>
+python-jose

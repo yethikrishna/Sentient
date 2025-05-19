@@ -478,19 +478,63 @@ const checkUserInfo = async () => {
  * @throws {Error} If `checkAuthStatus` or `checkUserInfo` fails.
  */
 export const checkValidity = async () => {
-	// if (!app.isPackaged) return // Only run in production
-	console.log("PRODUCTION MODE: Performing application validity checks...")
+	console.log(
+		`${app.isPackaged ? "PRODUCTION" : "DEVELOPMENT"} MODE: Performing application validity checks...`
+	)
 	try {
 		await checkAuthStatus() // Ensures tokens are fresh and profile (with userId) is set
-		await checkUserInfo() // Uses the userId from the (now validated) profile
-		console.log("PRODUCTION MODE: All validity checks passed successfully.")
+
+		if (app.isPackaged) {
+			// Only run detailed user info checks in production
+			await checkUserInfo() // Uses the userId from the (now validated) profile
+		}
+
+		console.log(
+			`${app.isPackaged ? "PRODUCTION" : "DEVELOPMENT"} MODE: All validity checks passed successfully.`
+		)
+
+		// If all checks passed, ensure the main application window is open.
+		// This is crucial for the flow where the auth window successfully authenticates.
+		if (!mainWindow || mainWindow.isDestroyed()) {
+			console.log(
+				"Validity checks passed, main window not found or destroyed. Creating it now."
+			)
+			createAppWindow()
+		} else if (mainWindow.isMinimized()) {
+			mainWindow.restore()
+			mainWindow.focus()
+		} else {
+			mainWindow.focus()
+		}
 	} catch (error) {
 		console.error(
-			`PRODUCTION MODE: Validity check sequence failed: ${error.message}. Redirecting to authentication window.`
+			`${app.isPackaged ? "PRODUCTION" : "DEVELOPMENT"} MODE: Validity check sequence failed: ${error.message}. Redirecting to authentication window.`
 		)
-		// Close all windows except auth/logout windows and open auth window
+		// Close main window if it exists and isn't already being closed
+		if (
+			mainWindow &&
+			!mainWindow.isDestroyed() &&
+			mainWindow.isMainWindow
+		) {
+			console.log("Closing main window due to validity check failure.")
+			// Set a flag to prevent close confirmation dialog during this forced close
+			// Assuming you have a way to bypass it, or just call destroy directly.
+			// For simplicity here, we'll just close. If you have confirmation, you might need
+			// a flag like `isExitingDueToAuthFailure = true` to bypass it.
+			mainWindow.destroy() // Use destroy to bypass 'close' event handlers if needed
+			mainWindow = null
+		}
+
+		// Close other windows except auth/logout windows
 		BrowserWindow.getAllWindows().forEach((win) => {
-			if (!win.isAuthWindow && !win.isLogoutWindow) win.close()
+			if (
+				win &&
+				!win.isDestroyed() &&
+				!win.isAuthWindow &&
+				!win.isLogoutWindow
+			) {
+				win.close()
+			}
 		})
 		createAuthWindow() // Guide user to re-authenticate
 		throw error // Propagate error
@@ -829,37 +873,31 @@ const checkForUpdates = async () => {
  */
 const startApp = async () => {
 	if (app.isPackaged) {
+		// --- PRODUCTION LOGIC (Seems mostly fine, but checkValidity needs to ensure mainWindow exists on success) ---
 		console.log("PRODUCTION MODE: Starting application startup sequence.")
-		// Check for updates first; this also creates the main window.
-		// Uses potentially stale local beta status for channel determination,
-		// but `checkValidity` will later ensure consistency if status changed.
-		await checkForUpdates()
+		await checkForUpdates() // This creates the main window
 
-		const validityCheckDelay = 5000 // Delay in milliseconds (e.g., 5 seconds)
+		const validityCheckDelay = 5000
 		console.log(
 			`PRODUCTION MODE: Scheduling application validity checks in ${validityCheckDelay / 1000} seconds.`
 		)
 
-		// Schedule validity checks after a short delay to allow the window to fully load
-		// and to avoid blocking initial UI rendering.
 		setTimeout(async () => {
 			if (process.env.UPDATING !== "true") {
-				// Skip if an update is actively being downloaded/installed
 				console.log(
 					"PRODUCTION MODE: Performing scheduled application validity checks..."
 				)
 				try {
-					await checkValidity() // Performs auth, gets userId, checks user status with server/Keytar
+					await checkValidity() // This will handle auth and ensure main window is shown if valid
 					console.log(
 						"PRODUCTION MODE: Application validity checks completed successfully."
 					)
-					// WebSocket connection is now initiated when the main window finishes loading (see `createAppWindow`)
 				} catch (error) {
 					console.error(
 						"PRODUCTION MODE: Application validity check sequence failed:",
 						error.message
 					)
-					// Error handling (like showing auth window) is managed within `checkValidity`
+					// checkValidity already handles opening createAuthWindow on failure
 				}
 			} else {
 				console.log(
@@ -868,36 +906,51 @@ const startApp = async () => {
 			}
 		}, validityCheckDelay)
 	} else {
-		// Development Environment: Simpler startup, but now includes token refresh attempt
+		// --- DEVELOPMENT LOGIC (This is where the main fix is) ---
 		console.log(
 			"DEVELOPMENT MODE: Starting application (skipping updates and production validity checks)."
 		)
+		let isAuthenticated = false
 		try {
 			console.log(
 				"[ELECTRON] [DEV_MODE] Attempting to refresh tokens on startup..."
 			)
 			await refreshTokens() // Try to restore session
-			console.log(
-				`[ELECTRON] [DEV_MODE] Token refresh attempt completed. User ID: ${getProfile() ? getProfile().sub : "null"}, Access Token Available: ${!!getAccessToken()}`
-			)
+			if (getAccessToken() && getProfile()?.sub) {
+				console.log(
+					`[ELECTRON] [DEV_MODE] Token refresh successful. User ID: ${getProfile().sub}`
+				)
+				isAuthenticated = true
+			} else {
+				console.log(
+					"[ELECTRON] [DEV_MODE] No valid session found after token refresh attempt."
+				)
+			}
 		} catch (error) {
-			// This catch is important: if refreshTokens fails (e.g., no stored token, or it's invalid),
-			// we log it but don't halt the app. The app will proceed in an unauthenticated state.
 			console.warn(
 				`[ELECTRON] [DEV_MODE] Failed to refresh tokens on startup (this is normal if not logged in or refresh token is expired/invalid): ${error.message}`
 			)
-			// accessToken and profile will remain null in auth.js
+			// isAuthenticated remains false
 		}
 
-		createAppWindow() // Creates window, loads URL.
-		// connectWebSocket will be called inside createAppWindow after the URL loads.
-		// If refreshTokens succeeded, connectWebSocket should now have a token.
-		mainWindow?.webContents.on("did-finish-load", () => {
+		if (isAuthenticated) {
 			console.log(
-				"DEVELOPMENT MODE: Main application window finished loading."
+				"[ELECTRON] [DEV_MODE] User authenticated. Creating main application window."
 			)
-			// Note: connectWebSocket() is called within createAppWindow's loadURL().then() for dev
-		})
+			createAppWindow() // Creates window, loads URL.
+			mainWindow?.webContents.on("did-finish-load", () => {
+				console.log(
+					"DEVELOPMENT MODE: Main application window finished loading."
+				)
+				// connectWebSocket() is called within createAppWindow after URL load
+			})
+		} else {
+			console.log(
+				"[ELECTRON] [DEV_MODE] User not authenticated. Creating authentication window."
+			)
+			createAuthWindow() // Show login screen
+			// The auth.js createAuthWindow's callback will handle creating the app window on successful login
+		}
 	}
 }
 

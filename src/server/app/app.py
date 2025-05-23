@@ -732,15 +732,16 @@ async def startup_event():
         stt_model = FasterWhisperSTT(model_size="base", device="cpu", compute_type="int8")
         print("[LIFECYCLE] STT loaded.")
     except Exception as e:
-        print(f"[ERROR] STT load fail: {e}")
+        print(f"[ERROR] STT model failed to load. Voice features will be unavailable. Details: {e}")
+        stt_model = None
     
     print("[LIFECYCLE] Loading TTS...")
     try:
         tts_model = OrpheusTTS(verbose=False, default_voice_id=SELECTED_TTS_VOICE)
         print("[LIFECYCLE] TTS loaded.")
     except Exception as e:
-        print(f"[ERROR] TTS load fail: {e}")
-        exit(1)
+        print(f"[ERROR] TTS model failed to load. Voice features will be unavailable. Details: {e}")
+        tts_model = None
     
     await task_queue.load_tasks()
     await memory_backend.memory_queue.load_operations()
@@ -1563,13 +1564,12 @@ async def clear_all_memories(user_id: str = Depends(PermissionChecker(required_p
 @app.post("/set-user-data", status_code=status.HTTP_200_OK, summary="Set User Profile Data", tags=["User Profile"])
 async def set_db_data(request: UpdateUserDataRequest, user_id: str = Depends(PermissionChecker(required_permissions=["write:profile"]))):
     print(f"[ENDPOINT /set-user-data] User {user_id}, Data: {str(request.data)[:100]}...")
-    loop = asyncio.get_event_loop()
     try:
-        profile = await loop.run_in_executor(None, load_user_profile, user_id)
+        profile = await load_user_profile(user_id) # AWAIT
         if "userData" not in profile:
             profile["userData"] = {}
-        profile["userData"].update(request.data) # This overwrites existing keys at the top level of userData
-        success = await loop.run_in_executor(None, write_user_profile, user_id, profile)
+        profile["userData"].update(request.data)
+        success = await write_user_profile(user_id, profile) # AWAIT
         if not success:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to write user profile.")
         return JSONResponse(content={"message": "User data stored successfully.", "status": 200})
@@ -1581,9 +1581,8 @@ async def set_db_data(request: UpdateUserDataRequest, user_id: str = Depends(Per
 @app.post("/add-db-data", status_code=status.HTTP_200_OK, summary="Add/Merge User Profile Data", tags=["User Profile"])
 async def add_db_data(request: AddUserDataRequest, user_id: str = Depends(PermissionChecker(required_permissions=["write:profile"]))):
     print(f"[ENDPOINT /add-db-data] User {user_id}, Data: {str(request.data)[:100]}...")
-    loop = asyncio.get_event_loop()
     try:
-        profile = await loop.run_in_executor(None, load_user_profile, user_id)
+        profile = await load_user_profile(user_id) # AWAIT
         existing_udata = profile.get("userData", {})
         
         # Deep merge logic (simple version from original)
@@ -1596,7 +1595,7 @@ async def add_db_data(request: AddUserDataRequest, user_id: str = Depends(Permis
                 existing_udata[key] = new_val
         
         profile["userData"] = existing_udata
-        success = await loop.run_in_executor(None, write_user_profile, user_id, profile)
+        success = await write_user_profile(user_id, profile) # AWAIT
         if not success:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to write merged user profile.")
         return JSONResponse(content={"message": "User data merged successfully.", "status": 200})
@@ -1608,9 +1607,11 @@ async def add_db_data(request: AddUserDataRequest, user_id: str = Depends(Permis
 @app.post("/get-user-data", status_code=status.HTTP_200_OK, summary="Get User Profile Data", tags=["User Profile"])
 async def get_db_data(user_id: str = Depends(PermissionChecker(required_permissions=["read:profile"]))):
     print(f"[ENDPOINT /get-user-data] User {user_id}.")
-    loop = asyncio.get_event_loop()
+    # loop = asyncio.get_event_loop() # Not needed if you directly await
     try:
-        profile = await loop.run_in_executor(None, load_user_profile, user_id)
+        # CORRECT:
+        profile = await load_user_profile(user_id) # <--- Add await here
+
         return JSONResponse(content={"data": profile.get("userData", {}), "status": 200})
     except Exception as e:
         print(f"[ERROR] /get-user-data {user_id}: {e}")
@@ -1788,16 +1789,16 @@ async def handle_audio_conversation(audio: tuple[int, np.ndarray]) -> AsyncGener
      # similar to WebSocket authentication, but FastRTC's mechanism might differ.
      user_id_for_voice = "PLACEHOLDER_VOICE_USER_ID" # Needs a real, authenticated user ID
      print(f"\n--- [VOICE] Audio chunk received (User: {user_id_for_voice}) ---")
-     
+
      if not stt_model:
-         print("[VOICE_ERROR] STT model not loaded. Cannot process audio.")
-         yield (0, np.array([])) # Send empty audio data or handle error appropriately
+         print("[VOICE_ERROR] STT model not available. Cannot process audio.")
+         yield (0, np.array([])) 
          return
      
      user_transcribed_text = stt_model.stt(audio)
      if not user_transcribed_text or not user_transcribed_text.strip():
          print("[VOICE] Empty transcription from STT.")
-         return # No audio to respond to
+         return 
          
      print(f"[VOICE] User (STT - {user_id_for_voice}): {user_transcribed_text}")
      
@@ -1807,7 +1808,7 @@ async def handle_audio_conversation(audio: tuple[int, np.ndarray]) -> AsyncGener
      bot_response_text = f"Voice processing is a work in progress for user {user_id_for_voice}. You said: '{user_transcribed_text}'"
      
      if not tts_model:
-         print("[VOICE_ERROR] TTS model not loaded. Cannot generate audio response.")
+         print("[VOICE_ERROR] TTS model not available. Cannot generate audio response.")
          yield (0, np.array([]))
          return
          

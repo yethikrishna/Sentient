@@ -289,7 +289,36 @@ export async function refreshTokens() {
 		}
 
 		accessToken = data.access_token
-		profile = jwtDecode(data.id_token) // Update profile with new ID token
+		console.log(
+			"[auth.js] Auth0 /oauth/token response (loadTokens):",
+			JSON.stringify(data, null, 2)
+		)
+		try {
+			const decodedAccessToken = jwtDecode(accessToken) // Use jwt-decode
+			console.log(
+				"[auth.js] Decoded Access Token PAYLOAD (loadTokens):",
+				decodedAccessToken
+			)
+			// Specifically log the permissions claim
+			if (decodedAccessToken.permissions) {
+				console.log(
+					"[auth.js] Permissions in Access Token (loadTokens):",
+					decodedAccessToken.permissions
+				)
+			} else {
+				console.warn(
+					"[auth.js] 'permissions' claim MISSING in Access Token (loadTokens)."
+				)
+			}
+		} catch (e) {
+			console.error(
+				"[auth.js] Failed to decode access token for payload inspection (loadTokens).",
+				e
+			)
+		}
+		// Make sure profile is also decoded from data.id_token
+		profile = jwtDecode(data.id_token)
+		console.log("[auth.js] Decoded ID Token PAYLOAD (loadTokens):", profile)
 
 		// Log received tokens for debugging (sensitive in production logs)
 		// console.log("[auth.js] RAW ACCESS TOKEN received (refresh):", data.access_token);
@@ -397,7 +426,36 @@ export async function loadTokens(callbackURL) {
 		}
 
 		accessToken = data.access_token
-		profile = jwtDecode(data.id_token) // Contains user profile claims
+		console.log(
+			"[auth.js] Auth0 /oauth/token response (loadTokens):",
+			JSON.stringify(data, null, 2)
+		)
+		try {
+			const decodedAccessToken = jwtDecode(accessToken) // Use jwt-decode
+			console.log(
+				"[auth.js] Decoded Access Token PAYLOAD (loadTokens):",
+				decodedAccessToken
+			)
+			// Specifically log the permissions claim
+			if (decodedAccessToken.permissions) {
+				console.log(
+					"[auth.js] Permissions in Access Token (loadTokens):",
+					decodedAccessToken.permissions
+				)
+			} else {
+				console.warn(
+					"[auth.js] 'permissions' claim MISSING in Access Token (loadTokens)."
+				)
+			}
+		} catch (e) {
+			console.error(
+				"[auth.js] Failed to decode access token for payload inspection (loadTokens).",
+				e
+			)
+		}
+		// Make sure profile is also decoded from data.id_token
+		profile = jwtDecode(data.id_token)
+		console.log("[auth.js] Decoded ID Token PAYLOAD (loadTokens):", profile)
 		const newRefreshToken = data.refresh_token
 
 		// Log received tokens for debugging (sensitive in production logs)

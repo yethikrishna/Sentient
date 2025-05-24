@@ -1064,14 +1064,6 @@ async def get_role(payload: dict = Depends(auth.get_decoded_payload_with_claims)
     print(f"User {user_id} role from token claim: {user_role}")
     return JSONResponse(status_code=status.HTTP_200_OK, content={"role": user_role})
 
-@app.post("/get-beta-user-status", status_code=status.HTTP_200_OK, summary="Get Beta Status from Token", tags=["User Management"])
-async def get_beta_user_status(payload: dict = Depends(auth.get_decoded_payload_with_claims)):
-    user_id = payload["user_id"]
-    print(f"[ENDPOINT /get-beta-user-status] Called by user {user_id} (from token claims).")
-    beta_status = payload.get(f"{CUSTOM_CLAIMS_NAMESPACE}betaUserStatus", False) # Default to False
-    print(f"User {user_id} beta status from token claim: {beta_status}")
-    return JSONResponse(status_code=status.HTTP_200_OK, content={"betaUserStatus": beta_status})
-
 @app.post("/get-referral-code", status_code=status.HTTP_200_OK, summary="Get Referral Code from Token", tags=["User Management"])
 async def get_referral_code(payload: dict = Depends(auth.get_decoded_payload_with_claims)):
     user_id = payload["user_id"]
@@ -1136,41 +1128,6 @@ async def get_user_and_set_referrer_status(
         traceback.print_exc()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to set referrer status.")
 
-@app.post("/get-user-and-invert-beta-user-status", status_code=status.HTTP_200_OK, summary="Invert Beta User Status (Admin Action)", tags=["User Management"])
-async def get_user_and_invert_beta_user_status(
-    user_id_to_modify: str = Depends(PermissionChecker(required_permissions=["admin:user_metadata"]))
-):
-    print(f"[ENDPOINT /invert-beta-status] Admin action for user {user_id_to_modify}.")
-    try:
-        mgmt_token = get_management_token()
-        if not mgmt_token:
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="M2M token unavailable.")
-
-        get_url = f"https://{AUTH0_DOMAIN}/api/v2/users/{user_id_to_modify}"
-        headers_get = {"Authorization": f"Bearer {mgmt_token}", "Accept": "application/json"}
-        async with httpx.AsyncClient() as client:
-            get_response = await client.get(get_url, headers=headers_get)
-        if get_response.status_code != 200:
-            raise HTTPException(status_code=get_response.status_code, detail=f"Auth0 Get User Error: {get_response.text}")
-
-        user_data = get_response.json()
-        current_status = user_data.get("app_metadata", {}).get("betaUser", False)
-        inverted_status = not current_status
-
-        update_payload = {"app_metadata": {"betaUser": inverted_status}}
-        headers_update = {"Authorization": f"Bearer {mgmt_token}", "Content-Type": "application/json"}
-        async with httpx.AsyncClient() as client:
-            update_response = await client.patch(get_url, headers=headers_update, json=update_payload)
-        if update_response.status_code != 200:
-            raise HTTPException(status_code=update_response.status_code, detail=f"Auth0 Update User Error: {update_response.text}")
-
-        print(f"Beta status for user {user_id_to_modify} inverted to {inverted_status}.")
-        return JSONResponse(content={"message": "Beta user status inverted successfully.", "newStatus": inverted_status})
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        print(f"[ERROR] /invert-beta-status for {user_id_to_modify}: {e}")
-        traceback.print_exc()
 # --- Google Authentication Endpoint ---
 @app.post("/authenticate-google", status_code=status.HTTP_200_OK, summary="Authenticate Google Services", tags=["Integrations"])
 async def authenticate_google(user_id: str = Depends(PermissionChecker(required_permissions=["manage:google_auth"]))):
@@ -1373,9 +1330,9 @@ async def get_tasks(user_id: str = Depends(PermissionChecker(required_permission
         user_tasks = await task_queue.get_tasks_for_user(user_id)
         s_tasks = []
         for t in user_tasks:
-            if isinstance(t.get('created_at'), datetime):
+            if isinstance(t.get('created_at'), datetime.datetime): # More specific type check
                 t['created_at'] = t['created_at'].isoformat()
-            if isinstance(t.get('completed_at'), datetime):
+            if isinstance(t.get('completed_at'), datetime.datetime): # More specific type check
                 t['completed_at'] = t['completed_at'].isoformat()
             s_tasks.append(t)
         return JSONResponse(content={"tasks": s_tasks})
@@ -1465,9 +1422,9 @@ async def get_short_term_memories(request: GetShortTermMemoriesRequest, user_id:
         memories = await loop.run_in_executor(None, memory_backend.memory_manager.fetch_memories_by_category, user_id, request.category, request.limit)
         s_mem = []
         for m in memories:
-            if isinstance(m.get('created_at'), datetime):
+            if isinstance(m.get('created_at'), datetime.datetime): # More specific type check
                 m['created_at'] = m['created_at'].isoformat()
-            if isinstance(m.get('expires_at'), datetime):
+            if isinstance(m.get('expires_at'), datetime.datetime): # More specific type check
                 m['expires_at'] = m['expires_at'].isoformat()
             s_mem.append(m)
         return JSONResponse(content=s_mem)
@@ -1639,7 +1596,7 @@ async def get_notifications_endpoint(user_id: str = Depends(PermissionChecker(re
         db_data = await load_notifications_db(user_id)
         notifs = db_data.get("notifications", [])
         for n in notifs:
-            if isinstance(n.get('timestamp'), datetime): # Should already be string from DB save
+            if isinstance(n.get('timestamp'), datetime.datetime): # Should already be string from DB save
                 n['timestamp'] = n['timestamp'].isoformat()
         return JSONResponse(content={"notifications": notifs})
     except Exception as e:
@@ -1755,7 +1712,7 @@ async def websocket_endpoint(websocket: WebSocket):
         print(f"[WS /ws] Unexpected WebSocket error (User: {authenticated_user_id or 'unknown'}): {e}")
         traceback.print_exc()
         # Try to close gracefully if not already closed
-        if websocket.client_state != WebSocketState.DISCONNECTED:
+        if websocket.client_state != WebSocketState.DISCONNECTED: # Check correct state enum if different
             await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
     finally:
         manager.disconnect(websocket)

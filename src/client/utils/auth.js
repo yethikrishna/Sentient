@@ -1,7 +1,7 @@
 /**
  * @file auth.js
  * @description Manages authentication, token storage, and user-specific data related to
- * authorization and application features (like pricing, credits, beta status) for the Electron application.
+ * authorization and application features (like pricing, credits) for the Electron application.
  * It interacts with Auth0 for authentication, Keytar for secure local storage of tokens and user data,
  * and a backend server for encryption/decryption services and fetching user metadata.
  *
@@ -12,7 +12,7 @@
  * - Manages in-memory state for access tokens and user profiles.
  * - Provides getters for accessing the current access token and user profile.
  * - Implements logout functionality, clearing local and in-memory session data.
- * - Fetches and stores user-specific data like pricing tier, referral status, beta status, and daily credits
+ * - Fetches and stores user-specific data like pricing tier, referral status, and daily credits
  *   using Keytar, scoped by user ID.
  * - Ensures that user-specific data is stored and retrieved using a consistent `userId_keyName` convention in Keytar.
  */
@@ -524,7 +524,6 @@ export async function logout() {
 			"checkin",
 			"referralCode",
 			"referrerStatus",
-			"betaUserStatus",
 			"proCredits",
 			"creditsCheckin"
 		]
@@ -806,65 +805,6 @@ export async function setCreditsCheckinInKeytar(userId) {
 	}
 }
 
-// Fetching referral/beta status should ideally come from token claims first.
-// If claims are not available or need to be refreshed, then call backend.
-
-export async function getBetaUserStatusFromKeytar(userId) {
-	if (!userId) {
-		console.warn("[auth.js] getBetaStatus: userId missing.")
-		return null
-	}
-	// First, try to get from profile claims if profile is loaded
-	if (profile && profile.sub === userId) {
-		const customClaimNamespace = auth0Audience.endsWith("/")
-			? auth0Audience
-			: `${auth0Audience}/`
-		const betaStatusClaim = profile[`${customClaimNamespace}betaUserStatus`]
-		if (typeof betaStatusClaim === "boolean") {
-			// console.log(`[auth.js] Beta status for ${userId} from token claim: ${betaStatusClaim}`);
-			return betaStatusClaim
-		}
-	}
-	// Fallback to Keytar if not in claims or profile not matching
-	const accountName = getUserKeytarAccount(userId, "betaUserStatus")
-	try {
-		const betaStatusStr = await keytar.getPassword(
-			keytarService,
-			accountName
-		)
-		return betaStatusStr === null ? null : betaStatusStr === "true"
-	} catch (error) {
-		console.error(
-			`[auth.js] Error getting beta status (Keytar) for ${userId}:`,
-			error.message
-		)
-		return null
-	}
-}
-
-export async function setBetaUserStatusInKeytar(userId, betaUserStatus) {
-	if (!userId) {
-		console.warn("[auth.js] setBetaStatus: userId missing.")
-		return
-	}
-	const accountName = getUserKeytarAccount(userId, "betaUserStatus")
-	try {
-		await keytar.setPassword(
-			keytarService,
-			accountName,
-			betaUserStatus.toString()
-		)
-		console.log(
-			`[auth.js] Beta status set to '${betaUserStatus}' in Keytar for ${userId}.`
-		)
-	} catch (error) {
-		console.error(
-			`[auth.js] Error setting beta status (Keytar) for ${userId}:`,
-			error.message
-		)
-	}
-}
-
 export async function fetchAndSetReferralCode() {
 	if (!profile || !profile.sub)
 		throw new Error("fetchReferralCode: User not logged in.")
@@ -975,56 +915,6 @@ export async function fetchAndSetReferrerStatus() {
 	} catch (error) {
 		console.error(
 			`[auth.js] Error fetching/setting referrer status for ${userId}: ${error.message}`
-		)
-		throw error
-	}
-}
-
-export async function fetchAndSetBetaUserStatus() {
-	if (!profile || !profile.sub)
-		throw new Error("fetchBetaStatus: User not logged in.")
-	const userId = profile.sub
-	const token = getAccessToken()
-	if (!token) throw new Error("fetchBetaStatus: Access token missing.")
-
-	// Try from claims first
-	const customClaimNamespace = auth0Audience.endsWith("/")
-		? auth0Audience
-		: `${auth0Audience}/`
-	const betaStatusClaim = profile[`${customClaimNamespace}betaUserStatus`]
-	if (typeof betaStatusClaim === "boolean") {
-		console.log(
-			`[auth.js] Beta status '${betaStatusClaim}' from token claim for ${userId}. Storing.`
-		)
-		await setBetaUserStatusInKeytar(userId, betaStatusClaim) // Uses existing setter
-		return betaStatusClaim
-	}
-
-	console.log(
-		`[auth.js] Fetching beta status for ${userId} from backend /get-beta-user-status...`
-	)
-	try {
-		const response = await fetch(`${appServerUrl}/get-beta-user-status`, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-				Authorization: `Bearer ${token}`
-			}
-		})
-		if (!response.ok) {
-			/* ... error handling ... */ throw new Error(
-				`Backend error /get-beta-user-status: ${response.statusText}`
-			)
-		}
-		const { betaUserStatus } = await response.json() // Expects boolean
-		await setBetaUserStatusInKeytar(userId, betaUserStatus)
-		console.log(
-			`[auth.js] Beta status ('${betaUserStatus}') from backend stored for ${userId}.`
-		)
-		return betaUserStatus
-	} catch (error) {
-		console.error(
-			`[auth.js] Error fetching/setting beta status for ${userId}: ${error.message}`
 		)
 		throw error
 	}

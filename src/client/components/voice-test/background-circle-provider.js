@@ -10,7 +10,7 @@ import {
 	forwardRef
 } from "react"
 import { VoiceBlobs } from "@components/voice-visualization/VoiceBlobs"
-import { WebRTCClient } from "@utils/WebRTCClient"
+import { WebRTCClient } from "@utils/webRTCClient"
 import React from "react"
 
 // Component definition wrapped in forwardRef

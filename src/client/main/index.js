@@ -43,10 +43,7 @@ import {
 	fetchAndSetReferralCode,
 	getReferrerStatusFromKeytar,
 	fetchAndSetReferrerStatus,
-	fetchAndSetBetaUserStatus,
-	getReferralCodeFromKeytar,
-	getBetaUserStatusFromKeytar,
-	setBetaUserStatusInKeytar
+	getReferralCodeFromKeytar
 } from "../utils/auth.js"
 import { getPrivateData } from "../utils/api.js" // API utility (may need user context)
 import { createAuthWindow, createLogoutWindow } from "./auth.js" // Window creation functions
@@ -426,7 +423,7 @@ export const createAppWindow = () => {
 
 /**
  * Performs a series of checks on user-specific information in production mode.
- * This includes pricing, referral status, beta status, credits, and Google credentials.
+ * This includes pricing, referral status, credits, and Google credentials.
  * Requires `userId` obtained from a validated profile.
  * If any check fails, it logs an error, triggers a logout, and re-throws the error.
  *
@@ -451,7 +448,6 @@ const checkUserInfo = async () => {
 		// These functions now interact with Keytar using the `userId` for user-specific data
 		await checkPricingStatus(userId)
 		await checkReferralCodeAndStatus(userId)
-		await checkBetaUserStatus(userId)
 		await resetCreditsIfNecessary(userId)
 		await checkGoogleCredentials(userId) // Assumes this backend check uses the authenticated user
 		console.log(
@@ -606,35 +602,6 @@ const checkReferralCodeAndStatus = async (userId) => {
 			`PRODUCTION MODE: Error checking referral code/status for user ${userId}: ${error.message}`
 		)
 		throw new Error(`Referral code/status check failed for user ${userId}.`)
-	}
-}
-
-/**
- * Checks the user's beta status, fetching from server if not found locally.
- * Uses `userId` for Keytar operations.
- * @param {string} userId - The ID of the user to check.
- * @throws {Error} If checking beta status fails.
- */
-const checkBetaUserStatus = async (userId) => {
-	console.log(
-		`PRODUCTION MODE: Checking Beta User Status for user ${userId}...`
-	)
-	try {
-		let betaUserStatus = await getBetaUserStatusFromKeytar(userId) // User-specific Keytar
-		if (betaUserStatus === null) {
-			console.log(
-				"PRODUCTION MODE: Beta user status not found locally. Fetching from server..."
-			)
-			betaUserStatus = await fetchAndSetBetaUserStatus() // Fetches and sets in Keytar
-		}
-		console.log(
-			`PRODUCTION MODE: Beta user status check complete for user ${userId}. Status: ${betaUserStatus}`
-		)
-	} catch (error) {
-		console.error(
-			`PRODUCTION MODE: Error checking beta user status for ${userId}: ${error.message}`
-		)
-		throw new Error(`Beta user status check failed for user ${userId}.`)
 	}
 }
 
@@ -812,7 +779,7 @@ if (!gotTheLock) {
 // --- Auto Update Logic ---
 /**
  * Configures and checks for application updates in production mode.
- * Sets the update channel (beta/latest) based on the user's beta status.
+ * Sets the update channel to "latest".
  * Creates the main application window before initiating the update check.
  */
 const checkForUpdates = async () => {
@@ -821,24 +788,6 @@ const checkForUpdates = async () => {
 		"PRODUCTION MODE: Configuring and checking for application updates..."
 	)
 
-	let isBetaUser = false
-	const userId = getUserIdFromProfile() // Get current user's ID for beta status check
-
-	try {
-		// Check beta status from Keytar, specific to the logged-in user
-		isBetaUser = userId
-			? (await getBetaUserStatusFromKeytar(userId)) || false
-			: false
-		console.log(
-			`PRODUCTION MODE: Update check configuration: User ${userId || "N/A"} is on ${isBetaUser ? "beta" : "stable"} channel (based on local Keytar).`
-		)
-	} catch (error) {
-		console.error(
-			"PRODUCTION MODE: Failed to get beta status from Keytar for update check, defaulting to stable channel.",
-			error
-		)
-	}
-
 	// Configure `electron-updater` feed URL and channel
 	const feedOptions = {
 		provider: "github",
@@ -846,8 +795,12 @@ const checkForUpdates = async () => {
 		repo: "Sentient" // GitHub repository name
 	}
 	autoUpdater.setFeedURL(feedOptions)
-	autoUpdater.allowPrerelease = isBetaUser // Allow prereleases if user is on beta channel
-	autoUpdater.channel = isBetaUser ? "beta" : "latest" // Set update channel
+	autoUpdater.allowPrerelease = false // Only allow stable releases
+	autoUpdater.channel = "latest" // Set update channel to stable
+
+	console.log(
+		`PRODUCTION MODE: Update check configured for stable ('latest') channel.`
+	)
 
 	createAppWindow() // Create the main window *before* checking for updates
 
@@ -873,7 +826,7 @@ const checkForUpdates = async () => {
  */
 const startApp = async () => {
 	if (app.isPackaged) {
-		// --- PRODUCTION LOGIC (Seems mostly fine, but checkValidity needs to ensure mainWindow exists on success) ---
+		// --- PRODUCTION LOGIC ---
 		console.log("PRODUCTION MODE: Starting application startup sequence.")
 		await checkForUpdates() // This creates the main window
 
@@ -906,7 +859,7 @@ const startApp = async () => {
 			}
 		}, validityCheckDelay)
 	} else {
-		// --- DEVELOPMENT LOGIC (This is where the main fix is) ---
+		// --- DEVELOPMENT LOGIC ---
 		console.log(
 			"DEVELOPMENT MODE: Starting application (skipping updates and production validity checks)."
 		)
@@ -1093,40 +1046,6 @@ ipcMain.handle("get-private-data", async () => {
 	}
 })
 
-// IPC: Get Local Beta User Status (from Keytar)
-ipcMain.handle("get-beta-user-status-local", async () => {
-	const userId = getUserIdFromProfile() // Needed for user-specific Keytar entry
-
-	if (!userId && app.isPackaged) {
-		// In production, userId is required
-		console.error(
-			"IPC: get-beta-user-status-local (PROD) - User ID missing."
-		)
-		return null
-	}
-
-	try {
-		if (!app.isPackaged) {
-			// Development mock
-			console.log(
-				"IPC: get-beta-user-status-local (DEV) - Returning mock status (true)."
-			)
-			return true
-		}
-		const betaUserStatus = await getBetaUserStatusFromKeytar(userId) // Pass userId
-		console.log(
-			`IPC: get-beta-user-status-local (PROD) for user ${userId}: ${betaUserStatus}`
-		)
-		return betaUserStatus
-	} catch (error) {
-		console.error(
-			`IPC Error: Failed to fetch local beta user status for user ${userId || "N/A"}:`,
-			error
-		)
-		return null
-	}
-})
-
 // IPC: Log Out
 ipcMain.on("log-out", () => {
 	console.log("IPC: Log-out command received. Initiating logout process.")
@@ -1299,33 +1218,6 @@ ipcMain.handle("fetch-referrer-status", async () => {
 	}
 })
 
-// IPC: Fetch Local Beta User Status (from Keytar, similar to get-beta-user-status-local but for general use)
-ipcMain.handle("fetch-beta-user-status", async () => {
-	const userId = getUserIdFromProfile()
-	if (!userId && app.isPackaged) return null
-
-	const isDev = !app.isPackaged
-	if (isDev)
-		console.log(
-			"IPC: Handling fetch-beta-user-status (DEV mode, local Keytar)."
-		)
-
-	try {
-		const betaUserStatus = await getBetaUserStatusFromKeytar(userId) // Pass userId
-		console.log(
-			`IPC: fetch-beta-user-status (${isDev ? "DEV" : "PROD"}) for user ${userId || "dev"}: ${betaUserStatus}`
-		)
-		if (isDev && betaUserStatus === null) return true // Dev default if not set
-		return betaUserStatus
-	} catch (error) {
-		console.error(
-			`IPC Error: Failed to fetch local beta status (${isDev ? "DEV" : "PROD"}):`,
-			error
-		)
-		return null
-	}
-})
-
 // --- Backend Interaction IPC Handlers (Include Auth Header) ---
 // These handlers make requests to the backend server, including the Authorization header.
 
@@ -1389,75 +1281,6 @@ ipcMain.handle("set-referrer", async (_event, { referralCode }) => {
 	} catch (error) {
 		console.error(
 			`IPC Error: Exception in set-referrer handler for user ${userId}:`,
-			error
-		)
-		return { error: error.message, status: 500 }
-	}
-})
-
-// IPC: Invert Beta Status (Backend Call)
-ipcMain.handle("invert-beta-user-status", async () => {
-	const userId = getUserIdFromProfile()
-	const authHeader = getAuthHeader()
-	if (!userId || !authHeader) {
-		console.error("IPC: invert-beta-user-status - User not authenticated.")
-		return { error: "User not authenticated.", status: 401 }
-	}
-
-	if (!app.isPackaged) {
-		// Development skip
-		console.log(
-			"IPC: invert-beta-user-status (DEV) - Simulated successful call."
-		)
-		return { message: "DEV: Beta status inversion simulated.", status: 200 }
-	}
-
-	try {
-		const apiUrl = `${process.env.APP_SERVER_URL}/get-user-and-invert-beta-user-status`
-		console.log(
-			`IPC: User ${userId} requesting beta status inversion via backend: ${apiUrl}`
-		)
-		const response = await fetch(apiUrl, {
-			method: "POST",
-			headers: { "Content-Type": "application/json", ...authHeader }
-			// Backend identifies user via token; body might be empty or specific if needed.
-		})
-
-		if (!response.ok) {
-			const errorText = await response.text()
-			let detail = errorText
-			try {
-				detail = JSON.parse(errorText).detail || detail
-			} catch {
-				/* ignore */
-			}
-			console.error(
-				`IPC Error: Invert Beta API call failed for user ${userId}. Status: ${response.status}, Details: ${detail}`
-			)
-			return { error: `API Error: ${detail}`, status: response.status }
-		}
-
-		const result = await response.json()
-		console.log(
-			`IPC: Invert Beta API call successful for user ${userId}. Response:`,
-			result
-		)
-
-		// Update local status in Keytar immediately after successful backend call
-		const currentLocalStatus = await getBetaUserStatusFromKeytar(userId)
-		const newLocalStatus = !currentLocalStatus // Invert
-		await setBetaUserStatusInKeytar(userId, newLocalStatus) // Set for this user
-		console.log(
-			`IPC: Updated local beta status in Keytar to: ${newLocalStatus} for user ${userId}.`
-		)
-
-		return {
-			message: result.message || "Beta status inverted successfully.",
-			status: 200
-		}
-	} catch (error) {
-		console.error(
-			`IPC Error: Exception in invert-beta-user-status handler for user ${userId}:`,
 			error
 		)
 		return { error: error.message, status: 500 }
@@ -1851,9 +1674,7 @@ ipcMain.handle("send-message", async (_event, { input }) => {
 		})
 		return { message: `Error: ${error.message}`, status: 500 }
 	}
-
-}
-)
+})
 // IPC: Build Personality (Multi-step Backend Process)
 ipcMain.handle("build-personality", async () => {
 	const userId = getUserIdFromProfile()

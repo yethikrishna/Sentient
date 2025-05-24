@@ -630,7 +630,7 @@ async def process_queue():
             chat_id = task.get("chat_id", "N/A")
 
             if user_id == "N/A":
-                await task_queue.complete_task(task_id, error="Task missing user_id", status="error")
+                await task_queue.complete_task(user_id, task_id, error="Task missing user_id", status="error")
                 continue
             try:
                 task_queue.current_task_execution = asyncio.create_task(execute_agent_task(user_id, task))
@@ -640,12 +640,12 @@ async def process_queue():
                     if chat_id != "N/A":
                         await add_message_to_db(user_id, chat_id, task["description"], is_user=True, is_visible=False)
                         await add_message_to_db(user_id, chat_id, result, is_user=False, is_visible=True, type="tool_result", task=task["description"], agentsUsed=True)
-                    await task_queue.complete_task(task_id, result=result)
+                    await task_queue.complete_task(user_id, task_id, result=result)
             
             except asyncio.CancelledError:
-                await task_queue.complete_task(task_id, error="Task cancelled", status="cancelled")
+                await task_queue.complete_task(user_id, task_id, error="Task cancelled", status="cancelled")
             except Exception as e:
-                await task_queue.complete_task(task_id, error=str(e), status="error")
+                await task_queue.complete_task(user_id, task_id, error=str(e), status="error")
                 traceback.print_exc()
             finally:
                 task_queue.current_task_execution = None
@@ -775,7 +775,7 @@ async def startup_event():
         print(f"[ERROR] TTS model failed to load. Voice features will be unavailable. Details: {e}")
         tts_model = None
     
-    await task_queue.load_tasks()
+    await task_queue.initialize_db()
     await memory_backend.memory_queue.load_operations()
     
     asyncio.create_task(process_queue())
@@ -1629,7 +1629,7 @@ async def approve_task_endpoint(request: TaskIdRequest, user_id: str = Depends(P
 async def get_task_approval_data_endpoint(request: TaskIdRequest, user_id: str = Depends(PermissionChecker(required_permissions=["read:tasks"]))):
     print(f"[ENDPOINT /get-task-approval-data] User {user_id}, Task: {request.task_id}")
     try:
-        task = await task_queue.get_task_by_id(request.task_id)
+        task = await task_queue.get_task_by_id(user_id, request.task_id)
         if task and task.get("user_id") == user_id: # Verify ownership
             if task.get("status") == "approval_pending":
                 return TaskApprovalDataResponse(approval_data=task.get("approval_data"))

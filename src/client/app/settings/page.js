@@ -10,7 +10,6 @@ import ModalDialog from "@components/ModalDialog"
 import {
 	IconGift,
 	IconRocket,
-	IconFlask, // Replaced IconBeta with IconFlask
 	IconMail,
 	IconCalendarEvent,
 	IconWorldSearch, // Data source icons
@@ -35,8 +34,6 @@ const Settings = () => {
 	const [showReferralDialog, setShowReferralDialog] = useState(false)
 	const [referralCode, setReferralCode] = useState("DUMMY")
 	const [referrerStatus, setReferrerStatus] = useState(false)
-	const [betaUser, setBetaUser] = useState(false)
-	const [showBetaDialog, setShowBetaDialog] = useState(false)
 	const [dataSources, setDataSources] = useState([])
 	// ADDED: Customize input state
 	const [isCustomizeInputVisible, setCustomizeInputVisible] = useState(false)
@@ -77,8 +74,8 @@ const Settings = () => {
 	// MODIFIED: Wrapped handleToggle in useCallback
 	const handleToggle = async (sourceName, enabled) => {
 		console.log(`Toggling ${sourceName} to ${enabled}`)
-		console.log(typeof (enabled)) // Check type
-		console.log(typeof (sourceName)) // Check type
+		console.log(typeof enabled) // Check type
+		console.log(typeof sourceName) // Check type
 		// Optimistic UI update
 		setDataSources((prev) =>
 			prev.map((ds) => (ds.name === sourceName ? { ...ds, enabled } : ds))
@@ -126,36 +123,23 @@ const Settings = () => {
 	const fetchPricingPlan = useCallback(async () => {
 		/* ...no functional change, ensure useCallback if needed... */
 	}, [])
-	const fetchBetaUserStatus = useCallback(async () => {
-		/* ...no functional change, ensure useCallback if needed... */
-	}, [])
 	const fetchReferralDetails = useCallback(async () => {
 		/* ...no functional change, ensure useCallback if needed... */
 	}, [])
 
-	const handleBetaUserToggle = async () => {
-		try {
-			// await window.electron?.invoke("invert-beta-user-status")
-			setBetaUser((prev) => !prev)
-			toast.success(
-				betaUser ? "Exited Beta Program." : "You are now a Beta User!"
-			)
-		} catch (error) {
-			console.error("Error updating beta user status:", error)
-			toast.error("Error updating beta user status.")
-		}
-		setShowBetaDialog(false)
-	}
-
 	const fetchData = useCallback(async () => {
 		// Removed fetching for LinkedIn, Reddit, Twitter connection statuses
-		console.log("Fetching user data (excluding social media connection status)...")
+		console.log(
+			"Fetching user data (excluding social media connection status)..."
+		)
 		try {
 			const response = await window.electron?.invoke("get-user-data")
 			if (response.status === 200 && response.data) {
 				// User data might still contain other relevant info, process if needed
 				// For now, just logging that it was fetched
-				console.log("User data fetched successfully (social media connections parts are ignored).");
+				console.log(
+					"User data fetched successfully (social media connections parts are ignored)."
+				)
 			} else {
 				console.error(
 					"Error fetching DB data, status:",
@@ -175,7 +159,6 @@ const Settings = () => {
 		fetchUserDetails()
 		fetchPricingPlan()
 		fetchReferralDetails()
-		fetchBetaUserStatus()
 		fetchDataSources()
 		// No interval here, data fetched on mount or refresh
 	}, [
@@ -183,7 +166,6 @@ const Settings = () => {
 		fetchUserDetails,
 		fetchPricingPlan,
 		fetchReferralDetails,
-		fetchBetaUserStatus,
 		fetchDataSources
 	]) // Add all useCallback functions
 
@@ -239,18 +221,6 @@ const Settings = () => {
 						>
 							<IconGift size={18} />
 							<span>Refer Sentient</span>
-						</button>
-						<button
-							onClick={() => setShowBetaDialog(true)}
-							className="flex items-center gap-2 py-2 px-4 rounded-full bg-neutral-700 hover:bg-neutral-600 text-white text-xs sm:text-sm font-medium transition-colors shadow-md"
-							title={
-								betaUser
-									? "Leave Beta Program"
-									: "Join Beta Program"
-							}
-						>
-							<IconFlask size={18} /> {/* Replaced IconBeta */}
-							<span>{betaUser ? "Leave Beta" : "Join Beta"}</span>
 						</button>
 					</div>
 				</div>
@@ -331,7 +301,7 @@ const Settings = () => {
 					{showReferralDialog && (
 						<ModalDialog
 							title="Referral Code"
-							description={`Share this code with friends: ${referralCode === "N/A" ? "Loading..." : ""}`}
+							description={`Share this code with friends: ${referralCode === "N/A" ? "Loading..." : referralCode}`}
 							extraContent={
 								referrerStatus ? (
 									<p className="text-sm text-green-400">
@@ -346,31 +316,6 @@ const Settings = () => {
 							onConfirm={() => setShowReferralDialog(false)}
 							confirmButtonText="Close"
 							cancelButton={false}
-						/>
-					)}
-					{showBetaDialog && (
-						<ModalDialog
-							title={
-								betaUser
-									? "Exit Beta Program?"
-									: "Join Beta Program?"
-							}
-							description={
-								betaUser
-									? "You will lose access to beta features."
-									: "Get early access to new features!"
-							}
-							onCancel={() => setShowBetaDialog(false)}
-							onConfirm={handleBetaUserToggle}
-							confirmButtonText={
-								betaUser ? "Exit Beta" : "Join Beta"
-							}
-							confirmButtonColor={
-								betaUser ? "bg-red-600" : "bg-green-600"
-							}
-							confirmButtonBorderColor={
-								betaUser ? "border-red-600" : "border-green-600"
-							}
 						/>
 					)}
 				</div>{" "}

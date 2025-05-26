@@ -1,6 +1,8 @@
 from neo4j import GraphDatabase
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 import os
+import asyncio
+import traceback
 from dotenv import load_dotenv
 import json
 from server.memory.runnables import *
@@ -94,14 +96,26 @@ class MemoryBackend:
         """Extract multiple factual statements from a memory-related query."""
         print(f"Extracting memory facts for query: '{query}'")
         try:
-            with open("userProfileDb.json", "r", encoding="utf-8") as f:
-                user_db = json.load(f)
-            username = user_db["userData"]["personalInfo"]["name"]
+            # Ensure userProfileDb.json exists and is valid, or handle gracefully
+            profile_path = "userProfileDb.json"
+            if not os.path.exists(profile_path):
+                print(f"Warning: {profile_path} not found. Cannot get username for fact extraction.")
+                username = "User" # Fallback username
+            else:
+                with open(profile_path, "r", encoding="utf-8") as f:
+                    user_db = json.load(f)
+                username = user_db.get("userData", {}).get("personalInfo", {}).get("name", "User")
+
             response = self.fact_extraction_runnable.invoke({"paragraph": query, "username": username})
             print(f"Raw fact extraction response: {response}")
             facts = response
-            if not isinstance(facts, list):
-                raise ValueError("Extracted facts are not in list format")
+            if isinstance(facts, dict) and "facts" in facts and isinstance(facts["facts"], list):
+                facts = facts["facts"]
+            elif not isinstance(facts, list):
+                 print(f"Warning: Extracted facts are not in list format, attempting to use as is: {facts}")
+                 # If it's a string, wrap it in a list, otherwise handle error or return []
+                 facts = [str(facts)] if facts is not None else []
+
             print(f"Extracted facts: {facts}")
             return facts
         except Exception as e:
@@ -152,14 +166,23 @@ class MemoryBackend:
             if memory_type == "Short Term":
                 print("Storing fact in Short Term memory...")
                 expiry_info = self.memory_manager.expiry_date_decision(fact)
-                retention_days = expiry_info.get("retention_days", 7)
+                retention_days = expiry_info if isinstance(expiry_info, int) else expiry_info.get("retention_days", 7)
+
                 memory_info = self.memory_manager.extract_and_invoke_memory(fact)
                 category = memory_info.get("memories", [{}])[0].get("category", "tasks")
                 self.memory_manager.store_memory(user_id, fact, retention_days, category)
                 print("Fact stored in Short Term memory.")
             else:
                 print("Storing fact in Long Term memory (Neo4j)...")
-                crud_graph_operations(
+                if not all([self.graph_driver, self.embed_model, self.query_class_runnable,
+                            self.info_extraction_runnable, self.graph_analysis_runnable,
+                            self.graph_decision_runnable, self.text_desc_runnable]):
+                    print("Error: One or more Neo4j runnables/drivers are not initialized. Skipping long-term memory storage.")
+                    continue
+
+                await asyncio.to_thread(
+                    crud_graph_operations,
+                    user_id,
                     fact, self.graph_driver, self.embed_model, self.query_class_runnable,
                     self.info_extraction_runnable, self.graph_analysis_runnable,
                     self.graph_decision_runnable, self.text_desc_runnable
@@ -186,7 +209,14 @@ class MemoryBackend:
                 print("Short Term memory updated.")
             else:
                 print("Updating Long Term memory (Neo4j)...")
-                crud_graph_operations(
+                if not all([self.graph_driver, self.embed_model, self.query_class_runnable,
+                            self.info_extraction_runnable, self.graph_analysis_runnable,
+                            self.graph_decision_runnable, self.text_desc_runnable]):
+                    print("Error: One or more Neo4j runnables/drivers are not initialized. Skipping long-term memory update.")
+                    continue
+                await asyncio.to_thread(
+                    crud_graph_operations,
+                    user_id,
                     fact, self.graph_driver, self.embed_model, self.query_class_runnable,
                     self.info_extraction_runnable, self.graph_analysis_runnable,
                     self.graph_decision_runnable, self.text_desc_runnable
@@ -197,7 +227,7 @@ class MemoryBackend:
     async def retrieve_memory(self, user_id: str, query: str, type: str = None) -> str:
         """Retrieve relevant memories synchronously from the appropriate store."""
         print(f"Retrieving memory for user ID: '{user_id}', query: '{query}'")
-        if type == None:
+        if type is None:
             memory_type = self.classify_query_memory_type(query)
         else:
             memory_type = type
@@ -214,7 +244,12 @@ class MemoryBackend:
                 return None
         else:
             print("Retrieving from Long Term memory (Neo4j)...")
-            context = query_user_profile(
+            if not all([self.graph_driver, self.embed_model, self.text_conv_runnable, self.query_class_runnable]):
+                print("Error: One or more Neo4j runnables/drivers are not initialized for long-term memory retrieval.")
+                return None
+            context = await asyncio.to_thread(
+                query_user_profile,
+                user_id,
                 query, self.graph_driver, self.embed_model,
                 self.text_conv_runnable, self.query_class_runnable
             )
@@ -222,7 +257,52 @@ class MemoryBackend:
             return context
     
     async def add_operation(self, user_id: str, query: str):
-        await self.memory_queue.add_operation(user_id, query)
+        """Add a memory operation to the queue."""
+        memory_op_data = {"type": "store", "query_text": query} # Default to 'store' operation
+        await self.memory_queue.add_operation(user_id, memory_op_data)
+
+    async def process_memory_operations(self):
+        """Continuously process memory operations from the queue."""
+        print("[MEMORY_BACKEND_PROCESSOR] Starting memory operation processing loop.")
+        while True:
+            operation = await self.memory_queue.get_next_operation()
+            if operation:
+                user_id = operation.get("user_id")
+                memory_data = operation.get("memory_data")
+                operation_id = operation.get("operation_id")
+                
+                if not isinstance(memory_data, dict):
+                    print(f"[MEMORY_BACKEND_PROCESSOR_ERROR] Invalid memory_data format for op {operation_id}: {memory_data}. Expected Dict.")
+                    await self.memory_queue.complete_operation(operation_id, error="Invalid memory_data format.")
+                    continue
+
+                op_type = memory_data.get("type")
+                query_text = memory_data.get("query_text")
+
+                if not query_text:
+                    print(f"[MEMORY_BACKEND_PROCESSOR_ERROR] Missing query_text in memory_data for op {operation_id}.")
+                    await self.memory_queue.complete_operation(operation_id, error="Missing query_text.")
+                    continue
+                
+                print(f"[MEMORY_BACKEND_PROCESSOR] Processing operation {operation_id} (type: {op_type}) for user {user_id}: {query_text[:50]}...")
+                try:
+                    if op_type == "store":
+                        await self.store_memory(user_id, query_text)
+                        await self.memory_queue.complete_operation(operation_id, result="Stored successfully")
+                    elif op_type == "update":
+                        await self.update_memory(user_id, query_text)
+                        await self.memory_queue.complete_operation(operation_id, result="Updated successfully")
+                    else:
+                        print(f"[MEMORY_BACKEND_PROCESSOR_WARN] Unknown operation type '{op_type}' for op {operation_id}.")
+                        await self.memory_queue.complete_operation(operation_id, error=f"Unknown operation type: {op_type}")
+                    
+                    print(f"[MEMORY_BACKEND_PROCESSOR] Completed operation {operation_id}.")
+                except Exception as e:
+                    print(f"[MEMORY_BACKEND_PROCESSOR_ERROR] Error processing memory operation {operation_id}: {e}")
+                    traceback.print_exc()
+                    await self.memory_queue.complete_operation(operation_id, error=str(e))
+            else:
+                await asyncio.sleep(0.5) # Wait if queue is empty
 
     def cleanup(self):
         """Clean up expired short-term memories."""

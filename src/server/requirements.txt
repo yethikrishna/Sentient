@@ -196,3 +196,4 @@ wrapt_timeout_decorator==1.5.1
 yarl==1.18.3
 # pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/<cuda-version>
 python-jose
+motor

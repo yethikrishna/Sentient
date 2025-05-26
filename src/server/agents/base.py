@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Tuple, Union # Original import, kept
 
 # --- MongoDB specific imports ---
 import motor.motor_asyncio
-from pymongo import ASCENDING, DESCENDING, IndexModel
+from pymongo import ASCENDING, DESCENDING, IndexModel, ReturnDocument # MODIFIED: Added ReturnDocument
 from pymongo.results import UpdateResult, DeleteResult # For type hinting
 
 from server.agents.functions import send_email, reply_email # Original import, kept
@@ -109,7 +109,7 @@ class TaskQueue:
             {"status": "pending"},
             {"$set": {"status": "processing", "processing_started_at": datetime.datetime.now(datetime.timezone.utc)}},
             sort=[("priority", ASCENDING), ("created_at", ASCENDING)],
-            return_document=motor.motor_asyncio.ReturnDocument.AFTER # Get the updated document
+            return_document=ReturnDocument.AFTER # Get the updated document
         )
 
     async def complete_task(self, user_id: str, task_id: str, result: Optional[str] = None, 

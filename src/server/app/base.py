@@ -8,6 +8,7 @@ from wrapt_timeout_decorator import *  # Importing timeout decorator for functio
 from .helpers import *  # Importing helper functions from helpers.py
 from sys import platform  # To get system platform information
 from fastapi import WebSocket
+from .app import IS_DEV_ENVIRONMENT # Import IS_DEV_ENVIRONMENT from app.py
 
 load_dotenv("server/.env")
 
@@ -32,7 +33,10 @@ def get_selected_model() -> Tuple[str, str]:
     with open(db_path, "r", encoding="utf-8") as f:
         db = json.load(f)
     selected_model = db["userData"].get("selectedModel", "llama3.2:3b")  # Default to llama3.2:3b
-    if selected_model == "openai":
+    
+    if not IS_DEV_ENVIRONMENT and selected_model == "llama3.2:3b":
+        return "meta-llama/llama-3.2-3b-instruct:free", "openrouter"
+    elif selected_model == "openai":
         return "gpt-4o", "openai"
     elif selected_model == "claude":
         return "claude-3-7-sonnet-20250219", "claude"
@@ -183,7 +187,8 @@ class OllamaRunnable(BaseRunnable):
         Initializes an OllamaRunnable instance.
         Inherits arguments from BaseRunnable.
         """
-        super().__init__(*args, **kwargs)
+        self.model_url = "http://localhost:11434"  # Local Ollama instance
+        super().__init__(model_url=self.model_url, *args, **kwargs)
 
     def invoke(self, inputs: Dict[str, Any]) -> Union[Dict[str, Any], str, None]:
         """
@@ -235,7 +240,7 @@ class OllamaRunnable(BaseRunnable):
 
         Yields:
             Generator[Optional[str], None, None]: A generator yielding response chunks as strings.
-                                                Yields None if a chunk cannot be processed or the stream ends.
+                                             Yields None if a chunk cannot be processed or the stream ends.
         """
         self.build_prompt(inputs)
         payload = {
@@ -299,6 +304,140 @@ class OllamaRunnable(BaseRunnable):
         except json.JSONDecodeError:
             return None
 
+
+class OpenRouterRunnable(BaseRunnable):
+    """
+    Runnable class for interacting with OpenRouter language models.
+
+    This class extends BaseRunnable and implements the specific logic for calling
+    the OpenRouter API, including authentication, request formatting, response handling, and streaming.
+    It supports both text and JSON response formats and handles API key retrieval.
+    """
+    def __init__(self, *args, **kwargs):
+        """
+        Initializes an OpenRouterRunnable instance.
+        Retrieves the OpenRouter API key from environment variables.
+        Inherits arguments from BaseRunnable.
+        """
+        super().__init__(*args, **kwargs)
+        self.api_key: Optional[str] = os.getenv("OPENROUTER_API_KEY")
+        """OpenRouter API key, retrieved from environment variables."""
+        self.model_url = "https://openrouter.ai/api/v1/chat/completions"
+
+    def invoke(self, inputs: Dict[str, Any]) -> Union[Dict[str, Any], str, None]:
+        """
+        Invokes the OpenRouter model to get a complete, non-streaming response.
+
+        Constructs the headers and payload for the OpenRouter API, sends the POST request,
+        and processes the JSON response to extract and return the model's output.
+        Handles structured JSON response formatting if `response_type` is set to "json".
+
+        Args:
+            inputs: Input variables for the prompt.
+
+        Returns:
+            The response from the OpenRouter model, either JSON (dict) or text (str), or None on error.
+
+        Raises:
+            ValueError: If the OpenRouter API request fails or returns an error status.
+        """
+        self.build_prompt(inputs)
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": os.getenv("OPENROUTER_SITE_URL", "http://localhost:3000"), # Optional. Site URL for rankings on openrouter.ai.
+            "X-Title": os.getenv("OPENROUTER_SITE_NAME", "Sentient"), # Optional. Site title for rankings on openrouter.ai.
+        }
+
+        payload = {
+            "model": self.model_name,
+            "messages": self.messages,
+            "stream": False,
+        }
+
+        if self.response_type == "json":
+            # OpenRouter supports JSON response directly, no special schema cleaning needed like OpenAI/Gemini
+            payload["response_format"] = {"type": "json_object"}
+
+        response = requests.post(self.model_url, headers=headers, json=payload)
+        return self._handle_response(response)
+
+    def stream_response(self, inputs: Dict[str, Any]) -> Generator[Optional[str], None, None]:
+        """
+        Invokes the OpenRouter model to get a stream of responses.
+
+        Sends a streaming POST request to the OpenRouter API and yields content chunks
+        as they are received.
+
+        Args:
+            inputs: Input variables for the prompt.
+
+        Yields:
+            Generator[Optional[str], None, None]: A generator yielding response chunks as strings.
+                                                Yields None if a chunk is not valid or the stream ends.
+        """
+        self.build_prompt(inputs)
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": os.getenv("OPENROUTER_SITE_URL", "http://localhost:3000"),
+            "X-Title": os.getenv("OPENROUTER_SITE_NAME", "Sentient"),
+        }
+        payload = {
+            "model": self.model_name,
+            "messages": self.messages,
+            "stream": True
+        }
+
+        with requests.post(self.model_url, headers=headers, json=payload, stream=True) as response:
+            for line in response.iter_lines():
+                if line:
+                    yield self._handle_stream_line(line)
+
+    def _handle_response(self, response: requests.Response) -> Union[Dict[str, Any], str, None]:
+        """
+        Handles the HTTP response from the OpenRouter API for non-streaming requests.
+
+        Parses the JSON response, extracts the content, and handles potential errors.
+
+        Args:
+            response: The HTTP response object from the OpenRouter API.
+
+        Returns:
+            The processed response content, either JSON (dict) or text (str), or None on error.
+
+        Raises:
+            ValueError: If the request to OpenRouter API fails or JSON response is invalid.
+        """
+        if response.status_code == 200:
+            data = response.json()
+            content = data["choices"][0]["message"]["content"]
+            if self.response_type == "json":
+                try:
+                    return json.loads(content)
+                except json.JSONDecodeError as e:
+                    raise ValueError(f"Model did not return valid JSON. Error: {e}")
+            return content
+        raise ValueError(f"OpenRouter API Error: {response.text}")
+
+    def _handle_stream_line(self, line: bytes) -> Optional[str]:
+        """
+        Handles each line of a streaming response from the OpenRouter API.
+
+        Parses each line, extracts the content delta (the incremental content chunk), and returns it.
+
+        Args:
+            line: A line from the streaming response in bytes.
+
+        Returns:
+            Optional[str]: The extracted content chunk as a string.
+                           Returns None if the line is not a data line or if the content delta is empty.
+        """
+        if line.startswith(b"data: "):
+            chunk = json.loads(line[6:])
+            return chunk["choices"][0]["delta"].get("content", "")
+        return None
 
 class OpenAIRunnable(BaseRunnable):
     """
@@ -894,3 +1033,13 @@ class WebSocketManager:
             except Exception as e:
                 print(f"Error broadcasting message to connection: {e}")
                 self.disconnect(connection) # Remove broken connection
+
+# Mapping of provider names to their respective Runnable classes
+RUNNABLE_MAP: Dict[str, type[BaseRunnable]] = {
+    "ollama": OllamaRunnable,
+    "openai": OpenAIRunnable,
+    "claude": ClaudeRunnable,
+    "gemini": GeminiRunnable,
+    "openrouter": OpenRouterRunnable,
+    "llama3.2:3b": OllamaRunnable, # Default to Ollama for local Llama 3.2
+}

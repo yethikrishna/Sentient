@@ -108,6 +108,10 @@ dotenv_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env") #
 load_dotenv(dotenv_path=dotenv_path)
 print(f"[STARTUP] {datetime.datetime.now()}: Environment variables loaded from {dotenv_path}")
 
+# --- Development/Production Environment Flag ---
+IS_DEV_ENVIRONMENT = os.getenv("IS_DEV_ENVIRONMENT", "false").lower() in ("true", "1", "t", "y")
+print(f"[STARTUP] {datetime.datetime.now()}: Development environment flag set to {IS_DEV_ENVIRONMENT}")
+
 # --- Asyncio Configuration ---
 print(f"[STARTUP] {datetime.datetime.now()}: Applying nest_asyncio...")
 nest_asyncio.apply()

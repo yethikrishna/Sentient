@@ -36,9 +36,7 @@ const Chat = () => {
 	const [currentModel, setCurrentModel] = useState("")
 	const [chatMode, setChatMode] = useState("voice")
 	const [isLoading, setIsLoading] = useState(() => chatMode === "text")
-	const [connectionStatus, setConnectionStatus] = useState("disconnected")
-	// REMOVED: isMuted state
-	// REMOVED: callDuration state
+	const [connectionStatus, setConnectionStatus] = useState("disconnected") // "disconnected", "connecting", "connected"
 	const [audioInputDevices, setAudioInputDevices] = useState([])
 	const [selectedAudioInputDevice, setSelectedAudioInputDevice] = useState("")
 
@@ -69,24 +67,19 @@ const Chat = () => {
 		}
 	}
 
-	// REMOVED: formatDuration helper
-
 	// --- Connection Status and Timer Handling ---
 	const handleStatusChange = useCallback((status) => {
 		console.log("Connection status changed:", status)
 		setConnectionStatus(status)
 
-		// Stop ringing sound
 		if (status !== "connecting" && ringtoneAudioRef.current) {
 			ringtoneAudioRef.current.pause()
 			ringtoneAudioRef.current.currentTime = 0
 		}
 
-		// Play connected sound
 		if (status === "connected") {
-			// REMOVED: Reset duration
 			if (connectedAudioRef.current) {
-				connectedAudioRef.current.volume = 0.4 // Keep volume adjustment
+				connectedAudioRef.current.volume = 0.4
 				connectedAudioRef.current
 					.play()
 					.catch((e) =>
@@ -367,9 +360,8 @@ const Chat = () => {
 				toast.error("Could not get microphone list.")
 			}
 		}
-		getDevices() // Call the function
+		getDevices()
 
-		// Fetch history only if starting in text mode
 		if (chatMode === "text") {
 			console.log(
 				"ChatPage: Initial Mount - Fetching history (text mode)."
@@ -427,7 +419,7 @@ const Chat = () => {
 				fetchChatHistory()
 			}
 		}
-	}, [chatMode]) // Correct dependencies
+	}, [chatMode, isLoading]) // isLoading dependency ensures fetch only when not already loading
 
 	// Effect for textarea resize
 	useEffect(() => {
@@ -597,13 +589,11 @@ const Chat = () => {
 								ref={backgroundCircleProviderRef}
 								onStatusChange={handleStatusChange}
 								connectionStatusProp={connectionStatus}
-								// REMOVED: Props related to mute/device as client doesn't handle them now
-								// initialMuteState={isMuted}
-								// selectedDeviceId={selectedAudioInputDevice}
 							/>
 
-							{/* MODIFIED: Central Call Controls (Simpler) */}
 							<div className="absolute inset-0 flex flex-col items-center justify-center z-20 pointer-events-none">
+								{" "}
+								{/* Maintained for positioning */}
 								<div className="flex flex-col items-center pointer-events-auto">
 									{" "}
 									{/* Removed background box for cleaner look */}
@@ -636,16 +626,13 @@ const Chat = () => {
 											<IconPhoneOff size={32} />
 										</button>
 									)}
-									{/* REMOVED: Timer, Mute Button */}
 								</div>
 							</div>
 						</div>
 					)}
 				</div>
 			</div>
-
-			{/* --- ADDED: Mic Selection Dropdown (Bottom Right) --- */}
-			{/* Always visible when not loading */}
+			{/* Mic Selection Dropdown (Bottom Right) - Always visible when not loading */}
 			{!isLoading && (
 				<div className="absolute bottom-6 right-6 z-30">
 					<select
@@ -655,8 +642,9 @@ const Chat = () => {
 						title="Select Microphone (Restart call to apply)" // Updated tooltip
 					>
 						{audioInputDevices.length === 0 ? (
-							<option value="">Loading mics...</option> // Changed default message
+							<option value="">No mics found</option>
 						) : (
+							// Changed default message if no devices
 							audioInputDevices.map((device) => (
 								<option
 									key={device.deviceId}
@@ -670,7 +658,6 @@ const Chat = () => {
 				</div>
 			)}
 
-			{/* Audio elements (volume adjusted) */}
 			<audio
 				ref={ringtoneAudioRef}
 				src="/audio/ringing.mp3"

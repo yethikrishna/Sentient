@@ -390,7 +390,6 @@ async def save_db(data):
         json.dump(data, f, indent=4)
         
 NOTIFICATIONS_DB = "notificationsDb.json"
-        
 async def load_notifications_db():
     """Load the notifications database, initializing it if it doesn't exist."""
     try:

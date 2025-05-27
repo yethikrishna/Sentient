@@ -1,7 +1,6 @@
 "use client"
 import React, { useState, useEffect, useCallback } from "react"
-// Import necessary icons
-import { IconLoader, IconBell, IconAlertCircle } from "@tabler/icons-react" // Added IconAlertCircle
+import { IconLoader, IconBell, IconAlertCircle } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import Sidebar from "@components/Sidebar"
 import { cn } from "@utils/cn"
@@ -9,16 +8,13 @@ import { cn } from "@utils/cn"
 const Notifications = () => {
 	const [notifications, setNotifications] = useState([])
 	const [isLoading, setIsLoading] = useState(true) // Start loading initially
-	const [userDetails, setUserDetails] = useState({})
+	const [userDetails, setUserDetails] = useState({}) // Initialize to empty object
 	const [isSidebarVisible, setSidebarVisible] = useState(false)
-	const [error, setError] = useState(null)
+	const [error, setError] = useState(null) // State for storing fetch errors
 
-	// Fetch notifications function wrapped in useCallback
 	const fetchNotifications = useCallback(async () => {
 		console.log("Fetching notifications...")
-		// Don't set loading here based on previous state - set it unconditionally
-		// We handle the initial loading state separately
-		setIsLoading(true) // Indicate loading start
+		setIsLoading(true)
 		setError(null) // Clear previous errors
 		try {
 			const response = await window.electron?.invoke("get-notifications")
@@ -68,8 +64,7 @@ const Notifications = () => {
 			setNotifications([])
 			setError(errorMsg)
 		} finally {
-			// Always set loading to false after fetch attempt completes
-			setIsLoading(false)
+			setIsLoading(false) // Always set loading to false after fetch attempt
 		}
 		// MODIFIED: Removed isLoading from dependency array
 	}, []) // useCallback dependency array is now empty
@@ -86,12 +81,10 @@ const Notifications = () => {
 		}
 	}
 
-	// Initial fetch and interval setup effect
 	useEffect(() => {
 		fetchUserDetails()
 		fetchNotifications() // Call fetch on initial mount
 
-		// Setup interval for subsequent refreshes
 		const intervalId = setInterval(fetchNotifications, 120000) // Refresh every 2 minutes
 		return () => clearInterval(intervalId) // Cleanup interval on unmount
 	}, [fetchNotifications]) // Dependency array correctly contains fetchNotifications
@@ -125,8 +118,7 @@ const Notifications = () => {
 				</h1>
 
 				<div className="w-full max-w-3xl mx-auto flex-grow overflow-hidden flex flex-col">
-					{/* MODIFIED: Show loader if isLoading is true, regardless of notifications.length */}
-					{isLoading ? (
+					{isLoading ? ( // Handle loading state first
 						<div className="flex-grow flex flex-col justify-center items-center text-center p-10">
 							<IconLoader className="w-10 h-10 text-lightblue animate-spin" />
 							<span className="ml-3 text-gray-400 text-lg mt-4">

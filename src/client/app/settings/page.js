@@ -2,12 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react" // Added useCallback
 import Sidebar from "@components/Sidebar"
-import ProIcon from "@components/ProIcon" // Still used within AppCard logic
+import ProIcon from "@components/ProIcon"
 import toast from "react-hot-toast"
-// REMOVED: ShiningButton import - replaced with standard buttons or integrated styling
 import ModalDialog from "@components/ModalDialog"
-// ADDED: More icons
 import {
+	// Icons for various actions and indicators
 	IconGift,
 	IconRocket,
 	IconMail,
@@ -34,8 +33,7 @@ const Settings = () => {
 	const [showReferralDialog, setShowReferralDialog] = useState(false)
 	const [referralCode, setReferralCode] = useState("DUMMY")
 	const [referrerStatus, setReferrerStatus] = useState(false)
-	const [dataSources, setDataSources] = useState([])
-	// ADDED: Customize input state
+	const [dataSources, setDataSources] = useState([]) // To store data source configs
 	const [isCustomizeInputVisible, setCustomizeInputVisible] = useState(false)
 	const [newGraphInfo, setNewGraphInfo] = useState("")
 	const [customizeLoading, setCustomizeLoading] = useState(false) // Separate loading for customize
@@ -49,8 +47,8 @@ const Settings = () => {
 			const response = await window.electron.invoke("get-data-sources")
 			if (response.error) {
 				console.error("Error fetching data sources:", response.error)
-				toast.error("Error fetching data sources.")
-				setDataSources([]) // Ensure empty array on error
+				toast.error("Error fetching data sources.") // Toast on error
+				setDataSources([])
 			} else {
 				// Ensure data_sources is an array and add icons
 				const sourcesWithIcons = (
@@ -60,7 +58,7 @@ const Settings = () => {
 				).map((ds) => ({
 					...ds,
 					icon: dataSourceIcons[ds.name] || IconSettingsCog // Assign icon or default
-				}))
+				})) // Map icons to sources
 				setDataSources(sourcesWithIcons)
 				console.log("Data sources fetched:", sourcesWithIcons)
 			}
@@ -71,14 +69,15 @@ const Settings = () => {
 		}
 	}, []) // Empty dependency array
 
-	// MODIFIED: Wrapped handleToggle in useCallback
 	const handleToggle = async (sourceName, enabled) => {
-		console.log(`Toggling ${sourceName} to ${enabled}`)
-		console.log(typeof enabled) // Check type
-		console.log(typeof sourceName) // Check type
-		// Optimistic UI update
-		setDataSources((prev) =>
-			prev.map((ds) => (ds.name === sourceName ? { ...ds, enabled } : ds))
+		console.log(`Toggling ${sourceName} to ${enabled}`) // Log toggle action
+		setDataSources(
+			(
+				prev // Optimistic UI update
+			) =>
+				prev.map((ds) =>
+					ds.name === sourceName ? { ...ds, enabled } : ds
+				)
 		)
 		console.log(`Toggling ${sourceName} to ${enabled}`)
 		try {
@@ -91,8 +90,7 @@ const Settings = () => {
 					`Error updating ${sourceName} data source:`,
 					response.error
 				)
-				toast.error(`Error updating ${sourceName}: ${response.error}`)
-				// Revert optimistic update on error
+				toast.error(`Error updating ${sourceName}: ${response.error}`) // Toast on backend error
 				setDataSources((prev) =>
 					prev.map((ds) =>
 						ds.name === sourceName
@@ -103,7 +101,7 @@ const Settings = () => {
 			} else {
 				toast.success(
 					`${sourceName} ${enabled ? "enabled" : "disabled"}.`
-				) // Removed restart message for now
+				)
 			}
 		} catch (error) {
 			console.error(`Error updating ${sourceName} data source:`, error)
@@ -118,34 +116,63 @@ const Settings = () => {
 	}
 
 	const fetchUserDetails = useCallback(async () => {
-		/* ...no functional change, ensure useCallback if needed... */
-	}, [])
+		// Fetch user details
+		try {
+			const response = await window.electron?.invoke("get-profile")
+			setUserDetails(response || {}) // Set user details or empty object
+		} catch (error) {
+			toast.error("Error fetching user details for sidebar.")
+			console.error("Error fetching user details:", error)
+		}
+	}, []) // Empty dependency array
+
 	const fetchPricingPlan = useCallback(async () => {
-		/* ...no functional change, ensure useCallback if needed... */
-	}, [])
+		// Fetch pricing plan
+		try {
+			const response = await window.electron?.invoke("fetch-pricing-plan")
+			setPricing(response || "free") // Set pricing or default to 'free'
+		} catch (error) {
+			toast.error("Error fetching pricing plan.")
+			console.error("Error fetching pricing plan:", error)
+		}
+	}, []) // Empty dependency array
+
 	const fetchReferralDetails = useCallback(async () => {
-		/* ...no functional change, ensure useCallback if needed... */
-	}, [])
+		// Fetch referral details
+		try {
+			const code = await window.electron?.invoke("fetch-referral-code")
+			const status = await window.electron?.invoke(
+				"fetch-referrer-status"
+			)
+			setReferralCode(code || "N/A") // Set referral code or 'N/A'
+			setReferrerStatus(status || false) // Set referrer status or false
+		} catch (error) {
+			toast.error("Error fetching referral details.")
+			console.error("Error fetching referral details:", error)
+		}
+	}, []) // Empty dependency array
 
 	const fetchData = useCallback(async () => {
-		// Removed fetching for LinkedIn, Reddit, Twitter connection statuses
 		console.log(
 			"Fetching user data (excluding social media connection status)..."
 		)
 		try {
 			const response = await window.electron?.invoke("get-user-data")
 			if (response.status === 200 && response.data) {
-				// User data might still contain other relevant info, process if needed
-				// For now, just logging that it was fetched
 				console.log(
 					"User data fetched successfully (social media connections parts are ignored)."
 				)
+				// Process other user data if necessary from response.data
 			} else {
 				console.error(
 					"Error fetching DB data, status:",
 					response?.status,
 					"response:",
 					response
+				)
+				// Optionally set a default or error state for user data
+				toast.error(
+					`Failed to fetch user data: ${response?.message || "Unknown error"}`
 				)
 			}
 		} catch (error) {
@@ -155,25 +182,18 @@ const Settings = () => {
 
 	useEffect(() => {
 		console.log("Initial useEffect running...")
-		fetchData() // Fetch connection status
+		fetchData()
 		fetchUserDetails()
 		fetchPricingPlan()
 		fetchReferralDetails()
 		fetchDataSources()
-		// No interval here, data fetched on mount or refresh
 	}, [
 		fetchData,
 		fetchUserDetails,
 		fetchPricingPlan,
 		fetchReferralDetails,
 		fetchDataSources
-	]) // Add all useCallback functions
-
-	// --- Action Handlers ---
-	// handleConnectClick and handleDisconnectClick are removed as their UI elements are gone.
-	// handleDisclaimerAccept and handleDisclaimerDecline might become redundant if no other feature uses them.
-	// For now, let's assume the disclaimer flow might be used by other (future) settings,
-	// Disclaimer-related functions (handleDisclaimerAccept, handleDisclaimerDecline) are removed.
+	]) // Add all useCallback functions to dependency array
 
 	return (
 		// MODIFIED: Overall page structure using flex
@@ -185,11 +205,12 @@ const Settings = () => {
 			/>
 			{/* MODIFIED: Main Content Area */}
 			<div className="flex-grow flex flex-col h-full bg-matteblack text-white relative overflow-y-auto p-6 md:p-10 custom-scrollbar">
+				{" "}
+				{/* Consistent padding and scrollbar */}
 				{/* --- Top Section: Heading & Action Buttons --- */}
 				<div className="flex justify-between items-center mb-8 flex-shrink-0 px-4">
 					<h1 className="font-Poppins text-white text-3xl md:text-4xl font-light">
-						{" "}
-						Settings{" "}
+						Settings
 					</h1>
 					{/* MODIFIED: Top right buttons - smaller, themed */}
 					<div className="flex items-center gap-3">
@@ -200,7 +221,7 @@ const Settings = () => {
 									"_blank"
 								)
 							}
-							className="flex items-center gap-2 py-2 px-4 rounded-full bg-darkblue hover:bg-lightblue text-white text-xs sm:text-sm font-medium transition-colors shadow-md"
+							className="flex items-center gap-2 py-2 px-4 rounded-full bg-darkblue hover:bg-lightblue text-white text-xs sm:text-sm font-medium transition-colors shadow-md" // Themed button
 							title={
 								pricing === "free"
 									? "Upgrade for more features"
@@ -216,7 +237,7 @@ const Settings = () => {
 						</button>
 						<button
 							onClick={() => setShowReferralDialog(true)}
-							className="flex items-center gap-2 py-2 px-4 rounded-full bg-neutral-700 hover:bg-neutral-600 text-white text-xs sm:text-sm font-medium transition-colors shadow-md"
+							className="flex items-center gap-2 py-2 px-4 rounded-full bg-neutral-700 hover:bg-neutral-600 text-white text-xs sm:text-sm font-medium transition-colors shadow-md" // Themed button
 							title="Refer a friend"
 						>
 							<IconGift size={18} />
@@ -224,8 +245,6 @@ const Settings = () => {
 						</button>
 					</div>
 				</div>
-				{/* --- Main Settings Content --- */}
-				{/* MODIFIED: Centered content with max-width */}
 				<div className="w-full max-w-5xl mx-auto space-y-10 flex-grow">
 					{/* Data Sources Section */}
 					<section>
@@ -238,19 +257,17 @@ const Settings = () => {
 								{dataSources.length > 0 ? (
 									dataSources.map((source) => {
 										const SourceIcon =
-											source.icon || IconSettingsCog // Use mapped icon or default
+											source.icon || IconSettingsCog
 										return (
 											<div
 												key={source.name}
 												className="flex items-center justify-between py-2"
 											>
 												<div className="flex items-center gap-3">
-													<SourceIcon className="w-6 h-6 text-lightblue" />{" "}
-													{/* Use icon */}
+													<SourceIcon className="w-6 h-6 text-lightblue" />
 													<span className="font-medium text-white text-base">
 														{source.name}
-													</span>{" "}
-													{/* Increased text size */}
+													</span>
 												</div>
 												{/* MODIFIED: Radix Switch with custom theme styling */}
 												<Switch
@@ -266,7 +283,7 @@ const Settings = () => {
 													className={cn(
 														"group relative inline-flex h-[24px] w-[44px] flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-lightblue focus:ring-offset-2 focus:ring-offset-neutral-800",
 														source.enabled
-															? "bg-lightblue"
+															? "bg-lightblue" // Active color
 															: "bg-neutral-600" // Background color based on state
 													)}
 												>
@@ -288,8 +305,7 @@ const Settings = () => {
 									})
 								) : (
 									<p className="text-gray-400 italic text-center py-4">
-										{" "}
-										Data source settings loading...{" "}
+										Data source settings loading...
 									</p>
 								)}
 							</div>
@@ -318,9 +334,8 @@ const Settings = () => {
 							cancelButton={false}
 						/>
 					)}
-				</div>{" "}
-				{/* END OF MAIN CONTENT AREA */}
-			</div>{" "}
+				</div>
+			</div>
 		</div>
 	)
 }

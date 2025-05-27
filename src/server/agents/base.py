@@ -1,20 +1,14 @@
-import heapq # Original import, kept
 import uuid
 import asyncio
 import datetime
-import os # Added for environment variables
-# import aiofiles # No longer needed by TaskQueue
-# import json # No longer needed by TaskQueue for persistence
+import os
 
-from typing import Dict, List, Optional, Tuple, Union # Original import, kept
+from typing import Dict, List, Optional, Tuple, Union
 
-# --- MongoDB specific imports ---
 import motor.motor_asyncio
 from pymongo import ASCENDING, DESCENDING, IndexModel, ReturnDocument # MODIFIED: Added ReturnDocument
-from pymongo.results import UpdateResult, DeleteResult # For type hinting
-
-from server.agents.functions import send_email, reply_email # Original import, kept
-
+from pymongo.results import UpdateResult, DeleteResult
+from server.agents.functions import send_email, reply_email
 # Global lock for thread-safe access to task data (Original, kept but unused by new TaskQueue)
 task_lock = asyncio.Lock()
 
@@ -61,15 +55,9 @@ class TaskQueue:
         except Exception as e:
             print(f"[DB_ERROR] Failed to create indexes for {self.collection.name}: {e}")
 
-
-    # load_tasks and save_tasks are removed as they are for file-based persistence.
-    # app.py should call initialize_db on startup instead of load_tasks.
-    # No equivalent for save_tasks is needed as data is saved to DB upon operation.
-
     async def get_task_by_id(self, user_id: str, task_id: str) -> Optional[Dict]:
         """Retrieves a specific task by its ID, scoped by user_id."""
-        # Note: `app.py` will need to be updated to pass `user_id` to this method.
-        if not user_id or not task_id:
+        if not user_id or not task_id: # Basic validation
             return None
         return await self.collection.find_one({"user_id": user_id, "task_id": task_id})
 
@@ -118,13 +106,12 @@ class TaskQueue:
         Mark a task with a final status (completed, error, cancelled) and save the result/error.
         Scoped by user_id.
         """
-        # Note: `app.py` will need to be updated to pass `user_id` and `status`.
         update_doc = {
             "status": status,
             "result": result,
             "error": error,
             "completed_at": datetime.datetime.now(datetime.timezone.utc),
-            "$unset": {"approval_data": "", "processing_started_at": ""} # Clear approval_data and processing_started_at
+            "$unset": {"approval_data": "", "processing_started_at": ""}
         }
         # Remove None values for result/error if not provided, to avoid overwriting with None
         # if they were already set by some intermediate step (though less likely here)
@@ -132,10 +119,11 @@ class TaskQueue:
             del update_doc["result"]
         if error is None:
             del update_doc["error"]
-        
+
         await self.collection.update_one(
             {"user_id": user_id, "task_id": task_id},
-            {"$set": {k: v for k,v in update_doc.items() if k != "$unset"}, "$unset": update_doc["$unset"]}
+            {"$set": {k: v for k,v in update_doc.items() if k != "$unset"}, 
+             "$unset": update_doc["$unset"]} # Apply $set and $unset in one operation
         )
 
 
@@ -210,22 +198,16 @@ class TaskQueue:
         return result.modified_count > 0
 
 
-    async def delete_task(self, user_id: str, task_id: str) -> bool:
+    async def delete_task(self, user_id: str, task_id: str) -> bool: # Renamed taskID to task_id
         """Delete a task by its ID. Scoped by user_id."""
-        # Note: Original signature updated to include user_id.
         result: DeleteResult = await self.collection.delete_one({"user_id": user_id, "task_id": task_id})
-        # Original code did not explicitly return bool, but app.py checks if it raises ValueError.
-        # Returning bool for deleted_count > 0 is more informative.
         if result.deleted_count == 0:
-            # To match original behavior of app.py expecting ValueError if task not found for delete.
             raise ValueError(f"Task with id {task_id} for user {user_id} not found for deletion.")
         return True
 
-
     async def get_tasks_for_user(self, user_id: str) -> List[Dict]:
         """Return a list of all tasks for a specific user, newest first."""
-        # Replaces get_all_tasks and is now user-scoped.
-        if not user_id:
+        if not user_id: # Handle cases where user_id might be None or empty
             return []
         cursor = self.collection.find({"user_id": user_id}).sort("created_at", DESCENDING)
         return await cursor.to_list(length=None) # Fetches all matching documents
@@ -241,16 +223,11 @@ class TaskQueue:
         result: DeleteResult = await self.collection.delete_many(query)
         print(f"[DB_CLEANUP] Deleted {result.deleted_count} old completed tasks.")
 
-        # Optional: Cleanup tasks stuck in "processing" for an extended period
         stuck_processing_cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=hours_threshold * 4) # e.g., 4x threshold
         stuck_query = {
             "status": "processing",
             "processing_started_at": {"$lt": stuck_processing_cutoff}
         }
-        # Option 1: Delete them
-        # stuck_result: DeleteResult = await self.collection.delete_many(stuck_query)
-        # print(f"[DB_CLEANUP] Deleted {stuck_result.deleted_count} tasks stuck in processing.")
-        
         # Option 2: Mark them as error
         stuck_update_result: UpdateResult = await self.collection.update_many(
             stuck_query,

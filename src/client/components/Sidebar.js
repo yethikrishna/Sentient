@@ -41,12 +41,10 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 
 	return (
 		<>
-			{/* Sidebar Container: z-index controls overlay */}
 			<div
 				id="sidebar"
-				// MODIFIED: z-index is 40 when visible, 0 when hidden (via class logic)
-				className={`w-1/5 h-full flex flex-col bg-smokeblack overflow-y-auto transform transition-all duration-300 fixed top-0 left-0 ${isSidebarVisible ? "translate-x-0 opacity-100 z-40 pointer-events-auto" : "-translate-x-full opacity-0 z-0 pointer-events-none"}`}
-				onMouseLeave={() => setSidebarVisible(false)} // Keep mouse leave behavior
+				className={`w-1/5 h-full flex flex-col bg-smokeblack overflow-y-auto transform transition-all duration-300 fixed top-0 left-0 ${isSidebarVisible ? "translate-x-0 opacity-100 z-40 pointer-events-auto" : "-translate-x-full opacity-0 z-0 pointer-events-none"}`} // z-index 40 when visible, 0 when hidden
+				onMouseLeave={() => setSidebarVisible(false)} // Hide sidebar on mouse leave
 			>
 				{/* Sidebar Content (remains the same) */}
 				<div className="flex items-center px-6 py-6">
@@ -147,14 +145,11 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 						className="flex items-center space-x-3"
 						onClick={toggleUserMenu}
 					>
-						{/* User details rendering (remains same) */}
+						{/* User profile display and menu toggle (content remains the same) */}
 					</div>
 				</div>
 			</div>
-
-			{/* Sidebar Trigger Area */}
-			{/* MODIFIED: Added higher z-index (z-30) to ensure it's above the main content (z-10) but below the active sidebar (z-40) */}
-			{/* Added `fixed` positioning to align with the sidebar */}
+			{/* Sidebar Trigger Area: Fixed position and higher z-index */}
 			<div
 				className="fixed top-0 left-0 bg-transparent w-[5%] h-full z-30 flex items-center justify-start"
 				onMouseEnter={() => setSidebarVisible(true)} // Keep mouse enter behavior

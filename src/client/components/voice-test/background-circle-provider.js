@@ -40,9 +40,7 @@ const BackgroundCircleProviderComponent = (
 		}
 	}, [connectionStatusProp, internalStatus])
 
-	// REMOVED: Effect to sync mute state from prop
-
-	// --- Callbacks for WebRTCClient --- (no changes needed here)
+	// --- Callbacks for WebRTCClient ---
 	const handleConnected = useCallback(() => {
 		console.log("Provider: WebRTC Connected")
 		setIsConnected(true)
@@ -85,10 +83,7 @@ const BackgroundCircleProviderComponent = (
 
 	// --- WebRTC Client Initialization ---
 	useEffect(() => {
-		// MODIFIED: Removed initialMuteState and selectedDeviceId from options passed to client
-		console.log(
-			"Provider: Initializing WebRTCClient instance with basic options"
-		)
+		console.log("Provider: Initializing WebRTCClient instance")
 		const client = new WebRTCClient({
 			onConnected: handleConnected,
 			onDisconnected: handleDisconnected,
@@ -119,15 +114,12 @@ const BackgroundCircleProviderComponent = (
 	// --- Expose connect/disconnect methods via ref ---
 	useImperativeHandle(ref, () => ({
 		connect: async () => {
-			// Connect method remains
 			if (webrtcClient && internalStatus === "disconnected") {
 				console.log("Provider: connect() called via ref")
 				setInternalStatus("connecting")
 				onStatusChange?.("connecting")
 				try {
-					// MODIFIED: Removed logging related to deviceId
-					// console.log(`Provider: Attempting connection with deviceId: ${selectedDeviceId}`);
-					await webrtcClient.connect() // Calls the reverted client's connect
+					await webrtcClient.connect()
 				} catch (error) {
 					console.error(
 						"Provider: Error during connect() call:",
@@ -152,15 +144,12 @@ const BackgroundCircleProviderComponent = (
 				)
 			}
 		}
-		// REMOVED: toggleMute method is no longer exposed
-		// REMOVED: enumerateDevices method is no longer exposed
 	}))
 
 	// --- Render Logic ---
 	return (
 		<div className="relative w-full h-full flex items-center justify-center">
-			{/* VoiceBlobs rendering remains the same */}
-			<VoiceBlobs
+			<VoiceBlobs // Visual feedback for voice activity
 				audioLevel={audioLevel}
 				isActive={internalStatus === "connected"}
 				isConnecting={internalStatus === "connecting"}
@@ -170,16 +159,9 @@ const BackgroundCircleProviderComponent = (
 	)
 }
 
-// Wrap the component function with forwardRef
 const ForwardedBackgroundCircleProvider = forwardRef(
 	BackgroundCircleProviderComponent
 )
-
-// Add display name
 ForwardedBackgroundCircleProvider.displayName = "BackgroundCircleProvider"
 
-// Export the forwardRef-wrapped component as default
 export default ForwardedBackgroundCircleProvider
-
-// Keep named export if needed (exports the unwrapped component)
-export { BackgroundCircleProviderComponent as BackgroundCircleProvider }

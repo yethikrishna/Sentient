@@ -3,16 +3,14 @@
 import React, { useEffect, useState, useCallback } from "react"
 import GraphVisualization from "@components/GraphViz"
 import Sidebar from "@components/Sidebar"
-// ADDED: Icons needed for this page
 import {
 	IconInfoCircle,
 	IconRefresh,
-	IconDatabase, // Used in switcher and actions
-	IconBrain, // Used in switcher and actions
+	IconDatabase,
+	IconBrain,
 	IconTrash,
-	IconPlus, // For add memory button
-	IconSettingsCog, // Placeholder for Customize/Recreate actions
-	IconLoader,
+	IconSettingsCog,
+	IconLoader
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import ProIcon from "@components/ProIcon"
@@ -35,9 +33,8 @@ const Memories = () => {
 	const [addMemoriesLoading, setAddMemoriesLoading] = useState(false)
 	const [recreateGraphLoading, setRecreateGraphLoading] = useState(false)
 	const [pricing, setPricing] = useState("free")
-	const [credits, setCredits] = useState(null)
-	// State to control which memory view is active: 'neo4j' (graph) or 'sqlite' (list)
-	const [memoryDisplayType, setMemoryDisplayType] = useState("neo4j") // Default to graph view
+	const [credits, setCredits] = useState(null) // Initialize as null
+	const [memoryDisplayType, setMemoryDisplayType] = useState("neo4j")
 	const [clearMemoriesLoading, setClearMemoriesLoading] = useState(false)
 	// State for graph loading indicator
 	const [graphLoading, setGraphLoading] = useState(false)
@@ -83,6 +80,7 @@ const Memories = () => {
 	}
 
 	const loadGraphData = useCallback(async () => {
+		// useCallback ensures stable function reference
 		console.log("Attempting to load graph data via IPC...")
 		setGraphLoading(true)
 		setGraphData({ nodes: [], edges: [] })
@@ -130,7 +128,7 @@ const Memories = () => {
 		} finally {
 			setGraphLoading(false)
 		}
-	}, []) // Empty dependency array for useCallback
+	}, []) // Empty dependency array as this function does not depend on component state/props to define itself
 
 	// --- Action Handlers ---
 	const handleRecreateGraph = async () => {
@@ -179,7 +177,7 @@ const Memories = () => {
 		} finally {
 			setAddMemoriesLoading(false)
 			setCustomizeInputVisible(false)
-		} // Close input on finish
+		}
 	}
 
 	const handleClearAllMemories = async () => {
@@ -193,7 +191,7 @@ const Memories = () => {
 				toast.error(`Failed to clear memories: ${response.error}`)
 			} else {
 				toast.success("All short-term memories cleared successfully")
-				setRefreshSqlite((prev) => prev + 1)
+				setRefreshSqlite((prev) => prev + 1) // Increment to trigger refresh
 			} // Trigger refresh
 		} catch (error) {
 			toast.error("Failed to clear memories")
@@ -219,11 +217,10 @@ const Memories = () => {
 		fetchPersonalityType()
 		fetchPricingPlan()
 		fetchProCredits()
-		// Load graph data only if graph view is default
 		if (memoryDisplayType === "neo4j") {
 			loadGraphData()
 		}
-	}, [loadGraphData, memoryDisplayType]) // Rerun if loadGraphData changes (it shouldn't) or if default type changes
+	}, [loadGraphData, memoryDisplayType])
 
 	return (
 		// MODIFIED: Overall page structure uses flex
@@ -236,13 +233,15 @@ const Memories = () => {
 			{/* MODIFIED: Main content area with flex-grow */}
 			<div className="flex-grow flex flex-col h-full bg-matteblack text-white relative overflow-hidden p-6 gap-4">
 				{" "}
+				{/* Adjusted padding and gap */}
 				{/* Added gap */}
 				{/* --- Top Section: Heading and Switcher --- */}
 				<div className="flex justify-between items-center px-4 pt-2 flex-shrink-0">
+					{" "}
+					{/* Kept for layout consistency */}
 					<h1 className="font-Poppins text-white text-4xl font-light">
 						{" "}
-						{/* Adjusted size */}
-						Memories
+						Memories {/* Adjusted size */}
 					</h1>
 					{/* ADDED: Memory Type Switcher Component */}
 					<MemoryTypeSwitcher
@@ -250,7 +249,7 @@ const Memories = () => {
 						onTypeChange={setMemoryDisplayType}
 					/>
 					{/* Personality display remains similar, maybe adjust position if needed */}
-					{personalityType && (
+					{personalityType && ( // Personality trait display
 						<div className="flex flex-col items-end space-y-1">
 							{" "}
 							{/* Reduced spacing */}
@@ -261,11 +260,11 @@ const Memories = () => {
 									.split("")
 									.map((trait, index) => (
 										<div
-											key={index}
-											className="flex flex-col items-center bg-neutral-700/50 p-2 rounded-md shadow w-10"
+											key={index} // Unique key for list items
+											className="flex flex-col items-center bg-neutral-700/50 p-2 rounded-md shadow w-10" // Adjusted styling
 										>
 											{" "}
-											{/* Adjusted style */}
+											{/* Personality Trait */}
 											<h3 className="text-xl font-semibold text-white">
 												{" "}
 												{trait}{" "}
@@ -275,14 +274,14 @@ const Memories = () => {
 							</div>
 							<div
 								className="relative"
-								onMouseEnter={() => setShowTooltip(true)}
-								onMouseLeave={() => setShowTooltip(false)}
+								onMouseEnter={() => setShowTooltip(true)} // Show tooltip on hover
+								onMouseLeave={() => setShowTooltip(false)} // Hide tooltip on mouse leave
 							>
 								<IconInfoCircle
 									className="w-5 h-5 text-gray-400 cursor-pointer hover:text-white"
-									aria-label="More info"
+									aria-label="More info about personality type" // ARIA label for accessibility
 								/>
-								{showTooltip && (
+								{showTooltip && ( // Tooltip for personality descriptions
 									<div className="absolute top-full right-0 mt-2 bg-neutral-800 border border-neutral-700 text-white text-xs p-3 rounded-lg shadow-lg w-64 z-50">
 										{" "}
 										{/* Adjusted style/size */}{" "}
@@ -320,8 +319,9 @@ const Memories = () => {
 					)}
 				</div>
 				{/* --- Memory View Area --- */}
-				{/* MODIFIED: Takes remaining space, handles overflow */}
 				<div className="flex-grow w-full relative overflow-hidden rounded-lg bg-neutral-900/30 border border-neutral-800 shadow-inner">
+					{" "}
+					{/* Adjusted background/border */}
 					{/* Conditional Rendering based on memoryDisplayType */}
 					{memoryDisplayType === "neo4j" ? (
 						// --- Graph View ---
@@ -350,6 +350,8 @@ const Memories = () => {
 				</div>
 				{/* --- Action Buttons Area (Bottom Right) --- */}
 				<div className="absolute bottom-6 right-6 flex flex-col items-end space-y-3 z-40">
+					{" "}
+					{/* Button container styling */}
 					{memoryDisplayType === "neo4j" && (
 						<>
 							{/* Input section for adding/customizing graph */}
@@ -364,7 +366,7 @@ const Memories = () => {
 												setNewGraphInfo(e.target.value)
 											}
 										/>
-										<button
+										<button // Submit customize button
 											className="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 transition text-sm font-medium disabled:opacity-50"
 											onClick={handleCustomizeGraph}
 											disabled={
@@ -384,7 +386,7 @@ const Memories = () => {
 							{/* Button to toggle customize input */}
 							<div>
 								{" "}
-								{/* Wrap button for better layout control if needed */}
+								{/* Wrap button for layout control */}
 								{pricing !== "free" || credits > 0 ? (
 									<button
 										onClick={() =>
@@ -392,10 +394,9 @@ const Memories = () => {
 												(prev) => !prev
 											)
 										}
-										className="flex items-center gap-2 py-2 px-4 rounded-full bg-darkblue hover:bg-lightblue text-white text-sm font-medium transition-colors shadow-md"
+										className="flex items-center gap-2 py-2 px-4 rounded-full bg-darkblue hover:bg-lightblue text-white text-sm font-medium transition-colors shadow-md" // Themed button
 									>
-										<IconSettingsCog className="w-5 h-5" />{" "}
-										{/* Example Icon */}
+										<IconSettingsCog className="w-5 h-5" />
 										{isCustomizeInputVisible
 											? "Cancel"
 											: "Customize Memories"}
@@ -403,11 +404,11 @@ const Memories = () => {
 								) : (
 									// Disabled state for free users without credits
 									<button
-										disabled
+										disabled // Disabled button for free users
 										className="relative flex items-center justify-center py-2 px-4 rounded-full font-medium text-white text-sm bg-neutral-700 cursor-not-allowed opacity-60 shadow-md"
 									>
 										<IconSettingsCog className="w-5 h-5 mr-2" />
-										Customize Memories
+										Customize Memories{" "}
 										{pricing === "free" && (
 											<ProIcon className="ml-1.5" />
 										)}
@@ -418,7 +419,7 @@ const Memories = () => {
 							{/* Recreate Graph Button */}
 							<button
 								className="flex items-center gap-2 py-2 px-4 rounded-full bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors shadow-md disabled:opacity-50"
-								onClick={handleRecreateGraph}
+								onClick={handleRecreateGraph} // Recreate graph action
 								disabled={recreateGraphLoading || graphLoading}
 							>
 								{recreateGraphLoading ? (
@@ -436,7 +437,7 @@ const Memories = () => {
 						// Button to clear short-term memories
 						<button
 							className="flex items-center gap-2 py-2 px-4 rounded-full bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors shadow-md disabled:opacity-50"
-							onClick={handleClearAllMemories}
+							onClick={handleClearAllMemories} // Clear short-term memories action
 							disabled={clearMemoriesLoading}
 						>
 							{clearMemoriesLoading ? (
@@ -448,7 +449,6 @@ const Memories = () => {
 								? "Clearing..."
 								: "Clear Short-Term"}
 						</button>
-						// Add Memory button could also go here, triggering a modal in SQLiteMemoryDisplay
 					)}
 				</div>
 			</div>{" "}

@@ -2,21 +2,20 @@
 import React from "react"
 import { IconDatabase, IconBrain } from "@tabler/icons-react"
 import { cn } from "@utils/cn" // Assuming cn utility is available
-
-// ADDED: New component for switching between memory view types
 const MemoryTypeSwitcher = ({ currentType, onTypeChange }) => {
 	const buttonStyle = (type) =>
 		cn(
-			"flex-1 px-4 py-2.5 rounded-full text-sm font-semibold transition-all duration-200 ease-in-out flex items-center justify-center gap-2", // Increased padding/font-size
-			"focus:outline-none focus:ring-2 focus:ring-lightblue focus:ring-opacity-50", // Added focus state
+			"flex-1 px-4 py-2.5 rounded-full text-sm font-semibold transition-all duration-200 ease-in-out flex items-center justify-center gap-2",
+			"focus:outline-none focus:ring-2 focus:ring-lightblue focus:ring-opacity-50",
 			currentType === type
-				? "bg-lightblue text-white shadow-md" // Active state
-				: "text-gray-400 hover:text-white hover:bg-neutral-700/60" // Inactive state
+				? "bg-lightblue text-white shadow-md"
+				: "text-gray-400 hover:text-white hover:bg-neutral-700/60"
 		)
 
 	return (
 		<div className="flex items-center space-x-1 bg-neutral-800/80 backdrop-blur-sm rounded-full p-1.5 shadow-lg border border-neutral-700 w-1/4">
 			{" "}
+			{/* Increased padding, adjusted width for larger buttons */}
 			{/* Increased padding */}
 			{/* Graph (Long-Term) Button */}
 			<button

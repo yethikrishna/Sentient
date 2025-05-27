@@ -1,6 +1,5 @@
-// REMOVED: ShiningButton import
 import React from "react"
-import { IconX, IconLoader } from "@tabler/icons-react" // Added icons
+import { IconX, IconLoader } from "@tabler/icons-react"
 import { cn } from "@utils/cn" // Import cn utility
 
 const ModalDialog = ({
@@ -12,10 +11,8 @@ const ModalDialog = ({
 	onCancel,
 	onConfirm,
 	confirmButtonText = "Confirm",
-	// REMOVED: Color props for ShiningButton
-	// confirmButtonColor = "bg-lightblue",
-	// confirmButtonBorderColor = "border-lightblue",
-	// MODIFIED: Added button type prop and loading state
+	// confirmButtonColor = "bg-lightblue", (Removed - handled by confirmButtonType)
+	// confirmButtonBorderColor = "border-lightblue", (Removed - handled by confirmButtonType)
 	confirmButtonType = "primary", // 'primary', 'danger', 'success'
 	confirmButtonLoading = false,
 	confirmButtonIcon: ConfirmIcon, // Rename for clarity
@@ -37,16 +34,15 @@ const ModalDialog = ({
 	}
 
 	return (
-		// MODIFIED: Overlay and Dialog styling
 		<div className="fixed inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm z-50 p-4">
 			<div className="bg-neutral-800 rounded-lg p-6 shadow-xl space-y-5 w-full max-w-md border border-neutral-700">
 				{" "}
 				{/* Adjusted width/padding */}
+				{/* Adjusted width/padding */}
 				<div className="flex justify-between items-center">
 					<h3 className="text-lg font-semibold text-white">
-						{title}
-					</h3>{" "}
-					{/* Adjusted size */}
+						{title} {/* Adjusted text size */}
+					</h3>
 					{cancelButton && ( // Show close button only if cancel is possible
 						<button
 							onClick={onCancel}
@@ -67,22 +63,20 @@ const ModalDialog = ({
 						value={inputValue}
 						onChange={(e) => onInputChange(e.target.value)}
 						// MODIFIED: Input styling
-						className="w-full border border-neutral-600 text-white rounded-md p-2.5 bg-neutral-700 focus:outline-none focus:border-lightblue text-sm"
+						className="w-full border border-neutral-600 text-white rounded-md p-2.5 bg-neutral-700 focus:outline-none focus:border-lightblue text-sm" // Improved input styling
 					/>
 				)}
 				{extraContent && <div className="mt-4">{extraContent}</div>}
-				{/* MODIFIED: Button container and button styling */}
 				<div
 					className={cn(
 						"flex items-center gap-3",
-						cancelButton ? "justify-end" : "justify-center"
+						cancelButton ? "justify-end" : "justify-center" // Center confirm button if no cancel
 					)}
 				>
 					{cancelButton && (
 						<button
 							onClick={onCancel}
-							// MODIFIED: Button styling
-							className="py-2 px-4 rounded-md bg-neutral-600 hover:bg-neutral-500 text-white text-sm font-medium transition-colors"
+							className="py-2 px-4 rounded-md bg-neutral-600 hover:bg-neutral-500 text-white text-sm font-medium transition-colors" // Standard cancel button
 						>
 							Cancel
 						</button>
@@ -91,8 +85,8 @@ const ModalDialog = ({
 					<button
 						onClick={onConfirm}
 						disabled={confirmButtonLoading}
-						// MODIFIED: Button styling using helper and theme colors
 						className={cn(
+							// Confirm button with dynamic styling
 							"py-2 px-5 rounded-md text-white text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-60",
 							getConfirmButtonStyle() // Apply dynamic style
 						)}

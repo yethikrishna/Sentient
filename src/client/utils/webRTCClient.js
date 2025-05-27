@@ -11,7 +11,7 @@ export class WebRTCClient {
 	constructor(options = {}) {
 		this.options = options
 	}
-
+	// MODIFIED: connect method no longer accepts deviceId or initialMuteState
 	async connect() {
 		try {
 			this.peerConnection = new RTCPeerConnection()
@@ -19,6 +19,7 @@ export class WebRTCClient {
 			// Get user media
 			try {
 				this.mediaStream = await navigator.mediaDevices.getUserMedia({
+					// Always get default audio
 					audio: true
 				})
 			} catch (mediaError) {

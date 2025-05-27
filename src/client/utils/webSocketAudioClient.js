@@ -153,7 +153,7 @@ export class WebSocketAudioClient {
 				sampleRate: 16000 // Match the sample rate requested from getUserMedia
 			})
 			console.log(
-				`[WebSocketAudioClient] AudioContext created with sample rate: ${this.audioContext.sampleRate}`
+				`[WebSocketAudioClient] AudioContext created with sample rate: ${this.audioContext.sampleRate}` // Log sample rate
 			)
 
 			// --- Audio Worklet Setup ---
@@ -161,7 +161,7 @@ export class WebSocketAudioClient {
 			// Adjust the path based on where you place audio-processor.js
 			// In Next.js, placing it in /public makes it available at the root URL
 			await this.audioContext.audioWorklet.addModule(
-				"/audio-processor.js"
+				"/audio-processor.js" // Path to the AudioWorklet processor
 			)
 			console.log("[WebSocketAudioClient] AudioWorklet module added.")
 
@@ -249,10 +249,8 @@ export class WebSocketAudioClient {
 			// Assume server sends JSON containing Base64 audio or text messages
 			try {
 				const data = JSON.parse(event.data)
-				// console.log("[WebSocketAudioClient] Received message:", data); // Debug
-
 				if (data.type === "audio_chunk" && data.data) {
-					// Check fastrtc source for actual type! Guessed 'audio_chunk'
+					// Assuming fastrtc sends audio chunks this way
 					const base64Audio = data.data
 					const audioChunk = base64ToFloat32Array(base64Audio)
 					if (audioChunk && this.options.onAudioChunkReceived) {
@@ -304,16 +302,14 @@ export class WebSocketAudioClient {
 				`[WebSocketAudioClient] WebSocket closed: Code=${event.code}, Reason=${event.reason}`
 			)
 			this.isConnected = false
-			// Don't automatically call disconnect here, let the main app logic decide
 			if (this.options.onDisconnected) {
 				this.options.onDisconnected()
 			}
 			this.cleanupAudioProcessing() // Clean up audio resources on close
 			this.ws = null // Clear reference
-		}
+		} // End setupWebSocketHandlers
 	}
 
-	// Audio Analysis Loop (similar to WebRTCClient)
 	startAnalysisLoop() {
 		if (
 			this.animationFrameId ||
@@ -359,11 +355,11 @@ export class WebSocketAudioClient {
 		console.log(
 			"[WebSocketAudioClient] Cleaning up audio processing nodes..."
 		)
-		this.stopAnalysis() // Stop analysis loop
+		this.stopAnalysis()
 
-		// Disconnect nodes in reverse order
 		if (this.workletNode) {
 			this.workletNode.port.close() // Close the message port
+			// Disconnect worklet node safely
 			try {
 				if (this.sourceNode) this.workletNode.disconnect() // Disconnect worklet if source exists
 			} catch (e) {
@@ -373,7 +369,7 @@ export class WebSocketAudioClient {
 		}
 		if (this.sourceNode) {
 			try {
-				// Disconnect from worklet (already done) and analyser
+				// Disconnect source from analyser
 				if (this.analyser) this.sourceNode.disconnect(this.analyser)
 			} catch (e) {
 				console.warn("Error disconnecting source node", e)
@@ -398,7 +394,6 @@ export class WebSocketAudioClient {
 		this.cleanupAudioProcessing()
 
 		if (this.ws) {
-			// Prevent onclose handler from triggering reconnect logic if it exists
 			this.ws.onclose = null
 			this.ws.onerror = null
 			this.ws.close(1000, "Client disconnecting normally") // Normal closure
@@ -430,7 +425,5 @@ export class WebSocketAudioClient {
 		if (this.options.onError) {
 			this.options.onError(error)
 		}
-		// Optionally trigger disconnect on certain errors
-		// this.disconnect();
 	}
 }

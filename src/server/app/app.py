@@ -7,11 +7,14 @@ print(f"[STARTUP] {datetime.datetime.now()}: Script execution started.")
 
 # --- Core Python and System Imports ---
 import os
-import json
 import asyncio
 import pickle
 import multiprocessing
 import traceback # For detailed error printing
+import json # Keep json for websocket messages
+
+# --- MongoDB Manager Import ---
+from server.db import MongoManager
 
 # --- Third-Party Library Imports ---
 from fastapi import (
@@ -64,7 +67,7 @@ from server.agents.runnables import *
 from server.agents.functions import * # Contains Google API auth and functions
 from server.agents.prompts import *
 from server.agents.formats import *
-from server.agents.base import TaskQueue # MOVED: TaskQueue is now here
+from server.agents.base import TaskQueue # TaskQueue is now here
 from server.agents.helpers import * # Contains parse_and_execute_tool_calls
 from server.agents.background import AgentTaskProcessor, APPROVAL_PENDING_SIGNAL # For background task processing
 
@@ -101,6 +104,8 @@ from server.context.gcalendar import GCalendarContextEngine
 # Voice: Speech-to-Text (STT) and Text-to-Speech (TTS) functionalities
 from server.voice.stt import FasterWhisperSTT
 from server.voice.orpheus_tts import OrpheusTTS, TTSOptions, VoiceId, AVAILABLE_VOICES
+from server.voice.gcp_tts import GCPTTS
+from server.voice.elevenlabs_tts import ElevenLabsTTS
 
 # --- Environment Variable Loading ---
 print(f"[STARTUP] {datetime.datetime.now()}: Loading environment variables from server/.env...")
@@ -110,7 +115,9 @@ print(f"[STARTUP] {datetime.datetime.now()}: Environment variables loaded from {
 
 # --- Development/Production Environment Flag ---
 IS_DEV_ENVIRONMENT = os.getenv("IS_DEV_ENVIRONMENT", "false").lower() in ("true", "1", "t", "y")
+TTS_PROVIDER = os.getenv("TTS_PROVIDER", "ORPHEUS").upper() # Default to ORPHEUS if not set
 print(f"[STARTUP] {datetime.datetime.now()}: Development environment flag set to {IS_DEV_ENVIRONMENT}")
+print(f"[STARTUP] {datetime.datetime.now()}: TTS Provider set to {TTS_PROVIDER}")
 
 # --- Asyncio Configuration ---
 print(f"[STARTUP] {datetime.datetime.now()}: Applying nest_asyncio...")
@@ -363,10 +370,10 @@ query_classification_runnable = get_query_classification_runnable()
 fact_extraction_runnable = get_fact_extraction_runnable()
 text_summarizer_runnable = get_text_summarizer_runnable()
 text_description_runnable = get_text_description_runnable()
-chat_history = get_chat_history()
-chat_runnable = get_chat_runnable(chat_history)
-agent_runnable = get_agent_runnable(chat_history)
-unified_classification_runnable = get_unified_classification_runnable(chat_history)
+# chat_history = get_chat_history() # Removed, history is now passed dynamically
+chat_runnable = get_chat_runnable() # No longer takes chat_history at init
+agent_runnable = get_agent_runnable() # No longer takes chat_history at init
+unified_classification_runnable = get_unified_classification_runnable() # No longer takes chat_history at init
 internet_query_reframe_runnable = get_internet_query_reframe_runnable()
 internet_summary_runnable = get_internet_summary_runnable()
 print(f"[INIT] {datetime.datetime.now()}: Runnables initialization complete.")
@@ -377,86 +384,56 @@ print(f"[INIT] {datetime.datetime.now()}: Initializing TaskQueue...")
 task_queue = TaskQueue() # Uses MongoDB TaskQueue from agents.base
 print(f"[INIT] {datetime.datetime.now()}: TaskQueue initialized.")
 
-# --- Helper Functions (User-Specific File Operations) ---
+print(f"[INIT] {datetime.datetime.now()}: Initializing MongoManager...")
+mongo_manager = MongoManager()
+print(f"[INIT] {datetime.datetime.now()}: MongoManager initialized.")
+
+# --- Helper Functions (User-Specific DB Operations) ---
 async def load_user_profile(user_id: str) -> Dict[str, Any]:
-    profile_path = get_user_profile_db_path(user_id)
-    try:
-        async with profile_db_lock:
-            if not os.path.exists(profile_path):
-                return {"userData": {}} 
-            with open(profile_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {"userData": {}}
-    except Exception as e:
-        print(f"[ERROR] Loading profile {user_id}: {e}")
-        return {"userData": {}}
+    """Load user profile from MongoDB."""
+    profile = await mongo_manager.get_user_profile(user_id)
+    return profile if profile else {"user_id": user_id, "userData": {}}
+
 async def write_user_profile(user_id: str, data: Dict[str, Any]) -> bool:
-    profile_path = get_user_profile_db_path(user_id)
-    try:
-        async with profile_db_lock:
-            with open(profile_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=4)
-            return True
-    except Exception as e:
-        print(f"[ERROR] Writing profile {user_id}: {e}")
-        return False
+    """Write user profile to MongoDB."""
+    return await mongo_manager.update_user_profile(user_id, data)
+
 async def load_notifications_db(user_id: str) -> Dict[str, Any]:
-    path = get_user_notifications_db_path(user_id)
-    async with notifications_db_lock:
-        try:
-            if not os.path.exists(path):
-                return {"notifications": [], "next_notification_id": 1}
-            with open(path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            if "notifications" not in data:
-                data["notifications"] = []
-            if "next_notification_id" not in data:
-                data["next_notification_id"] = 1
-            return data
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {"notifications": [], "next_notification_id": 1}
-        except Exception as e:
-            print(f"[ERROR] Loading notifications {user_id}: {e}")
-            return {"notifications": [], "next_notification_id": 1}
+    """Load notifications for a user from MongoDB."""
+    notifications = await mongo_manager.get_notifications(user_id)
+    return {"notifications": notifications, "next_notification_id": len(notifications) + 1} # Simulate old structure
+
 async def save_notifications_db(user_id: str, data: Dict[str, Any]):
-    path = get_user_notifications_db_path(user_id)
-    async with notifications_db_lock:
-        try:
-            with open(path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=4)
-        except Exception as e:
-            print(f"[ERROR] Saving notifications {user_id}: {e}")
+    """Save notifications for a user to MongoDB (simplified to add/clear)."""
+    # This function's original purpose was to overwrite the entire notifications.json.
+    # With MongoDB, we typically add individual notifications or clear all.
+    # For now, this function will not be directly used for saving the whole "db".
+    # Individual add_notification calls will be made where needed.
+    # If the intent was to replace all notifications, clear_notifications + add_many would be needed.
+    # Given the context, this function will likely be removed or its calls replaced.
+    print(f"[WARN] save_notifications_db called for user {user_id}. This function is deprecated for MongoDB.")
+    # No direct equivalent for saving the whole "db" structure.
+    # The add_notification and clear_notifications methods in MongoManager should be used.
+
 async def load_db(user_id: str) -> Dict[str, Any]: # Chat DB
-    path = get_user_chat_db_path(user_id)
-    async with db_lock:
-        try:
-            if not os.path.exists(path):
-                return initial_db.copy()
-            with open(path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            for key in ["active_chat_id", "next_chat_id"]:
-                data[key] = int(data.get(key, 0 if key == "active_chat_id" else 1))
-            if "chats" not in data:
-                data["chats"] = []
-            return data
-        except (FileNotFoundError, json.JSONDecodeError):
-            return initial_db.copy()
-        except Exception as e:
-            print(f"[ERROR] Loading chat DB {user_id}: {e}")
-            return initial_db.copy()
+    """Load chat history for a user from MongoDB."""
+    # This function's original purpose was to load the entire chatsDb.json.
+    # With MongoDB, we fetch messages for a specific chat_id.
+    # This function will be refactored to return a structure compatible with existing calls,
+    # but the underlying data will come from MongoDB.
+    print(f"[WARN] load_db (chat) called for user {user_id}. This function needs refactoring.")
+    # For now, return a dummy structure. The actual chat messages will be fetched by get_chat_history_messages.
+    # The "active_chat_id" and "next_chat_id" logic will need to be managed differently.
+    # For multi-tenancy, active_chat_id should probably be stored in user profile or session.
+    # For simplicity, let's assume active_chat_id is managed by the frontend or passed explicitly.
+    # For now, we'll return a default structure that doesn't rely on file loading.
+    return {"chats": [], "active_chat_id": 0, "next_chat_id": 1}
+
 async def save_db(user_id: str, data: Dict[str, Any]): # Chat DB
-    path = get_user_chat_db_path(user_id)
-    async with db_lock:
-        try:
-            for key in ["active_chat_id", "next_chat_id"]:
-                data[key] = int(data.get(key, 0 if key == "active_chat_id" else 1))
-            for chat_item in data.get("chats", []): 
-                chat_item["id"] = int(chat_item.get("id", 0))
-            with open(path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=4)
-        except Exception as e:
-            print(f"[ERROR] Saving chat DB {user_id}: {e}")
+    """Save chat history for a user to MongoDB (deprecated)."""
+    print(f"[WARN] save_db (chat) called for user {user_id}. This function is deprecated for MongoDB.")
+    # This function's original purpose was to overwrite the entire chatsDb.json.
+    # With MongoDB, individual messages are added. This function will be removed or its calls replaced.
 
 async def update_neo4j_with_personal_info(user_id: str, personal_info: dict, graph_driver_instance: GraphDatabase.driver):
     if not graph_driver_instance:
@@ -491,78 +468,70 @@ async def update_neo4j_with_personal_info(user_id: str, personal_info: dict, gra
         print(f"[NEO4J_PERSONAL_INFO_UPDATE_ERROR] Failed to update personal info for user {user_id} in Neo4j: {e}")
         traceback.print_exc()
 
-async def get_chat_history_messages(user_id: str) -> List[Dict[str, Any]]:
-    async with db_lock:
-        chatsDb = await load_db(user_id)
-        active_chat_id = chatsDb.get("active_chat_id", 0)
-        next_chat_id = chatsDb.get("next_chat_id", 1)
-        current_time = datetime.datetime.now(timezone.utc)
-        existing_chats = chatsDb.get("chats", [])
-        active_chat = None
-        if active_chat_id == 0:
-            if not existing_chats:
-                new_chat_id = next_chat_id
-                new_chat = {"id": new_chat_id, "messages": []}
-                chatsDb["chats"] = [new_chat]
-                chatsDb["active_chat_id"] = new_chat_id
-                chatsDb["next_chat_id"] = new_chat_id + 1
-                await save_db(user_id, chatsDb)
-                return []
-            else:
-                latest_chat_id = existing_chats[-1]['id']
-                chatsDb['active_chat_id'] = latest_chat_id
-                active_chat_id = latest_chat_id
-                await save_db(user_id, chatsDb)
-        active_chat = next((c for c in existing_chats if c.get("id") == active_chat_id), None)
-        if not active_chat:
-            chatsDb["active_chat_id"] = 0
-            await save_db(user_id, chatsDb)
-            return []
-        if active_chat.get("messages"):
-            try:
-                last_message_ts_str = active_chat["messages"][-1].get("timestamp")
-                if last_message_ts_str:
-                    last_timestamp = datetime.fromisoformat(last_message_ts_str.replace('Z', '+00:00'))
-                    if (current_time - last_timestamp).total_seconds() > 600: 
-                        new_chat_id = next_chat_id
-                        new_chat = {"id": new_chat_id, "messages": []}
-                        chatsDb["chats"].append(new_chat)
-                        chatsDb["active_chat_id"] = new_chat_id
-                        chatsDb["next_chat_id"] = new_chat_id + 1
-                        await save_db(user_id, chatsDb)
-                        return []
-            except Exception as e:
-                print(f"[WARN] Inactivity check error for {user_id}, chat {active_chat_id}: {e}")
-        if active_chat and active_chat.get("messages"):
-            return [m for m in active_chat["messages"] if m.get("isVisible", True)]
+import uuid # Added for generating chat_id
+
+async def get_chat_history_messages(user_id: str, chat_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieve chat history messages for a specific user and chat_id from MongoDB."""
+    print(f"[CHAT_HISTORY] Fetching chat history for user {user_id}, chat {chat_id}.")
+    if not chat_id:
+        # If no chat_id is provided, try to get the active chat ID from user profile
+        user_profile = await mongo_manager.get_user_profile(user_id)
+        if user_profile and "userData" in user_profile and "active_chat_id" in user_profile["userData"]:
+            chat_id = user_profile["userData"]["active_chat_id"]
+            print(f"[CHAT_HISTORY] Using active chat ID from profile: {chat_id}")
         else:
-            return []
+            # If no active chat ID, try to find the most recent chat or create a new one
+            all_chat_ids = await mongo_manager.get_all_chat_ids_for_user(user_id)
+            if all_chat_ids:
+                # Assuming the first one returned by get_all_chat_ids_for_user is the most recent
+                chat_id = all_chat_ids[0]
+                print(f"[CHAT_HISTORY] No active chat ID, using most recent chat: {chat_id}")
+            else:
+                # No chats exist, create a new one
+                new_chat_id = str(uuid.uuid4())
+                # Store this new chat_id as active in user profile
+                await mongo_manager.update_user_profile(user_id, {"userData.active_chat_id": new_chat_id})
+                print(f"[CHAT_HISTORY] No chats found, created new chat ID: {new_chat_id}")
+                return [] # Return empty as new chat has no messages yet
+    
+    if not chat_id: # Should not happen if logic above is correct
+        print(f"[CHAT_HISTORY_ERROR] No chat_id determined for user {user_id}.")
+        return []
+
+    messages = await mongo_manager.get_chat_history(user_id, chat_id)
+    # Convert datetime objects to ISO format for JSON serialization
+    s_messages = []
+    for m in messages:
+        if isinstance(m.get('timestamp'), datetime.datetime):
+            m['timestamp'] = m['timestamp'].isoformat()
+        s_messages.append(m)
+    # Filter for visible messages as per original logic
+    return [m for m in s_messages if m.get("isVisible", True)]
+
 async def add_message_to_db(user_id: str, chat_id: Union[int, str], message_text: str, is_user: bool, is_visible: bool = True, **kwargs) -> Optional[str]:
+    """Add a new message to a user's chat history in MongoDB."""
     try:
-        target_chat_id = int(chat_id)
+        target_chat_id = str(chat_id) # Ensure chat_id is string for MongoDB
     except (ValueError, TypeError):
         print(f"[ERROR] Invalid chat_id for add_message: {chat_id}")
         return None
-    async with db_lock:
-        try:
-            chatsDb = await load_db(user_id)
-            active_chat = next((c for c in chatsDb.get("chats", []) if c.get("id") == target_chat_id), None)
-            if active_chat:
-                message_id = str(int(time.time() * 1000))
-                new_message = {"id": message_id, "message": message_text, "isUser": is_user, "isVisible": is_visible, "timestamp": datetime.datetime.now(timezone.utc).isoformat(), **kwargs}
-                new_message = {k: v for k, v in new_message.items() if v is not None}
-                if "messages" not in active_chat:
-                    active_chat["messages"] = []
-                active_chat["messages"].append(new_message)
-                await save_db(user_id, chatsDb)
-                return message_id
-            else:
-                print(f"[ERROR] Chat ID {target_chat_id} not found for user {user_id}")
-                return None
-        except Exception as e:
-            print(f"[ERROR] Adding message for {user_id}, chat {target_chat_id}: {e}")
-            traceback.print_exc()
-            return None
+    
+    message_data = {
+        "message": message_text,
+        "isUser": is_user,
+        "isVisible": is_visible,
+        **kwargs
+    }
+    # Filter out None values from kwargs before adding
+    message_data = {k: v for k, v in message_data.items() if v is not None}
+
+    try:
+        message_id = await mongo_manager.add_chat_message(user_id, target_chat_id, message_data)
+        return message_id
+    except Exception as e:
+        print(f"[ERROR] Adding message for {user_id}, chat {target_chat_id}: {e}")
+        traceback.print_exc()
+        return None
 
 # Initialize AgentTaskProcessor
 print(f"[INIT] {datetime.datetime.now()}: Initializing AgentTaskProcessor...")
@@ -592,25 +561,25 @@ tts_model = None
 SELECTED_TTS_VOICE: VoiceId = "tara"
 print(f"[CONFIG] {datetime.datetime.now()}: Defining database file paths...")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-USER_PROFILE_DB_DIR = os.path.join(BASE_DIR, "..", "..", "user_databases")
-CHAT_DB_DIR = os.path.join(BASE_DIR, "..", "..", "chat_databases")
-NOTIFICATIONS_DB_DIR = os.path.join(BASE_DIR, "..", "..", "notification_databases")
-os.makedirs(USER_PROFILE_DB_DIR, exist_ok=True)
-os.makedirs(CHAT_DB_DIR, exist_ok=True)
-os.makedirs(NOTIFICATIONS_DB_DIR, exist_ok=True)
-def get_user_profile_db_path(user_id: str) -> str:
+USER_PROFILE_DB_DIR = os.path.join(BASE_DIR, "..", "..", "user_databases") # Keep for now for input_docs
+# CHAT_DB_DIR = os.path.join(BASE_DIR, "..", "..", "chat_databases") # Removed, no longer needed for JSON
+# NOTIFICATIONS_DB_DIR = os.path.join(BASE_DIR, "..", "..", "notification_databases") # Removed, no longer needed for JSON
+os.makedirs(USER_PROFILE_DB_DIR, exist_ok=True) # Keep for now for input_docs
+# os.makedirs(CHAT_DB_DIR, exist_ok=True) # Removed
+# os.makedirs(NOTIFICATIONS_DB_DIR, exist_ok=True) # Removed
+def get_user_profile_db_path(user_id: str) -> str: # Keep for now for input_docs
     return os.path.join(USER_PROFILE_DB_DIR, f"{user_id}_profile.json")
-def get_user_chat_db_path(user_id: str) -> str:
-    return os.path.join(CHAT_DB_DIR, f"{user_id}_chats.json")
-def get_user_notifications_db_path(user_id: str) -> str:
-    return os.path.join(NOTIFICATIONS_DB_DIR, f"{user_id}_notifications.json")
-print(f"[CONFIG] {datetime.datetime.now()}: User-specific database directories set.")
-db_lock = asyncio.Lock()
-notifications_db_lock = asyncio.Lock()
-profile_db_lock = asyncio.Lock()
-print(f"[INIT] {datetime.datetime.now()}: Global database locks initialized.")
-initial_db = {"chats": [], "active_chat_id": 0, "next_chat_id": 1}
-print(f"[CONFIG] {datetime.datetime.now()}: Initial chat DB structure defined.")
+# def get_user_chat_db_path(user_id: str) -> str: # Removed
+#     return os.path.join(CHAT_DB_DIR, f"{user_id}_chats.json")
+# def get_user_notifications_db_path(user_id: str) -> str: # Removed
+#     return os.path.join(NOTIFICATIONS_DB_DIR, f"{user_id}_notifications.json")
+print(f"[CONFIG] {datetime.datetime.now()}: User-specific database directories set (for file-based inputs).")
+# db_lock = asyncio.Lock() # Removed, replaced by MongoDB concurrency
+# notifications_db_lock = asyncio.Lock() # Removed, replaced by MongoDB concurrency
+# profile_db_lock = asyncio.Lock() # Removed, replaced by MongoDB concurrency
+print(f"[INIT] {datetime.datetime.now()}: Global database locks removed (using MongoDB concurrency).")
+# initial_db = {"chats": [], "active_chat_id": 0, "next_chat_id": 1} # Removed, replaced by MongoDB
+print(f"[CONFIG] {datetime.datetime.now()}: Initial chat DB structure removed (using MongoDB).")
 print(f"[INIT] {datetime.datetime.now()}: Initializing MemoryBackend...")
 memory_backend = MemoryBackend()
 print(f"[INIT] {datetime.datetime.now()}: MemoryBackend initialized.")
@@ -656,14 +625,27 @@ async def startup_event():
     
     print("[LIFECYCLE] Loading TTS...")
     try:
-        tts_model = OrpheusTTS(verbose=False, default_voice_id=SELECTED_TTS_VOICE)
-        print("[LIFECYCLE] TTS loaded.")
+        if IS_DEV_ENVIRONMENT:
+            tts_model = OrpheusTTS(verbose=False, default_voice_id=SELECTED_TTS_VOICE)
+            print("[LIFECYCLE] Orpheus TTS loaded (Developer Mode).")
+        else:
+            if TTS_PROVIDER == "GCP":
+                tts_model = GCPTTS()
+                print("[LIFECYCLE] GCP TTS loaded (Production Mode).")
+            elif TTS_PROVIDER == "ELEVENLABS":
+                tts_model = ElevenLabsTTS()
+                print("[LIFECYCLE] ElevenLabs TTS loaded (Production Mode).")
+            else:
+                print(f"[WARN] Unknown TTS_PROVIDER '{TTS_PROVIDER}'. Defaulting to Orpheus TTS.")
+                tts_model = OrpheusTTS(verbose=False, default_voice_id=SELECTED_TTS_VOICE)
+                print("[LIFECYCLE] Orpheus TTS loaded (Default Fallback).")
     except Exception as e:
         print(f"[ERROR] TTS model failed to load. Voice features will be unavailable. Details: {e}")
         tts_model = None
     
-    await task_queue.initialize_db() 
-    await memory_backend.memory_queue.load_operations() 
+    await task_queue.initialize_db()
+    await mongo_manager.initialize_db() # Initialize MongoManager collections
+    await memory_backend.memory_queue.initialize_db() # Initialize MemoryQueue collections
     
     if agent_task_processor_instance:
         asyncio.create_task(agent_task_processor_instance.process_queue())
@@ -671,15 +653,25 @@ async def startup_event():
     else:
         print("[ERROR] AgentTaskProcessor not initialized. Task processing will not start.")
         
-    asyncio.create_task(memory_backend.process_memory_operations()) # Corrected this line from `process_memory_operations` to `memory_backend.process_memory_operations`
+    asyncio.create_task(memory_backend.process_memory_operations())
     
     print(f"[FASTAPI_LIFECYCLE] App startup complete.")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     print(f"[FASTAPI_LIFECYCLE] App shutdown.")
-    await memory_backend.memory_queue.save_operations()
-    print(f"[FASTAPI_LIFECYCLE] Tasks/Ops saved.")
+    # No explicit save_operations needed for MongoDB, data is persisted on write.
+    # However, we might want to close the MongoDB client connection.
+    if mongo_manager.client:
+        mongo_manager.client.close()
+        print("[FASTAPI_LIFECYCLE] MongoDB client closed.")
+    if task_queue.client:
+        task_queue.client.close()
+        print("[FASTAPI_LIFECYCLE] TaskQueue MongoDB client closed.")
+    if memory_backend.memory_queue.client:
+        memory_backend.memory_queue.client.close()
+        print("[FASTAPI_LIFECYCLE] MemoryQueue MongoDB client closed.")
+    print(f"[FASTAPI_LIFECYCLE] All MongoDB clients closed.")
 
 # --- Pydantic Models ---
 class Message(BaseModel):
@@ -749,12 +741,19 @@ async def main_root():
 async def get_history(user_id: str = Depends(PermissionChecker(required_permissions=["read:chat"]))):
     print(f"[ENDPOINT /get-history] Called by user {user_id}.")
     try:
-        messages = await get_chat_history_messages(user_id)
-        active_chat_id = 0 
-        async with db_lock:
-            chatsDb = await load_db(user_id)
-            active_chat_id = chatsDb.get("active_chat_id", 0)
-        return JSONResponse(content={"messages": messages, "activeChatId": active_chat_id})
+        # The frontend should ideally provide the active_chat_id.
+        # For now, we'll try to retrieve it from the user profile or infer.
+        user_profile = await mongo_manager.get_user_profile(user_id)
+        active_chat_id = user_profile.get("userData", {}).get("active_chat_id", None)
+        
+        messages = await get_chat_history_messages(user_id, active_chat_id) # Pass active_chat_id if known
+        
+        # If get_chat_history_messages created a new chat, it would have updated the profile.
+        # Re-fetch profile to get the potentially new active_chat_id.
+        user_profile_after_chat_fetch = await mongo_manager.get_user_profile(user_id)
+        final_active_chat_id = user_profile_after_chat_fetch.get("userData", {}).get("active_chat_id", None)
+
+        return JSONResponse(content={"messages": messages, "activeChatId": final_active_chat_id})
     except Exception as e:
         print(f"[ERROR] /get-history {user_id}: {e}")
         traceback.print_exc()
@@ -763,14 +762,37 @@ async def get_history(user_id: str = Depends(PermissionChecker(required_permissi
 @app.post("/clear-chat-history", status_code=status.HTTP_200_OK, summary="Clear Chat History", tags=["Chat"])
 async def clear_chat_history_endpoint(user_id: str = Depends(PermissionChecker(required_permissions=["write:chat"]))):
     print(f"[ENDPOINT /clear-chat-history] Called by user {user_id}.")
-    async with db_lock:
-        try:
-            await save_db(user_id, initial_db.copy())
-            return JSONResponse(content={"message": "Chat history cleared.", "activeChatId": 0})
-        except Exception as e:
-            print(f"[ERROR] /clear-chat-history {user_id}: {e}")
-            traceback.print_exc()
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to clear chat history.")
+    try:
+        # Get the active chat ID from the user's profile
+        user_profile = await mongo_manager.get_user_profile(user_id)
+        active_chat_id = user_profile.get("userData", {}).get("active_chat_id", None)
+
+        if active_chat_id:
+            deleted = await mongo_manager.delete_chat_history(user_id, active_chat_id)
+            if deleted:
+                # Optionally, reset active_chat_id in user profile or set to a new default
+                await mongo_manager.update_user_profile(user_id, {"userData.active_chat_id": None})
+                print(f"[CHAT_HISTORY] Cleared active chat {active_chat_id} for user {user_id}.")
+                return JSONResponse(content={"message": "Active chat history cleared.", "activeChatId": None})
+            else:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No active chat found with ID {active_chat_id} for user {user_id}.")
+        else:
+            return JSONResponse(content={"message": "No active chat to clear.", "activeChatId": None})
+    except Exception as e:
+        print(f"[ERROR] /clear-chat-history {user_id}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to clear chat history.")
+
+@app.post("/get-all-chat-ids", status_code=status.HTTP_200_OK, summary="Get All Chat IDs for User", tags=["Chat"])
+async def get_all_chat_ids_endpoint(user_id: str = Depends(PermissionChecker(required_permissions=["read:chat"]))):
+    print(f"[ENDPOINT /get-all-chat-ids] Called by user {user_id}.")
+    try:
+        chat_ids = await mongo_manager.get_all_chat_ids_for_user(user_id)
+        return JSONResponse(content={"chat_ids": chat_ids})
+    except Exception as e:
+        print(f"[ERROR] /get-all-chat-ids {user_id}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve chat IDs.")
 
 @app.post("/chat", status_code=status.HTTP_200_OK, summary="Process Chat Message", tags=["Chat"])
 async def chat(message: Message, user_id: str = Depends(PermissionChecker(required_permissions=["write:chat"]))):
@@ -779,15 +801,25 @@ async def chat(message: Message, user_id: str = Depends(PermissionChecker(requir
         user_profile_data = await load_user_profile(user_id)
         username = user_profile_data.get("userData", {}).get("personalInfo", {}).get("name", "User")
         personality_setting = user_profile_data.get("userData", {}).get("personality", "Default")
-        await get_chat_history_messages(user_id) 
-        active_chat_id = 0 
-        async with db_lock:
-            chatsDb = await load_db(user_id)
-            active_chat_id = chatsDb.get("active_chat_id", 0)
-        if active_chat_id == 0:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No active chat.")
+        # Ensure active_chat_id is available. If not, get_chat_history_messages will create one.
+        user_profile_for_chat = await mongo_manager.get_user_profile(user_id)
+        active_chat_id = user_profile_for_chat.get("userData", {}).get("active_chat_id", None)
+        
+        # This call will ensure an active_chat_id exists and is set in the user profile if not already.
+        # It also returns the messages, though we don't use them directly here.
+        await get_chat_history_messages(user_id, active_chat_id)
+        
+        # Re-fetch active_chat_id in case it was just created/updated by get_chat_history_messages
+        user_profile_after_chat_init = await mongo_manager.get_user_profile(user_id)
+        active_chat_id = user_profile_after_chat_init.get("userData", {}).get("active_chat_id", None)
 
-        unified_output = unified_classification_runnable.invoke({"query": message.input})
+        if not active_chat_id:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not determine active chat ID.")
+
+        # Fetch chat history for the current request
+        current_chat_history = await get_chat_history_messages(user_id, active_chat_id)
+        
+        unified_output = unified_classification_runnable.invoke({"query": message.input, "chat_history": current_chat_history})
         category = unified_output.get("category", "chat")
         use_personal_context = unified_output.get("use_personal_context", False)
         internet_search_type = unified_output.get("internet", "None")
@@ -801,19 +833,19 @@ async def chat(message: Message, user_id: str = Depends(PermissionChecker(requir
             if not user_msg_id:
                 yield json.dumps({"type":"error", "message":"Failed to save message."})+"\n"
                 return
-            yield json.dumps({"type": "userMessage", "id": user_msg_id, "message": message.input, "timestamp": datetime.datetime.now(timezone.utc).isoformat()}) + "\n"
-            await asyncio.sleep(0.01) 
+            yield json.dumps({"type": "userMessage", "id": user_msg_id, "message": message.input, "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()}) + "\n"
+            await asyncio.sleep(0.01)
             assistant_msg_id_ts = str(int(time.time() * 1000))
-            assistant_msg_base = {"id": assistant_msg_id_ts, "message": "", "isUser": False, "memoryUsed": False, "agentsUsed": False, "internetUsed": False, "timestamp": datetime.datetime.now(timezone.utc).isoformat(), "isVisible": True}
+            assistant_msg_base = {"id": assistant_msg_id_ts, "message": "", "isUser": False, "memoryUsed": False, "agentsUsed": False, "internetUsed": False, "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(), "isVisible": True}
 
             if category == "agent":
                 agents_used = True
                 assistant_msg_base["agentsUsed"] = True
                 priority_response = priority_runnable.invoke({"task_description": transformed_input})
-                priority = priority_response.get("priority", 2) 
-                await task_queue.add_task(user_id=user_id, chat_id=str(active_chat_id), description=transformed_input, priority=priority, username=username, personality=personality_setting, use_personal_context=use_personal_context, internet=internet_search_type)
+                priority = priority_response.get("priority", 2)
+                await task_queue.add_task(user_id=user_id, chat_id=active_chat_id, description=transformed_input, priority=priority, username=username, personality=personality_setting, use_personal_context=use_personal_context, internet=internet_search_type)
                 assistant_msg_base["message"] = "Okay, I'll get right on that."
-                await add_message_to_db(user_id, active_chat_id, transformed_input, is_user=True, is_visible=False) 
+                await add_message_to_db(user_id, active_chat_id, transformed_input, is_user=True, is_visible=False)
                 await add_message_to_db(user_id, active_chat_id, assistant_msg_base["message"], is_user=False, is_visible=True, agentsUsed=True, task=transformed_input)
                 yield json.dumps({"type": "assistantMessage", "messageId": assistant_msg_base["id"], "message": assistant_msg_base["message"], "done": True, "proUsed": False}) + "\n"
                 return
@@ -852,11 +884,14 @@ async def chat(message: Message, user_id: str = Depends(PermissionChecker(requir
                 yield json.dumps({"type": "intermediary", "message": "Thinking...", "id": assistant_msg_id_ts}) + "\n"
                 full_response_text = ""
                 try:
-                    async for token_chunk in generate_streaming_response(chat_runnable, inputs={"query": transformed_input, "user_context": user_context_str, "internet_context": internet_context_str, "name": username, "personality": personality_setting}, stream=True):
+                    # Fetch chat history again right before generating response to ensure it's up-to-date
+                    current_chat_history_for_response = await get_chat_history_messages(user_id, active_chat_id)
+                    
+                    async for token_chunk in generate_streaming_response(chat_runnable, inputs={"query": transformed_input, "user_context": user_context_str, "internet_context": internet_context_str, "name": username, "personality": personality_setting, "chat_history": current_chat_history_for_response}, stream=True):
                         if isinstance(token_chunk, str):
                             full_response_text += token_chunk
                             yield json.dumps({"type": "assistantStream", "token": token_chunk, "done": False, "messageId": assistant_msg_base["id"]}) + "\n"
-                        await asyncio.sleep(0.01) 
+                        await asyncio.sleep(0.01)
                     
                     final_message_content = full_response_text + (("\n\n" + additional_notes) if additional_notes else "")
                     assistant_msg_base["message"] = final_message_content
@@ -1322,20 +1357,27 @@ async def add_task_endpoint(task_request: CreateTaskRequest, user_id: str = Depe
     print(f"[ENDPOINT /add-task] User {user_id}, Desc: '{task_request.description[:50]}...'")
     loop = asyncio.get_event_loop()
     try:
-        await get_chat_history_messages(user_id) 
-        active_chat_id = 0
-        async with db_lock:
-            chatsDb = await load_db(user_id)
-            active_chat_id = chatsDb.get("active_chat_id", 0)
+        # Ensure active_chat_id is available. If not, get_chat_history_messages will create one.
+        user_profile_for_task = await mongo_manager.get_user_profile(user_id)
+        active_chat_id = user_profile_for_task.get("userData", {}).get("active_chat_id", None)
         
-        if active_chat_id == 0:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No active chat found for task creation.")
+        await get_chat_history_messages(user_id, active_chat_id) # This ensures active_chat_id is set in profile
+        
+        # Re-fetch active_chat_id in case it was just created/updated
+        user_profile_after_task_init = await mongo_manager.get_user_profile(user_id)
+        active_chat_id = user_profile_after_task_init.get("userData", {}).get("active_chat_id", None)
+
+        if not active_chat_id:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not determine active chat ID for task creation.")
         
         user_profile = await load_user_profile(user_id)
         username = user_profile.get("userData", {}).get("personalInfo", {}).get("name", user_id)
         personality = user_profile.get("userData", {}).get("personality", "Default")
         
-        unified_output = await loop.run_in_executor(None, unified_classification_runnable.invoke, {"query": task_request.description})
+        # Fetch chat history for the current request
+        current_chat_history_for_task = await get_chat_history_messages(user_id, active_chat_id)
+        
+        unified_output = await loop.run_in_executor(None, unified_classification_runnable.invoke, {"query": task_request.description, "chat_history": current_chat_history_for_task})
         use_personal_context = unified_output.get("use_personal_context", False)
         internet_needed = unified_output.get("internet", "None")
         
@@ -1347,9 +1389,9 @@ async def add_task_endpoint(task_request: CreateTaskRequest, user_id: str = Depe
             print(f"[WARN] Priority determination failed for task '{task_request.description[:30]}...': {e_prio}. Defaulting to low.")
             pass 
             
-        new_task_id = await task_queue.add_task(user_id=user_id, chat_id=str(active_chat_id), description=task_request.description, priority=task_priority, username=username, personality=personality, use_personal_context=use_personal_context, internet=internet_needed)
+        new_task_id = await task_queue.add_task(user_id=user_id, chat_id=active_chat_id, description=task_request.description, priority=task_priority, username=username, personality=personality, use_personal_context=use_personal_context, internet=internet_needed)
         
-        await add_message_to_db(user_id, active_chat_id, task_request.description, is_user=True, is_visible=False) 
+        await add_message_to_db(user_id, active_chat_id, task_request.description, is_user=True, is_visible=False)
         confirm_msg = f"Task added: '{task_request.description[:40]}...'"
         await add_message_to_db(user_id, active_chat_id, confirm_msg, is_user=False, is_visible=True, agentsUsed=True, task=task_request.description)
         
@@ -1566,16 +1608,45 @@ async def get_graph_data_apoc(user_id: str = Depends(PermissionChecker(required_
 async def get_notifications_endpoint(user_id: str = Depends(PermissionChecker(required_permissions=["read:notifications"]))):
     print(f"[ENDPOINT /get-notifications] User {user_id}.")
     try:
-        db_data = await load_notifications_db(user_id)
-        notifs = db_data.get("notifications", [])
-        for n in notifs:
-            if isinstance(n.get('timestamp'), datetime.datetime): 
+        notifications = await mongo_manager.get_notifications(user_id)
+        # Convert datetime objects to ISO format for JSON serialization
+        s_notifications = []
+        for n in notifications:
+            if isinstance(n.get('timestamp'), datetime.datetime):
                 n['timestamp'] = n['timestamp'].isoformat()
-        return JSONResponse(content={"notifications": notifs})
+            s_notifications.append(n)
+        return JSONResponse(content={"notifications": s_notifications})
     except Exception as e:
         print(f"[ERROR] /get-notifications {user_id}: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get notifications.")
+
+@app.post("/add-notification", status_code=status.HTTP_201_CREATED, summary="Add New Notification", tags=["Notifications"])
+async def add_notification_endpoint(notification_data: Dict[str, Any], user_id: str = Depends(PermissionChecker(required_permissions=["write:notifications"]))):
+    print(f"[ENDPOINT /add-notification] User {user_id}, Data: {str(notification_data)[:100]}...")
+    try:
+        success = await mongo_manager.add_notification(user_id, notification_data)
+        if not success:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to add notification.")
+        return JSONResponse(content={"message": "Notification added successfully."}, status_code=status.HTTP_201_CREATED)
+    except Exception as e:
+        print(f"[ERROR] /add-notification {user_id}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to add notification.")
+
+@app.post("/clear-notifications", status_code=status.HTTP_200_OK, summary="Clear All Notifications", tags=["Notifications"])
+async def clear_notifications_endpoint(user_id: str = Depends(PermissionChecker(required_permissions=["write:notifications"]))):
+    print(f"[ENDPOINT /clear-notifications] User {user_id}.")
+    try:
+        success = await mongo_manager.clear_notifications(user_id)
+        if not success:
+            # If no notifications were found to clear, it's still a success from user perspective
+            print(f"[WARN] No notifications found to clear for user {user_id}.")
+        return JSONResponse(content={"message": "All notifications cleared successfully."})
+    except Exception as e:
+        print(f"[ERROR] /clear-notifications {user_id}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to clear notifications.")
 
 
 # --- Task Approval Endpoints ---

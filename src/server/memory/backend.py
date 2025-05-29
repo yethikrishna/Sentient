@@ -4,7 +4,6 @@ import os
 import asyncio
 import traceback
 from dotenv import load_dotenv
-import json
 from server.memory.runnables import *
 from server.memory.functions import *
 from server.memory.dual_memory import MemoryManager
@@ -50,7 +49,7 @@ class MemoryBackend:
 
         # Initialize MemoryQueue
         print("Initializing MemoryQueue...")
-        self.memory_queue = MemoryQueue()
+        self.memory_queue = MemoryQueue() # No longer needs memory_file parameter
         print("MemoryQueue initialized.")
         print("MemoryBackend initialization complete.")
 
@@ -97,14 +96,17 @@ class MemoryBackend:
         print(f"Extracting memory facts for query: '{query}'")
         try:
             # Ensure userProfileDb.json exists and is valid, or handle gracefully
-            profile_path = "userProfileDb.json"
-            if not os.path.exists(profile_path):
-                print(f"Warning: {profile_path} not found. Cannot get username for fact extraction.")
-                username = "User" # Fallback username
-            else:
-                with open(profile_path, "r", encoding="utf-8") as f:
-                    user_db = json.load(f)
-                username = user_db.get("userData", {}).get("personalInfo", {}).get("name", "User")
+            # TODO: Replace with MongoDB user profile retrieval
+            # For now, use a default username or fetch from a temporary source if available
+            username = "User" # Fallback username
+            # profile_path = "userProfileDb.json"
+            # if not os.path.exists(profile_path):
+            #     print(f"Warning: {profile_path} not found. Cannot get username for fact extraction.")
+            #     username = "User" # Fallback username
+            # else:
+            #     with open(profile_path, "r", encoding="utf-8") as f:
+            #         user_db = json.load(f)
+            #     username = user_db.get("userData", {}).get("personalInfo", {}).get("name", "User")
 
             response = self.fact_extraction_runnable.invoke({"paragraph": query, "username": username})
             print(f"Raw fact extraction response: {response}")
@@ -273,7 +275,7 @@ class MemoryBackend:
                 
                 if not isinstance(memory_data, dict):
                     print(f"[MEMORY_BACKEND_PROCESSOR_ERROR] Invalid memory_data format for op {operation_id}: {memory_data}. Expected Dict.")
-                    await self.memory_queue.complete_operation(operation_id, error="Invalid memory_data format.")
+                    await self.memory_queue.complete_operation(user_id, operation_id, error="Invalid memory_data format.")
                     continue
 
                 op_type = memory_data.get("type")
@@ -281,26 +283,26 @@ class MemoryBackend:
 
                 if not query_text:
                     print(f"[MEMORY_BACKEND_PROCESSOR_ERROR] Missing query_text in memory_data for op {operation_id}.")
-                    await self.memory_queue.complete_operation(operation_id, error="Missing query_text.")
+                    await self.memory_queue.complete_operation(user_id, operation_id, error="Missing query_text.")
                     continue
                 
                 print(f"[MEMORY_BACKEND_PROCESSOR] Processing operation {operation_id} (type: {op_type}) for user {user_id}: {query_text[:50]}...")
                 try:
                     if op_type == "store":
                         await self.store_memory(user_id, query_text)
-                        await self.memory_queue.complete_operation(operation_id, result="Stored successfully")
+                        await self.memory_queue.complete_operation(user_id, operation_id, result="Stored successfully")
                     elif op_type == "update":
                         await self.update_memory(user_id, query_text)
-                        await self.memory_queue.complete_operation(operation_id, result="Updated successfully")
+                        await self.memory_queue.complete_operation(user_id, operation_id, result="Updated successfully")
                     else:
                         print(f"[MEMORY_BACKEND_PROCESSOR_WARN] Unknown operation type '{op_type}' for op {operation_id}.")
-                        await self.memory_queue.complete_operation(operation_id, error=f"Unknown operation type: {op_type}")
+                        await self.memory_queue.complete_operation(user_id, operation_id, error=f"Unknown operation type: {op_type}")
                     
                     print(f"[MEMORY_BACKEND_PROCESSOR] Completed operation {operation_id}.")
                 except Exception as e:
                     print(f"[MEMORY_BACKEND_PROCESSOR_ERROR] Error processing memory operation {operation_id}: {e}")
                     traceback.print_exc()
-                    await self.memory_queue.complete_operation(operation_id, error=str(e))
+                    await self.memory_queue.complete_operation(user_id, operation_id, error=str(e))
             else:
                 await asyncio.sleep(0.5) # Wait if queue is empty
 

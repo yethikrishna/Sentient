@@ -63,16 +63,12 @@ def get_chat_runnable(chat_history: List[Dict[str, str]]) -> BaseRunnable:
     return runnable
 
 
-def get_agent_runnable(chat_history: List[Dict[str, str]]) -> BaseRunnable:
+def get_agent_runnable() -> BaseRunnable:
     """
     Factory function to get the appropriate Runnable class for agent-like behavior based on the selected model.
 
     Determines the model provider and returns a Runnable configured for agent-like tasks,
     including JSON response format and agent-specific prompts. Agents typically require structured output for tool use.
-
-    Args:
-        chat_history (List[Dict[str, str]]): Initial chat history to provide context to the agent.
-                                            This history might include initial instructions or context for the agent's task.
 
     Returns:
         BaseRunnable: A Runnable instance configured for agent behavior. This instance is set up to expect
@@ -105,14 +101,15 @@ def get_agent_runnable(chat_history: List[Dict[str, str]]) -> BaseRunnable:
             "user_context",
             "internet_context", # Note: Typo in original function 'internet_contextname' is kept for consistency
             "personality",
+            "chat_history", # Add chat_history as an input variable
         ],
         required_format=agent_required_format,
         response_type="json",
-        stateful=True,
+        stateful=False, # Set stateful to False as history is passed per-request
     )
     """Configures the Runnable instance for agent-like behavior, expecting JSON responses and maintaining state."""
 
-    runnable.add_to_history(chat_history)
+    # Removed: runnable.add_to_history(chat_history)
     return runnable
 
 

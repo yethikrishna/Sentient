@@ -7,16 +7,13 @@ from .prompts import *
 
 load_dotenv("server/.env")
 
-def get_chat_runnable(chat_history: List[Dict[str, str]]) -> BaseRunnable:
+def get_chat_runnable() -> BaseRunnable:
     """
     Factory function to get the appropriate Runnable class based on the selected model.
 
     Determines the model provider (Ollama, OpenAI, Claude, Gemini) based on the
     selected model name from `get_selected_model()`. It then returns an instance
     of the corresponding Runnable class, configured with API URLs and default prompts.
-
-    Args:
-        chat_history (List[Dict[str, str]]): The chat history to initialize the runnable with.
 
     Returns:
         BaseRunnable: An instance of a Runnable class (OllamaRunnable, OpenAIRunnable, ClaudeRunnable, or GeminiRunnable).
@@ -49,11 +46,12 @@ def get_chat_runnable(chat_history: List[Dict[str, str]]) -> BaseRunnable:
             "internet_context",
             "name",
             "personality",
+            "chat_history", # Add chat_history as an input variable
         ],
         response_type="chat",
         stream=True,
-        stateful=True,
+        stateful=False, # Set stateful to False as history is passed per-request
     )
 
-    runnable.add_to_history(chat_history)
+    # Removed: runnable.add_to_history(chat_history)
     return runnable

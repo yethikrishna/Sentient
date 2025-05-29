@@ -197,3 +197,5 @@ yarl==1.18.3
 # pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/<cuda-version>
 python-jose
 motor
+google-cloud-texttospeech==2.20.0
+elevenlabs==1.2.0

@@ -470,35 +470,44 @@ async def update_neo4j_with_personal_info(user_id: str, personal_info: dict, gra
 
 import uuid # Added for generating chat_id
 
-async def get_chat_history_messages(user_id: str, chat_id: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Retrieve chat history messages for a specific user and chat_id from MongoDB."""
-    print(f"[CHAT_HISTORY] Fetching chat history for user {user_id}, chat {chat_id}.")
-    if not chat_id:
+
+async def get_chat_history_messages(user_id: str, chat_id: Optional[str] = None) -> Tuple[List[Dict[str, Any]], str]:
+    """Retrieve chat history messages for a specific user and chat_id from MongoDB.
+    If chat_id is None, it will try to find an active one or create a new one.
+    Returns a tuple of (messages, effective_chat_id).
+    """
+    effective_chat_id = chat_id
+    print(f"[CHAT_HISTORY] Fetching chat history for user {user_id}, initial chat_id: {chat_id}.")
+    
+
+    if effective_chat_id is None or effective_chat_id == "":
         # If no chat_id is provided, try to get the active chat ID from user profile
         user_profile = await mongo_manager.get_user_profile(user_id)
-        if user_profile and "userData" in user_profile and "active_chat_id" in user_profile["userData"]:
-            chat_id = user_profile["userData"]["active_chat_id"]
-            print(f"[CHAT_HISTORY] Using active chat ID from profile: {chat_id}")
+        
+        # Check if active_chat_id exists and is not None/empty in user profile
+        if user_profile and "userData" in user_profile and user_profile["userData"].get("active_chat_id") not in [None, ""]:
+            effective_chat_id = user_profile["userData"]["active_chat_id"]
+            print(f"[CHAT_HISTORY] Using active chat ID from profile: {effective_chat_id}")
         else:
-            # If no active chat ID, try to find the most recent chat or create a new one
+            # If no active chat ID in profile, try to find the most recent chat or create a new one
             all_chat_ids = await mongo_manager.get_all_chat_ids_for_user(user_id)
             if all_chat_ids:
-                # Assuming the first one returned by get_all_chat_ids_for_user is the most recent
-                chat_id = all_chat_ids[0]
-                print(f"[CHAT_HISTORY] No active chat ID, using most recent chat: {chat_id}")
+                effective_chat_id = all_chat_ids[0]
+                print(f"[CHAT_HISTORY] No active chat ID in profile, using most recent chat: {effective_chat_id}")
+                # Update user profile with this found active chat ID
+                await mongo_manager.update_user_profile(user_id, {"userData.active_chat_id": effective_chat_id})
             else:
                 # No chats exist, create a new one
                 new_chat_id = str(uuid.uuid4())
-                # Store this new chat_id as active in user profile
                 await mongo_manager.update_user_profile(user_id, {"userData.active_chat_id": new_chat_id})
                 print(f"[CHAT_HISTORY] No chats found, created new chat ID: {new_chat_id}")
-                return [] # Return empty as new chat has no messages yet
+                effective_chat_id = new_chat_id
     
-    if not chat_id: # Should not happen if logic above is correct
-        print(f"[CHAT_HISTORY_ERROR] No chat_id determined for user {user_id}.")
-        return []
-
-    messages = await mongo_manager.get_chat_history(user_id, chat_id)
+    if effective_chat_id is None or effective_chat_id == "": # This final check should now truly indicate an error
+        print(f"[CHAT_HISTORY_ERROR] No chat_id determined for user {user_id} after all attempts.")
+        return [], "" # Return empty messages and empty chat_id if still no ID
+ 
+    messages = await mongo_manager.get_chat_history(user_id, effective_chat_id)
     # Convert datetime objects to ISO format for JSON serialization
     s_messages = []
     for m in messages:
@@ -506,7 +515,7 @@ async def get_chat_history_messages(user_id: str, chat_id: Optional[str] = None)
             m['timestamp'] = m['timestamp'].isoformat()
         s_messages.append(m)
     # Filter for visible messages as per original logic
-    return [m for m in s_messages if m.get("isVisible", True)]
+    return [m for m in s_messages if m.get("isVisible", True)], effective_chat_id
 
 async def add_message_to_db(user_id: str, chat_id: Union[int, str], message_text: str, is_user: bool, is_visible: bool = True, **kwargs) -> Optional[str]:
     """Add a new message to a user's chat history in MongoDB."""
@@ -581,7 +590,7 @@ print(f"[INIT] {datetime.datetime.now()}: Global database locks removed (using M
 # initial_db = {"chats": [], "active_chat_id": 0, "next_chat_id": 1} # Removed, replaced by MongoDB
 print(f"[CONFIG] {datetime.datetime.now()}: Initial chat DB structure removed (using MongoDB).")
 print(f"[INIT] {datetime.datetime.now()}: Initializing MemoryBackend...")
-memory_backend = MemoryBackend()
+memory_backend = MemoryBackend(mongo_manager=mongo_manager)
 print(f"[INIT] {datetime.datetime.now()}: MemoryBackend initialized.")
 def register_tool(name: str):
     def decorator(func: callable):
@@ -742,18 +751,12 @@ async def get_history(user_id: str = Depends(PermissionChecker(required_permissi
     print(f"[ENDPOINT /get-history] Called by user {user_id}.")
     try:
         # The frontend should ideally provide the active_chat_id.
-        # For now, we'll try to retrieve it from the user profile or infer.
-        user_profile = await mongo_manager.get_user_profile(user_id)
-        active_chat_id = user_profile.get("userData", {}).get("active_chat_id", None)
+        # Call get_chat_history_messages with None, allowing it to determine/create the active chat ID.
+        # It now returns a tuple: (messages, effective_chat_id)
+        messages, effective_chat_id = await get_chat_history_messages(user_id, None)
         
-        messages = await get_chat_history_messages(user_id, active_chat_id) # Pass active_chat_id if known
-        
-        # If get_chat_history_messages created a new chat, it would have updated the profile.
-        # Re-fetch profile to get the potentially new active_chat_id.
-        user_profile_after_chat_fetch = await mongo_manager.get_user_profile(user_id)
-        final_active_chat_id = user_profile_after_chat_fetch.get("userData", {}).get("active_chat_id", None)
-
-        return JSONResponse(content={"messages": messages, "activeChatId": final_active_chat_id})
+        # The effective_chat_id returned by the function is the definitive one to use.
+        return JSONResponse(content={"messages": messages, "activeChatId": effective_chat_id})
     except Exception as e:
         print(f"[ERROR] /get-history {user_id}: {e}")
         traceback.print_exc()
@@ -801,23 +804,18 @@ async def chat(message: Message, user_id: str = Depends(PermissionChecker(requir
         user_profile_data = await load_user_profile(user_id)
         username = user_profile_data.get("userData", {}).get("personalInfo", {}).get("name", "User")
         personality_setting = user_profile_data.get("userData", {}).get("personality", "Default")
-        # Ensure active_chat_id is available. If not, get_chat_history_messages will create one.
-        user_profile_for_chat = await mongo_manager.get_user_profile(user_id)
-        active_chat_id = user_profile_for_chat.get("userData", {}).get("active_chat_id", None)
+        # Call get_chat_history_messages with None, allowing it to determine/create the active chat ID.
+        # It now returns a tuple: (messages, effective_chat_id)
+        # We only need the effective_chat_id here for subsequent calls.
+        _, active_chat_id = await get_chat_history_messages(user_id, None)
         
-        # This call will ensure an active_chat_id exists and is set in the user profile if not already.
-        # It also returns the messages, though we don't use them directly here.
-        await get_chat_history_messages(user_id, active_chat_id)
-        
-        # Re-fetch active_chat_id in case it was just created/updated by get_chat_history_messages
-        user_profile_after_chat_init = await mongo_manager.get_user_profile(user_id)
-        active_chat_id = user_profile_after_chat_init.get("userData", {}).get("active_chat_id", None)
-
         if not active_chat_id:
+            # This should ideally not be reached if get_chat_history_messages works as expected
+            print(f"[ERROR] /chat: Failed to determine active chat ID for user {user_id} after history init.")
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not determine active chat ID.")
 
-        # Fetch chat history for the current request
-        current_chat_history = await get_chat_history_messages(user_id, active_chat_id)
+        # Fetch chat history for the current request using the determined active_chat_id
+        current_chat_history, _ = await get_chat_history_messages(user_id, active_chat_id)
         
         unified_output = unified_classification_runnable.invoke({"query": message.input, "chat_history": current_chat_history})
         category = unified_output.get("category", "chat")
@@ -845,7 +843,6 @@ async def chat(message: Message, user_id: str = Depends(PermissionChecker(requir
                 priority = priority_response.get("priority", 2)
                 await task_queue.add_task(user_id=user_id, chat_id=active_chat_id, description=transformed_input, priority=priority, username=username, personality=personality_setting, use_personal_context=use_personal_context, internet=internet_search_type)
                 assistant_msg_base["message"] = "Okay, I'll get right on that."
-                await add_message_to_db(user_id, active_chat_id, transformed_input, is_user=True, is_visible=False)
                 await add_message_to_db(user_id, active_chat_id, assistant_msg_base["message"], is_user=False, is_visible=True, agentsUsed=True, task=transformed_input)
                 yield json.dumps({"type": "assistantMessage", "messageId": assistant_msg_base["id"], "message": assistant_msg_base["message"], "done": True, "proUsed": False}) + "\n"
                 return
@@ -884,10 +881,23 @@ async def chat(message: Message, user_id: str = Depends(PermissionChecker(requir
                 yield json.dumps({"type": "intermediary", "message": "Thinking...", "id": assistant_msg_id_ts}) + "\n"
                 full_response_text = ""
                 try:
-                    # Fetch chat history again right before generating response to ensure it's up-to-date
-                    current_chat_history_for_response = await get_chat_history_messages(user_id, active_chat_id)
+                    # Fetch chat history right before generating response.
+                    # The last message in this history will be the current user's input,
+                    # which needs to be excluded from the 'chat_history' passed to the LLM,
+                    # as the LLM's prompt building logic will add the current user message separately.
+                    full_chat_history_from_db = await get_chat_history_messages(user_id, active_chat_id)
                     
-                    async for token_chunk in generate_streaming_response(chat_runnable, inputs={"query": transformed_input, "user_context": user_context_str, "internet_context": internet_context_str, "name": username, "personality": personality_setting, "chat_history": current_chat_history_for_response}, stream=True):
+                    # Ensure the last message is indeed the current user's input before slicing
+                    history_for_llm = []
+                    if full_chat_history_from_db and full_chat_history_from_db[-1].get("isUser") and full_chat_history_from_db[-1].get("message") == message.input:
+                        history_for_llm = full_chat_history_from_db[:-1]
+                    else:
+                        # Fallback: if the last message doesn't match, log a warning and use full history.
+                        # This might indicate an unexpected state or a bug in message saving/fetching order.
+                        print(f"[WARN] Last message in history does not match current user input for user {user_id}. Passing full history to LLM.")
+                        history_for_llm = full_chat_history_from_db
+
+                    async for token_chunk in generate_streaming_response(chat_runnable, inputs={"query": transformed_input, "user_context": user_context_str, "internet_context": internet_context_str, "name": username, "personality": personality_setting, "chat_history": history_for_llm}, stream=True):
                         if isinstance(token_chunk, str):
                             full_response_text += token_chunk
                             yield json.dumps({"type": "assistantStream", "token": token_chunk, "done": False, "messageId": assistant_msg_base["id"]}) + "\n"

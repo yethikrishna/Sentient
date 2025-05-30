@@ -61,20 +61,14 @@ text_dissection_system_prompt_template = """You are a categorization system desi
 
 Instructions:
 1. Divide the input text into the following predefined categories:
-   - `Personal`: Personal details such as identity, preferences, likes, dislikes, or individual traits.
-   - `Interests`: Topics, hobbies, or areas of interest mentioned in the text.
-   - `Career`: Professional roles, achievements, or career-related details.
-   - `Relationships`: Friends, family, social connections, or other interpersonal details.
-   - `Goals`: Aspirations, dreams, or objectives described in the text.
-   - `Education`: Academic background, schools, degrees, or learning areas.
-   - `Health`: Physical or mental well-being, fitness habits, or medical history.
-   - `Financial`: Income, spending, savings, or financial goals.
-   - `Lifestyle`: Daily habits, routines, living arrangements, or travel preferences.
-   - `Values`: Beliefs, ethics, or guiding principles.
-   - `Achievements`: Awards, recognitions, or major milestones.
-   - `Challenges`: Obstacles, difficulties, or areas of improvement.
-   - `Preferences`: Likes, dislikes, or choices related to food, fashion, entertainment, etc.
-   - `Socials`: Online profiles, social media activity, or public presence.
+   - `Personal & Well-being`: Personal preferences, likes, dislikes, traits, health, lifestyle, values, and general well-being.
+   - `Professional & Academic`: Professional roles, career, work, education, academic pursuits, achievements, and challenges.
+   - `Social & Relationships`: Relationships, friendships, social connections, and social interactions.
+   - `Financial`: Financial status, income, investments, and expenses.
+   - `Goals & Tasks`: Personal or professional objectives, targets, general to-dos, deadlines, appointments, and reminders.
+   - `Interests & Hobbies`: Hobbies, topics of interest, recreational activities, and entertainment.
+   - `Logistics & Practical`: Transportation, technology, and miscellaneous practical information that doesn't fit other categories.
+   - `Spiritual`: Spiritual beliefs, practices, and well-being.
 
 2. For each category, extract the relevant portion of the input text and return it as a single string, combining multiple relevant sentences if necessary.
 
@@ -87,20 +81,14 @@ Return a JSON object structured as:
 {
   "user_name": "string",
   "categories": {
-    "Personal": "string",
-    "Interests": "string",
-    "Career": "string",
-    "Relationships": "string",
-    "Goals": "string",
-    "Education": "string",
-    "Health": "string",
+    "Personal & Well-being": "string",
+    "Professional & Academic": "string",
+    "Social & Relationships": "string",
     "Financial": "string",
-    "Lifestyle": "string",
-    "Values": "string",
-    "Achievements": "string",
-    "Challenges": "string",
-    "Preferences": "string",
-    "Socials": "string"
+    "Goals & Tasks": "string",
+    "Interests & Hobbies": "string",
+    "Logistics & Practical": "string",
+    "Spiritual": "string"
   }
 }
 
@@ -116,20 +104,14 @@ Output:
 {
   "user_name": "John Doe",
   "categories": {
-    "Personal": "John dislikes crowded places. John prefers quiet environments.",
-    "Interests": "John loves hiking and photography.",
-    "Career": "He works as a software engineer at TechCorp. He has won the 'Employee of the Year' award.",
-    "Relationships": "His best friend is Alice, and they often explore trails together.",
-    "Goals": "He dreams of becoming a tech entrepreneur.",
-    "Education": "John graduated from MIT with a degree in Computer Science.",
-    "Health": "He maintains a balanced diet and exercises regularly.",
+    "Personal & Well-being": "John dislikes crowded places. John prefers quiet environments. He maintains a balanced diet and exercises regularly. John values honesty and integrity.",
+    "Professional & Academic": "He works as a software engineer at TechCorp. He has won the 'Employee of the Year' award. He dreams of becoming a tech entrepreneur. John graduated from MIT with a degree in Computer Science. He finds public speaking challenging.",
+    "Social & Relationships": "His best friend is Alice, and they often explore trails together. He uses LinkedIn to connect with professionals.",
     "Financial": "",
-    "Lifestyle": "",
-    "Values": "John values honesty and integrity.",
-    "Achievements": "He has won the 'Employee of the Year' award.",
-    "Challenges": "He finds public speaking challenging.",
-    "Preferences": "John dislikes crowded places. John prefers quiet environments.",
-    "Socials": "He uses LinkedIn to connect with professionals."
+    "Goals & Tasks": "He dreams of becoming a tech entrepreneur.",
+    "Interests & Hobbies": "John loves hiking and photography.",
+    "Logistics & Practical": "",
+    "Spiritual": ""
   }
 }
 
@@ -144,20 +126,14 @@ Output:
 {
   "user_name": "Jane Smith",
   "categories": {
-    "Personal": "",
-    "Interests": "She is passionate about sustainable living and volunteers at a local animal shelter on weekends. She enjoys cycling around the city. She is learning Spanish through an online course.",
-    "Career": "Jane is a freelance graphic designer specializing in branding.",
-    "Relationships": "She is very close to her sister, Maya.",
-    "Goals": "Her goal is to save enough money to travel Southeast Asia next year.",
-    "Education": "She is learning Spanish through an online course.",
-    "Health": "She recently completed a challenging marathon, which was a huge personal milestone. She prefers plant-based meals.",
+    "Personal & Well-being": "She is passionate about sustainable living. She recently completed a challenging marathon, which was a huge personal milestone. She prefers plant-based meals. She believes in kindness above all.",
+    "Professional & Academic": "Jane is a freelance graphic designer specializing in branding. She recently completed a challenging marathon, which was a huge personal milestone. She is learning Spanish through an online course.",
+    "Social & Relationships": "She volunteers at a local animal shelter on weekends. She is very close to her sister, Maya.",
     "Financial": "Her goal is to save enough money to travel Southeast Asia next year.",
-    "Lifestyle": "She lives in a small apartment downtown and enjoys cycling around the city. She prefers plant-based meals.",
-    "Values": "She believes in kindness above all. She is passionate about sustainable living.",
-    "Achievements": "She recently completed a challenging marathon, which was a huge personal milestone.",
-    "Challenges": "",
-    "Preferences": "She prefers plant-based meals.",
-    "Socials": ""
+    "Goals & Tasks": "Her goal is to save enough money to travel Southeast Asia next year.",
+    "Interests & Hobbies": "She is passionate about sustainable living and volunteers at a local animal shelter on weekends. She enjoys cycling around the city. She is learning Spanish through an online course.",
+    "Logistics & Practical": "She lives in a small apartment downtown and enjoys cycling around the city.",
+    "Spiritual": ""
   }
 }
 
@@ -172,20 +148,14 @@ Output:
 {
   "user_name": "Alex Chen",
   "categories": {
-    "Personal": "Alex is an introvert and prefers small social gatherings.",
-    "Interests": "Alex enjoys playing chess and reading science fiction novels.",
-    "Career": "Before this, Alex worked as a data analyst for two years. Alex hopes to contribute significantly to understanding dark matter.",
-    "Relationships": "Family is very important to Alex, especially supporting their younger sibling's education.",
-    "Goals": "Alex hopes to contribute significantly to understanding dark matter.",
-    "Education": "Alex recently started a PhD program in astrophysics at Caltech.",
-    "Health": "",
+    "Personal & Well-being": "Alex is an introvert and prefers small social gatherings. Family is very important to Alex. Alex finds managing time effectively between research and personal life a constant challenge but is working on it.",
+    "Professional & Academic": "Alex recently started a PhD program in astrophysics at Caltech. Before this, Alex worked as a data analyst for two years. Alex hopes to contribute significantly to understanding dark matter. Alex received a prestigious scholarship for the PhD program. Alex finds managing time effectively between research and personal life a constant challenge but is working on it.",
+    "Social & Relationships": "Family is very important to Alex, especially supporting their younger sibling's education. Alex is an introvert and prefers small social gatherings.",
     "Financial": "Alex received a prestigious scholarship for the PhD program.",
-    "Lifestyle": "",
-    "Values": "Family is very important to Alex.",
-    "Achievements": "Alex received a prestigious scholarship for the PhD program.",
-    "Challenges": "Alex finds managing time effectively between research and personal life a constant challenge but is working on it.",
-    "Preferences": "Alex prefers small social gatherings.",
-    "Socials": ""
+    "Goals & Tasks": "Alex hopes to contribute significantly to understanding dark matter.",
+    "Interests & Hobbies": "Alex enjoys playing chess and reading science fiction novels.",
+    "Logistics & Practical": "",
+    "Spiritual": ""
   }
 }
 
@@ -813,21 +783,14 @@ Output:
 query_classification_system_prompt_template = """You are a classification system designed to categorize queries based on predefined categories.
 
 Categories:
-1. `Personal`: Questions about personal identity, preferences, likes, dislikes, or traits.
-2. `Interests`: Questions related to hobbies, topics of interest, or recreational activities.
-3. `Career`: Questions about professional roles, achievements, or work-related details.
-4. `Relationships`: Questions about relationships, friends, family, or social connections.
-5. `Goals`: Questions about aspirations, dreams, or objectives.
-6. `Education`: Questions about academic background, schools, degrees, or learning areas.
-7. `Health`: Questions about physical or mental well-being, fitness habits, or medical history.
-8. `Financial`: Questions about income, spending, savings, or financial goals.
-9. `Lifestyle`: Questions about daily habits, routines, living arrangements, or travel.
-10. `Values`: Questions about beliefs, ethics, or guiding principles.
-11. `Achievements`: Questions about awards, recognitions, or major milestones.
-12. `Challenges`: Questions about obstacles, difficulties, or areas of improvement.
-13. `Preferences`: Questions about likes, dislikes, or choices related to food, fashion, entertainment, etc.
-14. `Socials`: Questions about online profiles, social media activity, or public presence.
-15. `Miscellaneous`: Questions which don't fit into any of the above categories, which are just general life things.
+1. `Personal & Well-being`: Questions about personal identity, preferences, likes, dislikes, traits, health, lifestyle, values, and general well-being.
+2. `Professional & Academic`: Questions about professional roles, career, work, education, academic pursuits, achievements, and challenges.
+3. `Social & Relationships`: Questions about relationships, friendships, social connections, and social interactions.
+4. `Financial`: Questions about financial status, income, investments, and expenses.
+5. `Goals & Tasks`: Questions about personal or professional objectives, targets, general to-dos, deadlines, appointments, and reminders.
+6. `Interests & Hobbies`: Questions about hobbies, topics of interest, recreational activities, and entertainment.
+7. `Logistics & Practical`: Questions about transportation, technology, and miscellaneous practical information that doesn't fit other categories.
+8. `Spiritual`: Questions about spiritual beliefs, practices, and well-being.
 
 Instructions:
 1. Analyze the query to determine its most relevant category from the list above.
@@ -840,43 +803,43 @@ Input:
 Query: "What are John's hobbies?"
 
 Output:
-{ "query": "What are John's hobbies?", "category": "Interests" }
+{ "query": "What are John's hobbies?", "category": "Interests & Hobbies" }
 
 Input:
 Query: "Who is John's best friend?"
 
 Output:
-{ "query": "Who is John's best friend?", "category": "Relationships" }
+{ "query": "Who is John's best friend?", "category": "Social & Relationships" }
 
 Input:
 Query: "What does John do for work?"
 
 Output:
-{ "query": "What does John do for work?", "category": "Career" }
+{ "query": "What does John do for work?", "category": "Professional & Academic" }
 
 Input:
 Query: "What does John dislike?"
 
 Output:
-{ "query": "What does John dislike?", "category": "Preferences" }
+{ "query": "What does John dislike?", "category": "Personal & Well-being" }
 
 Input:
 Query: "What are John's future aspirations?"
 
 Output:
-{ "query": "What are John's future aspirations?", "category": "Goals" }
+{ "query": "What are John's future aspirations?", "category": "Goals & Tasks" }
 
 Input:
 Query: "Where did John graduate from?"
 
 Output:
-{ "query": "Where did John graduate from?", "category": "Education" }
+{ "query": "Where did John graduate from?", "category": "Professional & Academic" }
 
 Input:
 Query: "How does John stay healthy?"
 
 Output:
-{ "query": "How does John stay healthy?", "category": "Health" }
+{ "query": "How does John stay healthy?", "category": "Personal & Well-being" }
 
 Input:
 Query: "What is John's financial goal?"
@@ -888,37 +851,37 @@ Input:
 Query: "What does John do every day?"
 
 Output:
-{ "query": "What does John do every day?", "category": "Lifestyle" }
+{ "query": "What does John do every day?", "category": "Personal & Well-being" }
 
 Input:
 Query: "What does John believe in?"
 
 Output:
-{ "query": "What does John believe in?", "category": "Values" }
+{ "query": "What does John believe in?", "category": "Personal & Well-being" }
 
 Input:
 Query: "What are John's achievements?"
 
 Output:
-{ "query": "What are John's achievements?", "category": "Achievements" }
+{ "query": "What are John's achievements?", "category": "Professional & Academic" }
 
 Input:
 Query: "What challenges has John faced?"
 
 Output:
-{ "query": "What challenges has John faced?", "category": "Challenges" }
+{ "query": "What challenges has John faced?", "category": "Professional & Academic" }
 
 Input:
 Query: "What are John's preferences for food?"
 
 Output:
-{ "query": "What are John's preferences for food?", "category": "Preferences" }
+{ "query": "What are John's preferences for food?", "category": "Personal & Well-being" }
 
 Input:
 Query: "What is John's Instagram handle?"
 
 Output:
-{ "query": "What is John's Instagram handle?", "category": "Socials" }
+{ "query": "What is John's Instagram handle?", "category": "Social & Relationships" }
 """
 
 query_classification_user_prompt_template = """Categorize the following query into one of the predefined categories. Return the JSON object strictly adhering to the above format or else I will terminate you
@@ -1305,19 +1268,14 @@ extract_memory_system_prompt_template = """
 You are an AI system designed to analyze user queries and extract memories in a structured JSON format. Your goal is to accurately capture the essence of the user's input as distinct memories, categorized appropriately.
 
 Available Categories:
-*   personal: Personal activities, hobbies, goals, habits, routines.
-*   work: Office tasks, business matters, workplace activities.
-*   social: Meetups, gatherings, parties, community events.
-*   relationship: Interactions with friends, family, partners, colleagues.
-*   finance: Money matters, banking, loans, payments, purchases.
-*   spiritual: Religious activities, meditation, spiritual practices.
-*   career: Job developments, interviews, career growth.
-*   technology: Device issues, software, technical matters.
-*   health: Medical appointments, health conditions, exercise.
-*   education: Studies, courses, learning activities.
-*   transportation: Vehicle matters, travel arrangements.
-*   entertainment: Movies, games, music, recreation.
-*   tasks: General to-dos, deadlines, appointments, reminders.
+*   personal_wellbeing: Personal preferences, likes, dislikes, traits, health, lifestyle, values, and general well-being.
+*   professional_academic: Professional roles, career, work, education, academic pursuits, achievements, and challenges.
+*   social_relationships: Relationships, friendships, social connections, and social interactions.
+*   financial: Financial status, income, investments, and expenses.
+*   goals_tasks: Personal or professional objectives, targets, general to-dos, deadlines, appointments, and reminders.
+*   interests_hobbies: Hobbies, topics of interest, recreational activities, and entertainment.
+*   logistics_practical: Transportation, technology, and miscellaneous practical information that doesn't fit other categories.
+*   spiritual: Spiritual beliefs, practices, and well-being.
 
 Input Format (Provided via User Prompt):
 *   `current_date`: The current date in YYYY-MM-DD format.
@@ -1361,7 +1319,7 @@ Output:
   "memories": [
     {
       "text": "Call the doctor on 2024-07-29 morning.",
-      "category": "tasks"
+      "category": "goals_tasks"
     }
   ]
 }
@@ -1377,11 +1335,11 @@ Output:
   "memories": [
     {
       "text": "Finish the report by 2024-08-02.",
-      "category": "work"
+      "category": "professional_academic"
     },
     {
       "text": "Schedule a meeting with the design team for the week of 2024-07-29.",
-      "category": "work"
+      "category": "professional_academic"
     }
   ]
 }
@@ -1397,7 +1355,7 @@ Output:
   "memories": [
     {
       "text": "Had coffee with Sarah on 2024-07-27.",
-      "category": "relationship"
+      "category": "social_relationships"
     }
   ]
 }
@@ -1413,7 +1371,7 @@ Output:
   "memories": [
     {
       "text": "Try to exercise more often.",
-      "category": "personal"
+      "category": "personal_wellbeing"
     }
   ]
 }
@@ -1429,7 +1387,7 @@ Output:
   "memories": [
     {
       "text": "Car needs an oil change around 2024-08-15.",
-      "category": "transportation"
+      "category": "logistics_practical"
     }
   ]
 }

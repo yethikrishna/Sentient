@@ -1,7 +1,6 @@
 import os
 import datetime
 import uuid # For generating unique IDs
-import uuid # For generating unique IDs
 import motor.motor_asyncio
 from pymongo import ASCENDING, DESCENDING, IndexModel
 from typing import Dict, List, Optional, Any
@@ -12,9 +11,6 @@ MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_agent_db")
 USER_PROFILES_COLLECTION = "user_profiles"
 CHAT_HISTORY_COLLECTION = "chat_history"
 NOTIFICATIONS_COLLECTION = "notifications" # Added for app/helpers.py migration
-
-CONTEXT_ENGINE_STATE_COLLECTION = "context_engine_states"
-
 CONTEXT_ENGINE_STATE_COLLECTION = "context_engine_states"
 
 class MongoManager:
@@ -24,7 +20,6 @@ class MongoManager:
         self.user_profiles_collection = self.db[USER_PROFILES_COLLECTION]
         self.chat_history_collection = self.db[CHAT_HISTORY_COLLECTION]
         self.notifications_collection = self.db[NOTIFICATIONS_COLLECTION]
-        self.context_engine_state_collection = self.db[CONTEXT_ENGINE_STATE_COLLECTION]
         self.context_engine_state_collection = self.db[CONTEXT_ENGINE_STATE_COLLECTION]
 
     async def initialize_db(self):
@@ -63,16 +58,6 @@ class MongoManager:
             print(f"[DB_INIT] Indexes ensured for collection: {self.notifications_collection.name}")
         except Exception as e:
             print(f"[DB_ERROR] Failed to create indexes for {self.notifications_collection.name}: {e}")
-
-        # Context Engine State Indexes
-        context_engine_indexes = [
-            IndexModel([("user_id", ASCENDING), ("engine_category", ASCENDING)], unique=True, name="user_engine_category_unique_idx")
-        ]
-        try:
-            await self.context_engine_state_collection.create_indexes(context_engine_indexes)
-            print(f"[DB_INIT] Indexes ensured for collection: {self.context_engine_state_collection.name}")
-        except Exception as e:
-            print(f"[DB_ERROR] Failed to create indexes for {self.context_engine_state_collection.name}: {e}")
 
         # Context Engine State Indexes
         context_engine_indexes = [
@@ -135,9 +120,12 @@ class MongoManager:
 
     async def get_all_chat_ids_for_user(self, user_id: str) -> List[str]:
         """Retrieve all chat IDs for a given user."""
+        # Modified to sort by last_updated to help determine the most recent chat
         if not user_id:
             return []
-        cursor = self.chat_history_collection.find({"user_id": user_id}, {"chat_id": 1})
+        cursor = self.chat_history_collection.find(
+            {"user_id": user_id}, {"chat_id": 1, "last_updated": 1}
+        ).sort("last_updated", DESCENDING)
         chat_ids = [doc["chat_id"] for doc in await cursor.to_list(length=None)]
         return chat_ids
 
@@ -202,25 +190,3 @@ class MongoManager:
             upsert=True
         )
         return result.modified_count > 0 or result.upserted_id is not None
-
-    # --- Context Engine State Methods ---
-    async def get_context_engine_state(self, user_id: str, engine_category: str) -> Optional[Dict]:
-        """Retrieve the state for a specific context engine for a user."""
-        if not user_id or not engine_category:
-            return None
-        state_doc = await self.context_engine_state_collection.find_one(
-            {"user_id": user_id, "engine_category": engine_category}
-        )
-        return state_doc.get("state_data") if state_doc else None
-
-    async def update_context_engine_state(self, user_id: str, engine_category: str, state_data: Dict) -> bool:
-        """Update or create the state for a specific context engine for a user."""
-        if not user_id or not engine_category or state_data is None: # Allow empty dict for state_data
-            return False
-        result = await self.context_engine_state_collection.update_one(
-            {"user_id": user_id, "engine_category": engine_category},
-            {"$set": {"state_data": state_data, "last_updated": datetime.datetime.now(datetime.timezone.utc)}},
-            upsert=True
-        )
-        return result.modified_count > 0 or result.upserted_id is not None
-

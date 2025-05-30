@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 import asyncio
 import time
+import json # Added for json.dumps
 from server.db.mongo_manager import MongoManager # Import MongoManager
 
 class BaseContextEngine(ABC):
@@ -9,14 +10,15 @@ class BaseContextEngine(ABC):
 
     def __init__(self, user_id, task_queue, memory_backend, websocket_manager, chats_db_lock, notifications_db_lock):
         print(f"BaseContextEngine.__init__ started for user_id: {user_id}")
-        self.user_id = user_id
-        self.task_queue = task_queue
-        self.memory_backend = memory_backend
-        self.websocket_manager = websocket_manager
-        self.chats_db_lock = chats_db_lock
-        self.notifications_db_lock = notifications_db_lock
-        self.mongo_manager = MongoManager() # Initialize MongoManager
-        self.context = asyncio.run(self.load_context()) # Await the async load_context
+        self.user_id: str = user_id
+        self.task_queue = task_queue # Assuming this is an instance of TaskQueue
+        self.memory_backend = memory_backend # Assuming this is an instance of MemoryBackend
+        self.websocket_manager = websocket_manager # Assuming this is an instance of WebSocketManager
+        # self.chats_db_lock = chats_db_lock # Remnant from file-based system
+        # self.notifications_db_lock = notifications_db_lock # Remnant from file-based system
+        self.mongo_manager = MongoManager() # Initialize MongoManager for this engine instance
+        self.context: dict = {} # Initialize context as empty, to be loaded by load_context
+        # asyncio.run(self.load_context()) # ERROR: Cannot call asyncio.run in __init__ of an async app
         print(f"BaseContextEngine.__init__ finished for user_id: {user_id}")
 
     async def load_context(self):
@@ -45,11 +47,12 @@ class BaseContextEngine(ABC):
 
     async def start(self):
         """Start the engine, running periodically every hour."""
-        pass
+        await self.load_context() # Load context when the engine effectively starts
+        # The actual periodic run logic will be in the derived classes or called by a scheduler
 
     async def run_engine(self):
         """Orchestrate fetching, processing, and generating outputs."""
-        self.context = self.load_context()
+        await self.load_context() # Ensure context is loaded before running
         print("BaseContextEngine.run_engine started")
         print("BaseContextEngine.run_engine - fetching new data")
         new_data = await self.fetch_new_data()
@@ -124,34 +127,26 @@ class BaseContextEngine(ABC):
 
     async def get_chat_history(self):
         """Retrieve the last 10 messages from the active chat."""
-:start_line:127
--------
         print("BaseContextEngine.get_chat_history started")
-        async with self.chats_db_lock:
-            print("BaseContextEngine.get_chat_history - acquired db_lock")
-            # Fetch active chat ID for the user
-            user_chat_data = await self.mongo_manager.get_collection("chats").find_one({"user_id": self.user_id})
-            if not user_chat_data or "active_chat_id" not in user_chat_data:
-                print("BaseContextEngine.get_chat_history - no active chat ID found for user, returning empty list")
-                return []
+        user_profile = await self.mongo_manager.get_user_profile(self.user_id)
+        active_chat_id = None
+        if user_profile and "userData" in user_profile and "active_chat_id" in user_profile["userData"]:
+            active_chat_id = user_profile["userData"]["active_chat_id"]
 
-            active_chat_id = user_chat_data["active_chat_id"]
-            print(f"BaseContextEngine.get_chat_history - active_chat_id: {active_chat_id} for user_id: {self.user_id}")
+        if not active_chat_id:
+            print(f"BaseContextEngine.get_chat_history - no active chat ID found for user {self.user_id}, returning empty list")
+            return []
 
-            # Fetch the specific chat messages
-            active_chat = await self.mongo_manager.get_collection("chat_messages").find_one(
-                {"user_id": self.user_id, "chat_id": active_chat_id}
-            )
+        print(f"BaseContextEngine.get_chat_history - active_chat_id: {active_chat_id} for user_id: {self.user_id}")
 
-            if active_chat and "messages" in active_chat:
-                history = active_chat["messages"][-10:]
-                print(f"BaseContextEngine.get_chat_history - returning last 10 messages: {history}")
-                print("BaseContextEngine.get_chat_history finished")
-                return history
-            else:
-                print("BaseContextEngine.get_chat_history - no active chat found or no messages, returning empty list")
-                print("BaseContextEngine.get_chat_history finished")
-                return []
+        # Fetch the specific chat messages using MongoManager's dedicated method
+        history = await self.mongo_manager.get_chat_history(self.user_id, active_chat_id)
+
+        # Return last 10 messages
+        last_10_messages = history[-10:] if history else []
+        print(f"BaseContextEngine.get_chat_history - returning last {len(last_10_messages)} messages.")
+        print("BaseContextEngine.get_chat_history finished")
+        return last_10_messages
 
     async def execute_outputs(self, output):
         """Execute the generated tasks, memory operations, and messages."""
@@ -193,35 +188,29 @@ class BaseContextEngine(ABC):
                     "isVisible": True,
                     "timestamp": datetime.utcnow().isoformat() + "Z"
                 }
-            print("BaseContextEngine.execute_outputs - processing message:", message)
-:start_line:188
--------
-            # Save to notifications collection in MongoDB
-            async with self.notifications_db_lock:
-                print("BaseContextEngine.execute_outputs - acquired notifications_db_lock")
-                
-                # Get the current max notification ID for the user
-                last_notification = await self.mongo_manager.get_collection("notifications").find_one(
-                    {"user_id": self.user_id},
-                    sort=[("id", -1)]
-                )
-                next_notification_id = (last_notification["id"] + 1) if last_notification else 1
+            print("BaseContextEngine.execute_outputs - processing message for user:", self.user_id, "Message:", message)
 
-                new_notification = {
-                    "user_id": self.user_id, # Ensure multi-tenancy
-                    "id": next_notification_id,
-                    "type": "new_message",
-                    "message_id": new_message["id"],
-                    "message": message,
-                    "timestamp": new_message["timestamp"]
-                }
-                print("BaseContextEngine.execute_outputs - adding notification:", new_notification)
-                await self.mongo_manager.get_collection("notifications").insert_one(new_notification)
-                print("BaseContextEngine.execute_outputs - saved notification to MongoDB")
-                
-                notification = {"type": "new_message", "message": message}
-                print("BaseContextEngine.execute_outputs - broadcasting notification:", notification)
-                await self.websocket_manager.broadcast(notification) # json.dumps is not needed here, websocket_manager handles it
+            # Add message to the user's active chat history
+            user_profile = await self.mongo_manager.get_user_profile(self.user_id)
+            active_chat_id = "context_engine_default_chat" # Fallback chat_id
+            if user_profile and "userData" in user_profile and "active_chat_id" in user_profile["userData"]:
+                active_chat_id = user_profile["userData"]["active_chat_id"]
+
+            await self.mongo_manager.add_chat_message(self.user_id, active_chat_id, new_message)
+            print(f"BaseContextEngine.execute_outputs - saved message to chat '{active_chat_id}' for user {self.user_id}")
+
+            # Add notification using MongoManager
+            notification_payload = {
+                "type": "context_engine_update", # Specific type for context engine messages
+                "message_id": new_message["id"], # Correlate with the chat message if needed
+                "text": message, # The actual content of the notification
+                "timestamp": new_message["timestamp"]
+            }
+            await self.mongo_manager.add_notification(self.user_id, notification_payload)
+            print(f"BaseContextEngine.execute_outputs - saved notification for user {self.user_id}")
+
+            await self.websocket_manager.send_personal_message(json.dumps({"type": "notification", "data": notification_payload}), self.user_id)
+            print(f"BaseContextEngine.execute_outputs - sent WebSocket notification to user {self.user_id}")
         else:
             print("BaseContextEngine.execute_outputs - no message to process")
         print("BaseContextEngine.execute_outputs finished")

@@ -4,16 +4,12 @@ from typing import Dict, Any, List, Union, Optional, Generator, Tuple
 from abc import ABC, abstractmethod
 from dotenv import load_dotenv
 from wrapt_timeout_decorator import *  # Importing timeout decorator for functions from wrapt_timeout_decorator library
-from .helpers import *  # Importing helper functions from helpers.py
+import json
 from sys import platform  # To get system platform information
-from fastapi import WebSocket
-from .app import IS_DEV_ENVIRONMENT # Import IS_DEV_ENVIRONMENT from app.py
-from server.db import MongoManager # Import MongoManager
-from server.app.app import mongo_manager # Import the global instance
 
 load_dotenv("server/.env")
 
-async def get_selected_model() -> Tuple[str, str]:
+def get_selected_model() -> Tuple[str, str]:
     """
     Fetches the selected model name and provider from the user profile database (MongoDB).
 
@@ -25,64 +21,29 @@ async def get_selected_model() -> Tuple[str, str]:
         Tuple[str, str]: A tuple containing the selected model name and the provider.
                          For example: ('gpt-4o', 'openai') or ('llama3.2:3b', 'llama3.2:3b').
     """
-    # This function is called at startup, so user_id is not available.
-    # For now, we'll use a placeholder or assume a default if user-specific model selection
-    # is only applied at runtime.
-    # If model selection is truly global or from a default user, this is fine.
-    # If it needs to be per-user at startup, that's a larger architectural change.
-    # For now, we'll assume a default or a global setting.
-    # A more robust solution would involve passing user_id to this function if it's called per-request.
     
-    # For now, let's assume a default model if no user context is available at this global init point.
-    # The actual user-specific model selection will happen at the endpoint level.
-    
-    # This function is called by runnables at initialization, which happens once globally.
-    # So, it cannot be user-specific here. It should return a default or system-wide selected model.
-    # The user's selected model will be applied at the endpoint level when invoking the runnable.
-    
-    # For now, we'll hardcode a default or read from env if available.
-    # The original code was reading from a single userProfileDb.json, implying a single user or a default.
-    
-    # Let's try to load a "default" user profile or a system-wide setting if available.
-    # Since the original was reading from a file, we can simulate a default profile.
-    
-    # For now, we'll return a default model. The actual model used for a user will be determined
-    # when the runnable is invoked with user-specific data.
-    
-    # The original `get_selected_model` was synchronous and read a local file.
-    # Making it async here means all its callers need to be `await`ed.
-    # This function is called by `get_chat_runnable`, `get_agent_runnable`, etc.
-    # These are called at global scope in `app.py` during initialization.
-    # This means `get_selected_model` cannot be `async` if called at global scope.
-    # I need to revert this to be synchronous or find another way.
-    # The `get_selected_model` is used by `BaseRunnable` subclasses during their `__init__`.
-    # `__init__` methods cannot be `async`.
-
-    # Reverting to synchronous behavior for get_selected_model,
-    # and it will *not* use mongo_manager directly here.
-    # Instead, model selection based on user profile will happen at the endpoint level
-    # when the runnable is invoked.
-    
-    # For now, I will keep the original logic of reading from a file for model selection,
-    # but acknowledge that this is a temporary workaround until a proper global config
-    # or dynamic model selection per request is implemented.
-    # Or, I can make it read from environment variables for a global default.
-    
+    # Read IS_DEV_ENVIRONMENT directly here to avoid circular import from app.py
+    IS_DEV_ENVIRONMENT_LOCAL = os.getenv("IS_DEV_ENVIRONMENT", "false").lower() in ("true", "1", "t", "y")
     # Let's make it read from environment variables for a global default model.
     # This is a better approach than relying on a local JSON file for global config.
     
     selected_model = os.getenv("BASE_MODEL_REPO_ID", "llama3.2:3b") # Default from env
     
-    if not IS_DEV_ENVIRONMENT and selected_model == "llama3.2:3b":
-        return "meta-llama/llama-3.2-3b-instruct:free", "openrouter"
-    elif selected_model == "openai":
-        return "gpt-4o", "openai"
-    elif selected_model == "claude":
-        return "claude-3-7-sonnet-20250219", "claude"
-    elif selected_model == "gemini":
-        return "gemini-1.5-flash-latest", "gemini" # Assuming a default Gemini model
-    else:
-        return selected_model, selected_model
+    
+    # UNCOMMENT THIS BLOCK IF YOU WANT TO IMPLEMENT DIFFERENT MODELS.
+    # if IS_DEV_ENVIRONMENT_LOCAL: # Explicitly handle dev environment
+    #     return "llama3.2:3b", "llama3.2:3b" # Force Ollama and local model tag
+    # elif selected_model == "openai":
+    #     return "gpt-4o", "openai"
+    # elif selected_model == "claude":
+    #     return "claude-3-7-sonnet-20250219", "claude"
+    # elif selected_model == "gemini":
+    #     return "gemini-2.5-flash-preview-05-20", "gemini" # Assuming a default Gemini model
+    # elif selected_model == "llama3.2:3b": # This covers the case where BASE_MODEL_REPO_ID is default and not dev env
+    #     return "meta-llama/llama-3.2-3b-instruct:free", "openrouter"
+    # else: # Fallback for any other explicitly set model
+    #     return selected_model, selected_model
+    return "llama3.2:3b", "llama3.2:3b"
 
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional, Union, Generator
@@ -152,9 +113,14 @@ class BaseRunnable(ABC):
         # Always start with the system prompt
         self.messages = [{"role": "system", "content": self.system_prompt_template}]
         
-        # If chat_history is provided in inputs, extend messages with it
+        # If chat_history is provided in inputs, format and extend messages with it
         if "chat_history" in inputs and isinstance(inputs["chat_history"], list):
-            self.messages.extend(inputs["chat_history"])
+            formatted_history = []
+            for msg in inputs["chat_history"]:
+                role = "user" if msg.get("isUser") else "assistant"
+                content = msg.get("message", "")
+                formatted_history.append({"role": role, "content": content})
+            self.messages.extend(formatted_history)
             
         # Append the current user prompt
         self.messages.append({"role": "user", "content": user_prompt})
@@ -216,8 +182,18 @@ class OllamaRunnable(BaseRunnable):
         Initializes an OllamaRunnable instance.
         Inherits arguments from BaseRunnable.
         """
-        self.model_url = "http://localhost:11434"  # Local Ollama instance
-        super().__init__(model_url=self.model_url, *args, **kwargs)
+        # OllamaRunnable should use a specific, hardcoded URL.
+        ollama_specific_url = "http://localhost:11434/api/chat"
+
+        # Create a mutable copy of kwargs to safely modify it.
+        # We need to ensure that 'model_url' from the calling site (which might be different)
+        # does not conflict with the 'model_url' we are explicitly passing for Ollama.
+        init_kwargs = kwargs.copy()
+        init_kwargs.pop('model_url', None)  # Remove 'model_url' if it exists in kwargs
+
+        # Call super with the specific Ollama URL and the modified args/kwargs.
+        # BaseRunnable's __init__ will set self.model_url to ollama_specific_url.
+        super().__init__(model_url=ollama_specific_url, *args, **init_kwargs)
 
     def invoke(self, inputs: Dict[str, Any]) -> Union[Dict[str, Any], str, None]:
         """
@@ -279,6 +255,7 @@ class OllamaRunnable(BaseRunnable):
             "options": {"num_ctx": 4096}, # Set context window size
         }
 
+
         with requests.post(self.model_url, json=payload, stream=True) as response:
             for line in response.iter_lines(decode_unicode=True):
                 if line:
@@ -301,6 +278,7 @@ class OllamaRunnable(BaseRunnable):
         Raises:
             ValueError: If the request fails or the JSON response cannot be decoded.
         """
+
         if response.status_code == 200:
             try:
                 data = response.json().get("message", {}).get("content", "")
@@ -1040,28 +1018,6 @@ class GeminiRunnable(BaseRunnable):
 
         yield self._handle_response(response)
         
-
-class WebSocketManager:
-    def __init__(self):
-        self.active_connections: List[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
-
-    async def send_personal_message(self, message: str, websocket: WebSocket):
-        await websocket.send_text(message)
-
-    async def broadcast(self, message: str):
-        for connection in self.active_connections:
-            try:
-                await connection.send_text(message)
-            except Exception as e:
-                print(f"Error broadcasting message to connection: {e}")
-                self.disconnect(connection) # Remove broken connection
 
 # Mapping of provider names to their respective Runnable classes
 RUNNABLE_MAP: Dict[str, type[BaseRunnable]] = {

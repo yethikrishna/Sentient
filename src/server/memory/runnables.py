@@ -11,7 +11,7 @@ from server.app.helpers import *  # Importing helper functions from helpers.py
 
 load_dotenv("server/.env")
 
-def get_chat_runnable(chat_history: list[dict]) -> BaseRunnable:
+def get_chat_runnable(chat_history: list[dict]) -> "BaseRunnable":
     """
     Creates and configures a Runnable for handling chat interactions based on selected model.
 
@@ -56,7 +56,7 @@ def get_chat_runnable(chat_history: list[dict]) -> BaseRunnable:
     return runnable
 
 
-def get_graph_decision_runnable() -> BaseRunnable:
+def get_graph_decision_runnable() -> "BaseRunnable":
     """
     Creates and configures a Runnable for making decisions about graph operations (CRUD) based on selected model.
 
@@ -93,7 +93,7 @@ def get_graph_decision_runnable() -> BaseRunnable:
     return graph_decision_runnable
 
 
-def get_graph_analysis_runnable() -> BaseRunnable:
+def get_graph_analysis_runnable() -> "BaseRunnable":
     """
     Creates and configures a Runnable for analyzing graph data based on selected model.
 
@@ -132,7 +132,7 @@ def get_graph_analysis_runnable() -> BaseRunnable:
     return graph_analysis_runnable
 
 
-def get_text_dissection_runnable() -> BaseRunnable:
+def get_text_dissection_runnable() -> "BaseRunnable":
     """
     Creates and configures a Runnable for dissecting text into predefined categories based on selected model.
 
@@ -170,7 +170,7 @@ def get_text_dissection_runnable() -> BaseRunnable:
     return text_dissection_runnable
 
 
-def get_information_extraction_runnable() -> BaseRunnable:
+def get_information_extraction_runnable() -> "BaseRunnable":
     """
     Creates and configures a Runnable for extracting structured information (entities and relationships) from text based on selected model.
 
@@ -207,7 +207,7 @@ def get_information_extraction_runnable() -> BaseRunnable:
     return information_extraction_runnable
 
 
-def get_text_conversion_runnable() -> BaseRunnable:
+def get_text_conversion_runnable() -> "BaseRunnable":
     """
     Creates and configures a Runnable for converting structured graph data into unstructured text based on selected model.
 
@@ -243,7 +243,7 @@ def get_text_conversion_runnable() -> BaseRunnable:
 
     return text_conversion_runnable
 
-def get_interest_extraction_runnable():
+def get_interest_extraction_runnable() -> "BaseRunnable":
     """Configure and return a Runnable for extracting user interests from context."""
     # Model selection logic (assumes get_selected_model exists)
     model_mapping = {
@@ -275,7 +275,7 @@ def get_interest_extraction_runnable():
     return interest_extraction_runnable
 
 
-def get_query_classification_runnable() -> BaseRunnable:
+def get_query_classification_runnable() -> "BaseRunnable":
     """
     Creates and configures a Runnable for classifying user queries into predefined categories based on selected model.
 
@@ -313,7 +313,7 @@ def get_query_classification_runnable() -> BaseRunnable:
     return query_classification_runnable
 
 
-def get_fact_extraction_runnable() -> BaseRunnable:
+def get_fact_extraction_runnable() -> "BaseRunnable":
     """
     Creates and configures a Runnable for extracting factual points from a paragraph of text based on selected model.
 
@@ -351,7 +351,7 @@ def get_fact_extraction_runnable() -> BaseRunnable:
     return fact_extraction_runnable
 
 
-def get_text_summarizer_runnable() -> BaseRunnable:
+def get_text_summarizer_runnable() -> "BaseRunnable":
     """
     Creates and configures a Runnable for summarizing text based on selected model.
 
@@ -387,7 +387,7 @@ def get_text_summarizer_runnable() -> BaseRunnable:
     return text_summarizer_runnable
 
 
-def get_text_description_runnable() -> BaseRunnable:
+def get_text_description_runnable() -> "BaseRunnable":
     """
     Creates and configures a Runnable for generating descriptive text for entities or queries based on selected model.
 

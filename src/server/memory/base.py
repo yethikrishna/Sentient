@@ -5,7 +5,7 @@ import uuid
 from typing import Dict, List, Optional
 
 import motor.motor_asyncio
-from pymongo import ASCENDING, DESCENDING, IndexModel
+from pymongo import ASCENDING, DESCENDING, IndexModel, ReturnDocument
 from pymongo.results import UpdateResult, DeleteResult
 
 # MongoDB Configuration
@@ -60,7 +60,7 @@ class MemoryQueue:
             {"status": "pending"},
             {"$set": {"status": "processing", "processing_started_at": datetime.datetime.now(datetime.timezone.utc)}},
             sort=[("timestamp", ASCENDING)],
-            return_document=motor.motor_asyncio.ReturnDocument.AFTER
+            return_document=ReturnDocument.AFTER
         )
 
     async def complete_operation(self, user_id: str, operation_id: str, result: Optional[str] = None, error: Optional[str] = None, status: str = "completed"):

@@ -46,7 +46,7 @@ import {
 	getReferralCodeFromKeytar
 } from "../utils/auth.js"
 import { getPrivateData } from "../utils/api.js" // API utility (may need user context)
-import { createAuthWindow, createLogoutWindow } from "./auth.js" // Window creation functions
+import { createAuthWindow } from "./auth.js" // Window creation functions
 
 // --- Constants and Path Configurations ---
 const isWindows = process.platform === "win32"
@@ -359,48 +359,13 @@ export const createAppWindow = () => {
 	}
 
 	// --- Window Close Confirmation Logic ---
-	let isExiting = false // Flag to prevent multiple exit confirmation dialogs
-	mainWindow.on("close", async (event) => {
+	mainWindow.on("close", (event) => {
 		if (!mainWindow?.isMainWindow) {
-			// If this isn't the main window (e.g., auth window), allow normal close
 			return
 		}
-		if (!isExiting) {
-			event.preventDefault() // Prevent immediate close
-			isExiting = true
-			try {
-				const { response } = await dialog.showMessageBox(mainWindow, {
-					type: "question",
-					buttons: ["Yes", "No"],
-					defaultId: 1, // "No" is default
-					title: "Confirm Exit",
-					message: "Are you sure you want to quit Sentient?"
-				})
-
-				if (response === 0) {
-					// "Yes"
-					console.log("User confirmed application exit.")
-					await dialog.showMessageBox(mainWindow, {
-						type: "info",
-						message: "Thank you for using Sentient! Closing now...",
-						title: "Quitting Sentient"
-					})
-					mainWindow.isMainWindow = false // Unmark as main before quitting
-					setTimeout(() => app.quit(), 500) // Allow time for dialogs, then quit
-				} else {
-					// "No" or dialog dismissed
-					console.log("User cancelled application exit.")
-					isExiting = false // Reset flag
-				}
-			} catch (error) {
-				console.error("Error during exit confirmation dialog:", error)
-				dialog.showErrorBox(
-					"Exit Error",
-					`An error occurred during the shutdown process: ${error.message}.`
-				)
-				isExiting = false // Reset flag on error
-			}
-		}
+		// Allow the app to close directly without a confirmation dialog
+		console.log("Main window closing. Quitting application.")
+		app.quit()
 	})
 
 	// On Window Closed: Clean up resources
@@ -461,7 +426,7 @@ const checkUserInfo = async () => {
 		BrowserWindow.getAllWindows().forEach((win) => {
 			if (!win.isLogoutWindow) win.close()
 		})
-		createLogoutWindow() // Initiate logout process
+		// createLogoutWindow() // Initiate logout process (removed as per new logout flow)
 		throw error // Propagate error to stop further startup actions if needed
 	}
 }
@@ -523,16 +488,11 @@ export const checkValidity = async () => {
 
 		// Close other windows except auth/logout windows
 		BrowserWindow.getAllWindows().forEach((win) => {
-			if (
-				win &&
-				!win.isDestroyed() &&
-				!win.isAuthWindow &&
-				!win.isLogoutWindow
-			) {
+			if (win && !win.isDestroyed() && !win.isLogoutWindow) {
 				win.close()
 			}
 		})
-		createAuthWindow() // Guide user to re-authenticate
+		createAuthWindow(mainWindow) // Guide user to re-authenticate
 		throw error // Propagate error
 	}
 }
@@ -899,10 +859,11 @@ const startApp = async () => {
 			})
 		} else {
 			console.log(
-				"[ELECTRON] [DEV_MODE] User not authenticated. Creating authentication window."
+				"[ELECTRON] [DEV_MODE] User not authenticated. Creating main window and then authentication window."
 			)
-			createAuthWindow() // Show login screen
-			// The auth.js createAuthWindow's callback will handle creating the app window on successful login
+			createAppWindow() // Create the main window first
+			createAuthWindow(mainWindow) // Show login screen in the main window
+			// The auth.js createAuthWindow's callback will handle redirecting back to the main app URL after successful login
 		}
 	}
 }
@@ -1056,11 +1017,12 @@ ipcMain.on("log-out", () => {
 	}
 	// Close all application windows except dedicated logout/auth windows
 	BrowserWindow.getAllWindows().forEach((win) => {
-		if (!win.isLogoutWindow && !win.isAuthWindow) {
+		if (!win.isLogoutWindow) {
 			win.close()
 		}
 	})
-	createLogoutWindow() // `createLogoutWindow` handles token clearing and showing the Auth0 logout page.
+	logout()
+	app.quit()
 })
 
 // IPC: Fetch Local Pricing Plan (from Keytar)

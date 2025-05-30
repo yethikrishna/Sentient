@@ -7,15 +7,20 @@ from dotenv import load_dotenv
 from server.memory.runnables import *
 from server.memory.functions import *
 from server.memory.dual_memory import MemoryManager
-from  server.memory.base import *  # Import the new MemoryQueue
+from server.memory.base import *  # Import the new MemoryQueue
+from server.db.mongo_manager import MongoManager # Import MongoManager
 from server.app.base import *
 
 load_dotenv("server/.env")
 
 class MemoryBackend:
-    def __init__(self):
+    def __init__(self, mongo_manager: MongoManager):
         """Initialize the memory backend with both long-term and short-term agents and MemoryQueue."""
-        print("Initializing MemoryBackend...")
+self.mongo_manager = mongo_manager # Use the passed MongoManager instance
+        print("MongoManager instance received by MemoryBackend.")
+print("Initializing MemoryBackend...")
+print("Initializing MemoryBackend...")
+        
         # Long-term memory (Neo4j)
         print("Initializing HuggingFaceEmbedding...")
         self.embed_model = HuggingFaceEmbedding(model_name=os.environ["EMBEDDING_MODEL_REPO_ID"])
@@ -36,10 +41,10 @@ class MemoryBackend:
         self.text_conv_runnable = get_text_conversion_runnable()
         print("Graph runnables initialized.")
 
-        # Short-term memory (SQLite)
-        print("Initializing MemoryManager (Short-term memory)...")
-        self.memory_manager = MemoryManager(db_path="memory.db", model_name=os.environ["BASE_MODEL_REPO_ID"])
-        print("MemoryManager initialized.")
+:start_line:40
+-------
+        # Short-term memory (MongoDB)
+        self.memory_manager = MemoryManager(mongo_manager=self.mongo_manager, model_name=os.environ["BASE_MODEL_REPO_ID"])
 
         # Memory type classifiers
         print("Initializing memory type classifiers...")

@@ -1,12 +1,19 @@
 from sentence_transformers import SentenceTransformer
 import numpy as np
 from numpy.linalg import norm
-import sqlite3
+:start_line:4
+-------
 from datetime import datetime, date, timedelta
 import spacy
 from typing import List, Dict, Optional
 import os
 from dotenv import load_dotenv
+import numpy as np
+from numpy.linalg import norm
+import motor.motor_asyncio
+from pymongo import ASCENDING, DESCENDING, IndexModel
+from server.db.mongo_manager import MongoManager
+from server.memory.base import MEMORY_COLLECTION_NAME, MONGO_DB_NAME, MONGO_URI
 
 from .formats import *
 from .helpers import *
@@ -17,82 +24,47 @@ load_dotenv("server/.env")
 
 nlp = spacy.load("en_core_web_sm")
 
-# SQLite adapters and converters (unchanged)
-def adapt_date_iso(val: date) -> str:
-    return val.isoformat()
-
-def adapt_datetime_iso(val: datetime) -> str:
-    return val.isoformat()
-
-def adapt_datetime_epoch(val: datetime) -> int:
-    return int(val.timestamp())
-
-sqlite3.register_adapter(date, adapt_date_iso)
-sqlite3.register_adapter(datetime, adapt_datetime_iso)
-
-def convert_date(val: bytes) -> date:
-    return date.fromisoformat(val.decode())
-
-def convert_datetime(val: bytes) -> datetime:
-    return datetime.datetime.fromisoformat(val.decode())
-
-def convert_timestamp(val: bytes) -> datetime:
-    return datetime.datetime.fromtimestamp(int(val))
-
-sqlite3.register_converter("date", convert_date)
-sqlite3.register_converter("datetime", convert_datetime)
-sqlite3.register_converter("timestamp", convert_timestamp)
-
 class MemoryManager:
-    def __init__(self, db_path: str = "memory.db", model_name: str = os.environ["BASE_MODEL_REPO_ID"]):
+    def __init__(self, mongo_manager: MongoManager, model_name: str = os.environ["BASE_MODEL_REPO_ID"]):
         print("Initializing MemoryManager...")
-        self.db_path = db_path
+        self.mongo_manager = mongo_manager
+        self.memory_collection = self.mongo_manager.db[MEMORY_COLLECTION_NAME]
         self.model_name = model_name
         print("Loading SentenceTransformer model...")
         self.embedding_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
         print("SentenceTransformer model loaded.")
         self.categories = {
-            "PERSONAL": ["home", "hobby", "diary", "self", "goals", "habit", "routine", "personal"],
-            "WORK": ["office", "business", "client", "report", "presentation", "deadline", "manager", "workplace"],
-            "SOCIAL": ["meetup", "gathering", "party", "social", "community", "group", "network"],
-            "RELATIONSHIP": ["friend", "family", "partner", "colleague", "neighbor"],
-            "FINANCE": ["money", "bank", "loan", "debt", "payment", "buy", "sell"],
-            "SPIRITUAL": ["pray", "meditation", "temple", "church", "mosque"],
-            "CAREER": ["job", "work", "interview", "meeting", "project"],
-            "TECHNOLOGY": ["phone", "computer", "laptop", "device", "software"],
-            "HEALTH": ["doctor", "medicine", "exercise", "diet", "hospital"],
-            "EDUCATION": ["study", "school", "college", "course", "learn"],
-            "TRANSPORTATION": ["car", "bike", "bus", "train", "flight"],
-            "ENTERTAINMENT": ["movie", "game", "music", "party", "book"],
-            "TASKS": ["todo", "deadline", "appointment", "schedule", "reminder"]
+            "PERSONAL_WELLBEING": ["personal", "health", "lifestyle", "values", "preferences", "well-being", "self-care", "emotions", "habits", "routines", "diet", "exercise", "mental health", "physical health"],
+            "PROFESSIONAL_ACADEMIC": ["career", "work", "education", "achievements", "challenges", "job", "study", "school", "college", "university", "degree", "course", "project", "promotion", "skill", "learning", "academic", "professional development"],
+            "SOCIAL_RELATIONSHIPS": ["relationships", "socials", "social", "friends", "family", "partner", "colleagues", "networking", "community", "gatherings", "events", "interactions"],
+            "FINANCIAL": ["financial", "money", "bank", "loan", "debt", "payment", "investment", "budget", "income", "expense", "savings"],
+            "GOALS_TASKS": ["goals", "tasks", "objectives", "targets", "to-do", "deadline", "appointment", "schedule", "reminder", "aspirations", "planning"],
+            "INTERESTS_HOBBIES": ["interests", "hobbies", "entertainment", "recreation", "leisure", "movies", "games", "music", "books", "art", "sports", "travel", "creative pursuits"],
+            "LOGISTICS_PRACTICAL": ["transportation", "technology", "miscellaneous", "logistics", "practical", "devices", "software", "apps", "car", "travel", "home", "daily errands", "general information"],
+            "SPIRITUAL": ["spiritual", "faith", "meditation", "religion", "beliefs", "mindfulness", "inner peace"]
         }
-        print("Initializing database...")
-        self.initialize_database()
+        print("Ensuring MongoDB indexes for memories...")
+        self.initialize_mongodb_indexes()
         print("MemoryManager initialized.")
 
-    def initialize_database(self):
-        print("Initializing SQLite database...")
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        for category in self.categories.keys():
-            print(f"Creating table for category: {category.lower()}...")
-            cursor.execute(f'''
-            CREATE TABLE IF NOT EXISTS {category.lower()} (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                original_text TEXT NOT NULL,
-                keywords TEXT NOT NULL,
-                embedding BLOB NOT NULL,
-                entities TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                expiry_at TIMESTAMP NOT NULL,
-                is_active BOOLEAN DEFAULT 1
-            )
-            ''')
-            print(f"Table for category: {category.lower()} created.")
-        conn.commit()
-        conn.close()
-        print("SQLite database initialized.")
+    def initialize_mongodb_indexes(self):
+        """
+        Ensures necessary indexes for the memory collection.
+        This is called during MemoryManager initialization.
+        """
+        indexes = [
+            IndexModel([("user_id", ASCENDING), ("category", ASCENDING)], name="user_category_idx"),
+            IndexModel([("user_id", ASCENDING), ("created_at", DESCENDING)], name="user_created_at_desc_idx"),
+            IndexModel([("expiry_at", ASCENDING)], name="expiry_at_idx", expireAfterSeconds=0) # TTL index
+        ]
+        try:
+            # Use asyncio.run to run the async index creation in sync context
+            # This is generally okay for startup tasks
+            import asyncio
+            asyncio.run(self.memory_collection.create_indexes(indexes))
+            print(f"[DB_INIT] Indexes ensured for memory collection: {self.memory_collection.name}")
+        except Exception as e:
+            print(f"[DB_ERROR] Failed to create indexes for {self.memory_collection.name}: {e}")
 
     def compute_embedding(self, text: str) -> bytes:
         print(f"Computing embedding for text: '{text}...'")
@@ -171,18 +143,20 @@ class MemoryManager:
             print(f"Error in extract_and_invoke_memory: {e}")
             return {"memories": []}
 
-    def update_memory(self, user_id: str, current_query: str) -> Optional[Dict]:
+:start_line:169
+-------
+    async def update_memory(self, user_id: str, current_query: str) -> Optional[Dict]:
         memories = self.extract_and_invoke_memory(current_query)
         for mem in memories.get('memories', []):
             category = mem['category'].lower()
-            relevant_memories = self.get_relevant_memories(user_id, mem['text'], category)
+            relevant_memories = await self.get_relevant_memories(user_id, mem['text'], category)
             if not relevant_memories:
                 retention_days = self.expiry_date_decision(mem['text'])
-                self.store_memory(user_id, mem['text'], retention_days, category)
+                await self.store_memory(user_id, mem['text'], retention_days, category)
                 continue
 
             memory_context = [
-                f"Memory {idx+1}: {memory['text']} (ID: {memory['id']}, Created: {memory['created_at']}, Expires: {memory['expiry_at']})"
+                f"Memory {idx+1}: {memory['text']} (ID: {memory['_id']}, Created: {memory['created_at']}, Expires: {memory['expiry_at']})"
                 for idx, memory in enumerate(relevant_memories)
             ]
 
@@ -205,52 +179,51 @@ class MemoryManager:
                     print(f"Error in get_processed_json_response_update: {e}")
                     return {"update": []}
 
-            def get_memory_category(cursor: sqlite3.Cursor, memory_id: int) -> Optional[str]:
-                category_tables = list(self.categories.keys())
-                for cat in category_tables:
-                    cursor.execute(f'SELECT 1 FROM {cat.lower()} WHERE id = ?', (memory_id,))
-                    if cursor.fetchone():
-                        return cat.lower()
-                return None
-
             update_details = get_processed_json_response_update(mem['text'], memory_context)
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
             updates = update_details.get('update', [])
             if updates:
                 for update in updates:
                     memory_id = update["id"]
                     updated_text = update["text"]
-                    original_category = get_memory_category(cursor, memory_id)
-                    if not original_category:
-                        continue
+                    # For MongoDB, we don't need to determine original_category from DB
+                    # as it's part of the document or can be passed directly.
+                    # Assuming 'category' from the initial 'mem' is the target category.
+                    original_category = category # Use the category determined earlier
+
                     new_embedding = self.compute_embedding(updated_text)
                     query_keywords = self.extract_keywords(updated_text)
                     retention_days = self.expiry_date_decision(updated_text)
-                    cursor.execute(f'''
-                    UPDATE {original_category}
-                    SET original_text = ?, embedding = ?, keywords = ?, expiry_at = datetime('now', '+{retention_days} days')
-                    WHERE id = ?
-                    ''', (updated_text, new_embedding, ','.join(query_keywords), memory_id))
-            conn.commit()
-            conn.close()
+                    
+                    # Convert memory_id to ObjectId if it's a string representation of ObjectId
+                    # If it's a custom string ID, use it directly.
+                    from bson.objectid import ObjectId
+                    try:
+                        obj_memory_id = ObjectId(memory_id)
+                    except:
+                        obj_memory_id = memory_id # Assume it's a string ID if not ObjectId-compatible
+
+                    await self.update_memory_crud(
+                        user_id=user_id,
+                        category=original_category,
+                        memory_id=obj_memory_id,
+                        new_text=updated_text,
+                        retention_days=retention_days
+                    )
             
-    def update_memory_crud(self, user_id: str, category: str, memory_id: int, new_text: str, retention_days: int):
+    async def update_memory_crud(self, user_id: str, category: str, memory_id: Any, new_text: str, retention_days: int):
         """
-        Updates an existing memory record using direct CRUD operations.
+        Updates an existing memory record using direct CRUD operations in MongoDB.
 
         Args:
             user_id (str): The ID of the user owning the memory.
-            category (str): The category table where the memory resides.
-            memory_id (int): The ID of the memory record to update.
+            category (str): The category of the memory.
+            memory_id (Any): The ID of the memory record to update (can be ObjectId or str).
             new_text (str): The new text content for the memory.
             retention_days (int): The new retention period in days (e.g., 1-90).
 
         Raises:
             ValueError: If the category is invalid, retention_days is out of range,
                         the memory is not found, or the memory does not belong to the user.
-            sqlite3.Error: If a database error occurs.
-            RuntimeError: If embedding computation fails.
             Exception: For other unexpected errors.
         """
         print(f"Attempting CRUD update for memory ID {memory_id} in category '{category}' for user '{user_id}'")
@@ -261,129 +234,112 @@ class MemoryManager:
         if category_lower not in [cat.lower() for cat in self.categories.keys()]:
             raise ValueError(f"Invalid category specified: {category}")
 
-        if not (1 <= retention_days <= 90): # Use consistent bounds (e.g., 1-90)
+        if not (1 <= retention_days <= 90):
             raise ValueError("Retention days must be between 1 and 90.")
 
         if not new_text:
             raise ValueError("Memory text cannot be empty.")
 
-        conn = None # Initialize conn to None for finally block
         try:
-            # 2. Connect to DB
-            conn = sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
-            cursor = conn.cursor()
-
-            # 3. Verify Ownership and Existence
-            cursor.execute(f'SELECT user_id FROM {category_lower} WHERE id = ?', (memory_id,))
-            result = cursor.fetchone()
-
-            if not result:
-                raise ValueError(f"Memory with ID {memory_id} not found in category '{category_lower}'")
-
-            if result[0] != user_id:
-                # Security: Raise an error indicating forbidden access or not found
-                raise ValueError(f"Memory ID {memory_id} does not belong to user {user_id} or access denied.")
-
-            # 4. Prepare Data for Update
-            new_embedding = self.compute_embedding(new_text) # Can raise RuntimeError
+            # 2. Prepare Data for Update
+            new_embedding = self.compute_embedding(new_text)
             new_keywords = self.extract_keywords(new_text)
-            new_keywords_str = ','.join(new_keywords)
-            new_expiry_at = datetime.datetime.now() + timedelta(days=retention_days) # Use adapter-compatible datetime
+            new_expiry_at = datetime.now() + timedelta(days=retention_days)
 
-            # 5. Execute SQL UPDATE
-            sql = f'''
-                UPDATE {category_lower}
-                SET original_text = ?,
-                    keywords = ?,
-                    embedding = ?,
-                    expiry_at = ?
-                    -- Optionally update other fields like is_active=1 if needed
-                WHERE id = ? AND user_id = ?
-            '''
-            params = (new_text, new_keywords_str, new_embedding, new_expiry_at, memory_id, user_id)
-            cursor.execute(sql, params)
+            # 3. Verify Ownership and Existence (find_one_and_update handles this implicitly)
+            # We'll use the _id field for MongoDB documents
+            query = {"_id": memory_id, "user_id": user_id, "category": category_lower}
+            
+            update_data = {
+                "original_text": new_text,
+                "keywords": new_keywords,
+                "embedding": new_embedding.tolist(), # Store as list for MongoDB
+                "expiry_at": new_expiry_at,
+                "last_updated": datetime.now()
+            }
 
-            # Check if the update actually affected a row (optional but good practice)
-            if cursor.rowcount == 0:
-                 # This shouldn't happen due to the checks above, but handle defensively
-                 raise sqlite3.Error(f"Failed to update memory ID {memory_id}. Row not found or conditions not met.")
+            result = await self.memory_collection.update_one(query, {"$set": update_data})
 
-            # 6. Commit Transaction
-            conn.commit()
+            if result.matched_count == 0:
+                raise ValueError(f"Memory with ID {memory_id} not found or does not belong to user {user_id} in category '{category_lower}'")
+            
+            if result.modified_count == 0:
+                print(f"No changes made to memory ID {memory_id}. Document already up-to-date or no fields changed.")
+
             print(f"Successfully updated memory ID {memory_id} in category '{category_lower}'")
 
-        except (sqlite3.Error, ValueError, RuntimeError) as e:
-            print(f"Error during CRUD update for memory ID {memory_id}: {e}")
-            if conn:
-                conn.rollback() # Rollback changes on error
-            raise # Re-raise the specific exception for FastAPI to handle
-
         except Exception as e:
-            print(f"Unexpected error during CRUD update for memory ID {memory_id}: {e}")
-            if conn:
-                conn.rollback()
-            # Re-raise a generic exception or the original one
-            raise Exception(f"An unexpected error occurred while updating memory: {e}")
+            print(f"Error during CRUD update for memory ID {memory_id}: {e}")
+            raise # Re-raise the specific exception
 
-        finally:
-            # 7. Close Connection
-            if conn:
-                conn.close()
-
-    def store_memory(self, user_id: str, text: str, retention_days: int, category: str) -> bool:
+    async def store_memory(self, user_id: str, text: str, retention_days: int, category: str) -> bool:
         print(f"Attempting to store memory: '{text}...' in category '{category}'")
         try:
             keywords = self.extract_keywords(text)
             embedding = self.compute_embedding(text)
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            current_time = datetime.datetime.now()
+            current_time = datetime.now()
             expiry_time = current_time + timedelta(days=retention_days)
-            cursor.execute(f'''
-            INSERT INTO {category.lower()} (user_id, original_text, keywords, embedding, created_at, expiry_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ''', (user_id, text, ','.join(keywords), embedding, current_time, expiry_time))
-            conn.commit()
-            print(f"Inserted memory into {category.lower()}: '{text}...' with expiry at {expiry_time}")
-            conn.close()
+
+            memory_document = {
+                "user_id": user_id,
+                "original_text": text,
+                "keywords": keywords,
+                "embedding": embedding.tolist(), # Convert numpy array to list for MongoDB
+                "entities": [], # Placeholder, can be extracted if needed
+                "created_at": current_time,
+                "expiry_at": expiry_time,
+                "is_active": True,
+                "category": category.lower() # Store category in the document
+            }
+            
+            await self.memory_collection.insert_one(memory_document)
+            print(f"Inserted memory into MongoDB collection '{self.memory_collection.name}': '{text}...' with expiry at {expiry_time}")
             return True
         except Exception as e:
             print(f"Error storing memory: {e}")
             return False
 
-    def get_relevant_memories(self, user_id: str, query: str, category: str, similarity_threshold: float = 0.5) -> List[Dict]:
+    async def get_relevant_memories(self, user_id: str, query: str, category: str, similarity_threshold: float = 0.5) -> List[Dict]:
         print(f"Retrieving memories for user '{user_id}' in category '{category}' for query: '{query}...'")
         query_embedding = self.embedding_model.encode(query)
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute(f'''
-        SELECT id, original_text, keywords, embedding, created_at, expiry_at
-        FROM {category.lower()}
-        WHERE user_id = ? AND is_active = 1 AND datetime('now') < expiry_at
-        ''', (user_id,))
+        
+        # Find memories for the user and category that are active and not expired
+        current_time = datetime.now()
+        cursor = self.memory_collection.find({
+            "user_id": user_id,
+            "category": category.lower(),
+            "is_active": True,
+            "expiry_at": {"$gt": current_time}
+        })
+        
         memories = []
-        for row in cursor.fetchall():
-            memory_embedding = self.bytes_to_array(row[3])
+        async for doc in cursor:
+            memory_embedding = np.array(doc['embedding'], dtype=np.float32) # Convert list back to numpy array
             similarity = self.cosine_similarity(query_embedding, memory_embedding)
             if similarity >= similarity_threshold:
                 memories.append({
-                    'id': row[0], 'text': row[1], 'keywords': row[2].split(','),
-                    'similarity': similarity, 'created_at': row[4], 'expiry_at': row[5]
+                    '_id': str(doc['_id']), # Convert ObjectId to string for consistent ID handling
+                    'text': doc['original_text'],
+                    'keywords': doc['keywords'],
+                    'similarity': similarity,
+                    'created_at': doc['created_at'],
+                    'expiry_at': doc['expiry_at'],
+                    'category': doc['category']
                 })
-        conn.close()
+        
         memories.sort(key=lambda x: x['similarity'], reverse=True)
         print(f"Retrieved {len(memories)} relevant memories for query '{query}...' in category '{category}'")
         return memories
 
-    def process_user_query(self, user_id: str, query: str) -> str:
+    async def process_user_query(self, user_id: str, query: str) -> str:
         print(f"Processing user query: '{query}' for user ID: '{user_id}'")
         query_keywords = self.extract_keywords(query)
         determined_category = self.determine_category(query_keywords)
-        relevant_memories = self.get_relevant_memories(user_id, query, determined_category)
+        relevant_memories = await self.get_relevant_memories(user_id, query, determined_category)
 
         if not relevant_memories:
             print(f"No relevant memories found in category '{determined_category}'. Falling back to 'personal' category.")
-            relevant_memories_personal = self.get_relevant_memories(user_id, query, 'personal')
+            relevant_memories_personal = await self.get_relevant_memories(user_id, query, 'personal')
             if relevant_memories_personal:
                 print(f"Found relevant memories in 'personal' category.")
                 memory_context = "\n".join([f"- {memory['text']}" for memory in relevant_memories_personal])
@@ -413,45 +369,35 @@ class MemoryManager:
             print(f"LLM response: '{response}'")
         return response
 
-    def cleanup_expired_memories(self):
-        print("Cleaning up expired memories...")
-        try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            current_time = datetime.datetime.now()
-            for category in self.categories.keys():
-                print(f"Cleaning up expired memories in category: {category.lower()}...")
-                cursor.execute(f'DELETE FROM {category.lower()} WHERE expiry_at < ?', (current_time,))
-                print(f"Deleted {cursor.rowcount} expired memories from {category.lower()}")
-            conn.commit()
-            conn.close()
-            print("Expired memory cleanup completed.")
-        except Exception as e:
-            print(f"Error during memory cleanup: {e}")
+    async def cleanup_expired_memories(self):
+        # This method will be re-implemented using MongoDB's TTL feature in a later subtask.
+        # For now, it's a no-op as the TTL index handles automatic cleanup.
+        print("MongoDB TTL index handles expired memory cleanup automatically.")
+        pass
 
-    def delete_memory(self, user_id: str, category: str, memory_id: int):
-        """Delete a memory by ID and category."""
+    async def delete_memory(self, user_id: str, category: str, memory_id: Any):
+        """Delete a memory by ID and category for a specific user in MongoDB."""
         if category.lower() not in [cat.lower() for cat in self.categories.keys()]:
             raise ValueError("Invalid category")
         
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        # Verify memory exists and belongs to the user
-        cursor.execute(f'SELECT user_id FROM {category.lower()} WHERE id = ?', (memory_id,))
-        result = cursor.fetchone()
-        if not result or result[0] != user_id:
-            conn.close()
-            raise ValueError("Memory not found or not owned by the user")
-        
-        cursor.execute(f'DELETE FROM {category.lower()} WHERE id = ?', (memory_id,))
-        conn.commit()
-        conn.close()
-        print(f"Deleted memory ID {memory_id} from {category.lower()}")
+        # Convert memory_id to ObjectId if it's a string representation of ObjectId
+        from bson.objectid import ObjectId
+        try:
+            obj_memory_id = ObjectId(memory_id)
+        except:
+            obj_memory_id = memory_id # Assume it's a string ID if not ObjectId-compatible
 
-    def fetch_memories_by_category(self, user_id: str, category: str, limit: int = 50) -> List[Dict]:
+        query = {"_id": obj_memory_id, "user_id": user_id, "category": category.lower()}
+        result = await self.memory_collection.delete_one(query)
+        
+        if result.deleted_count == 0:
+            raise ValueError(f"Memory with ID {memory_id} not found or not owned by user {user_id} in category '{category}'")
+        
+        print(f"Deleted memory ID {memory_id} from {category.lower()} for user {user_id}")
+
+    async def fetch_memories_by_category(self, user_id: str, category: str, limit: int = 50) -> List[Dict]:
         """
-        Fetch memories for a specific user and category from the SQLite database.
+        Fetch memories for a specific user and category from the MongoDB database.
         
         Args:
             user_id (str): The ID of the user
@@ -462,66 +408,40 @@ class MemoryManager:
             List[Dict]: List of memory dictionaries
         """
         print(f"Fetching memories for user '{user_id}' in category '{category}'")
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
         
-        try:
-            category = category.lower()
-            if category not in [cat.lower() for cat in self.categories.keys()]:
-                print(f"Invalid category: {category}")
-                return []
-            
-            cursor.execute(f'''
-            SELECT id, original_text, keywords, created_at, expiry_at
-            FROM {category}
-            WHERE user_id = ? AND is_active = 1 AND datetime('now') < expiry_at
-            ORDER BY created_at DESC
-            LIMIT ?
-            ''', (user_id, limit))
-            
-            memories = [
-                {
-                    'id': row[0],
-                    'original_text': row[1],
-                    'keywords': row[2].split(','),
-                    'created_at': row[3],
-                    'expiry_at': row[4],
-                    'category': category  # Added category field
-                }
-                for row in cursor.fetchall()
-            ]
-            
-            print(f"Retrieved {len(memories)} memories")
-            return memories
-        
-        except Exception as e:
-            print(f"Error fetching memories: {e}")
+        category_lower = category.lower()
+        if category_lower not in [cat.lower() for cat in self.categories.keys()]:
+            print(f"Invalid category: {category}")
             return []
-        finally:
-            conn.close()
+        
+        current_time = datetime.now()
+        cursor = self.memory_collection.find({
+            "user_id": user_id,
+            "category": category_lower,
+            "is_active": True,
+            "expiry_at": {"$gt": current_time}
+        }).sort("created_at", DESCENDING).limit(limit)
+        
+        memories = []
+        async for doc in cursor:
+            memories.append({
+                'id': str(doc['_id']), # Convert ObjectId to string
+                'original_text': doc['original_text'],
+                'keywords': doc['keywords'],
+                'created_at': doc['created_at'],
+                'expiry_at': doc['expiry_at'],
+                'category': doc['category']
+            })
+        
+        print(f"Retrieved {len(memories)} memories")
+        return memories
             
-    def clear_all_memories(self, user_id: str):
-        """Deletes all memories for a specific user across all categories."""
+    async def clear_all_memories(self, user_id: str):
+        """Deletes all memories for a specific user across all categories in MongoDB."""
         print(f"Clearing all memories for user ID: {user_id}")
-        conn = None
-        total_deleted = 0
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            for category in self.categories.keys():
-                table_name = category.lower()
-                cursor.execute(f'DELETE FROM {table_name} WHERE user_id = ?', (user_id,))
-                total_deleted += cursor.rowcount
-            conn.commit()
-            print(f"Cleared a total of {total_deleted} memories for user {user_id}.")
-        except sqlite3.Error as e:
-            print(f"Database error clearing memories for user {user_id}: {e}")
-            if conn: conn.rollback()
-            raise # Re-raise the error
+            result = await self.memory_collection.delete_many({"user_id": user_id})
+            print(f"Cleared a total of {result.deleted_count} memories for user {user_id}.")
         except Exception as e:
-             print(f"Unexpected error clearing memories for user {user_id}: {e}")
-             if conn: conn.rollback()
-             raise
-        finally:
-            if conn:
-                conn.close()
+            print(f"Error clearing memories for user {user_id}: {e}")
+            raise # Re-raise the error

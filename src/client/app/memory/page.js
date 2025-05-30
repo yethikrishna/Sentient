@@ -253,12 +253,11 @@ const Memories = () => {
 						<div className="flex flex-col items-end space-y-1">
 							{" "}
 							{/* Reduced spacing */}
-							<div className="flex space-x-2">
+							<div className="flex space-x-1">
 								{" "}
 								{/* Reduced spacing */}
-								{personalityType
-									.split("")
-									.map((trait, index) => (
+								{Array.isArray(personalityType) &&
+									personalityType.map((trait, index) => (
 										<div
 											key={index} // Unique key for list items
 											className="flex flex-col items-center bg-neutral-700/50 p-2 rounded-md shadow w-10" // Adjusted styling
@@ -291,26 +290,27 @@ const Memories = () => {
 										</h2>{" "}
 										<div className="space-y-1.5">
 											{" "}
-											{personalityType
-												.split("")
-												.map((trait, index) => (
-													<div
-														key={index}
-														className="flex items-center gap-2"
-													>
-														{" "}
-														<span className="font-bold text-lightblue w-4">
-															{trait}
-														</span>{" "}
-														<p className="text-gray-300">
-															{
-																descriptions[
-																	trait
-																]
-															}
-														</p>{" "}
-													</div>
-												))}{" "}
+											{Array.isArray(personalityType) &&
+												personalityType.map(
+													(trait, index) => (
+														<div
+															key={index}
+															className="flex items-center gap-2"
+														>
+															{" "}
+															<span className="font-bold text-lightblue w-4">
+																{trait}
+															</span>{" "}
+															<p className="text-gray-300">
+																{
+																	descriptions[
+																		trait
+																	]
+																}
+															</p>{" "}
+														</div>
+													)
+												)}{" "}
 										</div>{" "}
 									</div>
 								)}

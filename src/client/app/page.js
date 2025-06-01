@@ -1,57 +1,87 @@
 "use client"
 
-import { useEffect } from "react" // Importing the useEffect hook from React
+import { useState, useEffect } from "react" // Importing necessary React hooks
 import { useRouter } from "next/navigation" // Importing the useRouter hook from next/navigation for client-side routing
-import AnimatedLogo from "@components/AnimatedLogo" // Importing the AnimatedLogo component
-import toast from "react-hot-toast" // Importing the toast library for displaying notifications
+import AnimatedLogo from "@components/AnimatedLogo" // Component for displaying an animated logo
+import toast from "react-hot-toast" // Library for displaying toast notifications
 import React from "react"
 
 /**
- * Home Component - The landing page of the application.
+ * Home Component - The initial loading screen of the application.
  *
- * This component serves as the initial entry point of the application.
- * Upon loading, it immediately redirects the user to the '/update' page to check for updates.
- * It displays an animated logo and the application title while the redirection is being processed.
+ * This component is responsible for initializing the application by fetching user data,
+ * and determining whether to navigate the user to the personality test or directly to the chat interface
+ * based on their onboarding status. It also displays a loading animation while initializing.
  *
- * @returns {React.ReactNode} - The Home component UI, which includes an animated logo and application title.
+ * @returns {React.ReactNode} - The Home component UI.
  */
 const Home = () => {
+	// State to track the onboarding status of the user.
+	// null: initial state, false: user not onboarded, true: user onboarded
+	const [onboarded, setOnboarded] = useState(null) // onboarded: boolean | null
+	// State to manage the loading state of the component, displayed during initialization.
+	const [loading, setLoading] = useState(true) // loading: boolean
 	const router = useRouter() // Initializing the router for navigation
 
 	/**
-	 * useEffect hook to initialize the app and navigate to the update page on component mount.
+	 * Initializes the application by fetching user data from the database.
 	 *
-	 * This hook runs once after the component is mounted. It defines an async function `initializeApp`
-	 * that attempts to navigate the user to the '/update' route. Any errors during initialization
-	 * are caught and displayed as a toast notification.
+	 * This function uses Electron's `invoke` to call backend functions to:
+	 * 1. Fetch user data from the database to check onboarding status.
+	 * 2. Optionally start Neo4j and initiate the FastAPI server (currently commented out).
+	 * 3. Update the `loading` and `onboarded` states based on the fetched data.
+	 *
+	 * @async
+	 * @function initializeApp
+	 * @returns {Promise<void>}
+	 */
+	const initializeApp = async () => {
+		try {
+			// Fetch user data from the database using electron invoke
+			const { data: userData } =
+				await window.electron?.invoke("get-user-data")
+
+			setLoading(false) // Set loading to false once initialization is complete (or attempted)
+			setOnboarded(userData?.firstRunCompleted) // Set onboarded state based on 'firstRunCompleted' from user data
+		} catch (error) {
+			toast.error(`Error initializing app: ${error}`) // Display error toast if initialization fails
+			setLoading(false) // Ensure loading is set to false even if there's an error
+		}
+	}
+
+	/**
+	 * useEffect hook to call `initializeApp` when the component mounts.
+	 *
+	 * This ensures that the application initialization process starts as soon as the Load component is rendered.
 	 */
 	useEffect(() => {
-		/**
-		 * Initializes the application and navigates to the update page.
-		 *
-		 * This asynchronous function is designed to be called once when the component mounts.
-		 * It uses the Next.js router to redirect the user to the '/update' page to initiate the update process.
-		 * Any errors during this initialization and navigation process are caught and displayed to the user as a toast error message.
-		 *
-		 * @async
-		 * @function initializeApp
-		 * @returns {Promise<void>} - A promise that resolves after attempting to redirect to the update page or after handling any errors.
-		 */
-		const initializeApp = async () => {
-			try {
-				router.push("/update") // Programmatically navigate to the '/update' route
-			} catch (error) {
-				toast.error(`Error initializing app: ${error}`) // Display a toast error message if navigation fails
+		initializeApp() // Call initializeApp function when component mounts
+	}, []) // Empty dependency array ensures this effect runs only once on mount
+
+	useEffect(() => {
+		if (!loading && onboarded !== null) {
+			if (onboarded === false) {
+				router.push("/onboarding")
+			} else {
+				router.push("/chat")
 			}
 		}
-		initializeApp() // Call initializeApp when the component mounts
-	}, [router]) // Dependency array includes 'router' to satisfy hook dependencies, but effect is intended to run only once on mount
+	}, [loading, onboarded, router])
 
 	return (
-		<div className="flex flex-col items-center justify-center min-h-screen bg-black">
-			<AnimatedLogo /> {/* Render the AnimatedLogo component */}
-			<h1 className="text-white text-4xl mt-4">Sentient</h1>{" "}
-			{/* Display the title of the application */}
+		<div className="min-h-screen flex flex-col items-center justify-center">
+			<div className="flex flex-col items-center justify-center h-full backdrop-blur-xs">
+				{/* Render AnimatedLogo and title when not loading */}
+				{loading && (
+					<>
+						<AnimatedLogo /> {/* Animated logo component */}
+						<h1 className="text-white text-4xl mt-4">
+							Sentient
+						</h1>{" "}
+						{/* Application title */}
+					</>
+				)}
+			</div>
 		</div>
 	)
 }

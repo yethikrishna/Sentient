@@ -96,7 +96,6 @@ class AgentTaskProcessor:
         print(f"[AGENT_EXEC] Executing task {task_id} for User: {user_id}...")
         user_profile = await self.load_user_profile(user_id)
         username = user_profile.get("userData", {}).get("personalInfo", {}).get("name", "User")
-        personality = user_profile.get("userData", {}).get("personality", "Default")
         transformed_input = task.get("description", "")
         use_personal_context = task.get("use_personal_context", False)
         internet_search_needed = task.get("internet", "None") != "None"
@@ -121,7 +120,7 @@ class AgentTaskProcessor:
             except Exception as e:
                 print(f"[AGENT_EXEC_ERROR] Error retrieving internet context for task {task_id}: {e}")
                 internet_context_str = f"Error retrieving internet context: {e}"
-        agent_input = {"query": transformed_input, "name": username, "user_context": user_context_str, "internet_context": internet_context_str, "personality": personality}
+        agent_input = {"query": transformed_input, "name": username, "user_context": user_context_str, "internet_context": internet_context_str}
         try:
             response = self.agent_runnable.invoke(agent_input)
         except Exception as e:

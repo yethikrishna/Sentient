@@ -30,12 +30,27 @@ const appOutDir = path.join(__dirname, "../")
  * @function createAuthWindow
  * @returns {void}
  */
-export function createAuthWindow(mainWindow) {
-	mainWindow.loadURL(getAuthenticationURL()) // Load authentication URL in the window
+export function createAuthWindow() {
+	const authWindow = new BrowserWindow({
+		width: 800,
+		height: 600,
+		show: false, // Don't show until ready
+		webPreferences: {
+			nodeIntegration: false,
+			contextIsolation: true,
+			preload: path.join(__dirname, "preload.js")
+		}
+	})
+
+	authWindow.loadURL(getAuthenticationURL()) // Load authentication URL in the window
+
+	authWindow.once("ready-to-show", () => {
+		authWindow.show()
+	})
 
 	const {
 		session: { webRequest }
-	} = mainWindow.webContents // Destructure webRequest from webContents session
+	} = authWindow.webContents // Destructure webRequest from webContents session
 
 	const filter = {
 		urls: ["http://localhost/callback*"] // Filter for web requests to callback URL
@@ -47,11 +62,12 @@ export function createAuthWindow(mainWindow) {
 		await checkValidity() // Check validity of the loaded tokens
 
 		if (process.env.ELECTRON_APP_URL) {
-			mainWindow.loadURL(process.env.ELECTRON_APP_URL)
+			authWindow.loadURL(process.env.ELECTRON_APP_URL)
 		} else {
-			appServe(mainWindow).then(() => {
-				mainWindow.loadURL("app://-")
+			appServe(authWindow).then(() => {
+				authWindow.loadURL("app://-")
 			})
 		}
+		authWindow.close() // Close the authentication window after successful login
 	})
 }

@@ -86,7 +86,9 @@ class MongoManager:
             {"$set": profile_data},
             upsert=True # Create if not exists
         )
-        return result.modified_count > 0 or result.upserted_id is not None
+        # The operation is considered successful if a document was matched/modified or a new one was upserted.
+        # This handles cases where data is identical, but the intent was still to "save".
+        return result.matched_count > 0 or result.upserted_id is not None
 
     # --- Chat History Methods ---
     async def add_chat_message(self, user_id: str, chat_id: str, message_data: Dict) -> str:

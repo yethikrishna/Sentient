@@ -51,8 +51,7 @@ async def generate_response(
     """
     Generates a response from a runnable, incorporating user profile, chat history, and internet context.
 
-    This function uses provided user profile data (or a default if not provided) for personality, combines it with
-    contexts, and invokes the given runnable to generate a response.
+    This function uses provided user profile data, combines it with contexts, and invokes the given runnable to generate a response.
 
     Args:
         runnable: The runnable object (e.g., Langchain RunnableSequence) to invoke.
@@ -68,10 +67,7 @@ async def generate_response(
     try:
         # Use MongoManager to get user profile
         user_profile = await mongo_manager.get_user_profile(username) # Assuming username is user_id here
-        if user_profile_data and "userData" in user_profile_data:
-            personality_description = user_profile_data["userData"].get("personality", "Default")
-        else:
-            personality_description = "Default" # Fallback
+        # No personality data to retrieve
 
         response = runnable.invoke(
             {
@@ -79,7 +75,6 @@ async def generate_response(
                 "user_context": user_context,
                 "internet_context": internet_context,
                 "name": username,
-                "personality": personality_description,
             }
         )  # Invoke the runnable with combined context and user info
 

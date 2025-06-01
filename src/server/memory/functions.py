@@ -1,3 +1,4 @@
+from neo4j import GraphDatabase # Importing GraphDatabase for Neo4j driver type hinting
 from wrapt_timeout_decorator import *  # Importing timeout decorator for functions from wrapt_timeout_decorator library
 import asyncio  # For asynchronous programming
 import numpy as np  # For numerical operations, especially for cosine similarity calculation
@@ -11,7 +12,6 @@ from .functions import *  # Importing functions from functions.py
 from .constants import *  # Importing constant variables from constants.py
 from .prompts import *  # Importing prompt templates and related utilities from prompts.py
 from server.app.helpers import *  # Importing helper functions from helpers.py
-# from server.db import MongoManager # Not used directly at module level
 
 load_dotenv("server/.env")  # Load environment variables from .env file
 
@@ -1405,3 +1405,94 @@ def delete_source_subgraph(graph_driver, file_name: str):
 
     except Exception as e:
         print(f"Error deleting subgraph: {e}")  # Print error message if deletion fails
+
+async def update_neo4j_with_onboarding_data(user_id: str, onboarding_data: dict, graph_driver_instance: GraphDatabase.driver, embed_model_instance):
+    """
+    Updates the Neo4j database with comprehensive onboarding answers for a user.
+    This function creates or merges nodes for each answer category (e.g., Interest, Aspiration)
+    and establishes relationships from the User node to these answer nodes.
+    Embeddings are generated for each answer node for RAG purposes.
+
+    Args:
+        user_id (str): The unique identifier of the user.
+        onboarding_data (dict): A dictionary containing the onboarding answers.
+                                Expected keys correspond to categories like 'personal-info', 'hobbies', etc.
+        graph_driver_instance: Neo4j graph driver instance for database interaction.
+        embed_model_instance: Embedding model instance for generating embeddings.
+    """
+    if not graph_driver_instance:
+        print(f"[NEO4J_ONBOARDING_ERROR] Neo4j driver not available for user {user_id}.")
+        return
+
+    if not embed_model_instance:
+        print(f"[NEO4J_ONBOARDING_ERROR] Embedding model not available for user {user_id}. Cannot create embeddings.")
+        return
+
+    # Mapping of onboarding data keys to Neo4j node labels and relationship types
+    # The value in onboarding_data is the 'name' property for the new node.
+    ONBOARDING_MAPPING = {
+        "personal-info": {"node_label": "Interest", "rel_type": "HAS_INTEREST"},
+        "professional-aspirations": {"node_label": "Aspiration", "rel_type": "HAS_ASPIRATION"},
+        "political-views": {"node_label": "PoliticalIdeology", "rel_type": "ALIGNS_WITH"},
+        "hobbies": {"node_label": "Hobby", "rel_type": "ENJOYS_HOBBY"},
+        "values": {"node_label": "Value", "rel_type": "VALUES"},
+        "learning-style": {"node_label": "LearningStyle", "rel_type": "PREFERS_LEARNING_STYLE"},
+        "social-preferences": {"node_label": "SocialSetting", "rel_type": "PREFERS_SOCIAL_SETTING"},
+        "decision-making": {"node_label": "DecisionMakingStyle", "rel_type": "MAKES_DECISIONS_BY"},
+        "future-outlook": {"node_label": "FutureOutlook", "rel_type": "HAS_OUTLOOK"},
+        "communication-style": {"node_label": "CommunicationStyle", "rel_type": "COMMUNICATES_AS"},
+    }
+
+    try:
+        def _update_onboarding_graph_db(tx, user_id, data, mapping, embed_model):
+            # Ensure the User node exists
+            tx.run("""
+                MERGE (u:User {userId: $userId})
+                ON CREATE SET u.createdAt = timestamp()
+                ON MATCH SET u.updatedAt = timestamp()
+            """, userId=user_id)
+
+            for key, answer_value in data.items():
+                if key in mapping:
+                    node_label = mapping[key]["node_label"]
+                    rel_type = mapping[key]["rel_type"]
+
+                    # Handle single choice vs. multiple choice answers
+                    answers_to_process = []
+                    if isinstance(answer_value, list):
+                        answers_to_process = answer_value
+                    elif isinstance(answer_value, str):
+                        answers_to_process = [answer_value]
+                    else:
+                        print(f"[NEO4J_ONBOARDING_WARN] Unexpected answer format for {key}: {type(answer_value)}. Skipping.")
+                        continue
+
+                    for answer in answers_to_process:
+                        if not answer:
+                            continue
+
+                        # Create or merge the answer node
+                        answer_title_embedding = embed_model._embed([answer])[0]
+                        
+                        tx.run(f"""
+                            MERGE (a:{node_label} {{name: $answer}})
+                            ON CREATE SET a.createdAt = timestamp(), a.title_embedding = $title_embedding
+                            ON MATCH SET a.updatedAt = timestamp(), a.title_embedding = COALESCE(a.title_embedding, $title_embedding)
+                        """, answer=answer, title_embedding=answer_title_embedding)
+
+                        # Create relationship from User to the answer node
+                        tx.run(f"""
+                            MATCH (u:User {{userId: $userId}})
+                            MATCH (a:{node_label} {{name: $answer}})
+                            MERGE (u)-[:{rel_type}]->(a)
+                        """, userId=user_id, answer=answer)
+                else:
+                    print(f"[NEO4J_ONBOARDING_WARN] No mapping found for onboarding key: {key}. Skipping.")
+
+        with graph_driver_instance.session(database="neo4j") as session:
+            await asyncio.to_thread(session.execute_write, _update_onboarding_graph_db, user_id, onboarding_data, ONBOARDING_MAPPING, embed_model_instance)
+        print(f"[NEO4J_ONBOARDING] Successfully updated onboarding data for user {user_id} in Neo4j.")
+
+    except Exception as e:
+        print(f"[NEO4J_ONBOARDING_ERROR] Failed to update onboarding data for user {user_id} in Neo4j: {e}")
+        traceback.print_exc()

@@ -43,7 +43,8 @@ import {
 	fetchAndSetReferralCode,
 	getReferrerStatusFromKeytar,
 	fetchAndSetReferrerStatus,
-	getReferralCodeFromKeytar
+	getReferralCodeFromKeytar,
+	logout // Import the logout function
 } from "../utils/auth.js"
 import { getPrivateData } from "../utils/api.js" // API utility (may need user context)
 import { createAuthWindow } from "./auth.js" // Window creation functions
@@ -324,39 +325,19 @@ export const createAppWindow = () => {
 
 	mainWindow.isMainWindow = true // Custom flag to identify the main window
 
-	// Load content into the window
-	if (app.isPackaged) {
-		// Production: Serve static files from the packaged app's output directory
-		appServe(mainWindow)
-			.then(() => {
-				mainWindow.loadURL("app://-") // Load the app's index.html
-				// Attempt WebSocket connection after the packaged app window loads
-				mainWindow.webContents.on("did-finish-load", connectWebSocket)
-			})
-			.catch((err) => console.error("Failed to serve packaged app:", err))
-	} else {
-		// Development: Load from the development server URL (e.g., React dev server)
-		const devUrl = process.env.ELECTRON_APP_URL || "http://localhost:3000"
-		console.log(`Attempting to load development URL: ${devUrl}`)
-		mainWindow
-			.loadURL(devUrl)
-			.then(() => {
-				console.log("Main window URL loaded successfully.")
-				// Attempt WebSocket connection after the development window loads
-				connectWebSocket()
-			})
-			.catch((err) => console.error(`Failed to load URL ${devUrl}:`, err))
+	// Do not load content here. The `checkValidity` function will determine and load the appropriate URL.
+	// This ensures that either the main app or onboarding page is loaded based on user profile existence.
+	// WebSocket connection will also be initiated by `checkValidity` after the correct page loads.
 
-		mainWindow.webContents.openDevTools() // Open DevTools automatically in development
-		mainWindow.webContents.on(
-			"did-fail-load",
-			(event, errorCode, errorDescription, validatedURL) => {
-				console.error(
-					`Failed to load URL ${validatedURL}: ${errorDescription} (Code: ${errorCode})`
-				)
-			}
-		)
-	}
+	mainWindow.webContents.openDevTools() // Open DevTools automatically in development (can be moved to checkValidity if needed)
+	mainWindow.webContents.on(
+		"did-fail-load",
+		(event, errorCode, errorDescription, validatedURL) => {
+			console.error(
+				`Failed to load URL ${validatedURL}: ${errorDescription} (Code: ${errorCode})`
+			)
+		}
+	)
 
 	// --- Window Close Confirmation Logic ---
 	mainWindow.on("close", (event) => {
@@ -438,12 +419,27 @@ const checkUserInfo = async () => {
  *
  * @throws {Error} If `checkAuthStatus` or `checkUserInfo` fails.
  */
+const ONBOARDING_PATH = "/onboarding"
+const MAIN_APP_PATH = "/"
+
+/**
+ * Main validity check function for production mode.
+ * Ensures authentication status is valid and then performs user-specific info checks.
+ * If checks fail, it attempts to close existing windows and open the authentication window.
+ *
+ * @throws {Error} If `checkAuthStatus` or `checkUserInfo` fails.
+ */
 export const checkValidity = async () => {
 	console.log(
 		`${app.isPackaged ? "PRODUCTION" : "DEVELOPMENT"} MODE: Performing application validity checks...`
 	)
 	try {
 		await checkAuthStatus() // Ensures tokens are fresh and profile (with userId) is set
+		const userId = getProfile()?.sub // Get userId after successful auth status check
+
+		if (!userId) {
+			throw new Error("User ID not available after authentication check.")
+		}
 
 		if (app.isPackaged) {
 			// Only run detailed user info checks in production
@@ -454,18 +450,86 @@ export const checkValidity = async () => {
 			`${app.isPackaged ? "PRODUCTION" : "DEVELOPMENT"} MODE: All validity checks passed successfully.`
 		)
 
-		// If all checks passed, ensure the main application window is open.
-		// This is crucial for the flow where the auth window successfully authenticates.
-		if (!mainWindow || mainWindow.isDestroyed()) {
-			console.log(
-				"Validity checks passed, main window not found or destroyed. Creating it now."
+		// Check if user profile exists in MongoDB
+		const backendUrl = process.env.APP_SERVER_URL || "http://localhost:5000"
+		const checkProfileUrl = `${backendUrl}/check-user-profile`
+		const authHeader = getAuthHeader()
+
+		if (!authHeader) {
+			throw new Error("Authentication header missing for profile check.")
+		}
+
+		console.log(
+			`Checking user profile existence for ${userId} at ${checkProfileUrl}...`
+		)
+		const response = await fetch(checkProfileUrl, {
+			method: "POST",
+			headers: { "Content-Type": "application/json", ...authHeader }
+		})
+
+		if (!response.ok) {
+			const errorText = await response.text()
+			throw new Error(
+				`Failed to check user profile: ${response.status} - ${errorText}`
 			)
-			createAppWindow()
+		}
+
+		const { profile_exists } = await response.json()
+		console.log(
+			`User profile for ${userId} exists in DB: ${profile_exists}`
+		)
+
+		let targetUrl = ""
+		if (profile_exists) {
+			targetUrl = app.isPackaged
+				? "app://-" + MAIN_APP_PATH
+				: (process.env.ELECTRON_APP_URL || "http://localhost:3000") +
+					MAIN_APP_PATH
+			console.log(`User profile exists. Loading main app: ${targetUrl}`)
+		} else {
+			targetUrl = app.isPackaged
+				? "app://-" + ONBOARDING_PATH
+				: (process.env.ELECTRON_APP_URL || "http://localhost:3000") +
+					ONBOARDING_PATH
+			console.log(
+				`User profile does NOT exist. Loading onboarding: ${targetUrl}`
+			)
+		}
+
+		// Ensure the main application window is open and load the determined URL
+		if (!mainWindow || mainWindow.isDestroyed()) {
+			console.log("Main window not found or destroyed. Creating it now.")
+			createAppWindow() // This only creates the window, doesn't load URL yet
 		} else if (mainWindow.isMinimized()) {
 			mainWindow.restore()
 			mainWindow.focus()
 		} else {
 			mainWindow.focus()
+		}
+
+		// Load the determined URL into the main window
+		if (app.isPackaged) {
+			appServe(mainWindow)
+				.then(() => {
+					mainWindow.loadURL(targetUrl)
+					mainWindow.webContents.on(
+						"did-finish-load",
+						connectWebSocket
+					)
+				})
+				.catch((err) =>
+					console.error("Failed to serve packaged app:", err)
+				)
+		} else {
+			mainWindow
+				.loadURL(targetUrl)
+				.then(() => {
+					console.log("Main window URL loaded successfully.")
+					connectWebSocket()
+				})
+				.catch((err) =>
+					console.error(`Failed to load URL ${targetUrl}:`, err)
+				)
 		}
 	} catch (error) {
 		console.error(
@@ -478,11 +542,7 @@ export const checkValidity = async () => {
 			mainWindow.isMainWindow
 		) {
 			console.log("Closing main window due to validity check failure.")
-			// Set a flag to prevent close confirmation dialog during this forced close
-			// Assuming you have a way to bypass it, or just call destroy directly.
-			// For simplicity here, we'll just close. If you have confirmation, you might need
-			// a flag like `isExitingDueToAuthFailure = true` to bypass it.
-			mainWindow.destroy() // Use destroy to bypass 'close' event handlers if needed
+			mainWindow.destroy() // Use destroy to bypass 'close' event handlers and force close
 			mainWindow = null
 		}
 
@@ -492,7 +552,7 @@ export const checkValidity = async () => {
 				win.close()
 			}
 		})
-		createAuthWindow(mainWindow) // Guide user to re-authenticate
+		createAuthWindow() // Guide user to re-authenticate
 		throw error // Propagate error
 	}
 }
@@ -762,8 +822,6 @@ const checkForUpdates = async () => {
 		`PRODUCTION MODE: Update check configured for stable ('latest') channel.`
 	)
 
-	createAppWindow() // Create the main window *before* checking for updates
-
 	try {
 		console.log(
 			`PRODUCTION MODE: Initiating update check for '${autoUpdater.channel}' channel...`
@@ -788,12 +846,19 @@ const startApp = async () => {
 	if (app.isPackaged) {
 		// --- PRODUCTION LOGIC ---
 		console.log("PRODUCTION MODE: Starting application startup sequence.")
-		await checkForUpdates() // This creates the main window
+		createAppWindow() // Create the main window immediately
 
 		const validityCheckDelay = 5000
 		console.log(
 			`PRODUCTION MODE: Scheduling application validity checks in ${validityCheckDelay / 1000} seconds.`
 		)
+		// Schedule update check after a short delay to allow app to launch faster
+		setTimeout(() => {
+			console.log(
+				"PRODUCTION MODE: Performing scheduled auto-update check..."
+			)
+			checkForUpdates()
+		}, 10000) // Check for updates 10 seconds after app launch
 
 		setTimeout(async () => {
 			if (process.env.UPDATING !== "true") {
@@ -850,20 +915,12 @@ const startApp = async () => {
 			console.log(
 				"[ELECTRON] [DEV_MODE] User authenticated. Creating main application window."
 			)
-			createAppWindow() // Creates window, loads URL.
-			mainWindow?.webContents.on("did-finish-load", () => {
-				console.log(
-					"DEVELOPMENT MODE: Main application window finished loading."
-				)
-				// connectWebSocket() is called within createAppWindow after URL load
-			})
+			await checkValidity() // This will handle creating the main window and loading the correct URL.
 		} else {
 			console.log(
-				"[ELECTRON] [DEV_MODE] User not authenticated. Creating main window and then authentication window."
+				"[ELECTRON] [DEV_MODE] User not authenticated. Creating authentication window."
 			)
-			createAppWindow() // Create the main window first
-			createAuthWindow(mainWindow) // Show login screen in the main window
-			// The auth.js createAuthWindow's callback will handle redirecting back to the main app URL after successful login
+			createAuthWindow() // Show login screen. This window will handle creating the main app window after successful login.
 		}
 	}
 }
@@ -927,6 +984,34 @@ if (app.isPackaged) {
 
 // --- Inter-Process Communication (IPC) Handlers ---
 // These handlers allow the renderer process to request actions or data from the main process.
+
+// IPC: Check for Updates (Manual Trigger)
+ipcMain.handle("check-for-updates-manual", async () => {
+	if (app.isPackaged) {
+		console.log("IPC: Received manual check-for-updates command.")
+		try {
+			await autoUpdater.checkForUpdatesAndNotify()
+			return { success: true, message: "Update check initiated." }
+		} catch (error) {
+			console.error(
+				"IPC Error: Manual update check failed:",
+				error.message
+			)
+			return {
+				success: false,
+				message: `Update check failed: ${error.message}`
+			}
+		}
+	} else {
+		console.log("IPC: Manual update check in DEV mode (no-op).")
+		return {
+			success: true,
+			message: "Update check skipped in development mode."
+		}
+	}
+})
+
+// IPC: Restart App (for AutoUpdate)
 
 // IPC: Restart App (for AutoUpdate)
 ipcMain.on("restart-app", () => {
@@ -1016,13 +1101,15 @@ ipcMain.on("log-out", () => {
 		ws.close()
 	}
 	// Close all application windows except dedicated logout/auth windows
+	// Close all existing BrowserWindow instances
 	BrowserWindow.getAllWindows().forEach((win) => {
-		if (!win.isLogoutWindow) {
-			win.close()
+		if (!win.isDestroyed()) {
+			// Ensure window is not already destroyed
+			win.destroy() // Use destroy to bypass 'close' event handlers and force close
 		}
 	})
-	logout()
-	app.quit()
+	logout() // Clear tokens and profile
+	createAuthWindow() // Redirect to authentication screen
 })
 
 // IPC: Fetch Local Pricing Plan (from Keytar)
@@ -2695,6 +2782,141 @@ ipcMain.handle("clear-chat-history", async (_event) => {
 			status: 500,
 			error: `Failed to communicate with backend: ${error.message}`
 		}
+	}
+})
+
+// IPC: Save Onboarding Data (Backend Call)
+ipcMain.handle("save-onboarding-data", async (_event, onboardingData) => {
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader) {
+		console.error("IPC: save-onboarding-data - User not authenticated.")
+		return { error: "User not authenticated.", status: 401 }
+	}
+
+	console.log(
+		`IPC: save-onboarding-data called for user ${userId}. Data keys: ${Object.keys(onboardingData || {}).join(", ")}`
+	)
+	try {
+		const response = await fetch(
+			`${process.env.APP_SERVER_URL}/onboarding`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json", ...authHeader },
+				body: JSON.stringify({ data: onboardingData }) // Backend expects { data: { ...answers } }
+			}
+		)
+
+		if (!response.ok) {
+			const errorDetail = await response
+				.json()
+				.catch(() => ({ detail: "Unknown error from server." }))
+			console.error(
+				`IPC Error: Save Onboarding Data API call failed for user ${userId}. Status: ${response.status}, Details:`,
+				errorDetail
+			)
+			return {
+				message: `Error saving onboarding data: ${errorDetail.detail || response.statusText}`,
+				status: response.status
+			}
+		}
+		const result = await response.json()
+		console.log(
+			`IPC: Save Onboarding Data API call successful for user ${userId}.`
+		)
+		return result // Contains { message, status } from backend
+	} catch (error) {
+		console.error(
+			`IPC Error: Exception in save-onboarding-data handler for user ${userId}:`,
+			error
+		)
+		return {
+			message: "Error saving onboarding data.",
+			status: 500,
+			error: error.message
+		}
+	}
+	// IPC: Fetch Memory Categories (Backend Call)
+	ipcMain.handle("fetch-memory-categories", async () => {
+		const userId = getUserIdFromProfile()
+		const authHeader = getAuthHeader()
+		if (!userId || !authHeader) {
+			console.error(
+				"IPC: fetch-memory-categories - User not authenticated."
+			)
+			return { error: "User not authenticated.", status: 401 }
+		}
+
+		console.log(`IPC: fetch-memory-categories called for user ${userId}.`)
+		try {
+			const response = await fetch(
+				`${process.env.APP_SERVER_URL || "http://localhost:5000"}/get-memory-categories`,
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						...authHeader
+					}
+				}
+			)
+
+			if (!response.ok) {
+				const errorText = await response.text()
+				throw new Error(
+					`Failed to fetch memory categories. Status: ${response.status}. Details: ${errorText}`
+				)
+			}
+			const result = await response.json() // Expects { categories: [...] }
+			console.log(
+				`IPC: Fetch Memory Categories API call successful for user ${userId}. Fetched ${result.categories?.length || 0} categories.`
+			)
+			return { categories: result.categories, status: 200 }
+		} catch (error) {
+			console.error(
+				`IPC Error: Exception in fetch-memory-categories handler for user ${userId}:`,
+				error
+			)
+			return { error: error.message, status: 500 }
+		}
+	})
+})
+
+// IPC: Fetch Memory Categories (Backend Call)
+ipcMain.handle("fetch-memory-categories", async () => {
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader) {
+		console.error("IPC: fetch-memory-categories - User not authenticated.")
+		return { error: "User not authenticated.", status: 401 }
+	}
+
+	console.log(`IPC: fetch-memory-categories called for user ${userId}.`)
+	try {
+		const response = await fetch(
+			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/get-memory-categories`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json", ...authHeader }
+			}
+		)
+
+		if (!response.ok) {
+			const errorText = await response.text()
+			throw new Error(
+				`Failed to fetch memory categories. Status: ${response.status}. Details: ${errorText}`
+			)
+		}
+		const result = await response.json() // Expects { categories: [...] }
+		console.log(
+			`IPC: Fetch Memory Categories API call successful for user ${userId}. Fetched ${result.categories?.length || 0} categories.`
+		)
+		return { categories: result.categories, status: 200 }
+	} catch (error) {
+		console.error(
+			`IPC Error: Exception in fetch-memory-categories handler for user ${userId}:`,
+			error
+		)
+		return { error: error.message, status: 500 }
 	}
 })
 

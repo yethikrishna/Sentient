@@ -51,7 +51,6 @@ def get_chat_runnable(chat_history: List[Dict[str, str]]) -> BaseRunnable:
             "user_context",
             "internet_context",
             "name",
-            "personality",
         ],
         response_type="chat",
         stream=True,
@@ -100,7 +99,6 @@ def get_agent_runnable() -> BaseRunnable:
             "name",
             "user_context",
             "internet_context", # Note: Typo in original function 'internet_contextname' is kept for consistency
-            "personality",
             "chat_history", # Add chat_history as an input variable
         ],
         required_format=agent_required_format,

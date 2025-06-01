@@ -13,7 +13,8 @@ import {
 	IconCalendarEvent,
 	IconWorldSearch, // Data source icons
 	IconLoader,
-	IconSettingsCog // For customize/recreate buttons
+	IconSettingsCog, // For customize/recreate buttons
+	IconDownload // For update button
 } from "@tabler/icons-react"
 import React from "react"
 import { Switch } from "@radix-ui/react-switch" // Keep Radix Switch
@@ -38,6 +39,7 @@ const Settings = () => {
 	const [newGraphInfo, setNewGraphInfo] = useState("")
 	const [customizeLoading, setCustomizeLoading] = useState(false) // Separate loading for customize
 	const [recreateGraphLoading, setRecreateGraphLoading] = useState(false)
+	const [updateCheckLoading, setUpdateCheckLoading] = useState(false) // New state for update check loading
 
 	// --- Data Fetching ---
 	// MODIFIED: Wrapped fetchDataSources in useCallback
@@ -152,6 +154,28 @@ const Settings = () => {
 		}
 	}, []) // Empty dependency array
 
+	const handleCheckForUpdates = useCallback(async () => {
+		setUpdateCheckLoading(true)
+		console.log("Initiating manual update check via IPC...")
+		try {
+			const response = await window.electron.invoke(
+				"check-for-updates-manual"
+			)
+			if (response.success) {
+				toast.success(response.message)
+				console.log("Manual update check initiated:", response.message)
+			} else {
+				toast.error(response.message)
+				console.error("Manual update check failed:", response.message)
+			}
+		} catch (error) {
+			toast.error("Error initiating update check.")
+			console.error("Error calling check-for-updates-manual IPC:", error)
+		} finally {
+			setUpdateCheckLoading(false)
+		}
+	}, []) // Empty dependency array
+
 	const fetchData = useCallback(async () => {
 		console.log(
 			"Fetching user data (excluding social media connection status)..."
@@ -192,7 +216,8 @@ const Settings = () => {
 		fetchUserDetails,
 		fetchPricingPlan,
 		fetchReferralDetails,
-		fetchDataSources
+		fetchDataSources,
+		handleCheckForUpdates // Add new dependency
 	]) // Add all useCallback functions to dependency array
 
 	return (
@@ -242,6 +267,27 @@ const Settings = () => {
 						>
 							<IconGift size={18} />
 							<span>Refer Sentient</span>
+						</button>
+						{/* NEW: Update Button */}
+						<button
+							onClick={handleCheckForUpdates}
+							disabled={updateCheckLoading}
+							className="flex items-center gap-2 py-2 px-4 rounded-full bg-purple-700 hover:bg-purple-600 text-white text-xs sm:text-sm font-medium transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+							title="Check for application updates"
+						>
+							{updateCheckLoading ? (
+								<IconLoader
+									size={18}
+									className="animate-spin"
+								/>
+							) : (
+								<IconDownload size={18} />
+							)}
+							<span>
+								{updateCheckLoading
+									? "Checking..."
+									: "Check for Updates"}
+							</span>
 						</button>
 					</div>
 				</div>

@@ -18,13 +18,10 @@ import ProIcon from "@components/ProIcon"
 import SQLiteMemoryDisplay from "@components/SQLiteMemoryDisplay"
 // ADDED: Import the new switcher component
 import MemoryTypeSwitcher from "@components/MemoryTypeSwitcher"
-import { Tooltip } from "react-tooltip" // Keep Tooltip
-import "react-tooltip/dist/react-tooltip.css" // Keep Tooltip CSS
 
 const Memories = () => {
 	const [userDetails, setUserDetails] = useState({})
 	const [personalityType, setPersonalityType] = useState("")
-	const [showTooltip, setShowTooltip] = useState(false)
 	const [isSidebarVisible, setSidebarVisible] = useState(false)
 	// State for controlling customize input visibility
 	const [isCustomizeInputVisible, setCustomizeInputVisible] = useState(false)
@@ -40,6 +37,10 @@ const Memories = () => {
 	const [graphLoading, setGraphLoading] = useState(false)
 	// ADDED: State for triggering refresh in SQLite view
 	const [refreshSqlite, setRefreshSqlite] = useState(0)
+	// ADDED: State for short-term memory categories
+	const [shortTermMemoryCategories, setShortTermMemoryCategories] = useState(
+		[]
+	)
 
 	// --- Fetching Data ---
 	const fetchUserDetails = async () => {
@@ -217,8 +218,30 @@ const Memories = () => {
 		fetchPersonalityType()
 		fetchPricingPlan()
 		fetchProCredits()
+
+		const fetchMemoryCategories = async () => {
+			try {
+				const response = await window.electron?.invoke(
+					"fetch-memory-categories"
+				)
+				if (response?.categories) {
+					setShortTermMemoryCategories(response.categories)
+				} else if (response?.error) {
+					toast.error(
+						`Error fetching memory categories: ${response.error}`
+					)
+				}
+			} catch (error) {
+				toast.error(
+					`Error fetching memory categories: ${error.message}`
+				)
+			}
+		}
+
 		if (memoryDisplayType === "neo4j") {
 			loadGraphData()
+		} else if (memoryDisplayType === "sqlite") {
+			fetchMemoryCategories()
 		}
 	}, [loadGraphData, memoryDisplayType])
 
@@ -249,74 +272,6 @@ const Memories = () => {
 						onTypeChange={setMemoryDisplayType}
 					/>
 					{/* Personality display remains similar, maybe adjust position if needed */}
-					{personalityType && ( // Personality trait display
-						<div className="flex flex-col items-end space-y-1">
-							{" "}
-							{/* Reduced spacing */}
-							<div className="flex space-x-1">
-								{" "}
-								{/* Reduced spacing */}
-								{Array.isArray(personalityType) &&
-									personalityType.map((trait, index) => (
-										<div
-											key={index} // Unique key for list items
-											className="flex flex-col items-center bg-neutral-700/50 p-2 rounded-md shadow w-10" // Adjusted styling
-										>
-											{" "}
-											{/* Personality Trait */}
-											<h3 className="text-xl font-semibold text-white">
-												{" "}
-												{trait}{" "}
-											</h3>
-										</div>
-									))}
-							</div>
-							<div
-								className="relative"
-								onMouseEnter={() => setShowTooltip(true)} // Show tooltip on hover
-								onMouseLeave={() => setShowTooltip(false)} // Hide tooltip on mouse leave
-							>
-								<IconInfoCircle
-									className="w-5 h-5 text-gray-400 cursor-pointer hover:text-white"
-									aria-label="More info about personality type" // ARIA label for accessibility
-								/>
-								{showTooltip && ( // Tooltip for personality descriptions
-									<div className="absolute top-full right-0 mt-2 bg-neutral-800 border border-neutral-700 text-white text-xs p-3 rounded-lg shadow-lg w-64 z-50">
-										{" "}
-										{/* Adjusted style/size */}{" "}
-										<h2 className="font-bold mb-2 text-sm text-center">
-											{" "}
-											Personality Type{" "}
-										</h2>{" "}
-										<div className="space-y-1.5">
-											{" "}
-											{Array.isArray(personalityType) &&
-												personalityType.map(
-													(trait, index) => (
-														<div
-															key={index}
-															className="flex items-center gap-2"
-														>
-															{" "}
-															<span className="font-bold text-lightblue w-4">
-																{trait}
-															</span>{" "}
-															<p className="text-gray-300">
-																{
-																	descriptions[
-																		trait
-																	]
-																}
-															</p>{" "}
-														</div>
-													)
-												)}{" "}
-										</div>{" "}
-									</div>
-								)}
-							</div>
-						</div>
-					)}
 				</div>
 				{/* --- Memory View Area --- */}
 				<div className="flex-grow w-full relative overflow-hidden rounded-lg bg-neutral-900/30 border border-neutral-800 shadow-inner">
@@ -345,6 +300,7 @@ const Memories = () => {
 						<SQLiteMemoryDisplay
 							userDetails={userDetails}
 							refreshTrigger={refreshSqlite} // Pass trigger to re-fetch on clear
+							categories={shortTermMemoryCategories} // Pass categories to SQLiteMemoryDisplay
 						/>
 					)}
 				</div>

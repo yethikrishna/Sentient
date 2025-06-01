@@ -16,10 +16,10 @@ load_dotenv("server/.env")
 class MemoryBackend:
     def __init__(self, mongo_manager: MongoManager):
         """Initialize the memory backend with both long-term and short-term agents and MemoryQueue."""
-self.mongo_manager = mongo_manager # Use the passed MongoManager instance
+        self.mongo_manager = mongo_manager # Use the passed MongoManager instance
         print("MongoManager instance received by MemoryBackend.")
-print("Initializing MemoryBackend...")
-print("Initializing MemoryBackend...")
+        print("Initializing MemoryBackend...")
+        print("Initializing MemoryBackend...")
         
         # Long-term memory (Neo4j)
         print("Initializing HuggingFaceEmbedding...")
@@ -40,17 +40,10 @@ print("Initializing MemoryBackend...")
         self.text_desc_runnable = get_text_description_runnable()
         self.text_conv_runnable = get_text_conversion_runnable()
         print("Graph runnables initialized.")
+        # Memory type classifiers (removed)
 
-:start_line:40
--------
         # Short-term memory (MongoDB)
         self.memory_manager = MemoryManager(mongo_manager=self.mongo_manager, model_name=os.environ["BASE_MODEL_REPO_ID"])
-
-        # Memory type classifiers
-        print("Initializing memory type classifiers...")
-        self.memory_type_runnable = self._initialize_memory_type_classifier()
-        self.query_memory_type_runnable = self._initialize_query_memory_type_classifier()
-        print("Memory type classifiers initialized.")
 
         # Initialize MemoryQueue
         print("Initializing MemoryQueue...")
@@ -58,60 +51,19 @@ print("Initializing MemoryBackend...")
         print("MemoryQueue initialized.")
         print("MemoryBackend initialization complete.")
 
-    def _initialize_memory_type_classifier(self):
-        """Initialize the classifier for short-term vs long-term memories."""
-        print("Initializing memory type classifier (Short Term vs Long Term for facts)...")
-        classifier = OllamaRunnable(
-            model_url="http://localhost:11434/api/chat/",
-            model_name="llama3.2:3b",
-            system_prompt_template="""
-            You are an AI designed to classify user-provided facts into 'Short Term' or 'Long Term' memory types.
-            - 'Short Term' memories are transient (e.g., tasks, recent events) and typically expire within days or weeks.
-            - 'Long Term' memories are persistent (e.g., preferences, personal traits) and stored indefinitely.
-            Provide your classification as a string: "Short Term" or "Long Term". Do not add quotes. Simply respond with the memory type.
-            """,
-            user_prompt_template="Classify this fact: {fact}",
-            input_variables=["fact"],
-            response_type="chat"
-        )
-        print("Memory type classifier initialized.")
-        return classifier
+    def classify_memory(self, fact: str) -> str:
+        print(f"Classifying memory type for fact: '{fact}'")
+        return "Long Term"
 
-    def _initialize_query_memory_type_classifier(self):
-        """Initialize the classifier for short-term vs long-term queries."""
-        print("Initializing query memory type classifier (Short Term vs Long Term for queries)...")
-        classifier = OllamaRunnable(
-            model_url="http://localhost:11434/api/chat/",
-            model_name="llama3.2:3b",
-            system_prompt_template="""
-            You are an AI designed to classify user queries into 'Short Term' or 'Long Term' memory types based on the kind of information being requested.
-            - 'Short Term' queries are about recent events, tasks, or transient information (e.g., days or weeks). Examples: "What did I have for lunch yesterday?" or "Do I have meetings tomorrow?"
-            - 'Long Term' queries are about persistent information, preferences, or knowledge (e.g., habits, traits). Examples: "What's my favorite color?" or "What do I usually order at restaurants?"
-            Provide your classification as a string: "Short Term" or "Long Term". Do not add quotes. Simply respond with the memory type.
-            """,
-            user_prompt_template="Classify this query: {query}",
-            input_variables=["query"],
-            response_type="chat"
-        )
-        print("Query memory type classifier initialized.")
-        return classifier
+    def classify_query_memory_type(self, query: str) -> str:
+        print(f"Classifying query memory type for query: '{query}'")
+        return "Long Term"
 
     def extract_memory_facts(self, query: str) -> list:
         """Extract multiple factual statements from a memory-related query."""
         print(f"Extracting memory facts for query: '{query}'")
         try:
-            # Ensure userProfileDb.json exists and is valid, or handle gracefully
-            # TODO: Replace with MongoDB user profile retrieval
-            # For now, use a default username or fetch from a temporary source if available
             username = "User" # Fallback username
-            # profile_path = "userProfileDb.json"
-            # if not os.path.exists(profile_path):
-            #     print(f"Warning: {profile_path} not found. Cannot get username for fact extraction.")
-            #     username = "User" # Fallback username
-            # else:
-            #     with open(profile_path, "r", encoding="utf-8") as f:
-            #         user_db = json.load(f)
-            #     username = user_db.get("userData", {}).get("personalInfo", {}).get("name", "User")
 
             response = self.fact_extraction_runnable.invoke({"paragraph": query, "username": username})
             print(f"Raw fact extraction response: {response}")
@@ -120,7 +72,6 @@ print("Initializing MemoryBackend...")
                 facts = facts["facts"]
             elif not isinstance(facts, list):
                  print(f"Warning: Extracted facts are not in list format, attempting to use as is: {facts}")
-                 # If it's a string, wrap it in a list, otherwise handle error or return []
                  facts = [str(facts)] if facts is not None else []
 
             print(f"Extracted facts: {facts}")
@@ -128,34 +79,6 @@ print("Initializing MemoryBackend...")
         except Exception as e:
             print(f"Error extracting memory facts: {e}")
             return []
-
-    def classify_memory(self, fact: str) -> str:
-        """Classify a fact as short-term or long-term."""
-        print(f"Classifying memory type for fact: '{fact}'")
-        try:
-            response = self.memory_type_runnable.invoke({"fact": fact})
-            classification = response.strip()
-            print(f"Memory classification response: '{response}', Classified as: '{classification}'")
-            return classification
-        except Exception as e:
-            print(f"Error classifying memory: {e}")
-            print("Defaulting to Long Term memory.")
-            return "Long Term"
-
-    def classify_query_memory_type(self, query: str) -> str:
-        """Classify a query as short-term or long-term."""
-        print(f"Classifying query memory type for query: '{query}'")
-        try:
-            response = self.query_memory_type_runnable.invoke({"query": query})
-            print(response)
-            classification = response.strip()
-            print(classification)
-            print(f"Query memory type classification response: '{response}', Classified as: '{classification}'")
-            return classification
-        except Exception as e:
-            print(f"Error classifying query memory type: {e}")
-            print("Defaulting to Long Term query type.")
-            return "Long Term"
 
     async def store_memory(self, user_id: str, query: str):
         """Extract and store multiple facts in the appropriate memory system."""
@@ -167,10 +90,10 @@ print("Initializing MemoryBackend...")
             return
 
         for fact in facts:
-            memory_type = self.classify_memory(fact)
+            memory_type = "Long Term" # Default to Long Term after removing classification
             print(f"Extracted fact: '{fact}' | Classified as: {memory_type}")
 
-            if memory_type == "Short Term":
+            if memory_type == "Short Term": # This block will now effectively be skipped
                 print("Storing fact in Short Term memory...")
                 expiry_info = self.memory_manager.expiry_date_decision(fact)
                 retention_days = expiry_info if isinstance(expiry_info, int) else expiry_info.get("retention_days", 7)
@@ -207,10 +130,10 @@ print("Initializing MemoryBackend...")
             return
 
         for fact in facts:
-            memory_type = self.classify_memory(fact)
+            memory_type = "Long Term" # Default to Long Term after removing classification
             print(f"Extracted fact: '{fact}' | Classified as: {memory_type}")
 
-            if memory_type == "Short Term":
+            if memory_type == "Short Term": # This block will now effectively be skipped
                 print("Updating Short Term memory...")
                 self.memory_manager.update_memory(user_id, fact)
                 print("Short Term memory updated.")
@@ -234,13 +157,10 @@ print("Initializing MemoryBackend...")
     async def retrieve_memory(self, user_id: str, query: str, type: str = None) -> str:
         """Retrieve relevant memories synchronously from the appropriate store."""
         print(f"Retrieving memory for user ID: '{user_id}', query: '{query}'")
-        if type is None:
-            memory_type = self.classify_query_memory_type(query)
-        else:
-            memory_type = type
+        memory_type = "Long Term" # Default to Long Term after removing classification
             
         print(f"Query classified as: {memory_type} memory query.")
-        if memory_type == "Short Term":
+        if memory_type == "Short Term": # This block will now effectively be skipped
             print("Retrieving from Short Term memory...")
             context = self.memory_manager.process_user_query(user_id, query)
             if context and context != "I'm having trouble processing your question. Please try again.":
@@ -282,7 +202,7 @@ print("Initializing MemoryBackend...")
                     print(f"[MEMORY_BACKEND_PROCESSOR_ERROR] Invalid memory_data format for op {operation_id}: {memory_data}. Expected Dict.")
                     await self.memory_queue.complete_operation(user_id, operation_id, error="Invalid memory_data format.")
                     continue
-
+                
                 op_type = memory_data.get("type")
                 query_text = memory_data.get("query_text")
 

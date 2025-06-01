@@ -57,4 +57,22 @@ async function getPrivateData() {
 	return await response.json() // Parse and return the JSON response body.
 }
 
-export { getPrivateData }
+async function saveOnboardingData(onboardingData) {
+	const accessToken = getAccessToken()
+	const response = await fetch("http://localhost:3000/onboarding", {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+			Authorization: `Bearer ${accessToken}`
+		},
+		body: JSON.stringify(onboardingData)
+	})
+
+	if (!response.ok) {
+		throw new Error(`HTTP error! Status: ${response.status}`)
+	}
+
+	return await response.json()
+}
+
+export { getPrivateData, saveOnboardingData }

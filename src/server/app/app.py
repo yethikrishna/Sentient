@@ -511,10 +511,15 @@ async def get_chat_history_messages(user_id: str, chat_id: Optional[str] = None)
     # Convert datetime objects to ISO format for JSON serialization
     s_messages = []
     for m in messages:
+        if not isinstance(m, dict):
+            print(f"[CHAT_HISTORY_WARN] Skipping non-dictionary message: {m}")
+            continue # Skip this item if it's not a dictionary
+        print(f"[CHAT_HISTORY_DEBUG] Processing message type: {type(m)}")
         if isinstance(m.get('timestamp'), datetime.datetime):
             m['timestamp'] = m['timestamp'].isoformat()
         s_messages.append(m)
     # Filter for visible messages as per original logic
+    print(f"[CHAT_HISTORY_DEBUG] s_messages before final filter: {[type(item) for item in s_messages]}")
     return [m for m in s_messages if m.get("isVisible", True)], effective_chat_id
 
 async def add_message_to_db(user_id: str, chat_id: Union[int, str], message_text: str, is_user: bool, is_visible: bool = True, **kwargs) -> Optional[str]:
@@ -720,6 +725,12 @@ class UpdateUserDataRequest(BaseModel):
     data: Dict[str, Any]
 class AddUserDataRequest(BaseModel):
     data: Dict[str, Any]
+class OnboardingData(BaseModel):
+    # This model will dynamically accept any keys from the frontend onboarding form
+    # The values will be strings (for single choice) or lists of strings (for multiple choice)
+    # For now, we'll use a generic Dict[str, Any] to capture all answers.
+    # More specific validation can be added later if needed.
+    data: Dict[str, Any]
 class AddMemoryRequest(BaseModel):
     text: str
     category: str
@@ -746,6 +757,74 @@ class ApproveTaskResponse(BaseModel):
 async def main_root():
     return {"message": "Sentient API is running."}
 
+@app.post("/onboarding", status_code=status.HTTP_200_OK, summary="Save Onboarding Data", tags=["User Profile"])
+async def save_onboarding_data_endpoint(onboarding_data: OnboardingData, user_id: str = Depends(PermissionChecker(required_permissions=["write:profile"]))):
+    print(f"[ENDPOINT /onboarding] User {user_id}, Onboarding Data: {str(onboarding_data.data)[:100]}...")
+    try:
+        # Save to MongoDB user profile
+        # Load existing profile to merge data
+        existing_profile = await load_user_profile(user_id)
+        user_data_to_update = existing_profile.get("userData", {}) if existing_profile else {}
+
+        # Merge new onboarding data into existing userData
+        for key, new_val in onboarding_data.data.items():
+            if key in user_data_to_update and isinstance(user_data_to_update[key], list) and isinstance(new_val, list):
+                user_data_to_update[key].extend(item for item in new_val if item not in user_data_to_update[key])
+            elif key in user_data_to_update and isinstance(user_data_to_update[key], dict) and isinstance(new_val, dict):
+                user_data_to_update[key].update(new_val)
+            else:
+                user_data_to_update[key] = new_val
+
+        # Update only the 'userData' field in the user profile document
+        success = await write_user_profile(user_id, {"userData": user_data_to_update})
+        if not success:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to save onboarding data to user profile.")
+
+        # Save to Neo4j
+        if graph_driver:
+            print(f"[NEO4J_ONBOARDING] Initiating Neo4j update for onboarding data for user {user_id}.")
+            await update_neo4j_with_onboarding_data(user_id, onboarding_data.data, graph_driver, embed_model)
+        else:
+            print(f"[WARN] Neo4j driver not available. Skipping Neo4j update for onboarding data for user {user_id}.")
+
+        return JSONResponse(content={"message": "Onboarding data saved successfully.", "status": 200})
+    except Exception as e:
+        print(f"[ERROR] /onboarding {user_id}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to save onboarding data.")
+
+@app.post("/check-user-profile", status_code=status.HTTP_200_OK, summary="Check and Create User Profile", tags=["User Profile"])
+async def check_and_create_user_profile(user_id: str = Depends(PermissionChecker(required_permissions=["read:profile", "write:profile"]))):
+    print(f"[ENDPOINT /check-user-profile] Called by user {user_id}.")
+    try:
+        profile = await mongo_manager.get_user_profile(user_id)
+        if profile:
+            print(f"[USER_PROFILE] Profile exists for user {user_id}.")
+            return JSONResponse(content={"profile_exists": True})
+        else:
+            print(f"[USER_PROFILE] Profile does NOT exist for user {user_id}. Creating initial profile.")
+            initial_profile_data = {
+                "user_id": user_id,
+                "createdAt": datetime.datetime.now(datetime.timezone.utc),
+                "userData": {
+                    "personalInfo": {
+                        "name": "New User", # Placeholder, will be updated by onboarding
+                        "email": user_id # Use user_id as a default email if available
+                    },
+                    "onboardingComplete": False,
+                    "active_chat_id": str(uuid.uuid4()) # Assign a new chat ID for first-time users
+                }
+            }
+            success = await mongo_manager.update_user_profile(user_id, initial_profile_data)
+            if not success:
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create initial user profile.")
+            print(f"[USER_PROFILE] Initial profile created for user {user_id}.")
+            return JSONResponse(content={"profile_exists": False})
+    except Exception as e:
+        print(f"[ERROR] /check-user-profile {user_id}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to check or create user profile.")
+ 
 @app.post("/get-history", status_code=status.HTTP_200_OK, summary="Get Chat History", tags=["Chat"])
 async def get_history(user_id: str = Depends(PermissionChecker(required_permissions=["read:chat"]))):
     print(f"[ENDPOINT /get-history] Called by user {user_id}.")
@@ -803,7 +882,6 @@ async def chat(message: Message, user_id: str = Depends(PermissionChecker(requir
     try:
         user_profile_data = await load_user_profile(user_id)
         username = user_profile_data.get("userData", {}).get("personalInfo", {}).get("name", "User")
-        personality_setting = user_profile_data.get("userData", {}).get("personality", "Default")
         # Call get_chat_history_messages with None, allowing it to determine/create the active chat ID.
         # It now returns a tuple: (messages, effective_chat_id)
         # We only need the effective_chat_id here for subsequent calls.
@@ -839,65 +917,99 @@ async def chat(message: Message, user_id: str = Depends(PermissionChecker(requir
             if category == "agent":
                 agents_used = True
                 assistant_msg_base["agentsUsed"] = True
-                priority_response = priority_runnable.invoke({"task_description": transformed_input})
-                priority = priority_response.get("priority", 2)
-                await task_queue.add_task(user_id=user_id, chat_id=active_chat_id, description=transformed_input, priority=priority, username=username, personality=personality_setting, use_personal_context=use_personal_context, internet=internet_search_type)
-                assistant_msg_base["message"] = "Okay, I'll get right on that."
-                await add_message_to_db(user_id, active_chat_id, assistant_msg_base["message"], is_user=False, is_visible=True, agentsUsed=True, task=transformed_input)
-                yield json.dumps({"type": "assistantMessage", "messageId": assistant_msg_base["id"], "message": assistant_msg_base["message"], "done": True, "proUsed": False}) + "\n"
-                return
+                print(f"[CHAT_DEBUG] Agent category detected. Transformed input: {transformed_input[:100]}...")
+                try:
+                    priority_response = priority_runnable.invoke({"task_description": transformed_input})
+                    priority = priority_response.get("priority", 2)
+                    print(f"[CHAT_DEBUG] Priority determined: {priority}")
+                    await task_queue.add_task(user_id=user_id, chat_id=active_chat_id, description=transformed_input, priority=priority, username=username, use_personal_context=use_personal_context, internet=internet_search_type)
+                    assistant_msg_base["message"] = "Okay, I'll get right on that."
+                    await add_message_to_db(user_id, active_chat_id, assistant_msg_base["message"], is_user=False, is_visible=True, agentsUsed=True, task=transformed_input)
+                    yield json.dumps({"type": "assistantMessage", "messageId": assistant_msg_base["id"], "message": assistant_msg_base["message"], "done": True, "proUsed": False}) + "\n"
+                    print(f"[CHAT_DEBUG] Agent response sent and task added.")
+                    return
+                except Exception as e:
+                    print(f"[ERROR] Agent task processing failed: {e}")
+                    traceback.print_exc()
+                    yield json.dumps({"type":"error", "message":"Failed to process agent task."})+"\n"
+                    return
 
             if category == "memory" or use_personal_context:
                 memory_used = True
                 assistant_msg_base["memoryUsed"] = True
                 yield json.dumps({"type": "intermediary", "message": "Checking context...", "id": assistant_msg_id_ts}) + "\n"
+                print(f"[CHAT_DEBUG] Memory/Personal context requested. Retrieving memory for user {user_id} with input: {transformed_input[:100]}...")
                 try:
                     user_context_str = await memory_backend.retrieve_memory(user_id, transformed_input)
+                    print(f"[CHAT_DEBUG] Memory retrieval complete. Context length: {len(user_context_str) if user_context_str else 0}")
                 except Exception as e:
                     user_context_str = f"Error retrieving context: {e}"
-                if category == "memory": 
+                    print(f"[ERROR] Memory retrieval failed: {e}")
+                    traceback.print_exc()
+                if category == "memory":
                     if message.pricing == "free" and message.credits <= 0:
                         additional_notes += " (Memory update skipped: Pro)"
+                        print(f"[CHAT_DEBUG] Memory update skipped due to free tier/credits.")
                     else:
                         pro_features_used = True
-                        asyncio.create_task(memory_backend.add_operation(user_id, transformed_input)) 
+                        asyncio.create_task(memory_backend.add_operation(user_id, transformed_input))
+                        print(f"[CHAT_DEBUG] Memory add operation scheduled.")
 
             if internet_search_type and internet_search_type != "None":
                 internet_used = True
                 assistant_msg_base["internetUsed"] = True
                 if message.pricing == "free" and message.credits <= 0:
                     additional_notes += " (Search skipped: Pro)"
+                    print(f"[CHAT_DEBUG] Internet search skipped due to free tier/credits.")
                 else:
                     pro_features_used = True
                     yield json.dumps({"type": "intermediary", "message": "Searching internet...", "id": assistant_msg_id_ts}) + "\n"
+                    print(f"[CHAT_DEBUG] Internet search requested. Type: {internet_search_type}. Input: {transformed_input[:100]}...")
                     try:
                         reframed = get_reframed_internet_query(internet_query_reframe_runnable, transformed_input)
+                        print(f"[CHAT_DEBUG] Internet query reframed: {reframed[:100]}...")
                         results = get_search_results(reframed)
+                        print(f"[CHAT_DEBUG] Search results obtained. Number of results: {len(results) if results else 0}")
                         internet_context_str = get_search_summary(internet_summary_runnable, results)
+                        print(f"[CHAT_DEBUG] Internet summary obtained. Context length: {len(internet_context_str) if internet_context_str else 0}")
                     except Exception as e:
                         internet_context_str = f"Error searching: {e}"
+                        print(f"[ERROR] Internet search failed: {e}")
+                        traceback.print_exc()
 
-            if category in ["chat", "memory"]: 
+            if category in ["chat", "memory"]:
                 yield json.dumps({"type": "intermediary", "message": "Thinking...", "id": assistant_msg_id_ts}) + "\n"
                 full_response_text = ""
+                print(f"[CHAT_DEBUG] Generating streaming response. User context: {bool(user_context_str)}, Internet context: {bool(internet_context_str)}")
                 try:
                     # Fetch chat history right before generating response.
-                    # The last message in this history will be the current user's input,
-                    # which needs to be excluded from the 'chat_history' passed to the LLM,
-                    # as the LLM's prompt building logic will add the current user message separately.
-                    full_chat_history_from_db = await get_chat_history_messages(user_id, active_chat_id)
+                    # The `build_prompt` method in BaseRunnable expects `chat_history` to contain
+                    # all previous messages *excluding* the current user input, which it adds separately.
+                    # So, we need to ensure `history_for_llm` contains only the prior conversation.
+                    full_chat_history_from_db, _ = await get_chat_history_messages(user_id, active_chat_id)
+                    print(f"[CHAT_DEBUG] Full chat history fetched. Length: {len(full_chat_history_from_db)}")
                     
-                    # Ensure the last message is indeed the current user's input before slicing
+                    # Filter out the current user message from the history if it's the last one.
+                    # This assumes the last message in the fetched history is the one just added.
                     history_for_llm = []
-                    if full_chat_history_from_db and full_chat_history_from_db[-1].get("isUser") and full_chat_history_from_db[-1].get("message") == message.input:
-                        history_for_llm = full_chat_history_from_db[:-1]
-                    else:
-                        # Fallback: if the last message doesn't match, log a warning and use full history.
-                        # This might indicate an unexpected state or a bug in message saving/fetching order.
-                        print(f"[WARN] Last message in history does not match current user input for user {user_id}. Passing full history to LLM.")
-                        history_for_llm = full_chat_history_from_db
-
-                    async for token_chunk in generate_streaming_response(chat_runnable, inputs={"query": transformed_input, "user_context": user_context_str, "internet_context": internet_context_str, "name": username, "personality": personality_setting, "chat_history": history_for_llm}, stream=True):
+                    if full_chat_history_from_db:
+                        # Check if the last message is the current user's input
+                        # We compare by message content and user status for robustness
+                        last_message_in_db = full_chat_history_from_db[-1]
+                        if isinstance(last_message_in_db, dict) and \
+                           last_message_in_db.get("isUser") and \
+                           last_message_in_db.get("message") == message.input:
+                            history_for_llm = full_chat_history_from_db[:-1]
+                            print(f"[CHAT_DEBUG] Sliced history for LLM (excluding current user input). Length: {len(history_for_llm)}")
+                        else:
+                            # If the last message is not the current user's input, use the full history.
+                            # This might happen if there's an async timing issue or if the history
+                            # contains other non-user messages at the end.
+                            print(f"[WARN] Last message in history does not match current user input for user {user_id}. Passing full history to LLM.")
+                            history_for_llm = full_chat_history_from_db
+                    
+                    print(f"[CHAT_DEBUG] Calling generate_streaming_response with inputs: query='{transformed_input[:50]}...', user_context_present={bool(user_context_str)}, internet_context_present={bool(internet_context_str)}, chat_history_length={len(history_for_llm)}")
+                    async for token_chunk in generate_streaming_response(chat_runnable, inputs={"query": transformed_input, "user_context": user_context_str, "internet_context": internet_context_str, "name": username, "chat_history": history_for_llm}, stream=True):
                         if isinstance(token_chunk, str):
                             full_response_text += token_chunk
                             yield json.dumps({"type": "assistantStream", "token": token_chunk, "done": False, "messageId": assistant_msg_base["id"]}) + "\n"
@@ -907,11 +1019,15 @@ async def chat(message: Message, user_id: str = Depends(PermissionChecker(requir
                     assistant_msg_base["message"] = final_message_content
                     yield json.dumps({"type": "assistantStream", "token": ("\n\n" + additional_notes) if additional_notes else "", "done": True, "memoryUsed": memory_used, "agentsUsed": agents_used, "internetUsed": internet_used, "proUsed": pro_features_used, "messageId": assistant_msg_base["id"]}) + "\n"
                     await add_message_to_db(user_id, active_chat_id, final_message_content, is_user=False, is_visible=True, memoryUsed=memory_used, agentsUsed=agents_used, internetUsed=internet_used)
+                    print(f"[CHAT_DEBUG] Streaming response completed and final message saved.")
                 except Exception as e:
+                    print(f"[ERROR] Error during streaming response generation: {e}")
+                    traceback.print_exc()
                     error_msg_user = "Sorry, an error occurred while generating the response."
                     assistant_msg_base["message"] = error_msg_user
                     yield json.dumps({"type": "assistantStream", "token": error_msg_user, "done": True, "error": True, "messageId": assistant_msg_base["id"]}) + "\n"
                     await add_message_to_db(user_id, active_chat_id, error_msg_user, is_user=False, is_visible=True, error=True)
+                    print(f"[CHAT_DEBUG] Error message sent and saved.")
         
         return StreamingResponse(response_generator(), media_type="application/x-ndjson")
 
@@ -1268,36 +1384,15 @@ async def create_document(user_id: str = Depends(PermissionChecker(required_perm
         username = db_user_data.get("personalInfo", {}).get("name", user_id) 
         await loop.run_in_executor(None, os.makedirs, input_dir, True) 
 
-        personality_type_list = db_user_data.get("personalityType", [])
         bg_tasks = []
-        trait_descs_for_summary = []
         created_files_info = []
-
-        if isinstance(personality_type_list, list):
-            for trait in personality_type_list:
-                trait_lower = trait.lower()
-                if trait_lower in PERSONALITY_DESCRIPTIONS: 
-                    desc_content = f"{trait.capitalize()}: {PERSONALITY_DESCRIPTIONS[trait_lower]}"
-                    trait_descs_for_summary.append(desc_content)
-                    filename = f"{user_id}_{trait_lower}.txt" 
-                    bg_tasks.append(loop.run_in_executor(None, summarize_and_write_sync, user_id, username, desc_content, filename, input_dir))
         
-        results = await asyncio.gather(*bg_tasks, return_exceptions=True)
-        for res_tuple in results:
-            if isinstance(res_tuple, tuple) and res_tuple[0] and isinstance(res_tuple[1], str):
-                created_files_info.append(res_tuple[1]) 
-            elif isinstance(res_tuple, Exception):
-                print(f"[ERROR] Create document task failed: {res_tuple}")
-            elif isinstance(res_tuple, tuple) and not res_tuple[0]:
-                 print(f"[ERROR] Create document task failed (returned False): {res_tuple[1]}")
-
-
-        summary_text = "\n".join(trait_descs_for_summary)
+        summary_text = ""
         summary_filename = f"{user_id}_profile_summary.txt"
         await loop.run_in_executor(None, summarize_and_write_sync, user_id, username, summary_text, summary_filename, input_dir)
         created_files_info.append(summary_filename)
         
-        return JSONResponse(content={"message": "Input documents processed.", "created_files": created_files_info, "personality_summary_generated_length": len(summary_text)})
+        return JSONResponse(content={"message": "Input documents processed.", "created_files": created_files_info, "summary_generated_length": len(summary_text)})
     except Exception as e:
         print(f"[ERROR] /create-document {user_id}: {e}")
         traceback.print_exc()
@@ -1382,7 +1477,6 @@ async def add_task_endpoint(task_request: CreateTaskRequest, user_id: str = Depe
         
         user_profile = await load_user_profile(user_id)
         username = user_profile.get("userData", {}).get("personalInfo", {}).get("name", user_id)
-        personality = user_profile.get("userData", {}).get("personality", "Default")
         
         # Fetch chat history for the current request
         current_chat_history_for_task = await get_chat_history_messages(user_id, active_chat_id)
@@ -1391,15 +1485,15 @@ async def add_task_endpoint(task_request: CreateTaskRequest, user_id: str = Depe
         use_personal_context = unified_output.get("use_personal_context", False)
         internet_needed = unified_output.get("internet", "None")
         
-        task_priority = 2 
+        task_priority = 2
         try:
             priority_response = await loop.run_in_executor(None, priority_runnable.invoke, {"task_description": task_request.description})
-            task_priority = priority_response.get("priority", 2) 
-        except Exception as e_prio: 
+            task_priority = priority_response.get("priority", 2)
+        except Exception as e_prio:
             print(f"[WARN] Priority determination failed for task '{task_request.description[:30]}...': {e_prio}. Defaulting to low.")
-            pass 
+            pass
             
-        new_task_id = await task_queue.add_task(user_id=user_id, chat_id=active_chat_id, description=task_request.description, priority=task_priority, username=username, personality=personality, use_personal_context=use_personal_context, internet=internet_needed)
+        new_task_id = await task_queue.add_task(user_id=user_id, chat_id=active_chat_id, description=task_request.description, priority=task_priority, username=username, use_personal_context=use_personal_context, internet=internet_needed)
         
         await add_message_to_db(user_id, active_chat_id, task_request.description, is_user=True, is_visible=False)
         confirm_msg = f"Task added: '{task_request.description[:40]}...'"
@@ -1519,6 +1613,16 @@ async def clear_all_memories(user_id: str = Depends(PermissionChecker(required_p
         traceback.print_exc()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to clear all short-term memories.")
 
+@app.post("/get-memory-categories", status_code=status.HTTP_200_OK, summary="Get Memory Categories", tags=["Short-Term Memory"])
+async def get_memory_categories(user_id: str = Depends(PermissionChecker(required_permissions=["read:memory"]))):
+    print(f"[ENDPOINT /get-memory-categories] User {user_id}.")
+    try:
+        return JSONResponse(content={"categories": CATEGORIES})
+    except Exception as e:
+        print(f"[ERROR] /get-memory-categories {user_id}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve memory categories.")
+
 
 # --- User Profile Database Endpoints ---
 @app.post("/set-user-data", status_code=status.HTTP_200_OK, summary="Set User Profile Data", tags=["User Profile"])
@@ -1593,12 +1697,12 @@ async def get_graph_data_apoc(user_id: str = Depends(PermissionChecker(required_
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Neo4j driver unavailable.")
     
     graph_visualization_query = """
-    MATCH (n) WHERE n.userId = $userId 
-    WITH collect(DISTINCT n) as nodes
-    OPTIONAL MATCH (s)-[r]->(t) WHERE s IN nodes AND t IN nodes 
-    WITH nodes, collect(DISTINCT r) as rels
+    MATCH (u:User {userId: $userId})-[r*0..2]-(n)
+    WHERE n.userId = $userId OR (EXISTS(r) AND ALL(rel IN r WHERE startNode(rel).userId = $userId OR endNode(rel).userId = $userId))
+    WITH collect(DISTINCT n) as nodes, collect(DISTINCT r) as rels_list
+    UNWIND rels_list as rel
     RETURN [node IN nodes | { id: elementId(node), label: coalesce(labels(node)[0], 'Unknown'), properties: properties(node) }] AS nodes_list,
-           [rel IN rels | { id: elementId(rel), from: elementId(startNode(rel)), to: elementId(endNode(rel)), label: type(rel), properties: properties(rel) }] AS edges_list
+           [rel_item IN rels_list | { id: elementId(rel_item), from: elementId(startNode(rel_item)), to: elementId(endNode(rel_item)), label: type(rel_item), properties: properties(rel_item) }] AS edges_list
     """
 
     def run_q(driver, query, params):

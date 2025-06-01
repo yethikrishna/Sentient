@@ -45,7 +45,6 @@ def get_chat_runnable() -> BaseRunnable:
             "user_context",
             "internet_context",
             "name",
-            "personality",
             "chat_history", # Add chat_history as an input variable
         ],
         response_type="chat",

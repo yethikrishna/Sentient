@@ -216,6 +216,7 @@ class OllamaRunnable(BaseRunnable):
             "stream": False,
             "options": {"num_ctx": 4096}, # Set context window size
         }
+        print(f"[OLLAMA_DEBUG] Ollama invoke payload: {json.dumps(payload, indent=2)}")
 
         if self.response_type == "json":  # If expecting a JSON response, set the format
             print(f"Response type: {self.response_type}")
@@ -254,6 +255,7 @@ class OllamaRunnable(BaseRunnable):
             "stream": True,
             "options": {"num_ctx": 4096}, # Set context window size
         }
+        print(f"[OLLAMA_DEBUG] Ollama stream_response payload: {json.dumps(payload, indent=2)}")
 
 
         with requests.post(self.model_url, json=payload, stream=True) as response:

@@ -167,7 +167,6 @@ class BaseContextEngine(ABC):
         #         description=task["description"],
         #         priority=task["priority"],
         #         username=self.user_id,
-        #         personality=None,
         #         use_personal_context=False,
         #         internet="None"
         #     )

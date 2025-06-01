@@ -212,6 +212,40 @@ async function decrypt(encryptedData) {
 // --- Token Management Functions ---
 export async function refreshTokens() {
 	console.log("[auth.js] Attempting to refresh tokens...")
+
+	// 1. Check if current access token is still valid (local check)
+	if (accessToken && profile) {
+		try {
+			const decodedAccessToken = jwtDecode(accessToken)
+			const currentTime = Date.now() / 1000 // Current time in seconds since epoch
+			if (decodedAccessToken.exp > currentTime) {
+				console.log(
+					`[auth.js] Access token for user ${profile.sub} is still valid. Skipping network refresh.`
+				)
+				// Update check-in time even if token is locally valid
+				if (profile.sub) {
+					await setCheckinInKeytar(profile.sub)
+				}
+				return // Token is valid, no need to refresh via network
+			} else {
+				console.log(
+					`[auth.js] Access token for user ${profile.sub} has expired. Proceeding with network refresh.`
+				)
+			}
+		} catch (e) {
+			console.warn(
+				"[auth.js] Error decoding existing access token or token is invalid. Proceeding with network refresh.",
+				e
+			)
+			// Fall through to network refresh if decoding fails
+		}
+	} else {
+		console.log(
+			"[auth.js] No existing access token or profile. Proceeding with network refresh."
+		)
+	}
+
+	// 2. Attempt to get refresh token from Keytar
 	const savedEncryptedRefreshToken = await keytar.getPassword(
 		keytarService,
 		keytarAccountRefreshToken
@@ -226,7 +260,6 @@ export async function refreshTokens() {
 	}
 
 	if (!auth0Audience) {
-		// Crucial for custom API
 		console.error("[auth.js] Auth0 Audience missing for refreshTokens.")
 		await logout()
 		throw new Error(
@@ -246,6 +279,7 @@ export async function refreshTokens() {
 		throw new Error("Failed to decrypt refresh token. Please log in again.")
 	}
 
+	// 3. Perform network refresh using the refresh token
 	const refreshOptions = {
 		method: "POST",
 		headers: { "content-type": "application/json" },
@@ -253,8 +287,7 @@ export async function refreshTokens() {
 			grant_type: "refresh_token",
 			client_id: clientId,
 			refresh_token: decryptedToken,
-			audience: auth0Audience // Request token for your custom API
-			// Scopes are typically not re-requested here; they are bound to the refresh token grant
+			audience: auth0Audience
 		})
 	}
 
@@ -289,53 +322,38 @@ export async function refreshTokens() {
 		}
 
 		accessToken = data.access_token
+		profile = jwtDecode(data.id_token) // Update profile from new ID token
+
 		console.log(
-			"[auth.js] Auth0 /oauth/token response (loadTokens):",
+			"[auth.js] Auth0 /oauth/token response (refreshTokens):",
 			JSON.stringify(data, null, 2)
 		)
 		try {
-			const decodedAccessToken = jwtDecode(accessToken) // Use jwt-decode
+			const decodedAccessToken = jwtDecode(accessToken)
 			console.log(
-				"[auth.js] Decoded Access Token PAYLOAD (loadTokens):",
+				"[auth.js] Decoded Access Token PAYLOAD (refreshTokens):",
 				decodedAccessToken
 			)
-			// Specifically log the permissions claim
 			if (decodedAccessToken.permissions) {
 				console.log(
-					"[auth.js] Permissions in Access Token (loadTokens):",
+					"[auth.js] Permissions in Access Token (refreshTokens):",
 					decodedAccessToken.permissions
 				)
 			} else {
 				console.warn(
-					"[auth.js] 'permissions' claim MISSING in Access Token (loadTokens)."
+					"[auth.js] 'permissions' claim MISSING in Access Token (refreshTokens)."
 				)
 			}
 		} catch (e) {
 			console.error(
-				"[auth.js] Failed to decode access token for payload inspection (loadTokens).",
+				"[auth.js] Failed to decode access token for payload inspection (refreshTokens).",
 				e
 			)
 		}
-		// Make sure profile is also decoded from data.id_token
-		profile = jwtDecode(data.id_token)
-		console.log("[auth.js] Decoded ID Token PAYLOAD (loadTokens):", profile)
-
-		// Log received tokens for debugging (sensitive in production logs)
-		// console.log("[auth.js] RAW ACCESS TOKEN received (refresh):", data.access_token);
-		try {
-			const decodedHeader = jwtDecode(data.access_token, { header: true })
-			console.log(
-				"[auth.js] Decoded Access Token Header (refresh):",
-				decodedHeader
-			)
-			// Example of accessing custom claims if added by Auth0 Action
-			// const customRole = profile[`${auth0Audience}/role`]; // Use your actual namespace
-			// console.log("[auth.js] Custom role from refreshed ID token:", customRole);
-		} catch (e) {
-			console.error(
-				"[auth.js] Failed to decode access token header for inspection (refresh)."
-			)
-		}
+		console.log(
+			"[auth.js] Decoded ID Token PAYLOAD (refreshTokens):",
+			profile
+		)
 
 		if (data.refresh_token && data.refresh_token !== decryptedToken) {
 			console.log(
@@ -360,7 +378,7 @@ export async function refreshTokens() {
 			"[auth.js] Unexpected error during token refresh:",
 			error.message
 		)
-		if (!error.message.includes("Token refresh failed")) await logout() // Avoid double logout
+		if (!error.message.includes("Token refresh failed")) await logout()
 		throw error
 	}
 }

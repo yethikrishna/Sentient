@@ -46,7 +46,6 @@ def get_chat_runnable(chat_history: list[dict]) -> "BaseRunnable":
             "user_context",
             "internet_context",
             "name",
-            "personality",
         ],
         response_type="chat",
         stream=True,

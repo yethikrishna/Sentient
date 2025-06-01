@@ -1,8 +1,6 @@
 from sentence_transformers import SentenceTransformer
 import numpy as np
 from numpy.linalg import norm
-:start_line:4
--------
 from datetime import datetime, date, timedelta
 import spacy
 from typing import List, Dict, Optional
@@ -143,8 +141,6 @@ class MemoryManager:
             print(f"Error in extract_and_invoke_memory: {e}")
             return {"memories": []}
 
-:start_line:169
--------
     async def update_memory(self, user_id: str, current_query: str) -> Optional[Dict]:
         memories = self.extract_and_invoke_memory(current_query)
         for mem in memories.get('memories', []):

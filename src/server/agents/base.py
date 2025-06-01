@@ -62,7 +62,7 @@ class TaskQueue:
         return await self.collection.find_one({"user_id": user_id, "task_id": task_id})
 
     async def add_task(self, user_id: str, chat_id: str, description: str, priority: int, 
-                       username: str, personality: Union[Dict, str, None], 
+                       username: str,
                        use_personal_context: bool, internet: str) -> str:
         """Add a new task to the queue, scoped by user_id."""
         # Note: Original signature updated to include user_id, as app.py passes it.
@@ -75,7 +75,6 @@ class TaskQueue:
             "priority": priority,
             "status": "pending", # Initial status
             "username": username,
-            "personality": personality,
             "use_personal_context": use_personal_context,
             "internet": internet,
             "created_at": datetime.datetime.now(datetime.timezone.utc), # Store as datetime object

@@ -53,7 +53,6 @@ def get_chat_runnable(chat_history: List[Dict[str, str]]) -> BaseRunnable:
             "user_context",
             "internet_context",
             "name",
-            "personality",
         ],
         response_type="chat",
         stream=True,

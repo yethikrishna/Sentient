@@ -8,16 +8,23 @@ import os
 from server.app.app import (
     auth,
     PermissionChecker,
-    aes_encrypt, # from server.auth.helpers, imported into app.py
-    aes_decrypt, # from server.auth.helpers, imported into app.py
-    get_management_token, # from server.auth.helpers, imported into app.py
-    load_user_profile, # for data sources
-    write_user_profile, # for data sources
-    DATA_SOURCES, # for data sources
-    CREDENTIALS_DICT, # for google auth
-    SCOPES, # for google auth
-    BASE_DIR # for google auth token path
+    aes_encrypt, 
+    aes_decrypt, 
+    get_management_token, 
+    # load_user_profile, # Not directly used here, mongo_manager is used
+    # write_user_profile, # Not directly used here, mongo_manager is used
+    DATA_SOURCES, 
+    CREDENTIALS_DICT, 
+    SCOPES, 
+    BASE_DIR,
+    mongo_manager, # Import global mongo_manager
+    DATA_SOURCES_CONFIG, # Import for initializing engine state
+    task_queue, 
+    memory_backend, 
+    manager as websocket_manager # Ensure this is your WebSocketManager instance
 )
+
+
 from server.agents.runnables import get_tool_runnable # For elaborator
 from server.agents.prompts import elaborator_system_prompt_template, elaborator_user_prompt_template
 # Pydantic models moved from app.py
@@ -206,32 +213,56 @@ async def authenticate_google_route(user_id: str = Depends(PermissionChecker(req
 
 
 # --- Data Source Configuration Endpoints ---
-@router.post("/get_data_sources", status_code=status.HTTP_200_OK, summary="Get Data Source Statuses")
-async def get_data_sources_endpoint(user_id: str = Depends(PermissionChecker(required_permissions=["read:config"]))):
-    print(f"[ENDPOINT /utils/get_data_sources] User {user_id}.")
-    try:
-        profile = await load_user_profile(user_id)
-        settings = profile.get("userData", {})
-        statuses = [{"name": src, "enabled": settings.get(f"{src}Enabled", True)} for src in DATA_SOURCES]
-        return JSONResponse(content={"data_sources": statuses})
-    except Exception as e:
-        print(f"[ERROR] /utils/get_data_sources {user_id}: {e}")
-        traceback.print_exc()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get data source statuses.")
-
 @router.post("/set_data_source_enabled", status_code=status.HTTP_200_OK, summary="Enable/Disable Data Source")
 async def set_data_source_enabled_endpoint(request: SetDataSourceEnabledRequest, user_id: str = Depends(PermissionChecker(required_permissions=["write:config"]))):
     print(f"[ENDPOINT /utils/set_data_source_enabled] User {user_id}, Source: {request.source}, Enabled: {request.enabled}")
-    if request.source not in DATA_SOURCES:
+    if request.source not in DATA_SOURCES_CONFIG: # Check against DATA_SOURCES_CONFIG keys
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid data source: {request.source}")
     try:
-        profile = await load_user_profile(user_id)
-        if "userData" not in profile: # Should not happen if check-user-profile is called first
-            profile["userData"] = {}
-        profile["userData"][f"{request.source}Enabled"] = request.enabled
-        success = await write_user_profile(user_id, profile)
-        if not success:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to save data source status.")
+        # 1. Update the user's profile setting (optional, but good for UI consistency)
+        profile = await mongo_manager.get_user_profile(user_id)
+        if not profile: # Should not happen if user is authenticated and profile exists
+             profile = {"user_id": user_id, "userData": {}} # Create a basic profile structure
+        
+        if "userData" not in profile: profile["userData"] = {}
+        profile["userData"][f"{request.source}_polling_enabled"] = request.enabled # Store user preference
+        
+        profile_update_success = await mongo_manager.update_user_profile(user_id, profile)
+        if not profile_update_success:
+             print(f"[WARN] Failed to update user profile for {user_id} with {request.source} enabled status.")
+             # Continue to update polling state regardless, as it's critical
+
+        # 2. Update the polling_state_store directly for is_enabled
+        polling_state_update = {"is_enabled": request.enabled}
+        if request.enabled:
+            # If enabling, also set next_scheduled_poll_time to now to trigger immediate consideration by scheduler
+            polling_state_update["next_scheduled_poll_time"] = datetime.datetime.now(datetime.timezone.utc)
+            polling_state_update["is_currently_polling"] = False # Ensure it's not locked
+            polling_state_update["error_backoff_until_timestamp"] = None 
+            polling_state_update["consecutive_empty_polls_count"] = 0 
+            # Consider if current_polling_interval_seconds should be reset to default
+            # polling_state_update["current_polling_interval_seconds"] = DEFAULT_INITIAL_INTERVAL_SECONDS 
+        
+        success_polling_state = await mongo_manager.update_polling_state(user_id, request.source, polling_state_update)
+        
+        if not success_polling_state and request.enabled:
+            # If state didn't exist and we are enabling, it means upsert happened.
+            # Or if update_one somehow didn't modify (e.g., no change needed), still re-init state for safety.
+            print(f"[SET_DATA_SOURCE] Polling state for {user_id}/{request.source} might have been newly created or unchanged. Ensuring initialization.")
+        
+        # If it was just enabled, ensure its polling state is fully initialized (this creates if not exists).
+        if request.enabled:
+            engine_config = DATA_SOURCES_CONFIG.get(request.source)
+            if engine_config and engine_config.get("engine_class"):
+                engine_class = engine_config["engine_class"]
+                # Create a temporary instance just to initialize/ensure state
+                temp_engine = engine_class(user_id, task_queue, memory_backend, websocket_manager, mongo_manager)
+                await temp_engine.initialize_polling_state() 
+                print(f"[SET_DATA_SOURCE] Polling state initialized/verified for {user_id}/{request.source} after enabling.")
+            else:
+                print(f"[SET_DATA_SOURCE_ERROR] No engine_class found for {request.source} in DATA_SOURCES_CONFIG.")
+                # This is a configuration error on the server side.
+
         return JSONResponse(content={"status": "success", "message": f"Data source '{request.source}' status set to {request.enabled}."})
     except Exception as e:
         print(f"[ERROR] /utils/set_data_source_enabled {user_id}: {e}")

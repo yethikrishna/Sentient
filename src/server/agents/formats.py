@@ -368,15 +368,3 @@ gcalendar_agent_required_format = {
     "required": ["tool_name", "parameters"],
     "additionalProperties": False,
 }
-
-priority_required_format = {
-    "type": "object",
-    "properties": {
-        "priority": {
-            "type": "integer",
-            "enum": [0, 1, 2],
-        }
-    },
-    "required": ["priority"],
-    "additionalProperties": False,
-}

@@ -5,27 +5,27 @@ import asyncio # Required for loop.run_in_executor
 import datetime # for isoformat and now()
 import json # For processing LinkedIn data if it's JSON
 
-# Assuming these are initialized in app.py and can be imported
-from server.app.app import (
+# Import dependencies from common.dependencies
+from server.common.dependencies import (
     auth,
     PermissionChecker,
     mongo_manager, # For load_user_profile
     graph_driver,
     embed_model,
-    text_conversion_runnable,
-    query_classification_runnable,
-    fact_extraction_runnable,
-    information_extraction_runnable,
-    graph_analysis_runnable,
-    graph_decision_runnable,
-    text_description_runnable,
-    text_dissection_runnable,
-    text_summarizer_runnable, # <<<< ADDED: Assuming this is available from app.py
     memory_backend, # Short-term memory manager
     USER_PROFILE_DB_DIR # For input_docs path
 )
+from server.memory.runnables import ( # Import getters for memory-specific runnables
+    get_text_conversion_runnable, get_query_classification_runnable,
+    get_fact_extraction_runnable, get_information_extraction_runnable,
+    get_graph_analysis_runnable, get_graph_decision_runnable,
+    get_text_description_runnable, get_text_dissection_runnable,
+    get_text_summarizer_runnable
+)
+from server.common.functions import (
+    query_user_profile
+)
 from server.memory.functions import (
-    query_user_profile,
     build_initial_knowledge_graph,
     delete_source_subgraph,
     crud_graph_operations,
@@ -133,10 +133,17 @@ def summarize_and_write_sync(
 async def graphrag(request: GraphRAGRequest, user_id: str = Depends(PermissionChecker(required_permissions=["read:memory"]))):
     print(f"[ENDPOINT /memory/graphrag] User {user_id}, Query: '{request.query[:50]}...'")
     try:
-        if not all([graph_driver, embed_model, text_conversion_runnable, query_classification_runnable]):
+        # Get runnable instances inside the endpoint
+        text_conversion_runnable_instance = get_text_conversion_runnable()
+        query_classification_runnable_instance = get_query_classification_runnable()
+
+        if not all([graph_driver, embed_model, text_conversion_runnable_instance, query_classification_runnable_instance]):
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="GraphRAG dependencies unavailable.")
         # query_user_profile is a synchronous function from server.memory.functions
-        context = await asyncio.to_thread(query_user_profile, user_id, request.query, graph_driver, embed_model, text_conversion_runnable, query_classification_runnable)
+        context = await asyncio.to_thread(
+            query_user_profile, user_id, request.query, graph_driver, embed_model,
+            text_conversion_runnable_instance, query_classification_runnable_instance
+        )
         return JSONResponse(content={"context": context or "No relevant context found."})
     except Exception as e:
         print(f"[ERROR] /memory/graphrag {user_id}: {e}")
@@ -155,7 +162,11 @@ async def create_graph(request_data: Optional[Dict[str, bool]] = None, user_id: 
     try:
         user_profile_doc = await mongo_manager.get_user_profile(user_id) # Use mongo_manager
         username = user_profile_doc.get("userData", {}).get("personalInfo", {}).get("name", user_id) if user_profile_doc else user_id
-        if not all([graph_driver, embed_model, text_dissection_runnable, information_extraction_runnable]):
+
+        # Get runnable instances
+        text_dissection_runnable_instance = get_text_dissection_runnable()
+        information_extraction_runnable_instance = get_information_extraction_runnable()
+        if not all([graph_driver, embed_model, text_dissection_runnable_instance, information_extraction_runnable_instance]):
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Graph building dependencies unavailable.")
 
         def read_files_sync(udir, uid, uname): # This function remains sync
@@ -194,7 +205,10 @@ async def create_graph(request_data: Optional[Dict[str, bool]] = None, user_id: 
             print(f"Graph cleared for user: {user_id}.")
 
         if extracted_texts:
-            await loop.run_in_executor(None, build_initial_knowledge_graph, user_id, extracted_texts, graph_driver, embed_model, text_dissection_runnable, information_extraction_runnable) # Pass user_id instead of username for KG operations for consistency
+            await loop.run_in_executor(None, build_initial_knowledge_graph,
+                                       user_id, extracted_texts, graph_driver, embed_model,
+                                       text_dissection_runnable_instance,
+                                       information_extraction_runnable_instance)
             return JSONResponse(content={"message": f"Knowledge Graph {action.lower()} for user {user_id} completed."})
         else:
             return JSONResponse(content={"message": "No input documents found. Graph not modified."})
@@ -211,16 +225,27 @@ async def customize_graph(request: GraphRequest, user_id: str = Depends(Permissi
     try:
         user_profile_doc = await mongo_manager.get_user_profile(user_id)
         username = user_profile_doc.get("userData", {}).get("personalInfo", {}).get("name", user_id) if user_profile_doc else user_id
-        required_deps = [graph_driver, embed_model, fact_extraction_runnable, query_classification_runnable, information_extraction_runnable, graph_analysis_runnable, graph_decision_runnable, text_description_runnable]
+
+        # Get runnable instances
+        fact_extraction_runnable_instance = get_fact_extraction_runnable()
+        query_classification_runnable_instance = get_query_classification_runnable()
+        information_extraction_runnable_instance = get_information_extraction_runnable()
+        graph_analysis_runnable_instance = get_graph_analysis_runnable()
+        graph_decision_runnable_instance = get_graph_decision_runnable()
+        text_description_runnable_instance = get_text_description_runnable()
+
+        required_deps = [graph_driver, embed_model, fact_extraction_runnable_instance,
+                         query_classification_runnable_instance, information_extraction_runnable_instance,
+                         graph_analysis_runnable_instance, graph_decision_runnable_instance, text_description_runnable_instance]
         if not all(required_deps):
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Graph customization dependencies unavailable.")
 
         # Make sure the input to fact_extraction_runnable is what it expects
         fact_input = {"paragraph": request.information}
-        if "username" in fact_extraction_runnable.input_schema.schema().get("properties", {}): # Check if username is an expected key
+        if "username" in fact_extraction_runnable_instance.input_variables:
             fact_input["username"] = username
             
-        extracted_points_data = await loop.run_in_executor(None, fact_extraction_runnable.invoke, fact_input)
+        extracted_points_data = await loop.run_in_executor(None, fact_extraction_runnable_instance.invoke, fact_input)
         
         extracted_points = []
         if isinstance(extracted_points_data, dict) and "facts" in extracted_points_data and isinstance(extracted_points_data["facts"], list):
@@ -244,7 +269,10 @@ async def customize_graph(request: GraphRequest, user_id: str = Depends(Permissi
         if not extracted_points:
             return JSONResponse(content={"message": "No facts extracted or facts format unrecognized. Graph not modified."})
 
-        crud_tasks = [loop.run_in_executor(None, crud_graph_operations, user_id, point, graph_driver, embed_model, query_classification_runnable, information_extraction_runnable, graph_analysis_runnable, graph_decision_runnable, text_description_runnable) for point in extracted_points]
+        crud_tasks = [loop.run_in_executor(None, crud_graph_operations,
+                                           user_id, point, graph_driver, embed_model,
+                                           query_classification_runnable_instance, information_extraction_runnable_instance,
+                                           graph_analysis_runnable_instance, graph_decision_runnable_instance, text_description_runnable_instance) for point in extracted_points]
         crud_results = await asyncio.gather(*crud_tasks, return_exceptions=True)
         
         processed_count = sum(1 for r in crud_results if not isinstance(r, Exception) and r is not None) # Assuming crud_graph_operations returns non-None on success
@@ -260,6 +288,28 @@ async def customize_graph(request: GraphRequest, user_id: str = Depends(Permissi
         traceback.print_exc()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Knowledge Graph customization failed.")
 
+# --- Endpoint that was missing from the original diff generation, adding it explicitly ---
+@router.post("/input-docs", status_code=status.HTTP_200_OK, summary="Process Input Documents for KG")
+async def create_document_route(user_id: str = Depends(PermissionChecker(required_permissions=["write:memory"]))): # Renamed to avoid conflict
+    print(f"[ENDPOINT /memory/input-docs] User {user_id}.")
+    loop = asyncio.get_event_loop()
+    input_dir = os.path.join(USER_PROFILE_DB_DIR, user_id, "input_docs")
+    os.makedirs(input_dir, exist_ok=True)
+    try:
+        user_profile_doc = await mongo_manager.get_user_profile(user_id)
+        username = user_profile_doc.get("userData", {}).get("personalInfo", {}).get("name", user_id) if user_profile_doc else user_id
+
+        # Get the summarizer runnable instance here
+        summarizer_instance = get_text_summarizer_runnable()
+
+        success, filename = await loop.run_in_executor(None, summarize_and_write_sync, username, json.dumps(user_profile_doc.get("userData", {})), f"{user_id}_profile_summary.txt", input_dir, summarizer_instance)
+        if not success:
+            print(f"Failed to process document for user {user_id}: {filename}")
+        return JSONResponse(content={"message": f"Document processing for {user_id} completed. Processed: {filename if success else 'None'}", "filename": filename if success else None})
+    except Exception as e:
+        print(f"[ERROR] /memory/input-docs {user_id}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Document processing failed.")
 
 # --- Short-Term Memory Endpoints ---
 @router.post("/get-short-term-memories", status_code=status.HTTP_200_OK, summary="Get Short-Term Memories")

@@ -159,7 +159,7 @@ export function getLogOutUrl() {
 // --- Encryption/Decryption Service Interaction (Backend) ---
 async function encrypt(data) {
 	try {
-		const response = await fetch(`${appServerUrl}/encrypt`, {
+		const response = await fetch(`${appServerUrl}/utils/encrypt`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ data })
@@ -185,7 +185,7 @@ async function encrypt(data) {
 
 async function decrypt(encryptedData) {
 	try {
-		const response = await fetch(`${appServerUrl}/decrypt`, {
+		const response = await fetch(`${appServerUrl}/utils/decrypt`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ encrypted_data: encryptedData })
@@ -658,7 +658,7 @@ export async function fetchAndSetUserRole() {
 		`[auth.js] Fetching user role for ${userId} from backend /get-role...`
 	)
 	try {
-		const response = await fetch(`${appServerUrl}/get-role`, {
+		const response = await fetch(`${appServerUrl}/utils/get-role`, {
 			method: "POST", // Backend expects POST
 			headers: {
 				"Content-Type": "application/json",
@@ -849,13 +849,16 @@ export async function fetchAndSetReferralCode() {
 		`[auth.js] Fetching referral code for ${userId} from backend /get-referral-code...`
 	)
 	try {
-		const response = await fetch(`${appServerUrl}/get-referral-code`, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-				Authorization: `Bearer ${token}`
+		const response = await fetch(
+			`${appServerUrl}/utils/get-referral-code`,
+			{
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${token}`
+				}
 			}
-		})
+		)
 		if (!response.ok) {
 			/* ... error handling ... */ throw new Error(
 				`Backend error /get-referral-code: ${response.statusText}`
@@ -910,13 +913,16 @@ export async function fetchAndSetReferrerStatus() {
 		`[auth.js] Fetching referrer status for ${userId} from backend /get-referrer-status...`
 	)
 	try {
-		const response = await fetch(`${appServerUrl}/get-referrer-status`, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-				Authorization: `Bearer ${token}`
+		const response = await fetch(
+			`${appServerUrl}/utils/get-referrer-status`,
+			{
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${token}`
+				}
 			}
-		})
+		)
 		if (!response.ok) {
 			/* ... error handling ... */ throw new Error(
 				`Backend error /get-referrer-status: ${response.statusText}`

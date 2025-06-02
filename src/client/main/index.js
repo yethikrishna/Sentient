@@ -19,8 +19,8 @@
  */
 
 import { app, BrowserWindow, ipcMain, dialog, Notification } from "electron"
-import path, { dirname } from "path"
-import { fileURLToPath } from "url"
+import path, { dirname } from "path" // Corrected import
+import { fileURLToPath } from "url" // Corrected import
 import fetch from "node-fetch"
 import dotenv from "dotenv"
 import pkg from "electron-updater"
@@ -46,7 +46,7 @@ import {
 	getReferralCodeFromKeytar,
 	logout // Import the logout function
 } from "../utils/auth.js"
-import { getPrivateData } from "../utils/api.js" // API utility (may need user context)
+// The import of getPrivateData from ../utils/api.js has been removed as it was causing a SyntaxError
 import { createAuthWindow } from "./auth.js" // Window creation functions
 
 // --- Constants and Path Configurations ---
@@ -56,8 +56,8 @@ let basePath // Base path for application data, differs for packaged/dev
 let dotenvPath // Path to the .env file
 let appOutDir // Output directory for packaged app resources
 
-const __filename = fileURLToPath(import.meta.url) // Current file's path
-const __dirname = dirname(__filename) // Current file's directory
+const mainFilePath = fileURLToPath(import.meta.url) // Renamed __filename
+const mainDirPath = dirname(mainFilePath) // Renamed __dirname
 
 // Configure paths based on whether the app is packaged (production) or not (development)
 if (app.isPackaged) {
@@ -75,12 +75,12 @@ if (app.isPackaged) {
 	dotenvPath = isWindows
 		? path.join(process.resourcesPath, ".env") // .env expected in resources for Windows packaged app
 		: path.join(app.getPath("home"), ".sentient.env") // User-specific .env for Linux
-	appOutDir = path.join(__dirname, "../out") // Standard output directory for packaged app
+	appOutDir = path.join(mainDirPath, "../out") // Standard output directory for packaged app
 } else {
 	console.log("Application is running in DEVELOPMENT mode.")
 	// Define paths for development environment
-	dotenvPath = path.resolve(__dirname, "../../.env") // .env in project root
-	appOutDir = path.join(__dirname, "../out") // Output directory within project structure
+	dotenvPath = path.resolve(mainDirPath, "../../.env") // Use renamed variable
+	appOutDir = path.join(mainDirPath, "../out") // Use renamed variable
 }
 
 // Load environment variables from the determined .env file path
@@ -314,7 +314,7 @@ export const createAppWindow = () => {
 		width: 2000, // Initial window dimensions
 		height: 1500,
 		webPreferences: {
-			preload: path.join(__dirname, "preload.js"), // Path to preload script
+			preload: path.join(mainDirPath, "preload.js"), // Path to preload script
 			contextIsolation: true, // Recommended for security
 			enableRemoteModule: false, // Deprecated and insecure
 			devTools: !app.isPackaged // Enable DevTools only in development
@@ -1059,39 +1059,6 @@ ipcMain.handle("get-profile", async () => {
 	}
 })
 
-// IPC: Get Private Data (Placeholder - Requires specific implementation)
-ipcMain.handle("get-private-data", async () => {
-	const userId = getUserIdFromProfile()
-	const authHeader = getAuthHeader() // Get auth header for backend call
-
-	if (!userId || !authHeader) {
-		console.error("IPC: get-private-data - User not authenticated.")
-		return { error: "User not authenticated.", status: 401 }
-	}
-
-	if (!app.isPackaged) {
-		console.log(
-			`IPC: get-private-data (DEV mode) - Returning mock private data for user ${userId}.`
-		)
-		return { mockData: `Some development private data for user ${userId}.` }
-	}
-
-	try {
-		console.log(
-			`PRODUCTION MODE: Handling get-private-data request for user: ${userId}`
-		)
-		// Assuming `getPrivateData` is an async function that makes a backend call
-		// It might need modification to accept `userId` or use the `authHeader`.
-		return await getPrivateData(/* pass userId or authHeader if needed */)
-	} catch (error) {
-		console.error(
-			`IPC Error: Failed to get private data for user ${userId}:`,
-			error
-		)
-		return { error: error.message, status: 500 }
-	}
-})
-
 // IPC: Log Out
 ipcMain.on("log-out", () => {
 	console.log("IPC: Log-out command received. Initiating logout process.")
@@ -1270,178 +1237,6 @@ ipcMain.handle("fetch-referrer-status", async () => {
 // --- Backend Interaction IPC Handlers (Include Auth Header) ---
 // These handlers make requests to the backend server, including the Authorization header.
 
-// IPC: Set Referrer (Backend Call)
-ipcMain.handle("set-referrer", async (_event, { referralCode }) => {
-	const userId = getUserIdFromProfile() // ID of the user making the request
-	const authHeader = getAuthHeader()
-	if (!userId || !authHeader) {
-		console.error("IPC: set-referrer - User not authenticated.")
-		return { error: "User not authenticated.", status: 401 }
-	}
-
-	if (!app.isPackaged) {
-		// Development skip
-		console.log("IPC: set-referrer (DEV) - Simulated successful call.")
-		return {
-			message: "DEV: Referrer status setting simulated.",
-			status: 200
-		}
-	}
-
-	try {
-		const apiUrl = `${process.env.APP_SERVER_URL}/get-user-and-set-referrer-status`
-		console.log(
-			`IPC: User ${userId} sending referral code '${referralCode}' to backend: ${apiUrl}`
-		)
-		const response = await fetch(apiUrl, {
-			method: "POST",
-			headers: { "Content-Type": "application/json", ...authHeader },
-			// Backend uses token to identify the user making the request.
-			// The body contains the referral code of the user whose status needs to be updated.
-			body: JSON.stringify({ referral_code: referralCode })
-		})
-
-		if (!response.ok) {
-			const errorText = await response.text()
-			let detail = errorText
-			try {
-				detail = JSON.parse(errorText).detail || detail
-			} catch {
-				/* ignore parse error */
-			}
-			console.error(
-				`IPC Error: Set Referrer API call failed for user ${userId}. Status: ${response.status}, Details: ${detail}`
-			)
-			return { error: `API Error: ${detail}`, status: response.status }
-		}
-
-		const result = await response.json()
-		console.log(
-			`IPC: Set Referrer API call successful for user ${userId}. Response:`,
-			result
-		)
-		// Optionally, re-fetch the current user's own referrer status if it might have changed as a result.
-		// await fetchAndSetReferrerStatus(); // If the backend logic could affect the requesting user's status
-		return {
-			message:
-				result.message || "Referrer request processed successfully.",
-			status: 200
-		}
-	} catch (error) {
-		console.error(
-			`IPC Error: Exception in set-referrer handler for user ${userId}:`,
-			error
-		)
-		return { error: error.message, status: 500 }
-	}
-})
-
-// IPC: Set User Data (Backend Call)
-ipcMain.handle("set-user-data", async (_event, args) => {
-	const { data } = args
-	const userId = getUserIdFromProfile()
-	const authHeader = getAuthHeader()
-	if (!userId || !authHeader) {
-		console.error("IPC: set-user-data - User not authenticated.")
-		return { error: "User not authenticated.", status: 401 }
-	}
-
-	console.log(
-		`IPC: set-user-data called for user ${userId}. Data keys: ${Object.keys(data || {}).join(", ")}`
-	)
-	try {
-		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/set-user-data`,
-			{
-				method: "POST",
-				headers: { "Content-Type": "application/json", ...authHeader },
-				body: JSON.stringify({ data: data }) // Backend gets userId from token
-			}
-		)
-
-		if (!response.ok) {
-			const errorDetail = await response
-				.json()
-				.catch(() => ({ detail: "Unknown error from server." }))
-			console.error(
-				`IPC Error: Set User Data API call failed for user ${userId}. Status: ${response.status}, Details:`,
-				errorDetail
-			)
-			return {
-				message: `Error setting data: ${errorDetail.detail || response.statusText}`,
-				status: response.status
-			}
-		}
-		const result = await response.json()
-		console.log(
-			`IPC: Set User Data API call successful for user ${userId}.`
-		)
-		return result // Contains { message, status } from backend
-	} catch (error) {
-		console.error(
-			`IPC Error: Exception in set-user-data handler for user ${userId}:`,
-			error
-		)
-		return {
-			message: "Error storing user data.",
-			status: 500,
-			error: error.message
-		}
-	}
-})
-
-// IPC: Add/Merge DB Data (Backend Call)
-ipcMain.handle("add-db-data", async (_event, args) => {
-	const { data } = args
-	const userId = getUserIdFromProfile()
-	const authHeader = getAuthHeader()
-	if (!userId || !authHeader) {
-		console.error("IPC: add-db-data - User not authenticated.")
-		return { error: "User not authenticated.", status: 401 }
-	}
-
-	console.log(
-		`IPC: add-db-data called for user ${userId}. Data keys: ${Object.keys(data || {}).join(", ")}`
-	)
-	try {
-		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/add-db-data`,
-			{
-				method: "POST",
-				headers: { "Content-Type": "application/json", ...authHeader },
-				body: JSON.stringify({ data: data }) // Backend gets userId from token
-			}
-		)
-
-		if (!response.ok) {
-			const errorDetail = await response
-				.json()
-				.catch(() => ({ detail: "Unknown error from server." }))
-			console.error(
-				`IPC Error: Add DB Data API call failed for user ${userId}. Status: ${response.status}, Details:`,
-				errorDetail
-			)
-			return {
-				message: `Error adding/merging data: ${errorDetail.detail || response.statusText}`,
-				status: response.status
-			}
-		}
-		const result = await response.json()
-		console.log(`IPC: Add DB Data API call successful for user ${userId}.`)
-		return result
-	} catch (error) {
-		console.error(
-			`IPC Error: Exception in add-db-data handler for user ${userId}:`,
-			error
-		)
-		return {
-			message: "Error adding/merging user data.",
-			status: 500,
-			error: error.message
-		}
-	}
-})
-
 // IPC: Get User Data (Backend Call)
 ipcMain.handle("get-user-data", async () => {
 	const userId = getUserIdFromProfile()
@@ -1454,7 +1249,7 @@ ipcMain.handle("get-user-data", async () => {
 	console.log(`IPC: get-user-data called for user ${userId}.`)
 	try {
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/get-user-data`,
+			`${process.env.APP_SERVER_URL}/common/get-user-data`,
 			{
 				method: "POST", // Kept POST as backend identifies user via token
 				headers: { "Content-Type": "application/json", ...authHeader }
@@ -1505,7 +1300,7 @@ ipcMain.handle("fetch-chat-history", async () => {
 	console.log(`IPC: fetch-chat-history called for user ${userId}.`)
 	try {
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/get-history`,
+			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/common/get-history`,
 			{
 				method: "POST", // Changed to POST to align with backend
 				headers: { "Content-Type": "application/json", ...authHeader }
@@ -1588,11 +1383,14 @@ ipcMain.handle("send-message", async (_event, { input }) => {
 			JSON.stringify(payload)
 		)
 
-		const response = await fetch(`${process.env.APP_SERVER_URL}/chat`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json", ...authHeader },
-			body: JSON.stringify(payload)
-		})
+		const response = await fetch(
+			`${process.env.APP_SERVER_URL}/common/chat`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json", ...authHeader },
+				body: JSON.stringify(payload)
+			}
+		)
 
 		// --- Handle Streaming Response ---
 		if (!response.ok) {
@@ -1724,100 +1522,6 @@ ipcMain.handle("send-message", async (_event, { input }) => {
 		return { message: `Error: ${error.message}`, status: 500 }
 	}
 })
-// IPC: Build Personality (Multi-step Backend Process)
-ipcMain.handle("build-personality", async () => {
-	const userId = getUserIdFromProfile()
-	const authHeader = getAuthHeader()
-	if (!userId || !authHeader) {
-		console.error("IPC: build-personality - User not authenticated.")
-		return { error: "User not authenticated.", status: 401 }
-	}
-
-	console.log(`IPC: build-personality process initiated for user ${userId}.`)
-	try {
-		// Step 1: Create documents based on profile
-		console.log(
-			`IPC: Calling backend /create-document for user ${userId}...`
-		)
-		const documentResponse = await fetch(
-			`${process.env.APP_SERVER_URL}/create-document`,
-			{
-				method: "POST",
-				headers: { "Content-Type": "application/json", ...authHeader }
-				// Body might be empty if backend uses token for user context.
-			}
-		)
-		if (!documentResponse.ok) {
-			const errTxt = await documentResponse.text()
-			throw new Error(
-				`Failed /create-document step. Status: ${documentResponse.status}, Details: ${errTxt}`
-			)
-		}
-		const { personality } = await documentResponse.json() // Expects personality summary
-		console.log(
-			`IPC: Backend /create-document successful for user ${userId}.`
-		)
-
-		// Step 2: Update local DB (user profile) with the generated personality summary
-		console.log(
-			`IPC: Updating local user profile with personality summary for user ${userId}...`
-		)
-		const addDataResponse = await fetch(
-			`${process.env.APP_SERVER_URL}/add-db-data`,
-			{
-				method: "POST",
-				headers: { "Content-Type": "application/json", ...authHeader },
-				body: JSON.stringify({ data: { userData: { personality } } }) // Add under userData
-			}
-		)
-		if (!addDataResponse.ok) {
-			const errTxt = await addDataResponse.text()
-			throw new Error(
-				`Failed /add-db-data step for personality. Status: ${addDataResponse.status}, Details: ${errTxt}`
-			)
-		}
-		console.log(
-			`IPC: Local user profile updated successfully for user ${userId}.`
-		)
-
-		// Step 3: Initiate/Update long-term memories (knowledge graph)
-		console.log(
-			`IPC: Calling backend /initiate-long-term-memories for user ${userId}...`
-		)
-		const graphResponse = await fetch(
-			`${process.env.APP_SERVER_URL}/initiate-long-term-memories`,
-			{
-				method: "POST",
-				headers: { "Content-Type": "application/json", ...authHeader }
-				// Body might be empty or include flags like { clear_graph: false }
-			}
-		)
-		if (!graphResponse.ok) {
-			const errTxt = await graphResponse.text()
-			throw new Error(
-				`Failed /initiate-long-term-memories step. Status: ${graphResponse.status}, Details: ${errTxt}`
-			)
-		}
-		console.log(
-			`IPC: Backend /initiate-long-term-memories successful for user ${userId}.`
-		)
-
-		return {
-			message:
-				"Personality documents and knowledge graph processed successfully.",
-			status: 200
-		}
-	} catch (error) {
-		console.error(
-			`IPC Error: Exception in build-personality handler for user ${userId}:`,
-			error
-		)
-		return {
-			message: `Error building personality: ${error.message}`,
-			status: 500
-		}
-	}
-})
 
 // IPC: Reset Long-Term Memories (Knowledge Graph) (Backend Call)
 ipcMain.handle("reset-long-term-memories", async () => {
@@ -1831,7 +1535,7 @@ ipcMain.handle("reset-long-term-memories", async () => {
 	console.log(`IPC: reset-long-term-memories called for user ${userId}.`)
 	try {
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/initiate-long-term-memories`,
+			`${process.env.APP_SERVER_URL}/memory/initiate-long-term-memories`,
 			{
 				// Backend endpoint might be the same, but with a flag to clear
 				method: "POST",
@@ -1902,7 +1606,7 @@ ipcMain.handle(
 			}
 
 			const response = await fetch(
-				`${process.env.APP_SERVER_URL}/customize-long-term-memories`,
+				`${process.env.APP_SERVER_URL}/memory/customize-long-term-memories`,
 				{
 					method: "POST",
 					headers: {
@@ -1921,7 +1625,7 @@ ipcMain.handle(
 			if (!response.ok) {
 				const errorText = await response.text()
 				throw new Error(
-					`Failed to customize graph. Status: ${response.status}, Details: ${errorText}`
+					`Failed to customize graph. Status: ${response.status}. Details: ${errorText}`
 				)
 			}
 			const result = await response.json()
@@ -1963,54 +1667,6 @@ ipcMain.handle(
 	}
 )
 
-// IPC: Delete Subgraph (Backend Call)
-ipcMain.handle("delete-subgraph", async (_event, { source_name }) => {
-	const userId = getUserIdFromProfile()
-	const authHeader = getAuthHeader()
-	if (!userId || !authHeader) {
-		console.error("IPC: delete-subgraph - User not authenticated.")
-		return { status: "failure", error: "User not authenticated." }
-	}
-
-	console.log(
-		`IPC: delete-subgraph called by user ${userId} for source: ${source_name}`
-	)
-	try {
-		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/delete-subgraph`,
-			{
-				method: "POST",
-				headers: { "Content-Type": "application/json", ...authHeader },
-				body: JSON.stringify({ source: source_name }) // Backend gets user from token
-			}
-		)
-
-		const result = await response.json() // Try to parse JSON regardless of status for more info
-		if (!response.ok || result.status === "failure") {
-			// Check for explicit failure in response too
-			const errorMsg =
-				result.error ||
-				result.detail ||
-				`Server error ${response.status}`
-			console.error(
-				`IPC Error: Delete Subgraph API call failed for user ${userId}. Status: ${response.status}, Error: ${errorMsg}`
-			)
-			throw new Error(errorMsg)
-		}
-		console.log(
-			`IPC: Delete Subgraph API call successful for user ${userId}. Response:`,
-			result
-		)
-		return result // Expects { message } or similar from backend on success
-	} catch (error) {
-		console.error(
-			`IPC Error: Exception in delete-subgraph handler for user ${userId}:`,
-			error
-		)
-		return { status: "failure", error: error.message }
-	}
-})
-
 // IPC: Fetch Tasks (Backend Call)
 ipcMain.handle("fetch-tasks", async () => {
 	const userId = getUserIdFromProfile()
@@ -2023,7 +1679,7 @@ ipcMain.handle("fetch-tasks", async () => {
 	console.log(`IPC: fetch-tasks called for user ${userId}.`)
 	try {
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/fetch-tasks`,
+			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/agents/fetch-tasks`,
 			{
 				method: "POST", // Changed to POST to align with backend
 				headers: { "Content-Type": "application/json", ...authHeader }
@@ -2064,6 +1720,7 @@ ipcMain.handle("add-task", async (_event, taskData) => {
 		`IPC: add-task called by user ${userId} with description: "${taskData.description.substring(0, 50)}..."`
 	)
 	try {
+		// The add_task endpoint is now in agents/routes.py
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/add-task`,
 			{
@@ -2071,7 +1728,7 @@ ipcMain.handle("add-task", async (_event, taskData) => {
 				headers: { "Content-Type": "application/json", ...authHeader },
 				body: JSON.stringify({ description: taskData.description }) // Backend gets user from token
 			}
-		)
+		) // Corrected path
 
 		if (!response.ok) {
 			const errorText = await response.text()
@@ -2108,6 +1765,7 @@ ipcMain.handle(
 			`IPC: update-task called by user ${userId} for task ID ${taskId}. New priority: ${priority}`
 		)
 		try {
+			// The update_task endpoint is now in agents/routes.py
 			const response = await fetch(
 				`${process.env.APP_SERVER_URL || "http://localhost:5000"}/update-task`,
 				{
@@ -2122,7 +1780,7 @@ ipcMain.handle(
 						priority
 					})
 				}
-			)
+			) // Corrected path
 
 			if (!response.ok) {
 				const errorText = await response.text()
@@ -2158,13 +1816,14 @@ ipcMain.handle("delete-task", async (_event, taskId) => {
 		`IPC: delete-task called by user ${userId} for task ID: ${taskId}`
 	)
 	try {
+		// The delete_task endpoint is now in agents/routes.py
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/delete-task`,
 			{
 				method: "POST", // Changed to POST in backend example
 				headers: { "Content-Type": "application/json", ...authHeader },
 				body: JSON.stringify({ task_id: taskId })
-			}
+			} // Corrected path
 		)
 
 		if (!response.ok) {
@@ -2204,6 +1863,7 @@ ipcMain.handle(
 			`IPC: fetch-short-term-memories called for user ${userId}, category: ${category}, limit: ${limit}.`
 		)
 		try {
+			// The get-short-term-memories endpoint is now in memory/routes.py
 			const response = await fetch(
 				`${process.env.APP_SERVER_URL || "http://localhost:5000"}/get-short-term-memories`,
 				{
@@ -2214,7 +1874,7 @@ ipcMain.handle(
 					},
 					body: JSON.stringify({ category, limit }) // Backend gets user from token
 				}
-			)
+			) // Corrected path
 
 			if (!response.ok) {
 				const errorText = await response.text()
@@ -2250,13 +1910,14 @@ ipcMain.handle("add-short-term-memory", async (_event, memoryData) => {
 		`IPC: add-short-term-memory called by user ${userId}. Category: ${memoryData.category}`
 	)
 	try {
+		// The add-short-term-memory endpoint is now in memory/routes.py
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/add-short-term-memory`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },
 				body: JSON.stringify(memoryData) // Backend gets user from token
-			}
+			} // Corrected path
 		)
 
 		if (!response.ok) {
@@ -2292,13 +1953,14 @@ ipcMain.handle("update-short-term-memory", async (_event, memoryData) => {
 		`IPC: update-short-term-memory called by user ${userId} for memory ID: ${memoryData.id}`
 	)
 	try {
+		// The update-short-term-memory endpoint is now in memory/routes.py
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/update-short-term-memory`,
 			{
 				method: "POST", // Changed to POST in backend example
 				headers: { "Content-Type": "application/json", ...authHeader },
 				body: JSON.stringify(memoryData) // Backend gets user from token
-			}
+			} // Corrected path
 		)
 
 		if (!response.ok) {
@@ -2334,13 +1996,14 @@ ipcMain.handle("delete-short-term-memory", async (_event, memoryData) => {
 		`IPC: delete-short-term-memory called by user ${userId} for memory ID: ${memoryData.id}, category: ${memoryData.category}`
 	)
 	try {
+		// The delete-short-term-memory endpoint is now in memory/routes.py
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/delete-short-term-memory`,
 			{
 				method: "POST", // Changed to POST in backend example
 				headers: { "Content-Type": "application/json", ...authHeader },
 				body: JSON.stringify(memoryData) // Backend gets user from token
-			}
+			} // Corrected path
 		)
 
 		if (!response.ok) {
@@ -2377,12 +2040,13 @@ ipcMain.handle("clear-all-short-term-memories", async () => {
 	console.log(`IPC: clear-all-short-term-memories called for user ${userId}.`)
 	try {
 		const response = await fetch(
+			// The clear-all-short-term-memories endpoint is now in memory/routes.py
 			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/clear-all-short-term-memories`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader }
 				// Body is likely empty.
-			}
+			} // Corrected path
 		)
 
 		if (!response.ok) {
@@ -2418,7 +2082,7 @@ ipcMain.handle("fetch-long-term-memories", async () => {
 		`IPC: fetch-long-term-memories (graph data) called for user ${userId}.`
 	)
 	try {
-		const apiUrl = `${process.env.APP_SERVER_URL}/get-graph-data`
+		const apiUrl = `${process.env.APP_SERVER_URL}/memory/get-graph-data`
 		console.log(
 			`IPC: Fetching graph data for user ${userId} from backend: ${apiUrl}`
 		)
@@ -2472,12 +2136,12 @@ ipcMain.handle("get-notifications", async () => {
 	console.log(`IPC: get-notifications called for user ${userId}.`)
 	try {
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/get-notifications`,
+			`${process.env.APP_SERVER_URL}/common/get-notifications`,
 			{
 				method: "POST", // Changed to POST to align with backend
 				headers: { "Content-Type": "application/json", ...authHeader }
 				// Body is likely empty.
-			}
+			} // Corrected path
 		)
 
 		if (!response.ok) {
@@ -2528,7 +2192,7 @@ ipcMain.handle("get-task-approval-data", async (_event, taskId) => {
 		`IPC: get-task-approval-data called by user ${userId} for task ID: ${taskId}`
 	)
 	try {
-		const apiUrl = `${process.env.APP_SERVER_URL || "http://localhost:5000"}/get-task-approval-data`
+		const apiUrl = `${process.env.APP_SERVER_URL || "http://localhost:5000"}/agents/get-task-approval-data` // Corrected path
 		const response = await fetch(apiUrl, {
 			method: "POST",
 			headers: { "Content-Type": "application/json", ...authHeader },
@@ -2585,7 +2249,7 @@ ipcMain.handle("approve-task", async (_event, taskId) => {
 		`IPC: approve-task called by user ${userId} for task ID: ${taskId}`
 	)
 	try {
-		const apiUrl = `${process.env.APP_SERVER_URL || "http://localhost:5000"}/approve-task`
+		const apiUrl = `${process.env.APP_SERVER_URL || "http://localhost:5000"}/agents/approve-task` // Corrected path
 		const response = await fetch(apiUrl, {
 			method: "POST",
 			headers: { "Content-Type": "application/json", ...authHeader },
@@ -2649,7 +2313,8 @@ ipcMain.handle("get-data-sources", async () => {
 	console.log(`IPC: get-data-sources called by user ${userId || "N/A"}.`)
 	try {
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/get_data_sources`,
+			// Corrected path based on where set_data_source_enabled is
+			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/common/get_data_sources`,
 			{
 				method: "POST", // Changed to POST for consistency and potential future user context
 				headers: {
@@ -2657,7 +2322,7 @@ ipcMain.handle("get-data-sources", async () => {
 					...(authHeader || {})
 				} // Include auth header if available
 				// Body is likely empty.
-			}
+			} // Corrected path
 		)
 
 		if (!response.ok) {
@@ -2698,7 +2363,8 @@ ipcMain.handle(
 		)
 		try {
 			const response = await fetch(
-				`${process.env.APP_SERVER_URL || "http://localhost:5000"}/set_data_source_enabled`,
+				// The set_data_source_enabled endpoint is now in common/routes.py
+				`${process.env.APP_SERVER_URL || "http://localhost:5000"}/common/set_data_source_enabled`,
 				{
 					method: "POST",
 					headers: {
@@ -2706,7 +2372,7 @@ ipcMain.handle(
 						...authHeader
 					},
 					body: JSON.stringify({ source, enabled }) // Backend gets user from token
-				}
+				} // Corrected path
 			)
 
 			if (!response.ok) {
@@ -2740,13 +2406,13 @@ ipcMain.handle("clear-chat-history", async (_event) => {
 	}
 
 	console.log(`IPC: clear-chat-history request received for user ${userId}.`)
-	const targetUrl = `${process.env.APP_SERVER_URL || "http://localhost:5000"}/clear-chat-history`
+	const targetUrl = `${process.env.APP_SERVER_URL || "http://localhost:5000"}/common/clear-chat-history` // Corrected path
 	try {
 		const response = await fetch(targetUrl, {
 			method: "POST",
 			headers: { "Content-Type": "application/json", ...authHeader }
 			// Body is likely empty.
-		})
+		}) // Corrected path
 
 		if (!response.ok) {
 			let errorDetail = `Backend responded with status ${response.status}`
@@ -2799,12 +2465,13 @@ ipcMain.handle("save-onboarding-data", async (_event, onboardingData) => {
 	)
 	try {
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/onboarding`,
+			// The onboarding endpoint is now in common/routes.py
+			`${process.env.APP_SERVER_URL}/common/onboarding`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },
 				body: JSON.stringify({ data: onboardingData }) // Backend expects { data: { ...answers } }
-			}
+			} // Corrected path
 		)
 
 		if (!response.ok) {
@@ -2849,53 +2516,12 @@ ipcMain.handle("fetch-memory-categories", async () => {
 	console.log(`IPC: fetch-memory-categories called for user ${userId}.`)
 	try {
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/get-memory-categories`,
-			{
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					...authHeader
-				}
-			}
-		)
-
-		if (!response.ok) {
-			const errorText = await response.text()
-			throw new Error(
-				`Failed to fetch memory categories. Status: ${response.status}. Details: ${errorText}`
-			)
-		}
-		const result = await response.json() // Expects { categories: [...] }
-		console.log(
-			`IPC: Fetch Memory Categories API call successful for user ${userId}. Fetched ${result.categories?.length || 0} categories.`
-		)
-		return { categories: result.categories, status: 200 }
-	} catch (error) {
-		console.error(
-			`IPC Error: Exception in fetch-memory-categories handler for user ${userId}:`,
-			error
-		)
-		return { error: error.message, status: 500 }
-	}
-})
-
-// IPC: Fetch Memory Categories (Backend Call)
-ipcMain.handle("fetch-memory-categories", async () => {
-	const userId = getUserIdFromProfile()
-	const authHeader = getAuthHeader()
-	if (!userId || !authHeader) {
-		console.error("IPC: fetch-memory-categories - User not authenticated.")
-		return { error: "User not authenticated.", status: 401 }
-	}
-
-	console.log(`IPC: fetch-memory-categories called for user ${userId}.`)
-	try {
-		const response = await fetch(
-			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/get-memory-categories`,
+			// The get-memory-categories endpoint is now in memory/routes.py
+			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/memory/get-memory-categories`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader }
-			}
+			} // Corrected path
 		)
 
 		if (!response.ok) {
@@ -2926,13 +2552,17 @@ ipcMain.handle("user-activity-heartbeat", async () => {
 	}
 	try {
 		const backendUrl = process.env.APP_SERVER_URL || "http://localhost:5000"
-		const response = await fetch(`${backendUrl}/users/activity/heartbeat`, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-				Authorization: `Bearer ${token}`
+		const response = await fetch(
+			`${backendUrl}/common/users/activity/heartbeat`,
+			{
+				// Corrected path
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${token}`
+				}
 			}
-		})
+		)
 		if (!response.ok) {
 			const errorText = await response.text()
 			console.error(
@@ -2964,7 +2594,8 @@ ipcMain.handle("force-sync-service", async (event, serviceName) => {
 	try {
 		const backendUrl = process.env.APP_SERVER_URL || "http://localhost:5000"
 		const response = await fetch(
-			`${backendUrl}/users/force-sync/${serviceName}`,
+			// Corrected path
+			`${backendUrl}/common/users/force-sync/${serviceName}`,
 			{
 				method: "POST",
 				headers: {

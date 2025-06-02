@@ -26,12 +26,17 @@ class MemoryBackend:
         self.embed_model = HuggingFaceEmbedding(model_name=os.environ["EMBEDDING_MODEL_REPO_ID"])
         print("HuggingFaceEmbedding initialized.")
         print("Initializing Neo4j GraphDriver...")
+        # Ensure the driver is verified for connectivity upon creation or in an async init method
         self.graph_driver = GraphDatabase.driver(
             uri=os.environ["NEO4J_URI"],
             auth=(os.environ["NEO4J_USERNAME"], os.environ["NEO4J_PASSWORD"])
         )
         print("Neo4j GraphDriver initialized.")
         print("Initializing graph runnables...")
+        # It's good practice to verify connectivity, perhaps in an async init method for MemoryBackend
+        # For now, assuming it connects or errors out here.
+        # self.graph_driver.verify_connectivity() # This is synchronous, could block
+
         self.graph_decision_runnable = get_graph_decision_runnable()
         self.info_extraction_runnable = get_information_extraction_runnable()
         self.graph_analysis_runnable = get_graph_analysis_runnable()
@@ -47,9 +52,23 @@ class MemoryBackend:
 
         # Initialize MemoryQueue
         print("Initializing MemoryQueue...")
-        self.memory_queue = MemoryQueue() # No longer needs memory_file parameter
+        self.memory_queue = MemoryQueue()
         print("MemoryQueue initialized.")
         print("MemoryBackend initialization complete.")
+
+    async def initialize(self):
+        """Asynchronously initializes components that require async operations, like DB indexes."""
+        print("MemoryBackend: Starting asynchronous initialization...")
+        try:
+            await self.graph_driver.verify_connectivity()
+            print("MemoryBackend: Neo4j connection verified.")
+        except Exception as e:
+            print(f"MemoryBackend: Neo4j connection verification failed: {e}")
+            # Decide if this is fatal or if the app can run without Neo4j fully functional
+
+        await self.memory_manager.initialize_async() # Initialize MemoryManager's async parts (indexes)
+        await self.memory_queue.initialize_db()     # Initialize MemoryQueue's DB components
+        print("MemoryBackend: Asynchronous initialization complete.")
 
     def classify_memory(self, fact: str) -> str:
         print(f"Classifying memory type for fact: '{fact}'")

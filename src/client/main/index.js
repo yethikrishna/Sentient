@@ -2920,5 +2920,81 @@ ipcMain.handle("fetch-memory-categories", async () => {
 	}
 })
 
+ipcMain.handle("user-activity-heartbeat", async () => {
+	const token = getAccessToken() // Ensure you have access to this function
+	if (!token) {
+		console.error("[IPC HEARTBEAT] No access token available.")
+		return { success: false, error: "Not authenticated" }
+	}
+	try {
+		const backendUrl = process.env.APP_SERVER_URL || "http://localhost:5000"
+		const response = await fetch(`${backendUrl}/users/activity/heartbeat`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Authorization: `Bearer ${token}`
+			}
+		})
+		if (!response.ok) {
+			const errorText = await response.text()
+			console.error(
+				`[IPC HEARTBEAT] Backend error: ${response.status} - ${errorText}`
+			)
+			return {
+				success: false,
+				error: `Backend error: ${response.status}`
+			}
+		}
+		// console.log('[IPC HEARTBEAT] Heartbeat sent successfully.');
+		return { success: true }
+	} catch (error) {
+		console.error("[IPC HEARTBEAT] Error sending heartbeat:", error)
+		return { success: false, error: error.message }
+	}
+})
+
+ipcMain.handle("force-sync-service", async (event, serviceName) => {
+	const token = getAccessToken()
+	if (!token) {
+		console.error("[IPC FORCE_SYNC] No access token available.")
+		return { success: false, error: "Not authenticated" }
+	}
+	if (!serviceName) {
+		console.error("[IPC FORCE_SYNC] Service name not provided.")
+		return { success: false, error: "Service name required" }
+	}
+	try {
+		const backendUrl = process.env.APP_SERVER_URL || "http://localhost:5000"
+		const response = await fetch(
+			`${backendUrl}/users/force-sync/${serviceName}`,
+			{
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${token}`
+				}
+			}
+		)
+		if (!response.ok) {
+			const errorText = await response.text()
+			console.error(
+				`[IPC FORCE_SYNC] Backend error for ${serviceName}: ${response.status} - ${errorText}`
+			)
+			return {
+				success: false,
+				error: `Backend error: ${response.status}`
+			}
+		}
+		console.log(`[IPC FORCE_SYNC] Force sync requested for ${serviceName}.`)
+		return { success: true, message: `Sync requested for ${serviceName}.` }
+	} catch (error) {
+		console.error(
+			`[IPC FORCE_SYNC] Error requesting force sync for ${serviceName}:`,
+			error
+		)
+		return { success: false, error: error.message }
+	}
+})
+
 // --- End of File ---
 console.log("Electron main process script execution completed initial setup.")

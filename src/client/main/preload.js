@@ -175,5 +175,9 @@ contextBridge.exposeInMainWorld("electron", {
 			ipcRenderer.removeListener("update-progress", listener)
 			console.log("Removed update-progress listener") // For debugging
 		}
-	}
+	},
+	sendUserActivityHeartbeat: () =>
+		ipcRenderer.invoke("user-activity-heartbeat"),
+	forceSyncService: (serviceName) =>
+		ipcRenderer.invoke("force-sync-service", serviceName)
 })

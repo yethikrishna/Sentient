@@ -24,16 +24,42 @@ export const metadata = {
  * @returns {React.ReactNode} - The RootLayout component UI.
  */
 export default async function RootLayout({ children }) {
-	return (
-		<html lang="en" suppressHydrationWarning>
-			{/* Root html element with language set to English and hydration warning suppressed */}
-			<body className="bg-black">
-				{/* Body element with a black background using global styles */}
-				<Toaster position="bottom-right" />
-				{/* Toaster component for displaying notifications, positioned at the bottom-right */}
-				{children}
-				{/* Render the child components, which is the main content of the application */}
-			</body>
-		</html>
-	)
+		useEffect(() => {
+			let intervalId;
+			const sendHeartbeat = () => {
+				if (document.hasFocus() && window.electron && typeof window.electron.sendUserActivityHeartbeat === 'function') {
+					console.log("Client: Sending activity heartbeat...");
+					window.electron.sendUserActivityHeartbeat().catch(err => console.error("Heartbeat IPC error:", err));
+				}
+			};
+
+			// Send heartbeat immediately on mount (if focused) and then every 5 minutes
+			sendHeartbeat();
+			intervalId = setInterval(sendHeartbeat, 5 * 60 * 1000); // 5 minutes
+
+			// Also send on window focus
+			const handleFocus = () => {
+				console.log("Client: Window focused, sending heartbeat.");
+				sendHeartbeat();
+			};
+			window.addEventListener('focus', handleFocus);
+
+			return () => {
+				clearInterval(intervalId);
+				window.removeEventListener('focus', handleFocus);
+			};
+		}, []); // Empty dependency array means this runs once on mount and cleans up on unmount
+
+		return (
+			<html lang="en" suppressHydrationWarning>
+				{/* Root html element with language set to English and hydration warning suppressed */}
+				<body className="bg-black">
+					{/* Body element with a black background using global styles */}
+					<Toaster position="bottom-right" />
+					{/* Toaster component for displaying notifications, positioned at the bottom-right */}
+					{children}
+					{/* Render the child components, which is the main content of the application */}
+				</body>
+			</html>
+		)
 }

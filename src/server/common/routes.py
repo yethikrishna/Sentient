@@ -29,7 +29,8 @@ from server.app.app import (
     update_neo4j_with_onboarding_data, # For onboarding
     update_neo4j_with_personal_info, # for set-user-data
     graph_driver, # for Neo4j updates
-    embed_model # for Neo4j updates
+    embed_model, # for Neo4j updates
+    start_user_context_engines
 )
 
 # Pydantic models moved from app.py
@@ -38,7 +39,7 @@ from typing import Dict, Any, Optional, List, Union, Tuple
 import time # For assistant_msg_id_ts in chat
 
 router = APIRouter(
-    tags=["Common (Chat, DB, Notifications, Voice)"]
+    tags=["Common (Chat, DB, Notifications, Voice, User Activity)"]
 )
 
 # --- Pydantic Models for Common Endpoints ---
@@ -471,3 +472,76 @@ async def websocket_endpoint(websocket: WebSocket):
         if authenticated_user_id: # Only disconnect if user was authenticated
             websocket_manager.disconnect(websocket)
         print(f"[WS /ws] WebSocket connection cleaned up for user: {authenticated_user_id or 'unknown'}")
+        
+@router.post("/users/activity/heartbeat", status_code=status.HTTP_200_OK, summary="User Activity Heartbeat")
+async def user_activity_heartbeat(user_id: str = Depends(PermissionChecker(required_permissions=["write:profile"]))): # Assuming basic profile write permission
+    print(f"[ENDPOINT /users/activity/heartbeat] Received heartbeat for user {user_id}")
+    try:
+        success = await mongo_manager.update_user_last_active(user_id)
+        if success:
+            return JSONResponse(content={"message": "User activity timestamp updated."})
+        else:
+            # This might happen if the user profile doesn't exist yet, or DB error.
+            # update_user_last_active has upsert=True for userData, so it should create it.
+            # If it still fails, it's likely a DB connection issue or more serious.
+            print(f"[ERROR] Failed to update last_active_timestamp for user {user_id}")
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update user activity.")
+    except Exception as e:
+        print(f"[ERROR] /users/activity/heartbeat for {user_id}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error processing heartbeat.")
+
+
+@router.post("/users/force-sync/{engine_category}", status_code=status.HTTP_200_OK, summary="Force Sync for a Service")
+async def force_sync_service(engine_category: str, user_id: str = Depends(PermissionChecker(required_permissions=["write:config"]))): # Assuming config write for this
+    print(f"[ENDPOINT /users/force-sync] User {user_id} requests force sync for {engine_category}")
+    
+    # Validate engine_category
+    from server.app.app import DATA_SOURCES_CONFIG # Import here to avoid circularity at module level
+    if engine_category not in DATA_SOURCES_CONFIG:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid service category: {engine_category}")
+        
+    try:
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        # Update the next_scheduled_poll_timestamp to now to trigger an immediate poll by the scheduler
+        # Also ensure is_currently_polling is false so the scheduler can pick it up.
+        updated = await mongo_manager.update_polling_state(
+            user_id, 
+            engine_category, 
+            {
+                "next_scheduled_poll_timestamp": now_utc,
+                "is_currently_polling": False, # Ensure it's not locked
+                "current_polling_tier": "forced_sync" # Optional: Mark the tier
+            }
+        )
+        if updated:
+            print(f"[FORCE_SYNC] Polling for {user_id}/{engine_category} scheduled immediately.")
+            return JSONResponse(content={"message": f"Sync requested for {engine_category}. It will be processed shortly."})
+        else:
+            # This could happen if the polling state document doesn't exist yet (should be created by initialize_polling_state)
+            # Or if there's a DB issue. For robustness, try to initialize and schedule.
+            print(f"[FORCE_SYNC_WARN] Failed to directly update polling state for {user_id}/{engine_category}. Attempting initialization.")
+            # Ensure the engine instance exists and its state is initialized
+            from server.app.app import active_context_engines, task_queue, memory_backend, manager as ws_manager, mongo_manager as global_mongo_manager
+            
+            engine_instance = active_context_engines.get(user_id, {}).get(engine_category)
+            if not engine_instance:
+                 engine_class = DATA_SOURCES_CONFIG[engine_category]['engine_class']
+                 engine_instance = engine_class(
+                     user_id=user_id, task_queue=task_queue, memory_backend=memory_backend, 
+                     websocket_manager=ws_manager, mongo_manager_instance=global_mongo_manager
+                 )
+                 if user_id not in active_context_engines: active_context_engines[user_id] = {}
+                 active_context_engines[user_id][engine_category] = engine_instance
+            
+            await engine_instance.initialize_polling_state() # This will set next_poll_at to now if new
+            # Re-attempt the update, or just rely on initialize_polling_state to have set it to now.
+            await mongo_manager.update_polling_state(user_id, engine_category, {"next_scheduled_poll_timestamp": now_utc, "is_currently_polling": False, "current_polling_tier": "forced_sync_init"})
+
+            print(f"[FORCE_SYNC] Polling for {user_id}/{engine_category} (after init) scheduled immediately.")
+            return JSONResponse(content={"message": f"Sync requested for {engine_category} (initialized). It will be processed shortly."})
+
+    except Exception as e:
+        print(f"[ERROR] /users/force-sync for {user_id}/{engine_category}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error processing force sync request.")

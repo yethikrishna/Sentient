@@ -6,8 +6,8 @@ import json # For WebSocket messages
 import uuid # For new chat_id
 import datetime # For timestamps
 
-# Assuming these are initialized in app.py and can be imported
-from server.app.app import (
+# Import dependencies from common.dependencies
+from server.common.dependencies import (
     auth,
     PermissionChecker,
     mongo_manager,
@@ -16,22 +16,26 @@ from server.app.app import (
     add_message_to_db,
     load_user_profile, # Required for chat
     write_user_profile, # Required for chat if active_chat_id needs update
-    chat_runnable, # For /chat
-    unified_classification_runnable, # For /chat
-    priority_runnable, # For /chat if agent category
     task_queue, # For /chat if agent category
     memory_backend, # For /chat if memory category
-    internet_query_reframe_runnable, # For /chat if internet search
-    internet_summary_runnable, # For /chat if internet search
-    get_reframed_internet_query, # from common.functions, imported in app.py
-    get_search_results, # from common.functions, imported in app.py
-    get_search_summary, # from common.functions, imported in app.py
-    update_neo4j_with_onboarding_data, # For onboarding
-    update_neo4j_with_personal_info, # for set-user-data
     graph_driver, # for Neo4j updates
     embed_model, # for Neo4j updates
-    start_user_context_engines
+    start_user_context_engines,
+    DATA_SOURCES_CONFIG, # Added for set_data_source_enabled and force_sync_service
+    active_context_engines # Added for force_sync_service
 )
+
+from server.common.functions import ( # New import for moved functions
+    get_reframed_internet_query,
+    get_search_results,
+    get_search_summary,
+    update_neo4j_with_onboarding_data,
+    update_neo4j_with_personal_info,
+    get_unified_classification_runnable, # Import the getter
+    get_priority_runnable # Import the getter
+)
+from server.chat.runnables import get_chat_runnable # Import the getter
+from server.common.runnables import get_internet_query_reframe_runnable, get_internet_summary_runnable # Import getters
 
 # Pydantic models moved from app.py
 from pydantic import BaseModel, Field
@@ -56,6 +60,10 @@ class UpdateUserDataRequest(BaseModel): # Used by /set-user-data
 
 class AddUserDataRequest(BaseModel): # Used by /add-db-data
     data: Dict[str, Any]
+
+class SetDataSourceEnabledRequest(BaseModel): # Added for set_data_source_enabled
+    source: str
+    enabled: bool
 
 
 # --- DB related endpoints (Onboarding, Profile) ---
@@ -262,9 +270,16 @@ async def chat_endpoint(message: Message, user_id: str = Depends(PermissionCheck
         if not active_chat_id:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not determine active chat ID.")
 
+        # Get runnable instances inside the endpoint
+        chat_runnable_instance = get_chat_runnable()
+        unified_classification_runnable_instance = get_unified_classification_runnable()
+        priority_runnable_instance = get_priority_runnable()
+        internet_query_reframe_runnable_instance = get_internet_query_reframe_runnable()
+        internet_summary_runnable_instance = get_internet_summary_runnable()
+
         current_chat_history_for_llm, _ = await get_chat_history_messages(user_id, active_chat_id) # Fetch history for current chat
         
-        unified_output = unified_classification_runnable.invoke({"query": message.input, "chat_history": current_chat_history_for_llm})
+        unified_output = unified_classification_runnable_instance.invoke({"query": message.input, "chat_history": current_chat_history_for_llm})
         category = unified_output.get("category", "chat")
         use_personal_context = unified_output.get("use_personal_context", False)
         internet_search_type = unified_output.get("internet", "None") # From boolean to string
@@ -290,7 +305,7 @@ async def chat_endpoint(message: Message, user_id: str = Depends(PermissionCheck
                 agents_used = True
                 assistant_msg_base["agentsUsed"] = True
                 try:
-                    priority_response = priority_runnable.invoke({"task_description": transformed_input})
+                    priority_response = priority_runnable_instance.invoke({"task_description": transformed_input})
                     priority = priority_response.get("priority", 2)
                     await task_queue.add_task(user_id=user_id, chat_id=active_chat_id, description=transformed_input, priority=priority, username=username, use_personal_context=use_personal_context, internet=internet_search_type)
                     assistant_msg_base["message"] = "Okay, I'll get right on that."
@@ -329,10 +344,10 @@ async def chat_endpoint(message: Message, user_id: str = Depends(PermissionCheck
                 else:
                     pro_features_used = True
                     yield json.dumps({"type": "intermediary", "message": "Searching internet...", "id": assistant_msg_id_ts}) + "\n"
-                    try:
-                        reframed = get_reframed_internet_query(internet_query_reframe_runnable, transformed_input)
-                        results = get_search_results(reframed)
-                        internet_context_str = get_search_summary(internet_summary_runnable, results)
+                    try: # Pass runnable instances here
+                        reframed = get_reframed_internet_query(internet_query_reframe_runnable_instance, transformed_input)
+                        results = get_search_results(reframed) # get_search_results does not take a runnable
+                        internet_context_str = get_search_summary(internet_summary_runnable_instance, results)
                     except Exception as e_search:
                         internet_context_str = f"Error searching: {e_search}"
             
@@ -352,7 +367,7 @@ async def chat_endpoint(message: Message, user_id: str = Depends(PermissionCheck
                         if history_for_llm_prompt and history_for_llm_prompt[-1].get("isUser") and history_for_llm_prompt[-1].get("message") == message.input:
                             history_for_llm_prompt = history_for_llm_prompt[:-1]
 
-                    async for token_chunk in chat_runnable.stream_response(inputs={"query": transformed_input, "user_context": user_context_str, "internet_context": internet_context_str, "name": username, "chat_history": history_for_llm_prompt}):
+                    async for token_chunk in chat_runnable_instance.stream_response(inputs={"query": transformed_input, "user_context": user_context_str, "internet_context": internet_context_str, "name": username, "chat_history": history_for_llm_prompt}):
                         if isinstance(token_chunk, str):
                             full_response_text += token_chunk
                             yield json.dumps({"type": "assistantStream", "token": token_chunk, "done": False, "messageId": assistant_msg_base["id"]}) + "\n"
@@ -492,18 +507,7 @@ async def user_activity_heartbeat(user_id: str = Depends(PermissionChecker(requi
 
 @router.post("/set_data_source_enabled", status_code=status.HTTP_200_OK, summary="Enable/Disable Data Source")
 async def set_data_source_enabled_endpoint(request: SetDataSourceEnabledRequest, user_id: str = Depends(PermissionChecker(required_permissions=["write:config"]))):
-    # ... (existing code from your utils/routes.py) ...
-    # ADD an import from server.app.app import DATA_SOURCES_CONFIG, task_queue, memory_backend, manager as websocket_manager, mongo_manager
-    # Inside the try block, after successfully setting in user profile:
     try:
-        # ... (your existing logic to update profile in mongo_manager.user_profiles_collection) ...
-        # profile = await mongo_manager.get_user_profile(user_id)
-        # if "userData" not in profile: profile["userData"] = {}
-        # profile["userData"][f"{request.source}Enabled"] = request.enabled
-        # success = await mongo_manager.update_user_profile(user_id, profile)
-        # if not success:
-        #     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to save data source status in user profile.")
-
         # NEW: Update the polling_state_store directly for is_enabled
         # and trigger re-initialization if being enabled.
         polling_state_update = {"is_enabled": request.enabled}
@@ -524,19 +528,17 @@ async def set_data_source_enabled_endpoint(request: SetDataSourceEnabledRequest,
         
         # If it was just enabled and state didn't exist, initialize it fully
         if request.enabled:
-            from server.app.app import DATA_SOURCES_CONFIG, task_queue, memory_backend, manager, mongo_manager as global_mongo_manager # Add imports
             engine_config = DATA_SOURCES_CONFIG.get(request.source)
             if engine_config and engine_config.get("engine_class"):
                 engine_class = engine_config["engine_class"]
                 # Create a temporary instance just to initialize state
-                temp_engine = engine_class(user_id, task_queue, memory_backend, manager, global_mongo_manager)
+                temp_engine = engine_class(user_id, task_queue, memory_backend, websocket_manager, mongo_manager)
                 await temp_engine.initialize_polling_state() # This will create if not exists and set to poll soon
                 print(f"[set_data_source_enabled] Initialized polling state for {user_id}/{request.source} after enabling.")
 
 
         return JSONResponse(content={"status": "success", "message": f"Data source '{request.source}' status set to {request.enabled}."})
     except Exception as e:
-        # ... (your existing error handling) ...
         print(f"[ERROR] /utils/set_data_source_enabled {user_id}: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to set data source status.")
@@ -547,7 +549,6 @@ async def force_sync_service(engine_category: str, user_id: str = Depends(Permis
     print(f"[ENDPOINT /users/force-sync] User {user_id} requests force sync for {engine_category}")
     
     # Validate engine_category
-    from server.app.app import DATA_SOURCES_CONFIG # Import here to avoid circularity at module level
     if engine_category not in DATA_SOURCES_CONFIG:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid service category: {engine_category}")
         
@@ -571,15 +572,13 @@ async def force_sync_service(engine_category: str, user_id: str = Depends(Permis
             # This could happen if the polling state document doesn't exist yet (should be created by initialize_polling_state)
             # Or if there's a DB issue. For robustness, try to initialize and schedule.
             print(f"[FORCE_SYNC_WARN] Failed to directly update polling state for {user_id}/{engine_category}. Attempting initialization.")
-            # Ensure the engine instance exists and its state is initialized
-            from server.app.app import active_context_engines, task_queue, memory_backend, manager as ws_manager, mongo_manager as global_mongo_manager
             
             engine_instance = active_context_engines.get(user_id, {}).get(engine_category)
             if not engine_instance:
                  engine_class = DATA_SOURCES_CONFIG[engine_category]['engine_class']
                  engine_instance = engine_class(
                      user_id=user_id, task_queue=task_queue, memory_backend=memory_backend, 
-                     websocket_manager=ws_manager, mongo_manager_instance=global_mongo_manager
+                     websocket_manager=websocket_manager, mongo_manager_instance=mongo_manager
                  )
                  if user_id not in active_context_engines: active_context_engines[user_id] = {}
                  active_context_engines[user_id][engine_category] = engine_instance

@@ -4,24 +4,20 @@ import traceback
 import pickle # For Google Auth
 import os
 
-# Assuming these are initialized in app.py and can be imported
-from server.app.app import (
+# Import shared dependencies from common.dependencies and helpers
+from server.common.dependencies import (
     auth,
     PermissionChecker,
-    aes_encrypt, 
-    aes_decrypt, 
-    get_management_token, 
-    # load_user_profile, # Not directly used here, mongo_manager is used
-    # write_user_profile, # Not directly used here, mongo_manager is used
-    DATA_SOURCES, 
-    CREDENTIALS_DICT, 
-    SCOPES, 
-    BASE_DIR,
-    mongo_manager, # Import global mongo_manager
-    DATA_SOURCES_CONFIG, # Import for initializing engine state
+    mongo_manager,
+    DATA_SOURCES_CONFIG,
     task_queue, 
     memory_backend, 
     manager as websocket_manager # Ensure this is your WebSocketManager instance
+)
+from server.utils.helpers import (
+    aes_encrypt,
+    aes_decrypt,
+    get_management_token
 )
 
 
@@ -34,6 +30,24 @@ import httpx # For Auth0 M2M calls
 from google_auth_oauthlib.flow import InstalledAppFlow # For Google OAuth flow
 from google.auth.transport.requests import Request # For Google API requests
 
+# Define Google OAuth specific configurations locally or import from a dedicated config module
+# For this fix, we define them locally to break the cycle with app.py.
+SCOPES_UTIL = ["https://www.googleapis.com/auth/gmail.send",
+             "https://www.googleapis.com/auth/gmail.compose",
+             "https://www.googleapis.com/auth/gmail.modify",
+             "https://www.googleapis.com/auth/gmail.readonly",
+             "https://www.googleapis.com/auth/documents",
+             "https://www.googleapis.com/auth/calendar",
+             "https://www.googleapis.com/auth/spreadsheets",
+             "https://www.googleapis.com/auth/presentations",
+             "https://www.googleapis.com/auth/drive",
+             "https://mail.google.com/"]
+CREDENTIALS_DICT_UTIL = {"installed": {"client_id": os.environ.get("GOOGLE_CLIENT_ID"), "project_id": os.environ.get("GOOGLE_PROJECT_ID"), "auth_uri": os.environ.get("GOOGLE_AUTH_URI"), "token_uri": os.environ.get("GOOGLE_TOKEN_URI"), "auth_provider_x509_cert_url": os.environ.get("GOOGLE_AUTH_PROVIDER_x509_CERT_URL"), "client_secret": os.environ.get("GOOGLE_CLIENT_SECRET"), "redirect_uris": ["http://localhost"]}}
+
+_UTILS_DIR = os.path.dirname(os.path.abspath(__file__))
+_SERVER_DIR = os.path.dirname(_UTILS_DIR)
+_SRC_DIR = os.path.dirname(_SERVER_DIR)
+TOKEN_DIR = os.path.join(_SRC_DIR, "tokens")
 
 router = APIRouter(
     prefix="/utils",
@@ -182,11 +196,8 @@ async def set_referrer_status_route( # Renamed to avoid conflict with app.py if 
 @router.post("/authenticate-google", status_code=status.HTTP_200_OK, summary="Authenticate Google Services")
 async def authenticate_google_route(user_id: str = Depends(PermissionChecker(required_permissions=["manage:google_auth"]))): # Added _route
     print(f"[ENDPOINT /utils/authenticate-google] User {user_id}.")
-    # Path adjustments might be needed if BASE_DIR is not correctly resolved here.
-    # For now, assume BASE_DIR is correctly defined and imported from app.py.
-    token_dir = os.path.join(BASE_DIR, "..", "..", "tokens") 
-    os.makedirs(token_dir, exist_ok=True)
-    token_path = os.path.join(token_dir, f"token_{user_id}.pickle")
+    os.makedirs(TOKEN_DIR, exist_ok=True)
+    token_path = os.path.join(TOKEN_DIR, f"token_{user_id}.pickle")
     
     creds = None
     try:
@@ -197,7 +208,7 @@ async def authenticate_google_route(user_id: str = Depends(PermissionChecker(req
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
             else:
-                 # This typically should initiate an OAuth flow, which is hard to do server-side without user interaction.
+                 # This flow assumes frontend handles initial auth. Server validates/refreshes.
                  # For now, if token is invalid/expired and cannot be refreshed, raise an error.
                  # The frontend should handle the initial OAuth flow.
                  raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google auth required or token expired. Please re-authenticate via the frontend.")

@@ -67,29 +67,6 @@ def get_chat_runnable(chat_history: List[Dict[str, str]]) -> BaseRunnable:
 # These functions create and configure instances of CustomRunnable for different tasks.
 # They encapsulate the specific prompts, model settings, and response formats for each functionality.
 
-def get_unified_classification_runnable() -> BaseRunnable:
-    model_name, provider = get_selected_model()
-    model_mapping = {
-        "openai": OpenAIRunnable,
-        "claude": ClaudeRunnable,
-        "gemini": GeminiRunnable,
-    }
-    runnable_class = model_mapping.get(provider, OllamaRunnable)
-    model_url = os.getenv("BASE_MODEL_URL") if provider not in model_mapping else os.getenv(f"{provider.upper()}_API_URL")
-
-    unified_classification_runnable = runnable_class(
-        model_url=model_url,
-        model_name=model_name,
-        system_prompt_template=unified_classification_system_prompt_template,  # Defined above
-        user_prompt_template=unified_classification_user_prompt_template,      # Defined above
-        input_variables=["query", "chat_history"], # Ensure chat_history is an input variable
-        required_format=unified_classification_format,                # Defined above
-        response_type="json",
-        stateful=False, # Set to False as history is passed at invocation
-    )
-    # unified_classification_runnable.add_to_history(chat_history) # Removed as history is now passed dynamically
-    return unified_classification_runnable
-
 
 def get_internet_query_reframe_runnable():
     """

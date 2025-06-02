@@ -3,8 +3,20 @@ from wrapt_timeout_decorator import *  # Importing timeout decorator for functio
 import requests  # For making HTTP requests
 import asyncio  # For asynchronous programming
 from dotenv import load_dotenv
+from typing import Optional, Any, Dict, List, Tuple, Type # Added Dict, List, Any, Tuple, Type
+import traceback # Added for error logging
+import json # Added for json.loads in update_neo4j_with_onboarding_data
+
+from neo4j import GraphDatabase # Added for Neo4j functions
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding # Added for Neo4j functions
+import numpy as np  # For numerical operations, especially for cosine similarity calculation
+from sklearn.metrics.pairwise import (
+    cosine_similarity,
+)  # For calculating cosine similarity between vectors
 
 from .prompts import *  # Importing prompt templates and related utilities from prompts.py
+from .formats import unified_classification_format, priority_required_format # Explicitly import formats
+from server.app.base import BaseRunnable, OpenAIRunnable, ClaudeRunnable, GeminiRunnable, OllamaRunnable # Explicitly import runnables
 from server.app.helpers import *  # Importing helper functions from helpers.py
 # Removed direct import of global mongo_manager
 # from server.db import MongoManager
@@ -66,7 +78,9 @@ async def generate_response(
     """
     try:
         # Use MongoManager to get user profile
-        user_profile = await mongo_manager.get_user_profile(username) # Assuming username is user_id here
+        # mongo_manager is not imported here, it should be passed as an argument if needed
+        # For now, assuming user_profile_data is passed directly
+        user_profile = user_profile_data # Assuming user_profile_data is passed directly
         # No personality data to retrieve
 
         response = runnable.invoke(
@@ -205,3 +219,481 @@ def context_classify(classification_runnable, query):
     except Exception as e:
         print(f"An error occurred in context classification: {e}")
         return None
+
+async def update_neo4j_with_onboarding_data(user_id: str, onboarding_data: Dict[str, Any], graph_driver: GraphDatabase.driver, embed_model: HuggingFaceEmbedding):
+    """
+    Updates Neo4j with onboarding data, creating nodes and relationships.
+    """
+    if not graph_driver or not embed_model:
+        print("[NEO4J_UPDATE_ERROR] Graph driver or embedding model not initialized. Skipping Neo4j update.")
+        return
+
+    try:
+        async with graph_driver.session() as session:
+            # Create or merge User node
+            await session.run(
+                "MERGE (u:User {id: $user_id}) SET u.last_onboarded = datetime()",
+                user_id=user_id
+            )
+            print(f"[NEO4J] Merged User node for {user_id}.")
+
+            # Process personalInfo
+            personal_info = onboarding_data.get("personalInfo", {})
+            if personal_info:
+                name = personal_info.get("name")
+                email = personal_info.get("email")
+                if name:
+                    await session.run(
+                        "MATCH (u:User {id: $user_id}) SET u.name = $name",
+                        user_id=user_id, name=name
+                    )
+                if email:
+                    await session.run(
+                        "MATCH (u:User {id: $user_id}) SET u.email = $email",
+                        user_id=user_id, email=email
+                    )
+                print(f"[NEO4J] Updated personalInfo for {user_id}.")
+
+            # Process interests
+            interests = onboarding_data.get("interests", [])
+            if interests:
+                for interest in interests:
+                    await session.run(
+                        "MERGE (i:Interest {name: $interest}) "
+                        "MERGE (u:User {id: $user_id})-[:HAS_INTEREST]->(i)",
+                        user_id=user_id, interest=interest
+                    )
+                print(f"[NEO4J] Added interests for {user_id}.")
+
+            # Process skills
+            skills = onboarding_data.get("skills", [])
+            if skills:
+                for skill in skills:
+                    await session.run(
+                        "MERGE (s:Skill {name: $skill}) "
+                        "MERGE (u:User {id: $user_id})-[:HAS_SKILL]->(s)",
+                        user_id=user_id, skill=skill
+                    )
+                print(f"[NEO4J] Added skills for {user_id}.")
+
+            # Process goals
+            goals = onboarding_data.get("goals", [])
+            if goals:
+                for goal in goals:
+                    await session.run(
+                        "MERGE (g:Goal {description: $goal}) "
+                        "MERGE (u:User {id: $user_id})-[:HAS_GOAL]->(g)",
+                        user_id=user_id, goal=goal
+                    )
+                print(f"[NEO4J] Added goals for {user_id}.")
+
+            # Process communicationPreferences
+            comm_prefs = onboarding_data.get("communicationPreferences", {})
+            if comm_prefs:
+                for pref_type, pref_value in comm_prefs.items():
+                    await session.run(
+                        "MATCH (u:User {id: $user_id}) SET u.`communicationPreference_" + pref_type + "` = $pref_value",
+                        user_id=user_id, pref_value=pref_value
+                    )
+                print(f"[NEO4J] Updated communication preferences for {user_id}.")
+
+            # Process dataSources (if any specific ones are part of onboarding)
+            data_sources = onboarding_data.get("dataSources", [])
+            if data_sources:
+                for source in data_sources:
+                    await session.run(
+                        "MERGE (ds:DataSource {name: $source}) "
+                        "MERGE (u:User {id: $user_id})-[:USES_DATA_SOURCE]->(ds)",
+                        user_id=user_id, source=source
+                    )
+                print(f"[NEO4J] Added data sources for {user_id}.")
+
+            # Example: Create a general "Onboarding" event node
+            onboarding_event_text = f"User {user_id} completed onboarding with initial data."
+            embedding = embed_model.embed_query(onboarding_event_text)
+            await session.run(
+                "CREATE (e:Event {type: 'Onboarding', timestamp: datetime(), description: $desc, embedding: $embedding}) "
+                "MERGE (u:User {id: $user_id})-[:PERFORMED]->(e)",
+                user_id=user_id, desc=onboarding_event_text, embedding=embedding.tolist()
+            )
+            print(f"[NEO4J] Recorded onboarding event for {user_id}.")
+
+    except Exception as e:
+        print(f"[NEO4J_ONBOARDING_ERROR] Failed to update Neo4j with onboarding data for user {user_id}: {e}")
+        traceback.print_exc()
+
+
+async def update_neo4j_with_personal_info(user_id: str, personal_info_data: Dict[str, Any], graph_driver: GraphDatabase.driver):
+    """
+    Updates the Neo4j graph with personal information for a given user.
+    Creates or updates a User node and sets properties based on personal_info_data.
+    """
+    if not graph_driver:
+        print("[NEO4J_UPDATE_ERROR] Graph driver not initialized. Skipping personal info update.")
+        return
+
+    try:
+        async with graph_driver.session() as session:
+            # Ensure the User node exists
+            await session.run(
+                "MERGE (u:User {id: $user_id})",
+                user_id=user_id
+            )
+
+            # Update personal information properties
+            set_clauses = []
+            params = {"user_id": user_id}
+
+            if "name" in personal_info_data:
+                set_clauses.append("u.name = $name")
+                params["name"] = personal_info_data["name"]
+            if "email" in personal_info_data:
+                set_clauses.append("u.email = $email")
+                params["email"] = personal_info_data["email"]
+            if "timezone" in personal_info_data:
+                set_clauses.append("u.timezone = $timezone")
+                params["timezone"] = personal_info_data["timezone"]
+            if "phone" in personal_info_data:
+                set_clauses.append("u.phone = $phone")
+                params["phone"] = personal_info_data["phone"]
+            if "address" in personal_info_data:
+                set_clauses.append("u.address = $address")
+                params["address"] = personal_info_data["address"]
+            # Add more fields as necessary
+
+            if set_clauses:
+                query = f"MATCH (u:User {{id: $user_id}}) SET {', '.join(set_clauses)}"
+                await session.run(query, params)
+                print(f"[NEO4J] Updated personal info for user {user_id}.")
+            else:
+                print(f"[NEO4J] No personal info fields to update for user {user_id}.")
+
+    except Exception as e:
+        print(f"[NEO4J_PERSONAL_INFO_ERROR] Failed to update Neo4j with personal info for user {user_id}: {e}")
+        traceback.print_exc()
+
+
+def classify_query_into_category(
+    query: str, query_classification_runnable
+) -> str | None:
+    """
+    Classify the query into a predefined category using a query classification runnable.
+
+    This function uses a provided runnable (likely a Langchain RunnableSequence) to classify
+    a given query into one of the predefined categories.
+
+    Args:
+        query (str): The query string to be classified.
+        query_classification_runnable: The runnable responsible for query classification.
+
+    Returns:
+        str or None: The name of the classified category if successful, otherwise None.
+    """
+    try:
+        response = query_classification_runnable.invoke(
+            {"query": query}
+        )  # Invoke the query classification runnable
+        return response["category"]  # Return the classified category from the response
+    except Exception as e:
+        print(f"Error classifying query into category: {e}")
+        return None  # Return None in case of error
+
+
+def perform_similarity_search_rag(
+    category: str, query: str, graph_driver, embed_model
+) -> dict:
+    """
+    Perform similarity search within nodes of a specific category for Retrieval-Augmented Generation (RAG).
+
+    This function searches for nodes in the graph that belong to the specified category and are semantically
+    similar to the given query. It uses cosine similarity on embeddings of node titles and descriptions
+    to find relevant nodes. It also retrieves relationships connected to these similar nodes to provide context
+    for RAG.
+
+    Args:
+        category (str): The category to search within.
+        query (str): The query string to find similar nodes for.
+        graph_driver: Neo4j graph driver instance for database interaction.
+        embed_model: Embedding model instance for generating query embeddings and comparing node embeddings.
+
+    Returns:
+        dict: A dictionary containing 'nodes' and 'triplets'. 'nodes' is a list of similar nodes found,
+              and 'triplets' is a list of relationship triplets connected to these nodes, providing context.
+              Returns an empty dictionary with empty lists for nodes and triplets if search fails or no relevant nodes are found.
+    """
+    try:
+        query_title_embedding = embed_model._embed([query])[
+            0
+        ]  # Generate title embedding for the query
+        query_description_embedding = embed_model._embed([query])[
+            0
+        ]  # Generate description embedding for the query
+
+        with graph_driver.session() as session:
+            # Query to find entities within the specified category and retrieve their properties and embeddings
+            query_result = session.run(
+                """
+                MATCH (e:Entity {category: $category})
+                RETURN e.name AS name,
+                       e.title_embedding AS title_embedding,
+                       e.description_embedding AS description_embedding,
+                       properties(e) AS properties
+                """,
+                category=category,
+            )
+
+            nodes = query_result.data()  # Fetch node data from query result
+
+            similar_nodes = []  # Initialize list to store similar nodes
+            related_triplets = []  # Initialize list to store related triplets
+
+            for node in nodes:  # Iterate through each node fetched from the graph
+                title_embedding = np.array(
+                    node["title_embedding"]
+                )  # Convert title embedding to numpy array
+                description_embedding = np.array(
+                    node["description_embedding"]
+                )  # Convert description embedding to numpy array
+
+                # Calculate cosine similarity between query and node title/description embeddings
+                title_similarity = cosine_similarity(
+                    [query_title_embedding], [title_embedding]
+                )[0][0]
+                description_similarity = cosine_similarity(
+                    [query_description_embedding], [description_embedding]
+                )[0][0]
+
+                combined_similarity = (
+                    title_similarity + description_similarity
+                )  # Combine similarities
+
+                if (
+                    combined_similarity > 0.4
+                ):  # Threshold for similarity to consider node as relevant
+                    node_properties = {
+                        k: v
+                        for k, v in node["properties"].items()
+                        if k
+                        not in [
+                            "title_embedding",
+                            "description_embedding",
+                        ]  # Exclude embedding properties from node properties
+                    }
+                    similar_nodes.append(
+                        {"name": node["name"], "properties": node_properties}
+                    )  # Add similar node to the list
+
+            # Query to find relationships for the similar nodes (incoming and outgoing)
+            relationships_query_result = session.run(
+                """
+                MATCH (n:Entity)-[r]->(related)
+                WHERE n.name IN $node_names
+                RETURN n.name AS source,
+                       type(r) AS relationship,
+                       related.name AS target,
+                       properties(r) AS relationship_properties,
+                       properties(related) AS target_properties
+                UNION
+                MATCH (related)-[r]->(n:Entity)
+                WHERE n.name IN $node_names
+                RETURN related.name AS source,
+                       type(r) AS relationship,
+                       n.name AS target,
+                       properties(r) AS relationship_properties,
+                       properties(n) AS target_properties
+                """,
+                node_names=[
+                    node["name"] for node in similar_nodes
+                ],  # Pass names of similar nodes to query
+            ).data()
+
+            for (
+                record
+            ) in relationships_query_result:  # Process each relationship record
+                relationship_triplet = {
+                    "source": record["source"],
+                    "relationship": record["relationship"],
+                    "target": record["target"],
+                    "source_properties": {
+                        k: v
+                        for k, v in next(
+                            (
+                                node["properties"]
+                                for node in similar_nodes
+                                if node["name"] == record["source"]
+                            ),
+                            {},  # Default to empty dict if source node not found (shouldn't happen)
+                        ).items()
+                    },
+                    "relationship_properties": record["relationship_properties"],
+                    "target_properties": {
+                        k: v
+                        for k, v in record["target_properties"].items()
+                        if k
+                        not in [
+                            "title_embedding",
+                            "description_embedding",
+                        ]  # Exclude embedding properties
+                    },
+                }
+                related_triplets.append(
+                    relationship_triplet
+                )  # Append triplet to the list
+
+        return {
+            "nodes": similar_nodes,
+            "triplets": related_triplets,
+        }  # Return similar nodes and related triplets
+    except Exception as e:
+        print(f"Error performing similarity search: {e}")
+        return {"nodes": [], "triplets": []}  # Return empty lists in case of error
+
+
+def generate_unstructured_text_from_graph(
+    graph_data: dict, text_conversion_runnable
+) -> str:
+    """
+    Convert structured graph data into unstructured text using a text conversion runnable.
+
+    This function takes graph data (nodes and triplets) and uses a provided runnable
+    (likely a Langchain RunnableSequence) to convert this structured information into
+    human-readable unstructured text, suitable for generating responses or summaries.
+
+    Args:
+        graph_data (dict): A dictionary containing 'nodes' and 'triplets' representing graph information.
+                             Typically the output of `perform_similarity_search_rag`.
+        text_conversion_runnable: The runnable responsible for converting graph data to unstructured text.
+
+    Returns:
+        str: The generated unstructured text summarizing the graph data.
+             Returns an empty string if text generation fails.
+    """
+    try:
+        response = text_conversion_runnable.invoke(
+            {"graph_data": graph_data}
+        )  # Invoke text conversion runnable
+        return response  # Return the generated unstructured text
+    except Exception as e:
+        print(f"Error generating unstructured text: {e}")
+        return ""  # Return empty string in case of error
+
+
+def query_user_profile(
+    query: str,
+    graph_driver,
+    embed_model,
+    text_conversion_runnable,
+    query_classification_runnable,
+) -> str:
+    """
+    Process a query about the user's profile, retrieve relevant information from the knowledge graph,
+    and return an answer in unstructured text format.
+
+    This function orchestrates the process of answering user profile queries. It classifies the query into a category,
+    performs a similarity search in the knowledge graph within that category, and then converts the retrieved graph data
+    into unstructured text to form the answer.
+
+    Args:
+        query (str): The user's query about their profile.
+        graph_driver: Neo4j graph driver instance for database interaction.
+        embed_model: Embedding model instance for generating embeddings.
+        text_conversion_runnable: Runnable for converting graph data to unstructured text.
+        query_classification_runnable: Runnable for classifying user queries into categories.
+
+    Returns:
+        str: The answer to the user's query in unstructured text format.
+             Possible returns include informative answers, "Unable to classify the query into a category.",
+             "No relevant information found in any category.", "Unable to generate unstructured text from the graph.",
+             or "Failed to process the query." in case of errors.
+    """
+    try:
+        category = classify_query_into_category(
+            query, query_classification_runnable
+        )  # Classify the query into a category
+        if not category:
+            return None  # Return error if category classification fails
+
+        graph_data = perform_similarity_search_rag(
+            category, query, graph_driver, embed_model
+        )  # Perform similarity search in the graph
+
+        if len(graph_data.get("nodes")) == 0:
+            # If no relevant nodes found in the classified category, try searching in "Miscellaneous" category
+            graph_data = perform_similarity_search_rag(
+                "Miscellaneous", query, graph_driver, embed_model
+            )
+            if len(graph_data.get("nodes")) == 0:
+                return None  # Return error if no relevant info found even in Miscellaneous
+
+        context = generate_unstructured_text_from_graph(
+            graph_data, text_conversion_runnable
+        )  # Generate unstructured text from graph data
+        if not context:
+            return None # Return error if text generation fails
+
+        return context  # Return the generated context as the answer
+    except Exception as e:
+        print(f"Error processing user profile query: {e}")
+        return None  # Return general error message if any exception occurs
+
+
+def get_unified_classification_runnable() -> BaseRunnable:
+    model_name, provider = get_selected_model()
+    model_mapping = {
+        "openai": OpenAIRunnable,
+        "claude": ClaudeRunnable,
+        "gemini": GeminiRunnable,
+    }
+    runnable_class = model_mapping.get(provider, OllamaRunnable)
+    model_url = os.getenv("BASE_MODEL_URL") if provider not in model_mapping else os.getenv(f"{provider.upper()}_API_URL")
+
+    unified_classification_runnable = runnable_class(
+        model_url=model_url,
+        model_name=model_name,
+        system_prompt_template=unified_classification_system_prompt_template,  # Defined above
+        user_prompt_template=unified_classification_user_prompt_template,      # Defined above
+        input_variables=["query", "chat_history"], # Ensure chat_history is an input variable
+        required_format=unified_classification_format,                # Defined above
+        response_type="json",
+        stateful=False, # Set to False as history is passed at invocation
+    )
+    # unified_classification_runnable.add_to_history(chat_history) # Removed as history is now passed dynamically
+    return unified_classification_runnable
+
+
+def get_priority_runnable() -> BaseRunnable:
+    """
+    Creates a Runnable instance for determining task priority using an LLM.
+
+    Returns:
+        BaseRunnable: A configured runnable for priority determination.
+    """
+    # Model selection logic (adapt to your existing setup)
+    model_mapping: Dict[str, Tuple[Optional[str], Type[BaseRunnable]]] = {
+        "openai": (os.getenv("OPENAI_API_URL"), OpenAIRunnable),
+        "claude": (os.getenv("CLAUDE_API_URL"), ClaudeRunnable),
+        "gemini": (os.getenv("GEMINI_API_URL"), GeminiRunnable),
+    }
+
+    provider: Optional[str] = None
+    model_name, provider = get_selected_model()  # Assume this function exists in your codebase
+
+    if provider and provider in model_mapping:
+        model_url, runnable_class = model_mapping[provider]
+    else:
+        model_url = os.getenv("BASE_MODEL_URL")
+        runnable_class = OllamaRunnable  # Default fallback
+
+    # Create the runnable
+    runnable: BaseRunnable = runnable_class(
+        model_url=model_url,
+        model_name=model_name,
+        system_prompt_template=priority_system_prompt_template,
+        user_prompt_template=priority_user_prompt_template,
+        input_variables=["task_description"],
+        required_format=priority_required_format,
+        response_type="json",
+        stream=False,  # We want a single, non-streaming response
+    )
+
+    return runnable

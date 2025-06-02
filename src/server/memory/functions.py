@@ -1,10 +1,6 @@
 from neo4j import GraphDatabase # Importing GraphDatabase for Neo4j driver type hinting
 from wrapt_timeout_decorator import *  # Importing timeout decorator for functions from wrapt_timeout_decorator library
 import asyncio  # For asynchronous programming
-import numpy as np  # For numerical operations, especially for cosine similarity calculation
-from sklearn.metrics.pairwise import (
-    cosine_similarity,
-)  # For calculating cosine similarity between vectors
 from dotenv import load_dotenv
 
 from .runnables import *  # Importing runnable classes or functions from runnables.py
@@ -643,63 +639,6 @@ def generate_unstructured_text_from_graph(
         return ""  # Return empty string in case of error
 
 
-def query_user_profile(
-    query: str,
-    graph_driver,
-    embed_model,
-    text_conversion_runnable,
-    query_classification_runnable,
-) -> str:
-    """
-    Process a query about the user's profile, retrieve relevant information from the knowledge graph,
-    and return an answer in unstructured text format.
-
-    This function orchestrates the process of answering user profile queries. It classifies the query into a category,
-    performs a similarity search in the knowledge graph within that category, and then converts the retrieved graph data
-    into unstructured text to form the answer.
-
-    Args:
-        query (str): The user's query about their profile.
-        graph_driver: Neo4j graph driver instance for database interaction.
-        embed_model: Embedding model instance for generating embeddings.
-        text_conversion_runnable: Runnable for converting graph data to unstructured text.
-        query_classification_runnable: Runnable for classifying user queries into categories.
-
-    Returns:
-        str: The answer to the user's query in unstructured text format.
-             Possible returns include informative answers, "Unable to classify the query into a category.",
-             "No relevant information found in any category.", "Unable to generate unstructured text from the graph.",
-             or "Failed to process the query." in case of errors.
-    """
-    try:
-        category = classify_query_into_category(
-            query, query_classification_runnable
-        )  # Classify the query into a category
-        if not category:
-            return None  # Return error if category classification fails
-
-        graph_data = perform_similarity_search_rag(
-            category, query, graph_driver, embed_model
-        )  # Perform similarity search in the graph
-
-        if len(graph_data.get("nodes")) == 0:
-            # If no relevant nodes found in the classified category, try searching in "Miscellaneous" category
-            graph_data = perform_similarity_search_rag(
-                "Miscellaneous", query, graph_driver, embed_model
-            )
-            if len(graph_data.get("nodes")) == 0:
-                return None  # Return error if no relevant info found even in Miscellaneous
-
-        context = generate_unstructured_text_from_graph(
-            graph_data, text_conversion_runnable
-        )  # Generate unstructured text from graph data
-        if not context:
-            return None # Return error if text generation fails
-
-        return context  # Return the generated context as the answer
-    except Exception as e:
-        print(f"Error processing user profile query: {e}")
-        return None  # Return general error message if any exception occurs
 
 
 def analyze_graph_differences(

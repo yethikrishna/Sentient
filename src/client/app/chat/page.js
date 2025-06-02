@@ -276,29 +276,6 @@ const Chat = () => {
 		}
 	}
 
-	const reinitiateServer = async () => {
-		setServerStatus(false)
-		toast.loading("Restarting server...")
-		try {
-			const response = await window.electron?.invoke("reinitiate-server")
-			if (response.status === 200) {
-				toast.dismiss()
-				toast.success("Server restarted. Fetching history...")
-				if (chatMode === "text") {
-					await fetchChatHistory()
-				}
-			} else {
-				toast.dismiss()
-				toast.error("Failed to restart server.")
-			}
-		} catch (error) {
-			toast.dismiss()
-			toast.error("Error restarting the server.")
-		} finally {
-			setServerStatus(true)
-		}
-	}
-
 	// --- Effects ---
 	// Initial setup effect
 	useEffect(() => {
@@ -448,7 +425,11 @@ const Chat = () => {
 				{/* Top Right Buttons */}
 				<div className="absolute top-5 right-5 z-20 flex gap-3">
 					<button
-						onClick={reinitiateServer}
+						onClick={() =>
+							toast.error(
+								"Server restart from client is deprecated."
+							)
+						}
 						className="p-3 hover-button rounded-full text-white cursor-pointer"
 						title="Restart Server"
 					>

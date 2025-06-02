@@ -41,11 +41,10 @@ class MemoryManager:
             "LOGISTICS_PRACTICAL": ["transportation", "technology", "miscellaneous", "logistics", "practical", "devices", "software", "apps", "car", "travel", "home", "daily errands", "general information"],
             "SPIRITUAL": ["spiritual", "faith", "meditation", "religion", "beliefs", "mindfulness", "inner peace"]
         }
-        print("Ensuring MongoDB indexes for memories...")
-        self.initialize_mongodb_indexes()
+        # initialize_mongodb_indexes will be called via an async initialize method
         print("MemoryManager initialized.")
 
-    def initialize_mongodb_indexes(self):
+    async def initialize_async(self):
         """
         Ensures necessary indexes for the memory collection.
         This is called during MemoryManager initialization.
@@ -56,10 +55,7 @@ class MemoryManager:
             IndexModel([("expiry_at", ASCENDING)], name="expiry_at_idx", expireAfterSeconds=0) # TTL index
         ]
         try:
-            # Use asyncio.run to run the async index creation in sync context
-            # This is generally okay for startup tasks
-            import asyncio
-            asyncio.run(self.memory_collection.create_indexes(indexes))
+            await self.memory_collection.create_indexes(indexes)
             print(f"[DB_INIT] Indexes ensured for memory collection: {self.memory_collection.name}")
         except Exception as e:
             print(f"[DB_ERROR] Failed to create indexes for {self.memory_collection.name}: {e}")

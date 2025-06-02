@@ -4,15 +4,17 @@ import traceback
 import asyncio # Required for loop.run_in_executor
 
 # Assuming these are initialized in app.py and can be imported
-from server.app.app import (
+from server.common.dependencies import (
     auth,
     PermissionChecker,
     task_queue,
-    mongo_manager, # For loading user profile and active_chat_id
-    unified_classification_runnable, # For add_task_endpoint
-    priority_runnable, # For add_task_endpoint
-    add_message_to_db, # For add_task_endpoint
-    get_chat_history_messages # For add_task_endpoint
+    mongo_manager,
+    add_message_to_db,
+    get_chat_history_messages
+)
+from server.common.functions import (
+    get_unified_classification_runnable, # Import the getter
+    get_priority_runnable # Import the getter
 )
 # Pydantic models moved from app.py
 from pydantic import BaseModel, Field
@@ -73,6 +75,9 @@ async def add_task_endpoint(task_request: CreateTaskRequest, user_id: str = Depe
     print(f"[ENDPOINT /agents/add-task] User {user_id}, Desc: '{task_request.description[:50]}...'")
     loop = asyncio.get_event_loop()
     try:
+        # Get runnable instances
+        unified_classification_runnable_instance = get_unified_classification_runnable()
+        priority_runnable_instance = get_priority_runnable()
         user_profile_for_task = await mongo_manager.get_user_profile(user_id)
         active_chat_id = user_profile_for_task.get("userData", {}).get("active_chat_id", None)
 
@@ -89,13 +94,13 @@ async def add_task_endpoint(task_request: CreateTaskRequest, user_id: str = Depe
         
         current_chat_history_for_task, _ = await get_chat_history_messages(user_id, final_active_chat_id)
         
-        unified_output = await loop.run_in_executor(None, unified_classification_runnable.invoke, {"query": task_request.description, "chat_history": current_chat_history_for_task})
+        unified_output = await loop.run_in_executor(None, unified_classification_runnable_instance.invoke, {"query": task_request.description, "chat_history": current_chat_history_for_task})
         use_personal_context = unified_output.get("use_personal_context", False)
         internet_needed = unified_output.get("internet", "None")
         
         task_priority = 2
         try:
-            priority_response = await loop.run_in_executor(None, priority_runnable.invoke, {"task_description": task_request.description})
+            priority_response = await loop.run_in_executor(None, priority_runnable_instance.invoke, {"task_description": task_request.description})
             task_priority = priority_response.get("priority", 2)
         except Exception as e_prio:
             print(f"[WARN] Priority determination failed for task '{task_request.description[:30]}...': {e_prio}. Defaulting to low.")

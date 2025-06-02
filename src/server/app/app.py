@@ -148,6 +148,88 @@ except Exception as e:
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
+# Define DATA_SOURCES_CONFIG to map service_name to engine class
+DATA_SOURCES_CONFIG: Dict[str, Dict[str, Any]] = {
+    "gmail": {
+        "engine_class": GmailContextEngine,
+        "enabled_by_default": True, # Or fetch from user settings
+        # Add other service-specific configs if needed
+    },
+    # "gcalendar": {
+    #     "engine_class": GCalendarContextEngine,
+    #     "enabled_by_default": True,
+    # },
+    # "internet_search": {
+    #     "engine_class": InternetSearchContextEngine,
+    #     "enabled_by_default": False, # Example: off by default
+    # }
+}
+
+POLLING_SCHEDULER_INTERVAL_SECONDS = int(os.getenv("POLLING_SCHEDULER_INTERVAL_SECONDS", 30))
+async def polling_scheduler_loop():
+    print(f"[POLLING_SCHEDULER] Starting loop (interval: {POLLING_SCHEDULER_INTERVAL_SECONDS}s)")
+    await mongo_manager.reset_stale_polling_locks() # Reset any locks from crashed previous runs
+    
+    while True:
+        try:
+            # print(f"[POLLING_SCHEDULER] Checking for due polling tasks at {datetime.now(timezone.utc).isoformat()}")
+            due_tasks_states = await mongo_manager.get_due_polling_tasks() # Fetches tasks that are enabled, due, and not locked
+            
+            if not due_tasks_states:
+                # print(f"[POLLING_SCHEDULER] No tasks due at this time.")
+                pass
+            else:
+                print(f"[POLLING_SCHEDULER] Found {len(due_tasks_states)} due polling tasks.")
+
+            for task_state in due_tasks_states:
+                user_id = task_state["user_id"]
+                service_name = task_state["service_name"] # Changed from engine_category
+                
+                print(f"[POLLING_SCHEDULER] Attempting to process task for {user_id}/{service_name}")
+
+                # Atomically try to acquire the lock for this specific task
+                locked_task_state = await mongo_manager.set_polling_status_and_get(user_id, service_name)
+                
+                if locked_task_state:
+                    print(f"[POLLING_SCHEDULER] Acquired lock for {user_id}/{service_name}. Triggering poll.")
+                    
+                    engine_instance = active_context_engines.get(user_id, {}).get(service_name)
+                    
+                    if not engine_instance:
+                        engine_config = DATA_SOURCES_CONFIG.get(service_name)
+                        if engine_config and engine_config.get("engine_class"):
+                            engine_class = engine_config["engine_class"]
+                            print(f"[POLLING_SCHEDULER] Creating new {engine_class.__name__} instance for {user_id}/{service_name}")
+                            engine_instance = engine_class(
+                                user_id=user_id,
+                                task_queue=task_queue, 
+                                memory_backend=memory_backend, 
+                                websocket_manager=manager, # Global websocket_manager
+                                mongo_manager_instance=mongo_manager # Global mongo_manager
+                            )
+                            if user_id not in active_context_engines:
+                                active_context_engines[user_id] = {}
+                            active_context_engines[user_id][service_name] = engine_instance
+                        else:
+                            print(f"[POLLING_SCHEDULER_ERROR] No engine class configured for service: {service_name}")
+                            # Release lock as we can't process it
+                            await mongo_manager.update_polling_state(user_id, service_name, {"is_currently_polling": False})
+                            continue
+                    
+                    # Run the poll cycle in a new asyncio task so the scheduler doesn't block
+                    # The run_poll_cycle itself will handle releasing the lock via calculate_and_schedule_next_poll
+                    asyncio.create_task(engine_instance.run_poll_cycle()) 
+                else:
+                    # This means another scheduler instance/worker picked it up, or it's no longer due.
+                    print(f"[POLLING_SCHEDULER] Could not acquire lock for {user_id}/{service_name} (already processing or no longer due).")
+
+        except Exception as e:
+            print(f"[POLLING_SCHEDULER_ERROR] Error in scheduler loop: {e}")
+            traceback.print_exc() # Log full error
+        
+        await asyncio.sleep(POLLING_SCHEDULER_INTERVAL_SECONDS)
+        
+
 class Auth:
     async def _validate_token_and_get_payload(self, token: str) -> dict:
         # ... (Auth class definition remains the same) ...
@@ -711,43 +793,48 @@ async def polling_scheduler_loop():
 
 
 async def start_user_context_engines(user_id: str):
-    """Starts context engines for a given user if not already running and initializes polling state."""
-    if user_id not in active_context_engines:
+    """Ensures polling state exists for all enabled services for a user."""
+    if user_id not in active_context_engines: # This dict might be less critical now for *running* engines
         active_context_engines[user_id] = {}
     
-    user_profile = await load_user_profile(user_id) # load_user_profile is your existing helper
-    user_settings = user_profile.get("userData", {})
+    user_profile = await mongo_manager.get_user_profile(user_id)
+    user_settings = user_profile.get("userData", {}) if user_profile else {}
 
-    for source_name, config in DATA_SOURCES_CONFIG.items():
-        is_enabled = user_settings.get(f"{source_name}Enabled", config["enabled_by_default"])
+    for service_name, config in DATA_SOURCES_CONFIG.items():
+        # Determine if the service is enabled for the user
+        # This could come from user_profile's userData, or a default.
+        # Example: is_service_enabled = user_settings.get(f"{service_name}_polling_enabled", config["enabled_by_default"])
+        # For now, let's assume we check a specific field or default
         
-        if is_enabled:
-            if source_name not in active_context_engines[user_id]:
-                print(f"[CONTEXT_ENGINE_MGR] Starting {source_name} engine for user {user_id}...")
+        is_service_enabled_in_db = False
+        polling_state_doc = await mongo_manager.get_polling_state(user_id, service_name)
+        if polling_state_doc:
+            is_service_enabled_in_db = polling_state_doc.get("is_enabled", False) # Default to False if key missing
+        else: # No state yet, use default from config
+            is_service_enabled_in_db = config.get("enabled_by_default", True)
+
+
+        if is_service_enabled_in_db:
+            # Check if an engine instance exists (less critical now, but can be kept for potential direct calls)
+            engine_instance = active_context_engines.get(user_id, {}).get(service_name)
+            if not engine_instance:
                 engine_class = config["engine_class"]
+                print(f"[CONTEXT_ENGINE_MGR] Creating transient {engine_class.__name__} instance for {user_id}/{service_name} for state init.")
                 engine_instance = engine_class(
                     user_id=user_id,
-                    task_queue=task_queue,
+                    task_queue=task_queue, # Pass your global/initialized instances
                     memory_backend=memory_backend,
                     websocket_manager=manager,
                     mongo_manager_instance=mongo_manager
                 )
-                active_context_engines[user_id][source_name] = engine_instance
-                # Initialize polling state (will set next_poll_at to now if new)
-                await engine_instance.initialize_polling_state() 
-                print(f"[CONTEXT_ENGINE_MGR] {source_name} engine started and polling state initialized for user {user_id}.")
-            else:
-                # Engine already active, ensure its polling state is initialized (e.g. if server restarted)
-                await active_context_engines[user_id][source_name].initialize_polling_state()
-                print(f"[CONTEXT_ENGINE_MGR] {source_name} engine for user {user_id} already active. Ensured polling state.")
-
-        elif not is_enabled and source_name in active_context_engines[user_id]:
-            print(f"[CONTEXT_ENGINE_MGR] {source_name} engine for user {user_id} is disabled. Stopping (if implemented) and removing.")
-            # Add engine stop logic if available:
-            # if hasattr(active_context_engines[user_id][source_name], 'stop'):
-            #     await active_context_engines[user_id][source_name].stop()
-            del active_context_engines[user_id][source_name]
-
+                # active_context_engines[user_id][service_name] = engine_instance # Optional to store
+            
+            # Crucially, ensure the polling state is initialized in the DB
+            # This will set it up for the central scheduler if it's new or enable it.
+            await engine_instance.initialize_polling_state() 
+            print(f"[CONTEXT_ENGINE_MGR] Polling state ensured for {service_name} for user {user_id}.")
+        else:
+            print(f"[CONTEXT_ENGINE_MGR] Service {service_name} is disabled for user {user_id}. Skipping engine start/state init.")
 
 @app.on_event("startup")
 async def startup_event():

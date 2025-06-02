@@ -12,6 +12,11 @@ import pickle
 import multiprocessing
 import traceback # For detailed error printing
 import json # Keep json for websocket messages
+from server.context.base import BaseContextEngine, POLLING_INTERVALS # Import POLLING_INTERVALS
+from server.context.gmail import GmailContextEngine
+from server.context.gcalendar import GCalendarContextEngine
+from server.context.internet import InternetSearchContextEngine
+from datetime import timezone, timedelta # For scheduling
 
 # --- MongoDB Manager Import ---
 from server.db import MongoManager
@@ -382,6 +387,13 @@ print(f"[INIT] {datetime.datetime.now()}: Initializing MongoManager...")
 mongo_manager = MongoManager()
 print(f"[INIT] {datetime.datetime.now()}: MongoManager initialized.")
 
+# Dictionary to hold active context engine instances per user
+# Structure: { "user_id1": {"gmail": GmailEngineInstance, "gcalendar": GCalendarEngineInstance}, ... }
+active_context_engines: Dict[str, Dict[str, BaseContextEngine]] = {}
+polling_scheduler_task_handle: Optional[asyncio.Task] = None
+
+POLLING_SCHEDULER_INTERVAL_SECONDS = 30 
+
 # --- Helper Functions (User-Specific DB Operations) ---
 async def load_user_profile(user_id: str) -> Dict[str, Any]:
     profile = await mongo_manager.get_user_profile(user_id)
@@ -638,10 +650,110 @@ print(f"[FASTAPI] {datetime.datetime.now()}: CORS middleware added.")
 
 agent_task_processor_instance: Optional[AgentTaskProcessor] = None 
 
+async def polling_scheduler_loop():
+    print(f"[POLLING_SCHEDULER] Starting polling scheduler loop (interval: {POLLING_SCHEDULER_INTERVAL_SECONDS}s)")
+    while True:
+        try:
+            print(f"[POLLING_SCHEDULER] Checking for due polling tasks at {datetime.now(timezone.utc).isoformat()}")
+            due_tasks_states = await mongo_manager.get_due_polling_tasks()
+            
+            if not due_tasks_states:
+                # print(f"[POLLING_SCHEDULER] No tasks due at this time.")
+                pass
+            else:
+                print(f"[POLLING_SCHEDULER] Found {len(due_tasks_states)} due tasks.")
+
+            for task_state in due_tasks_states:
+                user_id = task_state["user_id"]
+                engine_category = task_state["engine_category"]
+                
+                print(f"[POLLING_SCHEDULER] Attempting to process task for {user_id}/{engine_category}")
+
+                # Try to acquire lock and get the task. If successful, proceed.
+                locked_task_state = await mongo_manager.set_polling_status_and_get(user_id, engine_category)
+                
+                if locked_task_state:
+                    print(f"[POLLING_SCHEDULER] Acquired lock for {user_id}/{engine_category}. Triggering poll.")
+                    engine_instance = active_context_engines.get(user_id, {}).get(engine_category)
+                    
+                    if not engine_instance:
+                        engine_class = DATA_SOURCES_CONFIG.get(engine_category, {}).get("engine_class")
+                        if engine_class:
+                            print(f"[POLLING_SCHEDULER] Creating new instance for {user_id}/{engine_category}")
+                            engine_instance = engine_class(
+                                user_id=user_id,
+                                task_queue=task_queue, # global
+                                memory_backend=memory_backend, # global
+                                websocket_manager=manager, # global websocket_manager
+                                mongo_manager_instance=mongo_manager # global
+                            )
+                            if user_id not in active_context_engines:
+                                active_context_engines[user_id] = {}
+                            active_context_engines[user_id][engine_category] = engine_instance
+                            # No need to call engine_instance.initialize_polling_state() here,
+                            # run_poll_cycle will handle it if state is missing or needs reset.
+                        else:
+                            print(f"[POLLING_SCHEDULER_ERROR] No engine class configured for category: {engine_category}")
+                            # Release lock if instance can't be created
+                            await mongo_manager.update_polling_state(user_id, engine_category, {"is_currently_polling": False})
+                            continue
+                    
+                    # Run the poll cycle in a new task so the scheduler doesn't block
+                    asyncio.create_task(engine_instance.run_poll_cycle())
+                else:
+                    print(f"[POLLING_SCHEDULER] Could not acquire lock for {user_id}/{engine_category} (already processing or not due).")
+
+        except Exception as e:
+            print(f"[POLLING_SCHEDULER_ERROR] Error in scheduler loop: {e}")
+            traceback.print_exc()
+        
+        await asyncio.sleep(POLLING_SCHEDULER_INTERVAL_SECONDS)
+
+
+async def start_user_context_engines(user_id: str):
+    """Starts context engines for a given user if not already running and initializes polling state."""
+    if user_id not in active_context_engines:
+        active_context_engines[user_id] = {}
+    
+    user_profile = await load_user_profile(user_id) # load_user_profile is your existing helper
+    user_settings = user_profile.get("userData", {})
+
+    for source_name, config in DATA_SOURCES_CONFIG.items():
+        is_enabled = user_settings.get(f"{source_name}Enabled", config["enabled_by_default"])
+        
+        if is_enabled:
+            if source_name not in active_context_engines[user_id]:
+                print(f"[CONTEXT_ENGINE_MGR] Starting {source_name} engine for user {user_id}...")
+                engine_class = config["engine_class"]
+                engine_instance = engine_class(
+                    user_id=user_id,
+                    task_queue=task_queue,
+                    memory_backend=memory_backend,
+                    websocket_manager=manager,
+                    mongo_manager_instance=mongo_manager
+                )
+                active_context_engines[user_id][source_name] = engine_instance
+                # Initialize polling state (will set next_poll_at to now if new)
+                await engine_instance.initialize_polling_state() 
+                print(f"[CONTEXT_ENGINE_MGR] {source_name} engine started and polling state initialized for user {user_id}.")
+            else:
+                # Engine already active, ensure its polling state is initialized (e.g. if server restarted)
+                await active_context_engines[user_id][source_name].initialize_polling_state()
+                print(f"[CONTEXT_ENGINE_MGR] {source_name} engine for user {user_id} already active. Ensured polling state.")
+
+        elif not is_enabled and source_name in active_context_engines[user_id]:
+            print(f"[CONTEXT_ENGINE_MGR] {source_name} engine for user {user_id} is disabled. Stopping (if implemented) and removing.")
+            # Add engine stop logic if available:
+            # if hasattr(active_context_engines[user_id][source_name], 'stop'):
+            #     await active_context_engines[user_id][source_name].stop()
+            del active_context_engines[user_id][source_name]
+
+
 @app.on_event("startup")
 async def startup_event():
+    # ... (your existing startup code: STT, TTS, DB init, agent_task_processor, memory_backend) ...
     print(f"[FASTAPI_LIFECYCLE] App startup.")
-    global stt_model, tts_model, agent_task_processor_instance
+    global stt_model, tts_model, agent_task_processor_instance, polling_scheduler_task_handle
 
     agent_task_processor_instance = agent_task_processor
 
@@ -665,7 +777,7 @@ async def startup_event():
             elif TTS_PROVIDER == "ELEVENLABS":
                 tts_model = ElevenLabsTTS()
                 print("[LIFECYCLE] ElevenLabs TTS loaded (Production Mode).")
-            else: # Default to ORPHEUS
+            else: 
                 tts_model = OrpheusTTS(verbose=False, default_voice_id=SELECTED_TTS_VOICE)
                 print(f"[WARN] Unknown TTS_PROVIDER '{TTS_PROVIDER}'. Defaulting to Orpheus TTS.")
     except Exception as e:
@@ -673,7 +785,7 @@ async def startup_event():
         tts_model = None
     
     await task_queue.initialize_db()
-    await mongo_manager.initialize_db()
+    await mongo_manager.initialize_db() # This now includes polling state indexes
     await memory_backend.memory_queue.initialize_db()
     
     if agent_task_processor_instance:
@@ -684,18 +796,35 @@ async def startup_event():
         
     asyncio.create_task(memory_backend.process_memory_operations())
     
+    # Start the central polling scheduler
+    polling_scheduler_task_handle = asyncio.create_task(polling_scheduler_loop())
+    print(f"[FASTAPI_LIFECYCLE] Central polling scheduler started.")
+    
     print(f"[FASTAPI_LIFECYCLE] App startup complete.")
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    # ... (your existing shutdown code) ...
+    global polling_scheduler_task_handle
+    if polling_scheduler_task_handle and not polling_scheduler_task_handle.done():
+        print("[FASTAPI_LIFECYCLE] Cancelling polling scheduler task...")
+        polling_scheduler_task_handle.cancel()
+        try:
+            await polling_scheduler_task_handle
+        except asyncio.CancelledError:
+            print("[FASTAPI_LIFECYCLE] Polling scheduler task cancelled.")
+        except Exception as e:
+            print(f"[FASTAPI_LIFECYCLE_ERROR] Error during polling scheduler shutdown: {e}")
+    # ... (rest of your shutdown) ...
     print(f"[FASTAPI_LIFECYCLE] App shutdown.")
     if mongo_manager.client:
         mongo_manager.client.close()
         print("[FASTAPI_LIFECYCLE] MongoManager client closed.")
-    if task_queue.client: # TaskQueue now has its own client
+    if task_queue.client: 
         task_queue.client.close()
         print("[FASTAPI_LIFECYCLE] TaskQueue MongoDB client closed.")
-    if memory_backend.memory_queue.client: # MemoryQueue now has its own client
+    if memory_backend.memory_queue.client: 
         memory_backend.memory_queue.client.close()
         print("[FASTAPI_LIFECYCLE] MemoryQueue MongoDB client closed.")
     print(f"[FASTAPI_LIFECYCLE] All MongoDB clients known to app.py closed.")

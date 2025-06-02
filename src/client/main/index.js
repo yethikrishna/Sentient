@@ -2836,49 +2836,47 @@ ipcMain.handle("save-onboarding-data", async (_event, onboardingData) => {
 			error: error.message
 		}
 	}
-	// IPC: Fetch Memory Categories (Backend Call)
-	ipcMain.handle("fetch-memory-categories", async () => {
-		const userId = getUserIdFromProfile()
-		const authHeader = getAuthHeader()
-		if (!userId || !authHeader) {
-			console.error(
-				"IPC: fetch-memory-categories - User not authenticated."
-			)
-			return { error: "User not authenticated.", status: 401 }
-		}
+})
+// IPC: Fetch Memory Categories (Backend Call)
+ipcMain.handle("fetch-memory-categories", async () => {
+	const userId = getUserIdFromProfile()
+	const authHeader = getAuthHeader()
+	if (!userId || !authHeader) {
+		console.error("IPC: fetch-memory-categories - User not authenticated.")
+		return { error: "User not authenticated.", status: 401 }
+	}
 
-		console.log(`IPC: fetch-memory-categories called for user ${userId}.`)
-		try {
-			const response = await fetch(
-				`${process.env.APP_SERVER_URL || "http://localhost:5000"}/get-memory-categories`,
-				{
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-						...authHeader
-					}
+	console.log(`IPC: fetch-memory-categories called for user ${userId}.`)
+	try {
+		const response = await fetch(
+			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/get-memory-categories`,
+			{
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					...authHeader
 				}
-			)
-
-			if (!response.ok) {
-				const errorText = await response.text()
-				throw new Error(
-					`Failed to fetch memory categories. Status: ${response.status}. Details: ${errorText}`
-				)
 			}
-			const result = await response.json() // Expects { categories: [...] }
-			console.log(
-				`IPC: Fetch Memory Categories API call successful for user ${userId}. Fetched ${result.categories?.length || 0} categories.`
+		)
+
+		if (!response.ok) {
+			const errorText = await response.text()
+			throw new Error(
+				`Failed to fetch memory categories. Status: ${response.status}. Details: ${errorText}`
 			)
-			return { categories: result.categories, status: 200 }
-		} catch (error) {
-			console.error(
-				`IPC Error: Exception in fetch-memory-categories handler for user ${userId}:`,
-				error
-			)
-			return { error: error.message, status: 500 }
 		}
-	})
+		const result = await response.json() // Expects { categories: [...] }
+		console.log(
+			`IPC: Fetch Memory Categories API call successful for user ${userId}. Fetched ${result.categories?.length || 0} categories.`
+		)
+		return { categories: result.categories, status: 200 }
+	} catch (error) {
+		console.error(
+			`IPC Error: Exception in fetch-memory-categories handler for user ${userId}:`,
+			error
+		)
+		return { error: error.message, status: 500 }
+	}
 })
 
 // IPC: Fetch Memory Categories (Backend Call)

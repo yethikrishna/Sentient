@@ -12,9 +12,6 @@ from server.agents.functions import send_email, reply_email
 # Global lock for thread-safe access to task data (Original, kept but unused by new TaskQueue)
 task_lock = asyncio.Lock()
 
-# Path to the JSON file for task persistence (Original, kept but unused by new TaskQueue)
-TASKS_FILE = "agentic_operations.json"
-
 # --- MongoDB Configuration ---
 # These can be moved to environment variables or a config file
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")

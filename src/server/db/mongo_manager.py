@@ -1,3 +1,4 @@
+# src/server/db/mongo_manager.py
 import os
 import datetime
 import uuid # For generating unique IDs
@@ -7,12 +8,12 @@ from typing import Dict, List, Optional, Any
 
 # MongoDB Configuration
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
-MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_agent_db") # Default from your existing, but we'll use polling specific below
-POLLING_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_polling_db") # Specific DB for polling
-USER_PROFILES_COLLECTION = "user_profiles" # Keep this as is if it's in your main DB
-CHAT_HISTORY_COLLECTION = "chat_history" # Keep this
-NOTIFICATIONS_COLLECTION = "notifications" # Keep this
-MEMORY_COLLECTION_NAME = "memory_operations" # Keep this
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_agent_db") 
+POLLING_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_polling_db") 
+USER_PROFILES_COLLECTION = "user_profiles" 
+CHAT_HISTORY_COLLECTION = "chat_history" 
+NOTIFICATIONS_COLLECTION = "notifications" 
+MEMORY_COLLECTION_NAME = "memory_operations" 
 
 # New Collections for Polling
 POLLING_STATE_COLLECTION = "polling_state_store"
@@ -21,14 +22,12 @@ PROCESSED_ITEMS_COLLECTION = "processed_items_log"
 class MongoManager:
     def __init__(self):
         self.client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI)
-        # Main DB (for profiles, chat, etc.)
         self.main_db = self.client[MONGO_DB_NAME]
         self.user_profiles_collection = self.main_db[USER_PROFILES_COLLECTION]
         self.chat_history_collection = self.main_db[CHAT_HISTORY_COLLECTION]
         self.notifications_collection = self.main_db[NOTIFICATIONS_COLLECTION]
         self.memory_collection = self.main_db[MEMORY_COLLECTION_NAME]
 
-        # Polling DB (specific for polling states and processed items)
         self.polling_db = self.client[POLLING_DB_NAME]
         self.polling_state_collection = self.polling_db[POLLING_STATE_COLLECTION]
         self.processed_items_collection = self.polling_db[PROCESSED_ITEMS_COLLECTION]
@@ -74,11 +73,12 @@ class MongoManager:
         polling_state_indexes = [
             IndexModel([("user_id", ASCENDING), ("service_name", ASCENDING)], unique=True, name="polling_user_service_unique_idx"),
             IndexModel([
-                ("is_enabled", ASCENDING), # Add is_enabled to the compound index
+                ("is_enabled", ASCENDING), 
                 ("next_scheduled_poll_time", ASCENDING), 
-                ("error_backoff_until_timestamp", ASCENDING) # This is less common to query with next_scheduled_poll_time
+                ("error_backoff_until_timestamp", ASCENDING), # Added error_backoff_until_timestamp
+                ("is_currently_polling", ASCENDING) # Added is_currently_polling
             ], name="polling_due_tasks_idx"),
-            IndexModel([("is_currently_polling", ASCENDING)], name="polling_is_polling_idx") # For finding tasks to reset if stuck
+            IndexModel([("is_currently_polling", ASCENDING), ("last_attempted_poll_timestamp", ASCENDING)], name="polling_stale_locks_idx")
         ]
         try:
             await self.polling_state_collection.create_indexes(polling_state_indexes)
@@ -96,7 +96,6 @@ class MongoManager:
         except Exception as e:
             print(f"[DB_ERROR] Index creation for {self.processed_items_collection.name}: {e}")
 
-        # Memory Operations Indexes (from your existing code)
         memory_operations_indexes = [
             IndexModel([("user_id", ASCENDING), ("operation_id", ASCENDING)], name="mem_op_user_operation_id_idx", unique=True),
             IndexModel([("status", ASCENDING), ("timestamp", ASCENDING)], name="mem_op_global_pending_operations_idx"),
@@ -110,28 +109,24 @@ class MongoManager:
         except Exception as e:
             print(f"[DB_ERROR] Index creation for {self.memory_collection.name}: {e}")
 
-    # --- User Profile Methods (Keep existing or adapt as needed) ---
+    # ... (user_profile and other methods remain the same) ...
     async def get_user_profile(self, user_id: str) -> Optional[Dict]:
         if not user_id: return None
         return await self.user_profiles_collection.find_one({"user_id": user_id})
 
     async def update_user_profile(self, user_id: str, profile_data: Dict) -> bool:
         if not user_id or not profile_data: return False
-        if "_id" in profile_data: del profile_data["_id"] # Remove _id if present to avoid conflict
+        if "_id" in profile_data: del profile_data["_id"] 
         
-        # Ensure userData exists if we are trying to set sub-fields
         update_operations = {}
-        flat_profile_data = {} # For top-level fields like user_id, createdAt
-        user_data_updates = {} # For fields under userData
+        flat_profile_data = {} 
+        user_data_updates = {} 
 
         for key, value in profile_data.items():
             if key.startswith("userData."):
-                # This allows Electron side to send "userData.active_chat_id"
-                # and we correctly place it under the userData object.
                 sub_key = key.split(".", 1)[1]
                 user_data_updates[sub_key] = value
             elif key == "userData" and isinstance(value, dict):
-                 # If the whole userData object is passed
                 for sub_key, sub_value in value.items():
                     user_data_updates[sub_key] = sub_value
             else:
@@ -145,12 +140,12 @@ class MongoManager:
             for k, v in user_data_updates.items():
                 update_operations["$set"][f"userData.{k}"] = v
         
-        if not update_operations: # No actual updates specified
+        if not update_operations: 
             return False
 
         result = await self.user_profiles_collection.update_one(
             {"user_id": user_id},
-            update_operations, # Use the constructed update document
+            update_operations, 
             upsert=True
         )
         return result.matched_count > 0 or result.upserted_id is not None
@@ -158,12 +153,9 @@ class MongoManager:
     async def update_user_last_active(self, user_id: str) -> bool:
         if not user_id: return False
         now_utc = datetime.datetime.now(datetime.timezone.utc)
-        # This will set 'userData.last_active_timestamp'
-        # and 'userData.last_updated'
-        # It will also create 'userData' if it doesn't exist.
         update_payload = {
             "userData.last_active_timestamp": now_utc,
-            "userData.last_updated": now_utc # Also update a general last_updated for userData
+            "userData.last_updated": now_utc 
         }
         result = await self.user_profiles_collection.update_one(
             {"user_id": user_id},
@@ -173,48 +165,59 @@ class MongoManager:
         return result.matched_count > 0 or result.upserted_id is not None
         
     async def get_user_activity_and_timezone(self, user_id: str) -> Dict[str, Any]:
+        # Ensure user_profile is awaited
         profile = await self.get_user_profile(user_id)
         user_data = profile.get("userData", {}) if profile else {}
+        
+        last_active_ts_val = user_data.get("last_active_timestamp")
+        # Ensure last_active_timestamp is a datetime object if it exists
+        if last_active_ts_val and isinstance(last_active_ts_val, str):
+            try:
+                last_active_ts_val = datetime.datetime.fromisoformat(last_active_ts_val.replace("Z", "+00:00"))
+            except ValueError:
+                 print(f"Could not parse last_active_timestamp string: {last_active_ts_val}")
+                 last_active_ts_val = None # Or handle error appropriately
+        elif not isinstance(last_active_ts_val, datetime.datetime):
+             last_active_ts_val = None
+
+
         return {
-            "last_active_timestamp": user_data.get("last_active_timestamp"),
+            "last_active_timestamp": last_active_ts_val,
             "timezone": user_data.get("personalInfo", {}).get("timezone")
         }
 
-    # --- Polling State Methods ---
-    async def get_polling_state(self, user_id: str, service_name: str) -> Optional[Dict[str, Any]]:
+    async def get_polling_state(self, user_id: str, service_name: str) -> Optional[Dict[str, Any]]: # Changed from engine_category
         if not user_id or not service_name: return None
         return await self.polling_state_collection.find_one(
             {"user_id": user_id, "service_name": service_name}
         )
 
-    async def update_polling_state(self, user_id: str, service_name: str, state_data: Dict[str, Any]) -> bool:
+    async def update_polling_state(self, user_id: str, service_name: str, state_data: Dict[str, Any]) -> bool: # Changed
         if not user_id or not service_name or state_data is None: return False
         
-        # Ensure all datetimes are BSON compatible and in UTC
         for key, value in state_data.items():
             if isinstance(value, datetime.datetime):
                 if value.tzinfo is None:
                     state_data[key] = value.replace(tzinfo=datetime.timezone.utc)
-                else: # Ensure it's converted to UTC if it has another timezone
+                else: 
                     state_data[key] = value.astimezone(datetime.timezone.utc)
-            elif isinstance(value, datetime.date) and not isinstance(value, datetime.datetime): # Handle date objects
+            elif isinstance(value, datetime.date) and not isinstance(value, datetime.datetime): 
                  state_data[key] = datetime.datetime.combine(value, datetime.time.min, tzinfo=datetime.timezone.utc)
         
         if "_id" in state_data: del state_data["_id"]
         state_data["last_updated_at"] = datetime.datetime.now(datetime.timezone.utc)
 
         result = await self.polling_state_collection.update_one(
-            {"user_id": user_id, "service_name": service_name},
-            {"$set": state_data, "$setOnInsert": {"created_at": datetime.datetime.now(datetime.timezone.utc)}},
+            {"user_id": user_id, "service_name": service_name}, # Changed
+            {"$set": state_data, "$setOnInsert": {"created_at": datetime.datetime.now(datetime.timezone.utc), "service_name": service_name}}, # Added service_name to $setOnInsert
             upsert=True
         )
         return result.matched_count > 0 or result.upserted_id is not None
 
     async def get_due_polling_tasks(self) -> List[Dict[str, Any]]:
-        """Fetches polling tasks that are due and not currently polling."""
         now_utc = datetime.datetime.now(datetime.timezone.utc)
         query = {
-            "is_enabled": True, # Only fetch enabled tasks
+            "is_enabled": True, 
             "next_scheduled_poll_time": {"$lte": now_utc},
             "is_currently_polling": False,
             "$or": [
@@ -225,13 +228,12 @@ class MongoManager:
         cursor = self.polling_state_collection.find(query).sort("next_scheduled_poll_time", ASCENDING)
         return await cursor.to_list(length=None)
 
-    async def set_polling_status_and_get(self, user_id: str, service_name: str) -> Optional[Dict[str, Any]]:
-        """Atomically sets is_currently_polling to True and returns the document if successful."""
+    async def set_polling_status_and_get(self, user_id: str, service_name: str) -> Optional[Dict[str, Any]]: # Changed
         now_utc = datetime.datetime.now(datetime.timezone.utc)
         doc = await self.polling_state_collection.find_one_and_update(
             {
                 "user_id": user_id, 
-                "service_name": service_name,
+                "service_name": service_name, # Changed
                 "is_enabled": True,
                 "next_scheduled_poll_time": {"$lte": now_utc},
                 "is_currently_polling": False,
@@ -246,20 +248,25 @@ class MongoManager:
         return doc
 
     async def reset_stale_polling_locks(self, timeout_minutes: int = 30):
-        """Resets is_currently_polling to False for tasks that have been polling for too long."""
         stale_threshold = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=timeout_minutes)
         result = await self.polling_state_collection.update_many(
             {
                 "is_currently_polling": True,
                 "last_attempted_poll_timestamp": {"$lt": stale_threshold}
             },
-            {"$set": {"is_currently_polling": False, "last_successful_poll_status_message": "Reset stale lock"}}
+            {
+                "$set": {
+                    "is_currently_polling": False, 
+                    "last_successful_poll_status_message": "Reset stale lock by scheduler.",
+                    # Optionally, schedule an immediate retry or a short delay
+                    "next_scheduled_poll_time": datetime.datetime.now(timezone.utc) + timedelta(seconds=60) 
+                }
+            }
         )
         if result.modified_count > 0:
             print(f"[MongoManager] Reset {result.modified_count} stale polling locks.")
         return result.modified_count
 
-    # --- Processed Items Log Methods ---
     async def log_processed_item(self, user_id: str, service_name: str, item_id: str) -> bool:
         if not user_id or not service_name or not item_id: return False
         try:
@@ -270,15 +277,15 @@ class MongoManager:
                 "processing_timestamp": datetime.datetime.now(datetime.timezone.utc)
             })
             return True
-        except motor.motor_asyncio.DuplicateKeyError: # pymongo.errors.DuplicateKeyError for sync
+        except motor.motor_asyncio.DuplicateKeyError: 
             print(f"[ProcessedItemsLog] Item {user_id}/{service_name}/{item_id} already processed.")
-            return True # Already logged, consider it success
+            return True 
         except Exception as e:
             print(f"[ProcessedItemsLog] Error logging item {user_id}/{service_name}/{item_id}: {e}")
             return False
 
     async def is_item_processed(self, user_id: str, service_name: str, item_id: str) -> bool:
-        if not user_id or not service_name or not item_id: return True # Fail safe
+        if not user_id or not service_name or not item_id: return True 
         count = await self.processed_items_collection.count_documents({
             "user_id": user_id,
             "service_name": service_name,
@@ -286,7 +293,7 @@ class MongoManager:
         })
         return count > 0
 
-    # --- Chat History & Notification Methods (Keep existing or adapt) ---
+    # ... (Chat, Notification, Memory operations methods remain) ...
     async def add_chat_message(self, user_id: str, chat_id: str, message_data: Dict) -> str:
         if not user_id or not chat_id or not message_data:
             raise ValueError("user_id, chat_id, and message_data are required.")
@@ -349,7 +356,6 @@ class MongoManager:
         return result.matched_count > 0 or result.upserted_id is not None
 
     async def get_collection(self, collection_name: str):
-        # Decide which DB to use based on collection name or add a db_name parameter
         if collection_name in [POLLING_STATE_COLLECTION, PROCESSED_ITEMS_COLLECTION]:
             db_to_use = self.polling_db
         else:

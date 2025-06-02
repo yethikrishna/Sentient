@@ -1,134 +1,182 @@
-from server.context.base import BaseContextEngine, POLLING_INTERVALS # Import POLLING_INTERVALS
-from server.agents.functions import authenticate_gmail
-from server.context.runnables import get_gmail_context_runnable
-from datetime import datetime, timezone, timedelta # Ensure all are imported
+# src/server/context/gmail.py
+from server.context.base import BaseContextEngine
+from server.agents.functions import authenticate_gmail # Your existing Gmail auth
+# from server.context.runnables import get_gmail_context_runnable # May not be needed if we just publish
+from datetime import datetime, timezone
 import asyncio
-from server.agents.helpers import extract_email_body # Make sure this is available or defined
-from typing import Optional, Any, Tuple # For type hinting
+import json # For Kafka messages
+from typing import Optional, Any, List, Tuple, Dict
+from googleapiclient.errors import HttpError
+import httpx # If you use httpx for other API calls; google-api-python-client handles its own.
+import os
+import uuid # For generating unique trace IDs for Kafka messages
+
+# Assuming Kafka producer setup elsewhere, e.g., in app.py or a dedicated Kafka utils
+# For now, we'll define a placeholder.
+from server.utils.producers import KafkaProducerManager # Hypothetical
+KAFKA_PRODUCER = KafkaProducerManager.get_producer()
+GMAIL_KAFKA_TOPIC = os.getenv("GMAIL_KAFKA_TOPIC", "gmail_new_items")
+
+GMAIL_POLL_HISTORY_MAX_RESULTS = int(os.getenv("GMAIL_POLL_HISTORY_MAX_RESULTS", 100))
+
 
 class GmailContextEngine(BaseContextEngine):
-    """Context Engine for processing Gmail data, with dynamic polling."""
+    """Context Engine for processing Gmail data with dynamic polling."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.category = "gmail"
         print(f"[GMAIL_ENGINE_INIT] Initializing for user: {self.user_id}")
         try:
-            self.gmail_service = authenticate_gmail()
+            # Make sure authenticate_gmail() is robust or wrapped
+            self.gmail_service = authenticate_gmail() # This needs to be callable and return a service object
             print(f"[GMAIL_ENGINE_INIT] Gmail service authenticated for user: {self.user_id}")
         except Exception as e:
             print(f"[GMAIL_ENGINE_ERROR] Failed to authenticate Gmail for user {self.user_id}: {e}")
-            self.gmail_service = None # Ensure it's None if auth fails
+            self.gmail_service = None
         print(f"[GMAIL_ENGINE_INIT] Initialization complete for user: {self.user_id}")
 
-    # The start() method is removed as polling is now driven by the central scheduler
-    # async def start(self):
-    #    pass 
-
-    async def fetch_new_data(self) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
-        """
-        Fetch new emails from Gmail since the last processed marker.
-        Returns a tuple: (list_of_new_emails, new_marker).
-        The marker can be the ID or internalDate of the latest processed email.
-        """
+    async def fetch_new_data(self, last_history_id: Optional[str], page_token: Optional[str]) -> Optional[Tuple[Optional[List[Any]], Optional[str], Optional[str]]]:
         if not self.gmail_service:
-            print(f"[GMAIL_ENGINE_FETCH_ERROR] Gmail service not available for user {self.user_id}.")
-            return None, None
+            print(f"[GMAIL_FETCH_ERROR] Gmail service not available for user {self.user_id}.")
+            # Raise an error or return None to signal failure to the poll cycle
+            raise ConnectionError("Gmail service not available for polling.")
 
-        print(f"[GMAIL_ENGINE_FETCH] Fetching new data for user: {self.user_id}")
-        polling_state = await self.mongo_manager.get_polling_state(self.user_id, self.category)
+        print(f"[GMAIL_FETCH] Fetching new Gmail history for user: {self.user_id}, startHistoryId: {last_history_id}, pageToken: {page_token}")
         
-        last_marker = polling_state.get("last_processed_item_marker") if polling_state else None
-        
-        query = "in:inbox is:unread" # Start with unread, can be refined
-        if last_marker:
-            # Assuming last_marker is an email's internalDate (timestamp in ms string) or historyId
-            # For simplicity, let's use 'after' with a timestamp. Gmail API expects Unix timestamp (seconds).
-            # If last_marker was an email ID, more complex logic for "newer than this ID" is needed.
-            # Let's assume last_marker is an ISO timestamp of the last *successful* poll.
-            # If `last_processed_item_marker` is indeed the `internalDate` of the last email:
-            if last_marker and last_marker.isdigit(): # If it's a timestamp like internalDate
-                 query += f" after:{int(int(last_marker) / 1000)}" # Convert ms to s
-                 print(f"[GMAIL_ENGINE_FETCH] Querying emails after internalDate marker: {last_marker}")
-            elif polling_state and polling_state.get("last_successful_poll_timestamp"):
-                last_poll_dt = polling_state["last_successful_poll_timestamp"]
-                if isinstance(last_poll_dt, str): # If stored as ISO string
-                    last_poll_dt = datetime.fromisoformat(last_poll_dt.replace("Z", "+00:00"))
-                
-                if last_poll_dt.tzinfo is None: # Ensure timezone aware
-                    last_poll_dt = last_poll_dt.replace(tzinfo=timezone.utc)
+        history_records_payload: List[Dict[str, Any]] = []
+        current_history_id_for_marker = last_history_id 
+        next_page = page_token
 
-                last_poll_unix_ts = int(last_poll_dt.timestamp())
-                query += f" after:{last_poll_unix_ts}"
-                print(f"[GMAIL_ENGINE_FETCH] Querying emails after last successful poll: {last_poll_dt.isoformat()}")
-            else:
-                print(f"[GMAIL_ENGINE_FETCH] No valid last_marker or last_successful_poll_timestamp. Fetching all unread.")
-        else:
-            print(f"[GMAIL_ENGINE_FETCH] No last_marker. Fetching all unread emails.")
-
-        new_emails_content = []
-        new_latest_marker = last_marker # Start with the old marker
-        
         try:
-            results = self.gmail_service.users().messages().list(userId="me", q=query, maxResults=10, includeSpamTrash=False).execute()
-            messages_metadata = results.get("messages", [])
-            print(f"[GMAIL_ENGINE_FETCH] Found {len(messages_metadata)} potentially new/unread messages metadata for user {self.user_id}.")
+            # Loop to handle pagination within a single fetch_new_data call, up to a limit
+            # This is useful if a previous poll was interrupted mid-pagination.
+            # The primary loop is managed by the scheduler for distinct polling intervals.
+            # This inner loop is for fetching all pages for *this specific* poll attempt.
+            MAX_PAGES_PER_POLL_CYCLE = 5 # Limit pages fetched in one go to avoid long running tasks
+            pages_fetched = 0
 
-            if not messages_metadata:
-                return [], last_marker # No new messages, return current marker
+            while pages_fetched < MAX_PAGES_PER_POLL_CYCLE:
+                request_params = {
+                    "userId": "me",
+                    "maxResults": GMAIL_POLL_HISTORY_MAX_RESULTS,
+                }
+                if last_history_id and not next_page: # Only use startHistoryId if no pageToken
+                    request_params["startHistoryId"] = last_history_id
+                if next_page:
+                    request_params["pageToken"] = next_page
+                
+                # The history.list method is synchronous, run in executor
+                loop = asyncio.get_event_loop()
+                response = await loop.run_in_executor(
+                    None, 
+                    self.gmail_service.users().history().list(**request_params).execute
+                )
+                
+                history_items = response.get("history", [])
+                new_next_page_token = response.get("nextPageToken")
+                current_history_id_for_marker = response.get("historyId", current_history_id_for_marker) # Gmail provides current historyId
 
-            # Process messages, typically from newest to oldest if not specified by API
-            # It's often better to process in chronological order to update marker correctly.
-            # Gmail API list might return newest first. Let's assume this for marker update.
+                if history_items:
+                    history_records_payload.extend(history_items)
+                
+                next_page = new_next_page_token # Update for next iteration of this inner loop
+                pages_fetched += 1
 
-            for msg_meta in reversed(messages_metadata): # Process oldest of the new batch first
-                msg_id = msg_meta["id"]
-                try:
-                    # Consider fetching 'metadata' format with 'internalDate' first to avoid full fetch if not needed by LLM
-                    email_detail = self.gmail_service.users().messages().get(userId="me", id=msg_id, format="full").execute()
-                    new_emails_content.append(email_detail)
-                    
-                    # Update new_latest_marker with the internalDate of this email
-                    # Gmail's internalDate is a string of milliseconds since epoch
-                    current_email_internal_date_str = email_detail.get("internalDate")
-                    if current_email_internal_date_str:
-                        # If we are processing from oldest to newest, the last one will be the newest marker
-                        new_latest_marker = current_email_internal_date_str 
-                        
-                except Exception as e_detail:
-                    print(f"[GMAIL_ENGINE_ERROR] Failed to fetch details for email ID {msg_id} for user {self.user_id}: {e_detail}")
+                if not next_page: # No more pages in this batch
+                    break
             
-            # If we processed messages, new_latest_marker should be the internalDate of the newest one processed.
-            # If no messages processed but messages_metadata was not empty, something is wrong, but marker stays.
-            if not new_emails_content and messages_metadata:
-                 print(f"[GMAIL_ENGINE_WARN] Had metadata but no content fetched for user {self.user_id}")
+            print(f"[GMAIL_FETCH] Fetched {len(history_records_payload)} history records across {pages_fetched} pages for user {self.user_id}.")
+            return history_records_payload, current_history_id_for_marker, next_page # next_page could be None
 
+        except HttpError as e:
+            print(f"[GMAIL_FETCH_API_ERROR] Gmail API error for user {self.user_id}: {e.resp.status} - {e._get_reason()}")
+            # Re-raise as httpx.HTTPStatusError for consistency if your BaseContextEngine expects that
+            # Or handle specific status codes here. For now, re-raise to be caught by run_poll_cycle
+            # To simulate httpx.HTTPStatusError:
+            # response_mock = httpx.Response(status_code=e.resp.status, text=e._get_reason())
+            # raise httpx.HTTPStatusError(message=e._get_reason(), request=None, response=response_mock)
+            raise # Let the run_poll_cycle handle HttpError and its status codes
+        except Exception as e:
+            print(f"[GMAIL_FETCH_ERROR] Unexpected error fetching Gmail history for user {self.user_id}: {e}")
+            raise # Let the run_poll_cycle handle general errors
 
-        except Exception as e_list:
-            print(f"[GMAIL_ENGINE_ERROR] Failed to list Gmail messages for user {self.user_id}: {e_list}")
-            return None, last_marker # Error, return None for data, keep old marker
+    async def process_and_publish_data(self, history_records: List[Dict[str, Any]]):
+        """
+        Process Gmail history records, check for duplicates, and publish new items to Kafka.
+        """
+        if not self.category: return # Should be set
 
-        print(f"[GMAIL_ENGINE_FETCH] Returning {len(new_emails_content)} new emails for user {self.user_id}. New marker: {new_latest_marker}")
-        return new_emails_content, new_latest_marker
-
-
-    async def process_new_data(self, new_emails: List[Dict[str, Any]]) -> str:
-        """Process new emails into a single string summary."""
-        print(f"[GMAIL_ENGINE_PROCESS] Processing {len(new_emails)} new emails for user: {self.user_id}")
-        summaries = []
-        for email in new_emails:
-            snippet = email.get("snippet", "")
-            headers = {h["name"]: h["value"] for h in email.get("payload", {}).get("headers", [])}
-            subject = headers.get("Subject", "No Subject")
-            from_ = headers.get("From", "Unknown Sender")
-            # Example: simple concatenation. LLM could do better.
-            summaries.append(f"Email from: {from_}. Subject: '{subject}'. Snippet: '{snippet}'")
+        print(f"[GMAIL_PROCESS] Processing {len(history_records)} Gmail history records for user {self.user_id}.")
         
-        joined_summaries = "\n---\n".join(summaries) # Separate emails clearly
-        print(f"[GMAIL_ENGINE_PROCESS] Processed data for user {self.user_id}: {joined_summaries[:200]}...")
-        return joined_summaries
+        # KAFKA_PRODUCER and GMAIL_KAFKA_TOPIC should be accessible here
+        # For now, this is a placeholder for Kafka publishing.
+        # You'll need to integrate your Kafka producer logic.
+        
+        # Example of how you might structure a Kafka producer call:
+        # if not KAFKA_PRODUCER:
+        #     print(f"[GMAIL_PROCESS_ERROR] Kafka producer not available for user {self.user_id}.")
+        #     return
+
+        new_items_published_count = 0
+        for record in history_records:
+            # Gmail history can contain various types of changes (messagesAdded, labelsAdded, etc.)
+            # We are interested in 'messagesAdded' to detect new emails.
+            if "messagesAdded" in record:
+                for item in record["messagesAdded"]:
+                    message = item.get("message", {})
+                    message_id = message.get("id")
+                    thread_id = message.get("threadId")
+                    
+                    if not message_id:
+                        continue
+
+                    # Check if this message_id has already been processed
+                    if await self.mongo_manager.is_item_processed(self.user_id, self.category, message_id):
+                        print(f"[GMAIL_PROCESS] Message {message_id} already processed for user {self.user_id}. Skipping.")
+                        continue
+
+                    # Construct Kafka message
+                    kafka_message = {
+                        "userId": self.user_id,
+                        "sourceApp": self.category,
+                        "eventType": "new_email_detected", # Or more specific based on history record type
+                        "eventTimestamp": datetime.now(timezone.utc).isoformat(),
+                        "eventData": {
+                            "original_message_id": message_id,
+                            "thread_id": thread_id,
+                            # "historyId": record.get("id") # The history record ID itself
+                            # Potentially add minimal metadata if available in message object
+                            # For full details, Sentient Core will fetch using message_id
+                        },
+                        "traceId": str(uuid.uuid4()) # Unique trace ID for this event
+                    }
+                    
+                    try:
+                        # Placeholder for actual Kafka publish
+                        # await KAFKA_PRODUCER.send_and_wait(GMAIL_KAFKA_TOPIC, json.dumps(kafka_message).encode('utf-8'))
+                        print(f"[GMAIL_KAFKA_PUBLISH_SUCCESS] (Simulated) Published message_id {message_id} for user {self.user_id} to Kafka.")
+                        
+                        # Log as processed AFTER successful publish
+                        await self.mongo_manager.log_processed_item(self.user_id, self.category, message_id)
+                        new_items_published_count +=1
+                    except Exception as e_kafka:
+                        print(f"[GMAIL_KAFKA_PUBLISH_ERROR] Failed to publish message_id {message_id} for user {self.user_id}: {e_kafka}")
+                        # Decide on retry logic or marking as failed for this item
+                        break # Stop processing further items in this batch on Kafka error
+
+        print(f"[GMAIL_PROCESS] Finished processing for user {self.user_id}. Published {new_items_published_count} new items to Kafka.")
+
 
     async def get_runnable(self):
-        """Return the Gmail-specific context runnable."""
-        print(f"[GMAIL_ENGINE_RUNNABLE] Getting runnable for user: {self.user_id}")
-        return get_gmail_context_runnable()
+        # This runnable was for the old context engine design.
+        # For dynamic polling, this might not be directly used in the poll cycle itself,
+        # as the primary output is Kafka messages.
+        # It could be used if, after polling, we want an LLM to summarize what was found.
+        print(f"[GMAIL_ENGINE_RUNNABLE] get_runnable called for user {self.user_id} (may not be used by dynamic poller).")
+        # return get_gmail_context_runnable() # Assuming this exists
+        return None 
+
+    # execute_outputs is handled by BaseContextEngine or might be deprecated for polling engines
+    # as the main output is publishing to Kafka. If specific notifications are needed based
+    # on polling results (e.g. "You have 5 new important emails"), this could be adapted.

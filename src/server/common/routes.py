@@ -474,22 +474,72 @@ async def websocket_endpoint(websocket: WebSocket):
         print(f"[WS /ws] WebSocket connection cleaned up for user: {authenticated_user_id or 'unknown'}")
         
 @router.post("/users/activity/heartbeat", status_code=status.HTTP_200_OK, summary="User Activity Heartbeat")
-async def user_activity_heartbeat(user_id: str = Depends(PermissionChecker(required_permissions=["write:profile"]))): # Assuming basic profile write permission
+async def user_activity_heartbeat(user_id: str = Depends(PermissionChecker(required_permissions=["write:profile"]))):
     print(f"[ENDPOINT /users/activity/heartbeat] Received heartbeat for user {user_id}")
     try:
         success = await mongo_manager.update_user_last_active(user_id)
         if success:
             return JSONResponse(content={"message": "User activity timestamp updated."})
         else:
-            # This might happen if the user profile doesn't exist yet, or DB error.
-            # update_user_last_active has upsert=True for userData, so it should create it.
-            # If it still fails, it's likely a DB connection issue or more serious.
-            print(f"[ERROR] Failed to update last_active_timestamp for user {user_id}")
+            print(f"[ERROR] Failed to update last_active_timestamp for user {user_id} via MongoManager.")
+            # This could be due to user_id not existing in user_profiles or a DB issue.
+            # update_user_last_active has upsert=True, so it should create if not exist.
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update user activity.")
     except Exception as e:
         print(f"[ERROR] /users/activity/heartbeat for {user_id}: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error processing heartbeat.")
+
+@router.post("/set_data_source_enabled", status_code=status.HTTP_200_OK, summary="Enable/Disable Data Source")
+async def set_data_source_enabled_endpoint(request: SetDataSourceEnabledRequest, user_id: str = Depends(PermissionChecker(required_permissions=["write:config"]))):
+    # ... (existing code from your utils/routes.py) ...
+    # ADD an import from server.app.app import DATA_SOURCES_CONFIG, task_queue, memory_backend, manager as websocket_manager, mongo_manager
+    # Inside the try block, after successfully setting in user profile:
+    try:
+        # ... (your existing logic to update profile in mongo_manager.user_profiles_collection) ...
+        # profile = await mongo_manager.get_user_profile(user_id)
+        # if "userData" not in profile: profile["userData"] = {}
+        # profile["userData"][f"{request.source}Enabled"] = request.enabled
+        # success = await mongo_manager.update_user_profile(user_id, profile)
+        # if not success:
+        #     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to save data source status in user profile.")
+
+        # NEW: Update the polling_state_store directly for is_enabled
+        # and trigger re-initialization if being enabled.
+        polling_state_update = {"is_enabled": request.enabled}
+        if request.enabled:
+            # If enabling, also set next_scheduled_poll_time to now to trigger immediate consideration by scheduler
+            polling_state_update["next_scheduled_poll_time"] = datetime.datetime.now(datetime.timezone.utc)
+            polling_state_update["is_currently_polling"] = False # Ensure it's not locked
+            polling_state_update["error_backoff_until_timestamp"] = None # Clear any error backoff
+            polling_state_update["consecutive_empty_polls_count"] = 0 # Reset empty polls
+            # Optionally reset interval to default initial, or let it continue from where it was
+            # polling_state_update["current_polling_interval_seconds"] = DEFAULT_INITIAL_INTERVAL_SECONDS
+
+
+        success_polling_state = await mongo_manager.update_polling_state(user_id, request.source, polling_state_update)
+        
+        if not success_polling_state:
+            print(f"[WARN] Failed to update is_enabled in polling_state_store for {user_id}/{request.source}. May need manual sync if enabling.")
+        
+        # If it was just enabled and state didn't exist, initialize it fully
+        if request.enabled:
+            from server.app.app import DATA_SOURCES_CONFIG, task_queue, memory_backend, manager, mongo_manager as global_mongo_manager # Add imports
+            engine_config = DATA_SOURCES_CONFIG.get(request.source)
+            if engine_config and engine_config.get("engine_class"):
+                engine_class = engine_config["engine_class"]
+                # Create a temporary instance just to initialize state
+                temp_engine = engine_class(user_id, task_queue, memory_backend, manager, global_mongo_manager)
+                await temp_engine.initialize_polling_state() # This will create if not exists and set to poll soon
+                print(f"[set_data_source_enabled] Initialized polling state for {user_id}/{request.source} after enabling.")
+
+
+        return JSONResponse(content={"status": "success", "message": f"Data source '{request.source}' status set to {request.enabled}."})
+    except Exception as e:
+        # ... (your existing error handling) ...
+        print(f"[ERROR] /utils/set_data_source_enabled {user_id}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to set data source status.")
 
 
 @router.post("/users/force-sync/{engine_category}", status_code=status.HTTP_200_OK, summary="Force Sync for a Service")

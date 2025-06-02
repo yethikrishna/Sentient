@@ -12,7 +12,7 @@ import pickle
 import multiprocessing
 import traceback # For detailed error printing
 import json # Keep json for websocket messages
-from server.context.base import BaseContextEngine, POLLING_INTERVALS # Import POLLING_INTERVALS
+from server.context.base import BaseContextEngine
 from server.context.gmail import GmailContextEngine
 from server.context.gcalendar import GCalendarContextEngine
 from server.context.internet import InternetSearchContextEngine

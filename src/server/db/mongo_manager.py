@@ -9,30 +9,33 @@ from typing import Dict, List, Optional, Any
 # MongoDB Configuration
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_agent_db") 
-POLLING_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_polling_db") 
+# POLLING_DB_NAME is no longer needed as we'll use MONGO_DB_NAME for all collections
+
 USER_PROFILES_COLLECTION = "user_profiles" 
 CHAT_HISTORY_COLLECTION = "chat_history" 
 NOTIFICATIONS_COLLECTION = "notifications" 
 MEMORY_COLLECTION_NAME = "memory_operations" 
 
-# New Collections for Polling
+# Collections for Polling (will now be in the main DB)
 POLLING_STATE_COLLECTION = "polling_state_store"
 PROCESSED_ITEMS_COLLECTION = "processed_items_log"
 
 class MongoManager:
     def __init__(self):
         self.client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI)
-        self.main_db = self.client[MONGO_DB_NAME]
-        self.user_profiles_collection = self.main_db[USER_PROFILES_COLLECTION]
-        self.chat_history_collection = self.main_db[CHAT_HISTORY_COLLECTION]
-        self.notifications_collection = self.main_db[NOTIFICATIONS_COLLECTION]
-        self.memory_collection = self.main_db[MEMORY_COLLECTION_NAME]
-
-        self.polling_db = self.client[POLLING_DB_NAME]
-        self.polling_state_collection = self.polling_db[POLLING_STATE_COLLECTION]
-        self.processed_items_collection = self.polling_db[PROCESSED_ITEMS_COLLECTION]
+        self.db = self.client[MONGO_DB_NAME]
         
-        print(f"[MongoManager] Initialized. Main DB: {MONGO_DB_NAME}, Polling DB: {POLLING_DB_NAME}")
+        # Main application collections
+        self.user_profiles_collection = self.db[USER_PROFILES_COLLECTION]
+        self.chat_history_collection = self.db[CHAT_HISTORY_COLLECTION]
+        self.notifications_collection = self.db[NOTIFICATIONS_COLLECTION]
+        self.memory_collection = self.db[MEMORY_COLLECTION_NAME]
+
+        # Polling related collections, now part of the db
+        self.polling_state_collection = self.db[POLLING_STATE_COLLECTION]
+        self.processed_items_collection = self.db[PROCESSED_ITEMS_COLLECTION]
+        
+        print(f"[MongoManager] Initialized. Database: {MONGO_DB_NAME}")
 
 
     async def initialize_db(self):
@@ -75,8 +78,8 @@ class MongoManager:
             IndexModel([
                 ("is_enabled", ASCENDING), 
                 ("next_scheduled_poll_time", ASCENDING), 
-                ("error_backoff_until_timestamp", ASCENDING), # Added error_backoff_until_timestamp
-                ("is_currently_polling", ASCENDING) # Added is_currently_polling
+                ("error_backoff_until_timestamp", ASCENDING), 
+                ("is_currently_polling", ASCENDING) 
             ], name="polling_due_tasks_idx"),
             IndexModel([("is_currently_polling", ASCENDING), ("last_attempted_poll_timestamp", ASCENDING)], name="polling_stale_locks_idx")
         ]
@@ -165,34 +168,34 @@ class MongoManager:
         return result.matched_count > 0 or result.upserted_id is not None
         
     async def get_user_activity_and_timezone(self, user_id: str) -> Dict[str, Any]:
-        # Ensure user_profile is awaited
         profile = await self.get_user_profile(user_id)
         user_data = profile.get("userData", {}) if profile else {}
         
         last_active_ts_val = user_data.get("last_active_timestamp")
-        # Ensure last_active_timestamp is a datetime object if it exists
         if last_active_ts_val and isinstance(last_active_ts_val, str):
             try:
-                last_active_ts_val = datetime.datetime.fromisoformat(last_active_ts_val.replace("Z", "+00:00"))
+                # Handle both "Z" and "+00:00" for UTC
+                if last_active_ts_val.endswith("Z"):
+                    last_active_ts_val = last_active_ts_val[:-1] + "+00:00"
+                last_active_ts_val = datetime.datetime.fromisoformat(last_active_ts_val)
             except ValueError:
                  print(f"Could not parse last_active_timestamp string: {last_active_ts_val}")
-                 last_active_ts_val = None # Or handle error appropriately
+                 last_active_ts_val = None 
         elif not isinstance(last_active_ts_val, datetime.datetime):
              last_active_ts_val = None
-
 
         return {
             "last_active_timestamp": last_active_ts_val,
             "timezone": user_data.get("personalInfo", {}).get("timezone")
         }
 
-    async def get_polling_state(self, user_id: str, service_name: str) -> Optional[Dict[str, Any]]: # Changed from engine_category
+    async def get_polling_state(self, user_id: str, service_name: str) -> Optional[Dict[str, Any]]: 
         if not user_id or not service_name: return None
         return await self.polling_state_collection.find_one(
             {"user_id": user_id, "service_name": service_name}
         )
 
-    async def update_polling_state(self, user_id: str, service_name: str, state_data: Dict[str, Any]) -> bool: # Changed
+    async def update_polling_state(self, user_id: str, service_name: str, state_data: Dict[str, Any]) -> bool: 
         if not user_id or not service_name or state_data is None: return False
         
         for key, value in state_data.items():
@@ -208,8 +211,8 @@ class MongoManager:
         state_data["last_updated_at"] = datetime.datetime.now(datetime.timezone.utc)
 
         result = await self.polling_state_collection.update_one(
-            {"user_id": user_id, "service_name": service_name}, # Changed
-            {"$set": state_data, "$setOnInsert": {"created_at": datetime.datetime.now(datetime.timezone.utc), "service_name": service_name}}, # Added service_name to $setOnInsert
+            {"user_id": user_id, "service_name": service_name}, 
+            {"$set": state_data, "$setOnInsert": {"created_at": datetime.datetime.now(datetime.timezone.utc), "user_id": user_id, "service_name": service_name}}, 
             upsert=True
         )
         return result.matched_count > 0 or result.upserted_id is not None
@@ -228,12 +231,12 @@ class MongoManager:
         cursor = self.polling_state_collection.find(query).sort("next_scheduled_poll_time", ASCENDING)
         return await cursor.to_list(length=None)
 
-    async def set_polling_status_and_get(self, user_id: str, service_name: str) -> Optional[Dict[str, Any]]: # Changed
+    async def set_polling_status_and_get(self, user_id: str, service_name: str) -> Optional[Dict[str, Any]]: 
         now_utc = datetime.datetime.now(datetime.timezone.utc)
         doc = await self.polling_state_collection.find_one_and_update(
             {
                 "user_id": user_id, 
-                "service_name": service_name, # Changed
+                "service_name": service_name, 
                 "is_enabled": True,
                 "next_scheduled_poll_time": {"$lte": now_utc},
                 "is_currently_polling": False,
@@ -258,8 +261,7 @@ class MongoManager:
                 "$set": {
                     "is_currently_polling": False, 
                     "last_successful_poll_status_message": "Reset stale lock by scheduler.",
-                    # Optionally, schedule an immediate retry or a short delay
-                    "next_scheduled_poll_time": datetime.datetime.now(timezone.utc) + timedelta(seconds=60) 
+                    "next_scheduled_poll_time": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=60) 
                 }
             }
         )
@@ -277,7 +279,7 @@ class MongoManager:
                 "processing_timestamp": datetime.datetime.now(datetime.timezone.utc)
             })
             return True
-        except motor.motor_asyncio.DuplicateKeyError: 
+        except motor.motor_asyncio.DuplicateKeyError: # Changed to use the specific DuplicateKeyError from motor
             print(f"[ProcessedItemsLog] Item {user_id}/{service_name}/{item_id} already processed.")
             return True 
         except Exception as e:
@@ -303,11 +305,17 @@ class MongoManager:
         result = await self.chat_history_collection.update_one(
             {"user_id": user_id, "chat_id": chat_id},
             {"$push": {"messages": message_data},
-             "$set": {"last_updated": datetime.datetime.now(datetime.timezone.utc)}},
+             "$set": {"last_updated": datetime.datetime.now(datetime.timezone.utc)},
+             "$setOnInsert": {"user_id": user_id, "chat_id": chat_id, "created_at": datetime.datetime.now(datetime.timezone.utc)} # Added $setOnInsert
+            },
             upsert=True
         )
         if result.modified_count == 0 and result.upserted_id is None:
-            raise Exception("Failed to add chat message.")
+            # This condition might be too strict if an upsert happens but no existing document was modified.
+            # Check result.upserted_id as well for successful operations
+            chat_exists = await self.chat_history_collection.count_documents({"user_id": user_id, "chat_id": chat_id}) > 0
+            if not chat_exists: # If no upsert and no match, then it's a failure
+                 raise Exception("Failed to add chat message: No document modified or upserted.")
         return message_id
 
     async def get_chat_history(self, user_id: str, chat_id: str) -> Optional[List[Dict]]:
@@ -342,7 +350,9 @@ class MongoManager:
         notification_data["id"] = str(uuid.uuid4())
         result = await self.notifications_collection.update_one(
             {"user_id": user_id},
-            {"$push": {"notifications": {"$each": [notification_data], "$slice": -50}}}, 
+            {"$push": {"notifications": {"$each": [notification_data], "$slice": -50}},
+             "$setOnInsert": {"user_id": user_id, "created_at": datetime.datetime.now(datetime.timezone.utc)} # Added $setOnInsert
+            }, 
             upsert=True
         )
         return result.modified_count > 0 or result.upserted_id is not None
@@ -353,14 +363,20 @@ class MongoManager:
             {"user_id": user_id},
             {"$set": {"notifications": []}} 
         )
+        # Check if the document existed or was upserted (though upserting an empty list is less common here)
         return result.matched_count > 0 or result.upserted_id is not None
 
     async def get_collection(self, collection_name: str):
-        if collection_name in [POLLING_STATE_COLLECTION, PROCESSED_ITEMS_COLLECTION]:
-            db_to_use = self.polling_db
-        else:
-            db_to_use = self.main_db
+        # All collections are now in self.db
+        db_to_use = self.db
             
-        if not hasattr(db_to_use, collection_name):
-            raise ValueError(f"Collection '{collection_name}' not found in database '{db_to_use.name}'.")
+        if not hasattr(db_to_use, collection_name) and collection_name not in [
+            USER_PROFILES_COLLECTION, CHAT_HISTORY_COLLECTION, NOTIFICATIONS_COLLECTION,
+            MEMORY_COLLECTION_NAME, POLLING_STATE_COLLECTION, PROCESSED_ITEMS_COLLECTION
+        ]: # Check against known collection names as direct hasattr might not work for pymongo collection attributes
+             try:
+                # Try to access it to see if it's a valid collection name that pymongo can handle
+                _ = db_to_use[collection_name]
+             except Exception: # Or more specific pymongo exceptions if known
+                raise ValueError(f"Collection '{collection_name}' not found or accessible in database '{db_to_use.name}'.")
         return db_to_use[collection_name]

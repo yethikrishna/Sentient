@@ -148,11 +148,15 @@ function connectWebSocket() {
 	}
 
 	wsAuthenticated = false // Reset authentication status for new connection attempts
+	const wsBaseUrl = (
+		process.env.APP_SERVER_URL || "http://127.0.0.1:5000"
+	).replace(/^http/, "ws")
+	const websocketUrl = `${wsBaseUrl}/ws` // Backend WebSocket URL (from common/routes.py)
 	console.log(
-		"Attempting to establish WebSocket connection to ws://localhost:5000/ws..."
+		`Attempting to establish WebSocket connection to ${websocketUrl}...`
 	)
 	try {
-		ws = new WebSocket("ws://localhost:5000/ws") // Backend WebSocket URL
+		ws = new WebSocket(websocketUrl)
 
 		// --- WebSocket Event Handlers ---
 
@@ -452,7 +456,7 @@ export const checkValidity = async () => {
 
 		// Check if user profile exists in MongoDB
 		const backendUrl = process.env.APP_SERVER_URL || "http://localhost:5000"
-		const checkProfileUrl = `${backendUrl}/check-user-profile`
+		const checkProfileUrl = `${backendUrl}/check-user-profile` // in common/routes.py, no prefix
 		const authHeader = getAuthHeader()
 
 		if (!authHeader) {
@@ -742,7 +746,7 @@ const checkGoogleCredentials = async (userId) => {
 	}
 
 	try {
-		const googleAuthCheckUrl = `${process.env.APP_SERVER_URL || "http://127.0.0.1:5000"}/authenticate-google`
+		const googleAuthCheckUrl = `${process.env.APP_SERVER_URL || "http://127.0.0.1:5000"}/utils/authenticate-google` // in utils/routes.py
 		const response = await fetch(googleAuthCheckUrl, {
 			method: "POST", // Backend expects POST, user identified by token
 			headers: { "Content-Type": "application/json", ...authHeader }
@@ -1249,7 +1253,7 @@ ipcMain.handle("get-user-data", async () => {
 	console.log(`IPC: get-user-data called for user ${userId}.`)
 	try {
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/common/get-user-data`,
+			`${process.env.APP_SERVER_URL}/get-user-data`, // in common/routes.py, no prefix
 			{
 				method: "POST", // Kept POST as backend identifies user via token
 				headers: { "Content-Type": "application/json", ...authHeader }
@@ -1300,7 +1304,7 @@ ipcMain.handle("fetch-chat-history", async () => {
 	console.log(`IPC: fetch-chat-history called for user ${userId}.`)
 	try {
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/common/get-history`,
+			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/get-history`, // in common/routes.py, no prefix
 			{
 				method: "POST", // Changed to POST to align with backend
 				headers: { "Content-Type": "application/json", ...authHeader }
@@ -1384,7 +1388,7 @@ ipcMain.handle("send-message", async (_event, { input }) => {
 		)
 
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/common/chat`,
+			`${process.env.APP_SERVER_URL}/chat`, // in common/routes.py, no prefix
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },
@@ -1722,13 +1726,13 @@ ipcMain.handle("add-task", async (_event, taskData) => {
 	try {
 		// The add_task endpoint is now in agents/routes.py
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/add-task`,
+			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/agents/add-task`, // in agents/routes.py
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },
 				body: JSON.stringify({ description: taskData.description }) // Backend gets user from token
-			}
-		) // Corrected path
+			} // Corrected path
+		)
 
 		if (!response.ok) {
 			const errorText = await response.text()
@@ -1767,7 +1771,7 @@ ipcMain.handle(
 		try {
 			// The update_task endpoint is now in agents/routes.py
 			const response = await fetch(
-				`${process.env.APP_SERVER_URL || "http://localhost:5000"}/update-task`,
+				`${process.env.APP_SERVER_URL || "http://localhost:5000"}/agents/update-task`, // in agents/routes.py
 				{
 					method: "POST", // Changed to POST in backend example
 					headers: {
@@ -1818,7 +1822,7 @@ ipcMain.handle("delete-task", async (_event, taskId) => {
 	try {
 		// The delete_task endpoint is now in agents/routes.py
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/delete-task`,
+			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/agents/delete-task`, // in agents/routes.py
 			{
 				method: "POST", // Changed to POST in backend example
 				headers: { "Content-Type": "application/json", ...authHeader },
@@ -1865,7 +1869,7 @@ ipcMain.handle(
 		try {
 			// The get-short-term-memories endpoint is now in memory/routes.py
 			const response = await fetch(
-				`${process.env.APP_SERVER_URL || "http://localhost:5000"}/get-short-term-memories`,
+				`${process.env.APP_SERVER_URL || "http://localhost:5000"}/memory/get-short-term-memories`, // in memory/routes.py
 				{
 					method: "POST",
 					headers: {
@@ -1912,7 +1916,7 @@ ipcMain.handle("add-short-term-memory", async (_event, memoryData) => {
 	try {
 		// The add-short-term-memory endpoint is now in memory/routes.py
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/add-short-term-memory`,
+			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/memory/add-short-term-memory`, // in memory/routes.py
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },
@@ -1955,7 +1959,7 @@ ipcMain.handle("update-short-term-memory", async (_event, memoryData) => {
 	try {
 		// The update-short-term-memory endpoint is now in memory/routes.py
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/update-short-term-memory`,
+			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/memory/update-short-term-memory`, // in memory/routes.py
 			{
 				method: "POST", // Changed to POST in backend example
 				headers: { "Content-Type": "application/json", ...authHeader },
@@ -1998,7 +2002,7 @@ ipcMain.handle("delete-short-term-memory", async (_event, memoryData) => {
 	try {
 		// The delete-short-term-memory endpoint is now in memory/routes.py
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/delete-short-term-memory`,
+			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/memory/delete-short-term-memory`, // in memory/routes.py
 			{
 				method: "POST", // Changed to POST in backend example
 				headers: { "Content-Type": "application/json", ...authHeader },
@@ -2041,7 +2045,7 @@ ipcMain.handle("clear-all-short-term-memories", async () => {
 	try {
 		const response = await fetch(
 			// The clear-all-short-term-memories endpoint is now in memory/routes.py
-			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/clear-all-short-term-memories`,
+			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/memory/clear-all-short-term-memories`, // in memory/routes.py
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader }
@@ -2136,7 +2140,7 @@ ipcMain.handle("get-notifications", async () => {
 	console.log(`IPC: get-notifications called for user ${userId}.`)
 	try {
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/common/get-notifications`,
+			`${process.env.APP_SERVER_URL}/get-notifications`, // in common/routes.py, no prefix
 			{
 				method: "POST", // Changed to POST to align with backend
 				headers: { "Content-Type": "application/json", ...authHeader }
@@ -2313,8 +2317,7 @@ ipcMain.handle("get-data-sources", async () => {
 	console.log(`IPC: get-data-sources called by user ${userId || "N/A"}.`)
 	try {
 		const response = await fetch(
-			// Corrected path based on where set_data_source_enabled is
-			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/common/get_data_sources`,
+			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/get_data_sources`, // Assuming in common/routes.py, no prefix
 			{
 				method: "POST", // Changed to POST for consistency and potential future user context
 				headers: {
@@ -2323,7 +2326,7 @@ ipcMain.handle("get-data-sources", async () => {
 				} // Include auth header if available
 				// Body is likely empty.
 			} // Corrected path
-		)
+		) // Note: /get_data_sources endpoint is not present in the provided Python files. This path assumes it would be in common/routes.py.
 
 		if (!response.ok) {
 			const errorText = await response.text()
@@ -2363,8 +2366,7 @@ ipcMain.handle(
 		)
 		try {
 			const response = await fetch(
-				// The set_data_source_enabled endpoint is now in common/routes.py
-				`${process.env.APP_SERVER_URL || "http://localhost:5000"}/common/set_data_source_enabled`,
+				`${process.env.APP_SERVER_URL || "http://localhost:5000"}/set_data_source_enabled`, // in common/routes.py, no prefix
 				{
 					method: "POST",
 					headers: {
@@ -2406,7 +2408,7 @@ ipcMain.handle("clear-chat-history", async (_event) => {
 	}
 
 	console.log(`IPC: clear-chat-history request received for user ${userId}.`)
-	const targetUrl = `${process.env.APP_SERVER_URL || "http://localhost:5000"}/common/clear-chat-history` // Corrected path
+	const targetUrl = `${process.env.APP_SERVER_URL || "http://localhost:5000"}/clear-chat-history` // in common/routes.py, no prefix
 	try {
 		const response = await fetch(targetUrl, {
 			method: "POST",
@@ -2465,8 +2467,7 @@ ipcMain.handle("save-onboarding-data", async (_event, onboardingData) => {
 	)
 	try {
 		const response = await fetch(
-			// The onboarding endpoint is now in common/routes.py
-			`${process.env.APP_SERVER_URL}/common/onboarding`,
+			`${process.env.APP_SERVER_URL}/onboarding`, // in common/routes.py, no prefix
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },
@@ -2553,9 +2554,8 @@ ipcMain.handle("user-activity-heartbeat", async () => {
 	try {
 		const backendUrl = process.env.APP_SERVER_URL || "http://localhost:5000"
 		const response = await fetch(
-			`${backendUrl}/common/users/activity/heartbeat`,
+			`${backendUrl}/users/activity/heartbeat`, // in common/routes.py, no prefix
 			{
-				// Corrected path
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
@@ -2594,8 +2594,7 @@ ipcMain.handle("force-sync-service", async (event, serviceName) => {
 	try {
 		const backendUrl = process.env.APP_SERVER_URL || "http://localhost:5000"
 		const response = await fetch(
-			// Corrected path
-			`${backendUrl}/common/users/force-sync/${serviceName}`,
+			`${backendUrl}/users/force-sync/${serviceName}`, // in common/routes.py, no prefix
 			{
 				method: "POST",
 				headers: {

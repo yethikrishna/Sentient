@@ -1,209 +1,108 @@
-import os  # For interacting with the operating system, e.g., accessing environment variables
-from wrapt_timeout_decorator import *  # Importing timeout decorator for functions from wrapt_timeout_decorator library
-import requests  # For making HTTP requests
-import asyncio  # For asynchronous programming
+import os
+import asyncio
+from typing import Optional, Any, Dict, List, Tuple
+import traceback
+import json
 from dotenv import load_dotenv
-from typing import Optional, Any, Dict, List, Tuple, Type # Added Dict, List, Any, Tuple, Type
-import traceback # Added for error logging
-import json # Added for json.loads in update_neo4j_with_onboarding_data
 
-from neo4j import GraphDatabase # Added for Neo4j functions
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding # Added for Neo4j functions
-import numpy as np  # For numerical operations, especially for cosine similarity calculation
-from sklearn.metrics.pairwise import (
-    cosine_similarity,
-)  # For calculating cosine similarity between vectors
+# For dummy chat response, if using a simple LLM
+from server.app.base import BaseRunnable, OllamaRunnable, get_selected_model 
 
-from .prompts import *  # Importing prompt templates and related utilities from prompts.py
-from .formats import unified_classification_format, priority_required_format # Explicitly import formats
-from server.app.base import BaseRunnable, OpenAIRunnable, ClaudeRunnable, GeminiRunnable, OllamaRunnable # Explicitly import runnables
-from server.app.helpers import *  # Importing helper functions from helpers.py
-# Removed direct import of global mongo_manager
-# from server.db import MongoManager
+# Removed imports for Neo4j, complex runnables, internet search related functions.
 
-load_dotenv("server/.env")  # Load environment variables from .env file
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 
-
-async def generate_streaming_response(runnable, inputs: dict, stream: bool = False):
+async def generate_dummy_streaming_response(user_input: str, username: str):
     """
-    Generates a streaming or non-streaming response from a given runnable.
-
-    This function abstracts the process of invoking a runnable, handling both streaming
-    and non-streaming responses based on the `stream` flag and the runnable's capabilities.
-
-    Args:
-        runnable: The runnable object (e.g., Langchain RunnableSequence) to invoke.
-        inputs (dict): The input dictionary to pass to the runnable.
-        stream (bool, optional): Whether to generate a streaming response. Defaults to False.
-                                 If True, it attempts to use `runnable.stream_response` if available.
-
-    Yields:
-        str or dict or any: Tokens or the full response from the runnable. Yields based on streaming or non-streaming mode.
-                             If an error occurs, it prints the error and yields None.
+    Generates a dummy streaming response.
+    This can be hardcoded or use a very simple local LLM if desired.
     """
-    try:
-        if stream and hasattr(runnable, "stream_response"):
-            # If streaming is requested and the runnable supports stream_response, use it
-            for token in await asyncio.to_thread(lambda: runnable.stream_response(inputs)):
-                yield token
-        else:
-            # Otherwise, invoke the runnable normally for a full response
-            response = await asyncio.to_thread(runnable.invoke, inputs)
-            yield response
+    print(f"[{datetime.datetime.now()}] [DUMMY_CHAT] Generating dummy stream for input: '{user_input[:30]}...' by {username}")
+    
+    # Option 1: Completely hardcoded dummy response
+    dummy_texts = [
+        "This ", "is ", "a ", "dummy ", "streaming ", "response ", "from ", "Sentient. ",
+        "I ", "am ", "currently ", "in ", "a ", "simplified ", "mode. "
+    ]
+    for text_part in dummy_texts:
+        yield text_part
+        await asyncio.sleep(0.05) # Simulate streaming delay
+    
+    # Option 2: Use a local Ollama model for a slightly more dynamic dummy response (if configured)
+    # model_name, provider = get_selected_model()
+    # if provider == "ollama" and model_name != "dummy_model":
+    #     try:
+    #         # A very simple prompt for Ollama
+    #         ollama_runnable = OllamaRunnable(
+    #             model_name=model_name,
+    #             system_prompt_template="You are a helpful assistant. Respond briefly.",
+    #             user_prompt_template="User said: {query}. Your brief dummy reply:",
+    #             stream=True
+    #         )
+    #         async for token in ollama_runnable.stream_response(inputs={"query": f"User '{username}' said: {user_input}"}):
+    #             if token:
+    #                 yield token
+    #             await asyncio.sleep(0.01)
+    #     except Exception as e:
+    #         print(f"[{datetime.datetime.now()}] [DUMMY_CHAT_OLLAMA_ERROR] Error with Ollama for dummy response: {e}")
+    #         yield "Error generating dummy Ollama response."
+    # else:
+    #     # Fallback to hardcoded if Ollama not configured or dummy_model is selected
+    #     dummy_texts = [
+    #         "This ", "is ", "a ", "dummy ", "response. ",
+    #         "Ollama ", "is ", "not ", "configured ", "for ", "dynamic ", "dummy ", "replies. "
+    #     ]
+    #     for text_part in dummy_texts:
+    #         yield text_part
+    #         await asyncio.sleep(0.05)
+            
+    yield None # Signal end of stream
 
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        yield None
 
+# The following functions related to complex context building, Neo4j, internet search,
+# and specific LLM runnables are no longer needed for the revamped server functionality
+# and have been removed or commented out.
 
-async def generate_response(
-    runnable, message: str, user_context: Optional[str], internet_context: Optional[str], username: str,
-    user_profile_data: Optional[dict] = None # Added to pass profile data
-):
+# Removed: get_reframed_internet_query
+# Removed: get_search_results
+# Removed: get_search_summary
+# Removed: update_neo4j_with_onboarding_data
+# Removed: update_neo4j_with_personal_info
+# Removed: query_user_profile (if only basic profile from mongo_manager.get_user_profile is needed)
+# Removed: get_unified_classification_runnable (classification is simplified or bypassed for dummy chat)
+# Removed: get_priority_runnable (task prioritization is out of scope for dummy chat)
+
+# Kept: generate_response (though it might be unused if dummy chat is hardcoded in endpoint)
+# Kept: generate_streaming_response (if dummy chat uses a runnable, otherwise also unused)
+
+# If `generate_response` is still needed for some non-streaming dummy interaction (less likely):
+async def generate_dummy_response(
+    message: str, username: str
+) -> Optional[Dict[str, Any]]:
     """
-    Generates a response from a runnable, incorporating user profile, chat history, and internet context.
-
-    This function uses provided user profile data, combines it with contexts, and invokes the given runnable to generate a response.
-
-    Args:
-        runnable: The runnable object (e.g., Langchain RunnableSequence) to invoke.
-        message (str): The user's input message.
-        user_context (Optional[str]): Contextual information about the user from chat history or other sources.
-        internet_context (Optional[str]): Contextual information retrieved from internet searches.
-        username (str): The username of the current user (assumed to be user_id).
-        user_profile_data (Optional[dict]): Pre-fetched user profile data.
-
-    Returns:
-        dict or None: The response generated by the runnable, or None if an error occurs.
+    Generates a dummy non-streaming response.
     """
-    try:
-        # Use MongoManager to get user profile
-        # mongo_manager is not imported here, it should be passed as an argument if needed
-        # For now, assuming user_profile_data is passed directly
-        user_profile = user_profile_data # Assuming user_profile_data is passed directly
-        # No personality data to retrieve
+    print(f"[{datetime.datetime.now()}] [DUMMY_CHAT] Generating dummy non-stream for input: '{message[:30]}...' by {username}")
+    # Option 1: Hardcoded
+    return {"response": f"This is a dummy response to '{message}'. Hello {username}!"}
 
-        response = runnable.invoke(
-            {
-                "query": message,
-                "user_context": user_context,
-                "internet_context": internet_context,
-                "name": username,
-            }
-        )  # Invoke the runnable with combined context and user info
-
-        return response
-    except Exception as e:
-        print(f"An error occurred in generating response: {e}")
-        return None
-
-
-def get_reframed_internet_query(internet_query_reframe_runnable, input: str) -> str:
-    """
-    Reframes the user's input query to be more suitable for internet searching.
-
-    Uses a provided runnable (presumably a Langchain RunnableSequence designed for query reframing)
-    to transform the input query.
-
-    Args:
-        internet_query_reframe_runnable: The runnable responsible for reframing internet queries.
-        input (str): The original user input query.
-
-    Returns:
-        str: The reframed query string.
-    """
-    reframed_query = internet_query_reframe_runnable.invoke(
-        {"query": input}
-    )  # Invoke the query reframing runnable
-    return reframed_query
-
-
-def get_search_results(reframed_query: str) -> list[dict]:
-    """
-    Fetch and clean descriptions from a web search API based on the provided query.
-
-    Utilizes the Brave Search API to retrieve web search results and extracts relevant information
-    like title, URL, and description. Cleans the description using `clean_description` helper function.
-
-    Args:
-        reframed_query (str): The search query string to be used for internet search.
-
-    Returns:
-        list[dict]: A list of dictionaries, where each dictionary represents a search result
-                     and contains 'title', 'url', and 'description' (cleaned) keys.
-                     Returns an empty list if there's an error during the search or processing.
-    """
-    try:
-        params = {
-            "q": reframed_query,  # The search query parameter
-        }
-
-        headers = {
-            "Accept": "application/json",  # Accept JSON response
-            "Accept-Encoding": "gzip",  # Accept gzip encoding for response compression
-            "X-Subscription-Token": os.getenv(
-                "BRAVE_SUBSCRIPTION_TOKEN"
-            ),  # API token for Brave Search
-        }
-
-        response = requests.get(
-            os.getenv("BRAVE_BASE_URL"), headers=headers, params=params
-        )  # Make GET request to Brave Search API
-
-        if response.status_code == 200:
-            results = response.json()  # Parse JSON response
-
-            descriptions = []
-            for item in results.get("web", {}).get("results", [])[
-                :5
-            ]:  # Iterate through the top 5 web search results
-                descriptions.append(
-                    {
-                        "title": item.get("title"),  # Extract title
-                        "url": item.get("url"),  # Extract URL
-                        "description": item.get("description"),  # Extract description
-                    }
-                )
-
-            clean_descriptions = [
-                {
-                    "title": entry["title"],
-                    "url": entry["url"],
-                    "description": clean_description(
-                        entry["description"]
-                    ),  # Clean the description using helper function
-                }
-                for entry in descriptions
-            ]
-
-            return clean_descriptions
-
-        else:
-            raise Exception(
-                f"API request failed with status code {response.status_code}: {response.text}"
-            )  # Raise exception if API request fails
-
-    except Exception as e:
-        print(f"Error fetching or processing descriptions: {e}")
-        return []  # Return empty list in case of error
-
-
-def get_search_summary(internet_summary_runnable, search_results: list[dict]) -> str:
-    """
-    Summarizes the provided search results using a given runnable.
-
-    Takes a list of search result dictionaries and uses a summarization runnable (e.g., Langchain
-    RunnableSequence for summarization) to condense the information into a summary string.
-
-    Args:
-        internet_summary_runnable: The runnable responsible for summarizing internet search results.
-        search_results (list[dict]): A list of search result dictionaries, typically from `get_search_results`.
-
-    Returns:
-        str: A summary of the search results generated by the runnable.
-    """
-    search_summary = internet_summary_runnable.invoke(
-        {"query": search_results}
-    )  # Invoke the summary runnable with search results
-
-    return search_summary
+    # Option 2: Simple Ollama call
+    # model_name, provider = get_selected_model()
+    # if provider == "ollama" and model_name != "dummy_model":
+    #     try:
+    #         ollama_runnable = OllamaRunnable(
+    #             model_name=model_name,
+    #             system_prompt_template="You are a helpful assistant. Respond briefly.",
+    #             user_prompt_template="User said: {query}. Your brief dummy reply:",
+    #             stream=False
+    #         )
+    #         response_content = await asyncio.to_thread(
+    #             ollama_runnable.invoke, 
+    #             inputs={"query": f"User '{username}' said: {message}"}
+    #         )
+    #         return {"response": response_content}
+    #     except Exception as e:
+    #         print(f"[{datetime.datetime.now()}] [DUMMY_CHAT_OLLAMA_ERROR] Error with Ollama for dummy response: {e}")
+    #         return {"response": "Error generating dummy Ollama response."}
+    # else:
+    #     return {"response": "Dummy response. Ollama not configured for dynamic dummy replies."}

@@ -6,7 +6,7 @@ import json
 from dotenv import load_dotenv
 
 # For dummy chat response, if using a simple LLM
-from server.app.base import BaseRunnable, OllamaRunnable, get_selected_model 
+from server.main.base import BaseRunnable, OllamaRunnable, get_selected_model 
 
 # Removed imports for Neo4j, complex runnables, internet search related functions.
 

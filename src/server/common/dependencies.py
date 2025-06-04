@@ -10,7 +10,7 @@ import uuid # For new chat_id
 from server.db import MongoManager
 # TaskQueue and MemoryBackend might be simplified or removed if not central to core features
 # For now, keep TaskQueue if Gmail polling uses it to send data to Kafka.
-from server.agents.base import TaskQueue
+# from server.agents.base import TaskQueue
 # from server.memory.backend import MemoryBackend # Remove if complex memory graph is gone
 
 from server.context.polling.base import BasePollingEngine # For type hinting
@@ -19,7 +19,7 @@ from server.context.polling.gmail import GmailPollingEngine # Only Gmail engine
 from neo4j import GraphDatabase # Remove if Neo4j is not used at all
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding # Remove if Neo4j/embeddings are not used
 
-from server.utils.auth import AuthHelper, PermissionChecker, oauth2_scheme # Corrected import
+from server.common.auth import AuthHelper, PermissionChecker, oauth2_scheme # Corrected import
 from server.utils.producers import KafkaProducerManager # Import Kafka Producer
 
 # Global variables from app.py that are dependencies
@@ -39,7 +39,7 @@ print(f"[{datetime.datetime.now()}] [INIT] AuthHelper (auth) initialized in depe
 
 # --- Task Queue ---
 print(f"[{datetime.datetime.now()}] [INIT] Initializing TaskQueue (for Gmail polling to Kafka)...")
-task_queue = TaskQueue() # Keep if Gmail polling might use it as an intermediary before Kafka.
+# task_queue = TaskQueue() # Keep if Gmail polling might use it as an intermediary before Kafka.
                          # If GmailPollingEngine sends directly to Kafka, this can be removed.
 print(f"[{datetime.datetime.now()}] [INIT] TaskQueue initialized.")
 

@@ -1,14 +1,11 @@
 # src/server/main/models.py
-# src/server/main/models.py
 from pydantic import BaseModel, Field, validator
 from typing import Dict, Any, Optional, List, Union
 import datetime
 
-# --- User Profile Models ---
+# --- User Profile Models (Core) ---
 class GoogleServiceTokenData(BaseModel):
     encrypted_refresh_token: Optional[str] = None
-    # access_token: Optional[str] = None # Not typically stored long-term
-    # expiry_timestamp: Optional[datetime.datetime] = None # If access token is stored
 
 class UserGoogleServicesData(BaseModel):
     gmail: Optional[GoogleServiceTokenData] = None
@@ -21,9 +18,9 @@ class UserProfileData(BaseModel):
     personalInfo: Optional[Dict[str, Any]] = Field(default_factory=dict)
     active_chat_id: Optional[str] = None
     last_active_timestamp: Optional[datetime.datetime] = None
-    data_sources_config: Optional[Dict[str, Dict[str, Any]]] = Field(default_factory=dict) # e.g. {"gmail": {"enabled": True}}
-    encrypted_refresh_token: Optional[str] = None # Auth0 refresh token
-    google_services: Optional[UserGoogleServicesData] = Field(default_factory=UserGoogleServicesData) # For Google service tokens
+    data_sources_config: Optional[Dict[str, Dict[str, Any]]] = Field(default_factory=dict)
+    encrypted_refresh_token: Optional[str] = None # Auth0 refresh token (auth module will handle specifics)
+    google_services: Optional[UserGoogleServicesData] = Field(default_factory=UserGoogleServicesData)
 
 class UserProfile(BaseModel):
     user_id: str = Field(..., description="The Auth0 user ID (sub claim)")
@@ -42,11 +39,8 @@ class UserProfile(BaseModel):
             return v
         return datetime.datetime.now(datetime.timezone.utc)
 
-# --- API Request/Response Models ---
-class ChatMessageInput(BaseModel):
-    input: str
-    pricing: Optional[str] = "free" 
-    credits: Optional[int] = 0      
+# --- API Request/Response Models (General/Miscellaneous) ---
+# Specific models will be moved to their respective modules (auth, chat, voice)
 
 class OnboardingRequest(BaseModel):
     data: Dict[str, Any] 
@@ -55,23 +49,11 @@ class DataSourceToggleRequest(BaseModel):
     source: str 
     enabled: bool
 
-class EncryptionRequest(BaseModel):
-    data: str
-
-class DecryptionRequest(BaseModel):
-    encrypted_data: str
-
-class AuthTokenStoreRequest(BaseModel): # For Auth0 refresh token
-    refresh_token: str
-
-class GoogleTokenStoreRequest(BaseModel): # ADDED: For Google refresh token
-    service_name: str # e.g., "gmail", "calendar"
-    google_refresh_token: str
-
-class VoiceOfferRequest(BaseModel):
-    sdp: str
-    type: str
-
-class VoiceAnswerResponse(BaseModel):
-    sdp: str
-    type: str
+# Models that were in the original main.models.py and are not moved yet:
+# ChatMessageInput -> moved to chat/models.py
+# EncryptionRequest -> moved to auth/models.py
+# DecryptionRequest -> moved to auth/models.py
+# AuthTokenStoreRequest -> moved to auth/models.py
+# GoogleTokenStoreRequest -> moved to auth/models.py
+# VoiceOfferRequest -> moved to voice/models.py
+# VoiceAnswerResponse -> moved to voice/models.py

@@ -1,5 +1,6 @@
-import { Tooltip } from "@node_modules/react-tooltip/dist/react-tooltip" // Importing Tooltip component from react-tooltip library
-import { IconStar } from "@node_modules/@tabler/icons-react/dist/esm/tabler-icons-react" // Importing IconStar component from tabler-icons-react library
+// src/client/components/ProIcon.js
+import { Tooltip } from "react-tooltip" // Corrected import path
+import { IconStar } from "@tabler/icons-react" // Corrected import path
 import React from "react"
 
 /**

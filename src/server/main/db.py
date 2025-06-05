@@ -1,4 +1,4 @@
-# src/server/main/db.py
+# src/server/main/db_utils.py
 import os
 import datetime
 import uuid 
@@ -14,7 +14,8 @@ USER_PROFILES_COLLECTION = "user_profiles"
 CHAT_HISTORY_COLLECTION = "chat_history" 
 NOTIFICATIONS_COLLECTION = "notifications" 
 POLLING_STATE_COLLECTION = "polling_state_store" 
-PROCESSED_ITEMS_COLLECTION = "processed_items_log" 
+PROCESSED_ITEMS_COLLECTION = "processed_items_log" # Used by pollers, but main server might read for context
+TASK_COLLECTION = "tasks" # For agent tasks
 
 class MongoManager:
     def __init__(self):
@@ -26,6 +27,7 @@ class MongoManager:
         self.notifications_collection = self.db[NOTIFICATIONS_COLLECTION]
         self.polling_state_collection = self.db[POLLING_STATE_COLLECTION]
         self.processed_items_collection = self.db[PROCESSED_ITEMS_COLLECTION]
+        self.task_collection = self.db[TASK_COLLECTION]
         
         print(f"[{datetime.datetime.now()}] [MainServer_MongoManager] Initialized. Database: {MONGO_DB_NAME}")
 
@@ -36,9 +38,9 @@ class MongoManager:
             self.user_profiles_collection: [
                 IndexModel([("user_id", ASCENDING)], unique=True, name="user_id_unique_idx"),
                 IndexModel([("userData.last_active_timestamp", DESCENDING)], name="user_last_active_idx"),
-                # Index for faster querying of users with Gmail tokens, if needed
                 IndexModel([("userData.google_services.gmail.encrypted_refresh_token", ASCENDING)], 
-                           name="google_gmail_token_idx", sparse=True) 
+                           name="google_gmail_token_idx", sparse=True),
+                IndexModel([("userData.onboardingComplete", ASCENDING)], name="user_onboarding_status_idx", sparse=True)
             ],
             self.chat_history_collection: [
                 IndexModel([("user_id", ASCENDING), ("chat_id", ASCENDING)], name="user_chat_id_idx"),
@@ -57,9 +59,15 @@ class MongoManager:
                 ], name="polling_due_tasks_idx"),
                 IndexModel([("is_currently_polling", ASCENDING), ("last_attempted_poll_timestamp", ASCENDING)], name="polling_stale_locks_idx")
             ],
-             self.processed_items_collection: [ 
+            self.processed_items_collection: [ 
                 IndexModel([("user_id", ASCENDING), ("service_name", ASCENDING), ("item_id", ASCENDING)], unique=True, name="processed_item_unique_idx_main"),
                 IndexModel([("processing_timestamp", DESCENDING)], name="processed_timestamp_idx_main", expireAfterSeconds=2592000) # 30 days
+            ],
+            self.task_collection: [
+                IndexModel([("user_id", ASCENDING), ("created_at", DESCENDING)], name="task_user_created_idx"),
+                IndexModel([("user_id", ASCENDING), ("status", ASCENDING), ("priority", ASCENDING)], name="task_user_status_priority_idx"),
+                IndexModel([("status", ASCENDING), ("agent_id", ASCENDING)], name="task_status_agent_idx", sparse=True), # For agent assignment
+                IndexModel([("task_id", ASCENDING)], unique=True, name="task_id_unique_idx")
             ]
         }
 
@@ -95,29 +103,22 @@ class MongoManager:
              update_operations["$setOnInsert"]["userData"] = {}
 
         # Ensure google_services and specific service (e.g., gmail) objects exist on insert if setting their sub-fields
-        # This is important for upserts where the document is new.
         for key_to_set in profile_data.keys():
             if key_to_set.startswith("userData.google_services."):
                 parts = key_to_set.split('.')
-                # userData.google_services.SERVICE_NAME.token_field
-                if len(parts) >= 4: # e.g., userData.google_services.gmail.encrypted_refresh_token
-                    service_name_for_insert = parts[2] # 'gmail' in this example
+                if len(parts) >= 3: # e.g., userData.google_services.gmail
+                    service_name_for_insert = parts[2] 
                     
-                    # Ensure userData object exists on insert
                     user_data_on_insert = update_operations["$setOnInsert"].setdefault("userData", {})
-                    
-                    # Ensure google_services object within userData exists on insert
                     google_services_on_insert = user_data_on_insert.setdefault("google_services", {})
-                    
-                    # Ensure the specific service object (e.g., 'gmail') within google_services exists on insert
                     google_services_on_insert.setdefault(service_name_for_insert, {})
-                break # Only need to do this structural setup once if any google_service key is present
+                break # Only need to do this structural setup once
 
-        if not update_operations["$set"]: del update_operations["$set"] # Avoid empty $set
-        if not update_operations["$setOnInsert"]: del update_operations["$setOnInsert"] # Avoid empty $setOnInsert
+        if not update_operations["$set"]: del update_operations["$set"] 
+        if not update_operations["$setOnInsert"]: del update_operations["$setOnInsert"]
         
         if not update_operations.get("$set") and not update_operations.get("$setOnInsert"): 
-            return True # No actual update needed
+            return True 
 
         result = await self.user_profiles_collection.update_one(
             {"user_id": user_id}, update_operations, upsert=True
@@ -131,7 +132,6 @@ class MongoManager:
             "userData.last_active_timestamp": now_utc,
             "last_updated": now_utc
         }
-        # Ensure userData exists on insert
         result = await self.user_profiles_collection.update_one(
             {"user_id": user_id},
             {"$set": update_payload, 
@@ -193,13 +193,13 @@ class MongoManager:
         notification_data["id"] = str(uuid.uuid4())
         result = await self.notifications_collection.update_one(
             {"user_id": user_id},
-            {"$push": {"notifications": {"$each": [notification_data], "$slice": -50}}, # Keep last 50
+            {"$push": {"notifications": {"$each": [notification_data], "$slice": -50}}, 
              "$setOnInsert": {"user_id": user_id, "created_at": datetime.datetime.now(datetime.timezone.utc), "notifications": []}},
             upsert=True
         )
         return result.matched_count > 0 or result.upserted_id is not None
 
-    # --- Polling State Store Methods (Main server interacts with these for settings) ---
+    # --- Polling State Store Methods ---
     async def get_polling_state(self, user_id: str, service_name: str) -> Optional[Dict[str, Any]]: 
         if not user_id or not service_name: return None
         return await self.polling_state_collection.find_one(
@@ -224,7 +224,6 @@ class MongoManager:
         return result.matched_count > 0 or result.upserted_id is not None
 
     async def close(self):
-        """Closes the MongoDB client connection."""
         if self.client:
             self.client.close()
             print(f"[{datetime.datetime.now()}] [MainServer_MongoManager] MongoDB connection closed.")

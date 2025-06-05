@@ -1,3 +1,4 @@
+// src/client/utils/auth.js
 /**
  * @file auth.js
  * @description Manages authentication, token storage, and user-specific data related to
@@ -43,7 +44,7 @@ if (app.isPackaged) {
 	)
 } else {
 	// Development: Running from source
-	dotenvPath = path.resolve(__dirname, "../.env") // Relative to this file, up one level to project root's src, then one more to root .env
+	dotenvPath = path.resolve(__dirname, "../../.env")
 	console.log(
 		`[auth.js] DEVELOPMENT: Loading .env from dev path: ${dotenvPath}`
 	)
@@ -56,23 +57,21 @@ if (dotenvResult.error) {
 		`[auth.js] ERROR: Failed to load .env file from ${dotenvPath}. Details:`,
 		dotenvResult.error
 	)
-	// Consider whether to throw an error or proceed with defaults if critical env vars are missing.
 }
 
 // --- Configuration Variables ---
 const auth0Domain = process.env.AUTH0_DOMAIN // Auth0 tenant domain
 const clientId = process.env.AUTH0_CLIENT_ID // Auth0 application client ID
 const appServerUrl = process.env.APP_SERVER_URL || "http://localhost:5000" // Backend server URL
-const auth0Audience = process.env.AUTH0_AUDIENCE // THIS IS NOW YOUR CUSTOM API AUDIENCE
+const auth0Audience = process.env.AUTH0_AUDIENCE 
 
 // --- Keytar Configuration ---
-const keytarService = "electron-openid-oauth" // Main service name for Keytar entries
-const keytarAccountRefreshToken = os.userInfo().username
+const keytarService = "electron-openid-oauth" 
+const keytarAccountRefreshToken = os.userInfo().username // For Auth0 refresh token (OS user specific)
 
 // --- In-Memory State ---
 let accessToken = null
-let profile = null // Decoded ID token (contains user profile info like 'sub', 'name', 'email', and custom claims)
-// Note: Refresh token is NOT stored in memory.
+let profile = null // Decoded ID token
 
 // --- Getters for In-Memory State ---
 export function getAccessToken() {
@@ -94,50 +93,23 @@ export function getAuthenticationURL() {
 
 	if (!auth0Audience) {
 		console.error(
-			"[auth.js] Auth0 Audience (AUTH0_AUDIENCE) for custom API is missing. This is crucial for getting an API-specific access token."
+			"[auth.js] Auth0 Audience (AUTH0_AUDIENCE) for custom API is missing."
 		)
 		throw new Error(
 			"Auth0 Custom API Audience is not configured. Please set AUTH0_AUDIENCE in your .env file."
 		)
 	}
 
-	// Define the scopes (permissions) your Electron app needs from the custom API
-	// These should match the permissions you defined in Auth0 for your API
-	// and those that your Electron client application is authorized to request.
 	const apiScopes = [
-		"openid", // Standard OIDC scope, always required
-		"profile", // To get user profile information in the ID token
-		"email", // To get user's email in the ID token
-		"offline_access", // To request a refresh token for long-lived sessions
-
-		// Scopes for your custom "Sentient App API"
-		// Review this list and include only what your Electron app will eventually need to enable features for.
-		"read:chat",
-		"write:chat",
-		"use:elaborator",
-		"read:profile", // For client-side display of some profile aspects or initial data load
-		"write:profile", // If client directly initiates profile updates (though often done via specific actions)
-		"scrape:linkedin",
-		"scrape:reddit",
-		"scrape:twitter",
-		"manage:google_auth", // If client triggers Google auth flow directly
-		"read:memory",
-		"write:memory",
-		"read:tasks",
-		"write:tasks",
-		"read:notifications",
-		"read:config",
-		"write:config",
-		"admin:user_metadata" // Be cautious with requesting admin-level scopes directly for end-user tokens.
-		// Typically, admin actions are performed by a backend with its own M2M token.
-		// However, if the user IS an admin and the app has admin features, this might be applicable.
+		"openid", "profile", "email", "offline_access",
+		"read:chat", "write:chat", "use:elaborator", "read:profile", "write:profile",
+		"scrape:linkedin", "scrape:reddit", "scrape:twitter",
+		"manage:google_auth", "read:memory", "write:memory",
+		"read:tasks", "write:tasks", "read:notifications",
+		"read:config", "write:config", 
+		// "admin:user_metadata" // Typically not for end-user tokens unless app has admin features for that user
 	].join(" ")
 
-	// Construct the authorization URL
-	// response_type=code: For Authorization Code Grant flow
-	// redirect_uri: Where Auth0 redirects after authentication. Must be in "Allowed Callback URLs".
-	// audience: Your custom API identifier.
-	// scope: The permissions your app is requesting.
 	return `https://${auth0Domain}/authorize?audience=${encodeURIComponent(
 		auth0Audience
 	)}&scope=${encodeURIComponent(
@@ -152,7 +124,6 @@ export function getLogOutUrl() {
 		)
 		throw new Error("Auth0 domain/client ID not configured for logout.")
 	}
-	// returnTo: URL to redirect to after logout (must be in "Allowed Logout URLs" in Auth0 app settings)
 	return `https://${auth0Domain}/v2/logout?client_id=${clientId}&returnTo=http://localhost/logout`
 }
 
@@ -213,20 +184,18 @@ async function decrypt(encryptedData) {
 export async function refreshTokens() {
 	console.log("[auth.js] Attempting to refresh tokens...")
 
-	// 1. Check if current access token is still valid (local check)
 	if (accessToken && profile) {
 		try {
 			const decodedAccessToken = jwtDecode(accessToken)
-			const currentTime = Date.now() / 1000 // Current time in seconds since epoch
+			const currentTime = Date.now() / 1000 
 			if (decodedAccessToken.exp > currentTime) {
 				console.log(
 					`[auth.js] Access token for user ${profile.sub} is still valid. Skipping network refresh.`
 				)
-				// Update check-in time even if token is locally valid
 				if (profile.sub) {
 					await setCheckinInKeytar(profile.sub)
 				}
-				return // Token is valid, no need to refresh via network
+				return 
 			} else {
 				console.log(
 					`[auth.js] Access token for user ${profile.sub} has expired. Proceeding with network refresh.`
@@ -237,7 +206,6 @@ export async function refreshTokens() {
 				"[auth.js] Error decoding existing access token or token is invalid. Proceeding with network refresh.",
 				e
 			)
-			// Fall through to network refresh if decoding fails
 		}
 	} else {
 		console.log(
@@ -245,7 +213,6 @@ export async function refreshTokens() {
 		)
 	}
 
-	// 2. Attempt to get refresh token from Keytar
 	const savedEncryptedRefreshToken = await keytar.getPassword(
 		keytarService,
 		keytarAccountRefreshToken
@@ -255,7 +222,7 @@ export async function refreshTokens() {
 		console.warn(
 			"[auth.js] No refresh token in Keytar. User needs to log in."
 		)
-		await logout() // Ensure clean state
+		await logout() 
 		throw new Error("No refresh token available.")
 	}
 
@@ -279,7 +246,6 @@ export async function refreshTokens() {
 		throw new Error("Failed to decrypt refresh token. Please log in again.")
 	}
 
-	// 3. Perform network refresh using the refresh token
 	const refreshOptions = {
 		method: "POST",
 		headers: { "content-type": "application/json" },
@@ -322,38 +288,10 @@ export async function refreshTokens() {
 		}
 
 		accessToken = data.access_token
-		profile = jwtDecode(data.id_token) // Update profile from new ID token
-
-		console.log(
-			"[auth.js] Auth0 /oauth/token response (refreshTokens):",
-			JSON.stringify(data, null, 2)
-		)
-		try {
-			const decodedAccessToken = jwtDecode(accessToken)
-			console.log(
-				"[auth.js] Decoded Access Token PAYLOAD (refreshTokens):",
-				decodedAccessToken
-			)
-			if (decodedAccessToken.permissions) {
-				console.log(
-					"[auth.js] Permissions in Access Token (refreshTokens):",
-					decodedAccessToken.permissions
-				)
-			} else {
-				console.warn(
-					"[auth.js] 'permissions' claim MISSING in Access Token (refreshTokens)."
-				)
-			}
-		} catch (e) {
-			console.error(
-				"[auth.js] Failed to decode access token for payload inspection (refreshTokens).",
-				e
-			)
-		}
-		console.log(
-			"[auth.js] Decoded ID Token PAYLOAD (refreshTokens):",
-			profile
-		)
+		profile = jwtDecode(data.id_token) 
+		
+		// console.log("[auth.js] Auth0 /oauth/token response (refreshTokens):", JSON.stringify(data, null, 2));
+		// console.log("[auth.js] Decoded ID Token PAYLOAD (refreshTokens):", profile);
 
 		if (data.refresh_token && data.refresh_token !== decryptedToken) {
 			console.log(
@@ -394,9 +332,8 @@ export async function loadTokens(callbackURL) {
 	}
 
 	if (!auth0Audience) {
-		// Crucial for custom API
 		console.error("[auth.js] Auth0 Audience missing for loadTokens.")
-		await logout() // Clean up before erroring
+		await logout() 
 		throw new Error(
 			"Auth0 Audience configuration missing for token exchange."
 		)
@@ -406,8 +343,8 @@ export async function loadTokens(callbackURL) {
 		grant_type: "authorization_code",
 		client_id: clientId,
 		code: code,
-		redirect_uri: "http://localhost/callback", // Must match redirect_uri in /authorize
-		audience: auth0Audience // Request token for your custom API
+		redirect_uri: "http://localhost/callback", 
+		audience: auth0Audience 
 	}
 	const options = {
 		method: "POST",
@@ -444,54 +381,11 @@ export async function loadTokens(callbackURL) {
 		}
 
 		accessToken = data.access_token
-		console.log(
-			"[auth.js] Auth0 /oauth/token response (loadTokens):",
-			JSON.stringify(data, null, 2)
-		)
-		try {
-			const decodedAccessToken = jwtDecode(accessToken) // Use jwt-decode
-			console.log(
-				"[auth.js] Decoded Access Token PAYLOAD (loadTokens):",
-				decodedAccessToken
-			)
-			// Specifically log the permissions claim
-			if (decodedAccessToken.permissions) {
-				console.log(
-					"[auth.js] Permissions in Access Token (loadTokens):",
-					decodedAccessToken.permissions
-				)
-			} else {
-				console.warn(
-					"[auth.js] 'permissions' claim MISSING in Access Token (loadTokens)."
-				)
-			}
-		} catch (e) {
-			console.error(
-				"[auth.js] Failed to decode access token for payload inspection (loadTokens).",
-				e
-			)
-		}
-		// Make sure profile is also decoded from data.id_token
 		profile = jwtDecode(data.id_token)
-		console.log("[auth.js] Decoded ID Token PAYLOAD (loadTokens):", profile)
 		const newRefreshToken = data.refresh_token
 
-		// Log received tokens for debugging (sensitive in production logs)
-		// console.log("[auth.js] RAW ACCESS TOKEN received (loadTokens):", data.access_token);
-		try {
-			const decodedHeader = jwtDecode(data.access_token, { header: true })
-			console.log(
-				"[auth.js] Decoded Access Token Header (loadTokens):",
-				decodedHeader
-			)
-			// Example of accessing custom claims if added by Auth0 Action
-			// const customRole = profile[`${auth0Audience}/role`]; // Use your actual namespace
-			// console.log("[auth.js] Custom role from new ID token:", customRole);
-		} catch (e) {
-			console.error(
-				"[auth.js] Failed to decode access token header for inspection (loadTokens)."
-			)
-		}
+		// console.log("[auth.js] Auth0 /oauth/token response (loadTokens):", JSON.stringify(data, null, 2));
+		// console.log("[auth.js] Decoded ID Token PAYLOAD (loadTokens):", profile);
 
 		if (!profile || !profile.sub) {
 			console.error("[auth.js] Invalid ID token or 'sub' missing.")
@@ -510,12 +404,21 @@ export async function loadTokens(callbackURL) {
 		console.log("[auth.js] New refresh token stored in Keytar.")
 
 		await setCheckinInKeytar(userId)
+		
+		// MODIFIED: Return the raw refresh token along with other token data
+        return {
+            accessToken: data.access_token,
+            idToken: data.id_token,
+            rawRefreshToken: newRefreshToken // Return the raw refresh token
+        };
+
 	} catch (error) {
 		console.error("[auth.js] Error loading tokens:", error.message)
 		await logout()
 		throw error
 	}
 }
+
 
 export async function logout() {
 	console.log("[auth.js] Performing user logout...")
@@ -538,12 +441,9 @@ export async function logout() {
 			`[auth.js] Deleting Keytar entries for user ID: '${userIdBeforeClear}'...`
 		)
 		const userSpecificKeySuffixes = [
-			"pricing",
-			"checkin",
-			"referralCode",
-			"referrerStatus",
-			"proCredits",
-			"creditsCheckin"
+			"pricing", "checkin", "referralCode", "referrerStatus",
+			"proCredits", "creditsCheckin",
+			"google_gmail_refresh_token" // Ensure this is cleared if stored by client
 		]
 		for (const keySuffix of userSpecificKeySuffixes) {
 			const accountName = getUserKeytarAccount(
@@ -553,7 +453,6 @@ export async function logout() {
 			try {
 				await keytar.deletePassword(keytarService, accountName)
 			} catch (err) {
-				// Warn if a specific key doesn't exist, but don't stop logout
 				// console.warn(`[auth.js] Keytar entry '${accountName}' not found for deletion or error: ${err.message}`);
 			}
 		}
@@ -601,8 +500,6 @@ async function setCheckinInKeytar(userId) {
 	}
 }
 
-// This function now fetches the role from custom claims in the ID token if available,
-// or falls back to fetching from the backend.
 export async function fetchAndSetUserRole() {
 	if (!profile || !profile.sub) {
 		throw new Error(
@@ -612,14 +509,12 @@ export async function fetchAndSetUserRole() {
 	const userId = profile.sub
 	const customClaimNamespace = auth0Audience.endsWith("/")
 		? auth0Audience
-		: `${auth0Audience}/` // Ensure trailing slash for namespace
+		: `${auth0Audience}/` 
 
-	// Try to get role from custom claims first
-	let roleFromClaims = profile[`${customClaimNamespace}role`] // Adjust claim name if different in your Auth0 Action
+	let roleFromClaims = profile[`${customClaimNamespace}role`] 
 
 	if (Array.isArray(roleFromClaims)) {
-		// If roles are an array (e.g., from event.user.roles)
-		roleFromClaims = roleFromClaims.length > 0 ? roleFromClaims[0] : null // Take the first role, or null
+		roleFromClaims = roleFromClaims.length > 0 ? roleFromClaims[0] : null 
 	}
 
 	if (roleFromClaims) {
@@ -629,7 +524,7 @@ export async function fetchAndSetUserRole() {
 		const accountName = getUserKeytarAccount(userId, "pricing")
 		const encryptedPricingTier = await encrypt(
 			roleFromClaims.toString().toLowerCase()
-		) // Ensure string and lowercase
+		) 
 		await keytar.setPassword(
 			keytarService,
 			accountName,
@@ -638,15 +533,14 @@ export async function fetchAndSetUserRole() {
 		console.log(
 			`[auth.js] Pricing tier ('${roleFromClaims}') stored from claims for user ${userId}.`
 		)
-		await setCheckinInKeytar(userId) // Update check-in time
-		return // Role set from claims, no need to call backend
+		await setCheckinInKeytar(userId) 
+		return 
 	} else {
 		console.log(
 			`[auth.js] Role not found in token claims for user ${userId}. Falling back to backend API /get-role.`
 		)
 	}
 
-	// Fallback: Fetch from backend /get-role if not in claims
 	const token = getAccessToken()
 	if (!token) {
 		throw new Error(
@@ -659,7 +553,7 @@ export async function fetchAndSetUserRole() {
 	)
 	try {
 		const response = await fetch(`${appServerUrl}/utils/get-role`, {
-			method: "POST", // Backend expects POST
+			method: "POST", 
 			headers: {
 				"Content-Type": "application/json",
 				Authorization: `Bearer ${token}`
@@ -704,8 +598,6 @@ export async function fetchAndSetUserRole() {
 		)
 	}
 }
-
-// --- Keytar Getters/Setters for User-Specific Data (largely unchanged, rely on userId) ---
 
 export async function getPricingFromKeytar(userId) {
 	if (!userId) {
@@ -796,7 +688,7 @@ export async function setCreditsInKeytar(userId, credits) {
 		)
 	} catch (error) {
 		console.error(
-			`[auth.js] Error setting credits for ${userId}:`,
+			`[auth.js] Error setting credits for user ${userId}:`,
 			error.message
 		)
 	}
@@ -817,7 +709,7 @@ export async function setCreditsCheckinInKeytar(userId) {
 		)
 	} catch (error) {
 		console.error(
-			`[auth.js] Error setting credits checkin for ${userId}:`,
+			`[auth.js] Error setting credits checkin for user ${userId}:`,
 			error.message
 		)
 	}
@@ -830,7 +722,6 @@ export async function fetchAndSetReferralCode() {
 	const token = getAccessToken()
 	if (!token) throw new Error("fetchReferralCode: Access token missing.")
 
-	// Try from claims first
 	const customClaimNamespace = auth0Audience.endsWith("/")
 		? auth0Audience
 		: `${auth0Audience}/`
@@ -860,7 +751,7 @@ export async function fetchAndSetReferralCode() {
 			}
 		)
 		if (!response.ok) {
-			/* ... error handling ... */ throw new Error(
+			 throw new Error(
 				`Backend error /get-referral-code: ${response.statusText}`
 			)
 		}
@@ -894,7 +785,6 @@ export async function fetchAndSetReferrerStatus() {
 	const token = getAccessToken()
 	if (!token) throw new Error("fetchReferrerStatus: Access token missing.")
 
-	// Try from claims first
 	const customClaimNamespace = auth0Audience.endsWith("/")
 		? auth0Audience
 		: `${auth0Audience}/`
@@ -924,7 +814,7 @@ export async function fetchAndSetReferrerStatus() {
 			}
 		)
 		if (!response.ok) {
-			/* ... error handling ... */ throw new Error(
+			throw new Error(
 				`Backend error /get-referrer-status: ${response.statusText}`
 			)
 		}
@@ -949,7 +839,6 @@ export async function getReferralCodeFromKeytar(userId) {
 		console.warn("[auth.js] getReferralCode: userId missing.")
 		return null
 	}
-	// Try from claims first if profile matches
 	if (profile && profile.sub === userId) {
 		const customClaimNamespace = auth0Audience.endsWith("/")
 			? auth0Audience
@@ -975,7 +864,6 @@ export async function getReferrerStatusFromKeytar(userId) {
 		console.warn("[auth.js] getReferrerStatus: userId missing.")
 		return null
 	}
-	// Try from claims first
 	if (profile && profile.sub === userId) {
 		const customClaimNamespace = auth0Audience.endsWith("/")
 			? auth0Audience

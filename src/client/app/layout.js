@@ -1,6 +1,7 @@
+// src/client/app/layout.js
 import "@styles/globals.css" // Import global styles for the application
 import { Toaster } from "react-hot-toast" // Import Toaster component for displaying toast notifications
-import React from "react"
+import React, { useEffect } from "react" // Added useEffect
 
 /**
  * Metadata for the RootLayout component.
@@ -32,10 +33,12 @@ export default function RootLayout({ children }) {
 				window.electron &&
 				typeof window.electron.sendUserActivityHeartbeat === "function"
 			) {
-				console.log("Client: Sending activity heartbeat...")
+				// console.log("Client: Sending activity heartbeat...") // Kept console.log for debugging
 				window.electron
 					.sendUserActivityHeartbeat()
-					.catch((err) => console.error("Heartbeat IPC error:", err))
+					.catch((err) =>
+						console.error("Heartbeat IPC error:", err)
+					)
 			}
 		}
 
@@ -45,7 +48,7 @@ export default function RootLayout({ children }) {
 
 		// Also send on window focus
 		const handleFocus = () => {
-			console.log("Client: Window focused, sending heartbeat.")
+			// console.log("Client: Window focused, sending heartbeat.") // Kept console.log
 			sendHeartbeat()
 		}
 		window.addEventListener("focus", handleFocus)

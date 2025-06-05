@@ -1,16 +1,8 @@
-// src/interface/lib/WebSocketAudioClient.js
+// src/client/utils/webSocketAudioClient.js
+// Assume main server runs on port 5000 (from APP_SERVER_URL)
+// and has a WebSocket endpoint at /ws/voice for audio.
 
-/**
- * @typedef {Object} WebSocketClientOptions
- * @property {() => void} [onConnected]
- * @property {() => void} [onDisconnected]
- * @property {(audioChunk: Float32Array) => void} [onAudioChunkReceived] - Callback for received audio data
- * @property {(level: number) => void} [onAudioLevel] - Callback for local audio level (optional)
- * @property {(error: Error) => void} [onError] - Callback for errors
- * @property {(message: any) => void} [onTextMessage] - Callback for non-audio JSON messages
- */
-
-// Helper function to convert Float32Array to Base64 string
+// Helper function to convert Float32Array to Base64 string (remains same)
 function float32ArrayToBase64(buffer) {
 	let binary = ""
 	const bytes = new Uint8Array(buffer.buffer)
@@ -21,7 +13,7 @@ function float32ArrayToBase64(buffer) {
 	return window.btoa(binary)
 }
 
-// Helper function to convert Base64 string to Float32Array
+// Helper function to convert Base64 string to Float32Array (remains same)
 function base64ToFloat32Array(base64) {
 	try {
 		const binary_string = window.atob(base64)
@@ -30,13 +22,8 @@ function base64ToFloat32Array(base64) {
 		for (let i = 0; i < len; i++) {
 			bytes[i] = binary_string.charCodeAt(i)
 		}
-		// Important: Ensure the byte array length is a multiple of 4 for Float32
 		if (bytes.buffer.byteLength % 4 !== 0) {
-			console.warn(
-				"Received Base64 audio data with length not multiple of 4. Padding or truncation might occur."
-			)
-			// Optionally, handle padding or return null/error
-			// For simplicity, we proceed, but this might cause issues.
+			// console.warn("Received Base64 audio data with length not multiple of 4.");
 		}
 		return new Float32Array(bytes.buffer)
 	} catch (e) {
@@ -46,174 +33,99 @@ function base64ToFloat32Array(base64) {
 }
 
 export class WebSocketAudioClient {
-	/** @type {WebSocket | null} */
 	ws = null
-	/** @type {MediaStream | null} */
 	mediaStream = null
-	/** @type {AudioContext | null} */
 	audioContext = null
-	/** @type {MediaStreamAudioSourceNode | null} */
 	sourceNode = null
-	/** @type {AudioWorkletNode | null} */
 	workletNode = null
-	/** @type {AnalyserNode | null} */
-	analyser = null // For audio level analysis
-	/** @type {Uint8Array | null} */
-	dataArray = null // For audio level analysis
-	/** @type {number | null} */
-	animationFrameId = null // For audio level analysis
-	/** @type {WebSocketClientOptions} */
+	analyser = null 
+	dataArray = null 
+	animationFrameId = null 
 	options = {}
-	/** @type {string | null} */
 	websocketId = null
-	/** @type {boolean} */
 	isConnected = false
-	/** @type {string} */
-	serverUrl = "ws://localhost:8000/voice/websocket/offer" // Use the documented endpoint
+	// MODIFIED: serverUrl now points to the main server's voice WebSocket endpoint.
+	// This should ideally come from an environment variable (process.env.APP_SERVER_URL)
+	// For now, hardcoding for demonstration, assuming APP_SERVER_URL is ws://localhost:5000
+	serverUrl = `${(process.env.APP_SERVER_URL || "http://localhost:5000").replace(/^http/, "ws")}/ws/voice`
 
-	/**
-	 * @param {WebSocketClientOptions} options
-	 */
+
 	constructor(options = {}) {
 		this.options = options
-		this.websocketId = "ws_" + Math.random().toString(36).substring(2, 9) // Generate unique ID
-		console.log(
-			`[WebSocketAudioClient] Initialized with ID: ${this.websocketId}`
-		)
+		this.websocketId = "ws_client_" + Math.random().toString(36).substring(2, 9)
+		console.log(`[WebSocketAudioClient] Initialized with ID: ${this.websocketId}. Server URL: ${this.serverUrl}`)
 	}
 
 	async connect() {
 		if (this.isConnected || this.ws) {
-			console.warn(
-				"[WebSocketAudioClient] Already connected or connecting."
-			)
+			console.warn("[WebSocketAudioClient] Already connected or connecting.")
 			return
 		}
 		console.log("[WebSocketAudioClient] Attempting to connect...")
 
 		try {
-			// 1. Get user media (microphone)
-			try {
-				// Use desired constraints, 16kHz is often good for STT
-				const constraints = {
-					audio: {
-						sampleRate: 16000,
-						echoCancellation: true,
-						noiseSuppression: true
-					},
-					video: false
-				}
-				this.mediaStream =
-					await navigator.mediaDevices.getUserMedia(constraints)
-				console.log("[WebSocketAudioClient] Got user media.")
-				this.mediaStream.getAudioTracks().forEach((track) => {
-					console.log(
-						"[WebSocketAudioClient] Actual track settings:",
-						track.getSettings()
-					)
-				})
-			} catch (mediaError) {
-				console.error(
-					"[WebSocketAudioClient] Media access error:",
-					mediaError
-				)
-				this.handleError(
-					new Error(
-						"Microphone access failed. Please check permissions and devices."
-					)
-				)
-				return
-			}
+			const constraints = { audio: { sampleRate: 16000, echoCancellation: true, noiseSuppression: true }, video: false }
+			this.mediaStream = await navigator.mediaDevices.getUserMedia(constraints)
+			console.log("[WebSocketAudioClient] Got user media.")
 
-			// 2. Setup Audio Context and Worklet
 			await this.setupAudioProcessing()
 
-			// 3. Establish WebSocket Connection
 			this.ws = new WebSocket(this.serverUrl)
 			this.setupWebSocketHandlers()
 		} catch (error) {
-			console.error(
-				"[WebSocketAudioClient] Connection setup error:",
-				error
-			)
-			this.handleError(
-				error instanceof Error ? error : new Error(String(error))
-			)
-			this.disconnect() // Ensure cleanup on error
+			console.error("[WebSocketAudioClient] Connection setup error:", error)
+			this.handleError(error instanceof Error ? error : new Error(String(error)))
+			this.disconnect()
 		}
 	}
 
 	async setupAudioProcessing() {
 		if (!this.mediaStream) throw new Error("Media stream is not available.")
-		if (this.audioContext) return // Already set up
+		if (this.audioContext) return
 
 		try {
-			this.audioContext = new (window.AudioContext ||
-				window.webkitAudioContext)({
-				sampleRate: 16000 // Match the sample rate requested from getUserMedia
-			})
-			console.log(
-				`[WebSocketAudioClient] AudioContext created with sample rate: ${this.audioContext.sampleRate}` // Log sample rate
-			)
+			this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 })
+			console.log(`[WebSocketAudioClient] AudioContext sample rate: ${this.audioContext.sampleRate}`)
 
-			// --- Audio Worklet Setup ---
-			console.log("[WebSocketAudioClient] Adding AudioWorklet module...")
-			// Adjust the path based on where you place audio-processor.js
-			// In Next.js, placing it in /public makes it available at the root URL
-			await this.audioContext.audioWorklet.addModule(
-				"/audio-processor.js" // Path to the AudioWorklet processor
-			)
-			console.log("[WebSocketAudioClient] AudioWorklet module added.")
+			// Ensure the audio-processor.js is in the public folder or accessible via this path
+			const workletUrl = "/audio-processor.js";
+			try {
+				await this.audioContext.audioWorklet.addModule(workletUrl);
+			} catch (e) {
+				console.error(`[WebSocketAudioClient] Failed to load AudioWorklet from ${workletUrl}:`, e);
+				throw new Error(`Failed to load AudioWorklet: ${e.message}. Ensure audio-processor.js is in the public directory.`);
+			}
 
-			this.workletNode = new AudioWorkletNode(
-				this.audioContext,
-				"audio-processor"
-			)
-			console.log("[WebSocketAudioClient] AudioWorkletNode created.")
-
-			this.sourceNode = this.audioContext.createMediaStreamSource(
-				this.mediaStream
-			)
+			this.workletNode = new AudioWorkletNode(this.audioContext, "audio-processor")
+			this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream)
 			this.sourceNode.connect(this.workletNode)
+			// Do NOT connect workletNode to destination for sending audio to server.
+			// this.workletNode.connect(this.audioContext.destination); // Only for local loopback/debug
 
-			// Don't connect worklet to destination unless you want local echo
-			// this.workletNode.connect(this.audioContext.destination);
-
-			// Handle messages (audio chunks) from the worklet
 			this.workletNode.port.onmessage = (event) => {
 				if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-					const pcmFloat32Data = event.data // This is Float32Array
-					// Encode as Base64 and send
-					const base64Audio = float32ArrayToBase64(pcmFloat32Data)
-					const message = JSON.stringify({
-						event: "media",
-						media: { payload: base64Audio }
-					})
-					// console.log(`[WebSocketAudioClient] Sending media chunk, base64 length: ${base64Audio.length}`); // DEBUG
-					this.ws.send(message)
+					const pcmFloat32Data = event.data // This is Float32Array from worklet
+					// The server WebSocket /ws/voice now expects raw bytes.
+					// Convert Float32Array to Int16Array then to bytes if server expects PCM16.
+					// Or send Float32Array as bytes directly if server handles that.
+					// For simplicity, sending Float32Array as raw bytes.
+					this.ws.send(pcmFloat32Data.buffer); // Send the underlying ArrayBuffer
+					// console.log(`[WebSocketAudioClient] Sent audio data (bytes: ${pcmFloat32Data.buffer.byteLength})`);
 				}
 			}
-			console.log(
-				"[WebSocketAudioClient] AudioWorklet processing setup complete."
-			)
-			// --- End Audio Worklet Setup ---
+			console.log("[WebSocketAudioClient] AudioWorklet processing setup complete.")
 
-			// Optional: Setup analysis node (connect source to analyser too)
 			if (this.options.onAudioLevel) {
 				this.analyser = this.audioContext.createAnalyser()
 				this.analyser.fftSize = 256
 				this.analyser.smoothingTimeConstant = 0.3
-				this.sourceNode.connect(this.analyser) // Connect source to analyser
+				this.sourceNode.connect(this.analyser)
 				const bufferLength = this.analyser.frequencyBinCount
 				this.dataArray = new Uint8Array(bufferLength)
 				this.startAnalysisLoop()
-				console.log("[WebSocketAudioClient] Audio analysis setup.")
 			}
 		} catch (error) {
-			console.error(
-				"[WebSocketAudioClient] Error setting up audio processing:",
-				error
-			)
+			console.error("[WebSocketAudioClient] Error setting up audio processing:", error)
 			throw new Error("Failed to setup audio processing.")
 		}
 	}
@@ -223,70 +135,69 @@ export class WebSocketAudioClient {
 
 		this.ws.onopen = () => {
 			console.log("[WebSocketAudioClient] WebSocket connection opened.")
-			// Send the start message required by fastrtc
-			const startMessage = JSON.stringify({
-				event: "start",
-				websocket_id: this.websocketId
-			})
-			console.log(
-				"[WebSocketAudioClient] Sending start message:",
-				startMessage
-			)
-			this.ws?.send(startMessage)
-
-			this.isConnected = true
-			if (this.options.onConnected) this.options.onConnected()
-
-			// Resume AudioContext if suspended (often needed after user interaction)
-			if (this.audioContext && this.audioContext.state === "suspended") {
-				this.audioContext.resume().then(() => {
-					console.log("[WebSocketAudioClient] AudioContext resumed.")
-				})
+			// Send initial auth message to the main server's WebSocket
+			const token = localStorage.getItem("access_token"); // Or however you store client token
+			if (token) {
+				const authMessage = JSON.stringify({ type: "auth", token: token });
+				this.ws?.send(authMessage);
+				console.log("[WebSocketAudioClient] Sent auth message to main server WS.");
+			} else {
+				console.error("[WebSocketAudioClient] No access token found for WS auth.");
+				this.ws?.close(1008, "Access token unavailable for WebSocket authentication.");
+				return;
 			}
+			// this.isConnected = true; // Set isConnected after server confirms auth
+			// if (this.options.onConnected) this.options.onConnected();
 		}
 
 		this.ws.onmessage = (event) => {
-			// Assume server sends JSON containing Base64 audio or text messages
-			try {
-				const data = JSON.parse(event.data)
-				if (data.type === "audio_chunk" && data.data) {
-					// Assuming fastrtc sends audio chunks this way
-					const base64Audio = data.data
-					const audioChunk = base64ToFloat32Array(base64Audio)
-					if (audioChunk && this.options.onAudioChunkReceived) {
-						this.options.onAudioChunkReceived(audioChunk)
-					}
-				} else if (
-					data.type &&
-					data.type !== "ping" &&
-					data.type !== "pong"
-				) {
-					// Handle other message types (log, error, warnings, potentially text transcript?)
-					if (this.options.onTextMessage) {
-						this.options.onTextMessage(data)
-					} else {
-						console.log(
-							"[WebSocketAudioClient] Received text/status message:",
-							data
-						)
-					}
+			if (event.data instanceof ArrayBuffer || event.data instanceof Blob) {
+				// Handle binary audio data from server (dummy TTS)
+				// Convert ArrayBuffer to Float32Array if that's what onAudioChunkReceived expects
+				let audioChunk;
+				if (event.data instanceof ArrayBuffer) {
+					// Assuming server sends Float32 PCM directly as ArrayBuffer
+					audioChunk = new Float32Array(event.data);
+				} else if (event.data instanceof Blob) {
+					// If server sends Blob, need to read it as ArrayBuffer first
+					// This part is more complex and might need async handling for blob.arrayBuffer()
+					console.warn("[WebSocketAudioClient] Received Blob audio, needs async processing.");
+					// For simplicity, skipping blob processing here, ensure server sends ArrayBuffer or recognizable JSON
+					return;
 				}
-			} catch (e) {
-				console.error(
-					"[WebSocketAudioClient] Error processing received message:",
-					e,
-					"Raw data:",
-					event.data
-				)
-				// Handle potential binary audio data if server sends it raw (less likely with fastrtc JSON structure)
-				if (
-					event.data instanceof Blob ||
-					event.data instanceof ArrayBuffer
-				) {
-					console.warn(
-						"[WebSocketAudioClient] Received unexpected binary message."
-					)
-					// Try processing as binary if needed
+				
+				if (audioChunk && this.options.onAudioChunkReceived) {
+					this.options.onAudioChunkReceived(audioChunk);
+				}
+
+			} else if (typeof event.data === 'string') {
+				try {
+					const data = JSON.parse(event.data)
+					// console.log("[WebSocketAudioClient] Received JSON message:", data);
+					if (data.type === "auth_success") {
+						console.log(`[WebSocketAudioClient] WebSocket authenticated with server for user: ${data.user_id}.`);
+						this.isConnected = true;
+						if (this.options.onConnected) this.options.onConnected();
+						if (this.audioContext && this.audioContext.state === "suspended") {
+							this.audioContext.resume().then(() => console.log("[WebSocketAudioClient] AudioContext resumed."));
+						}
+					} else if (data.type === "auth_failure") {
+						console.error(`[WebSocketAudioClient] WebSocket authentication failed: ${data.message}`);
+						this.handleError(new Error(`Authentication failed: ${data.message}`));
+						this.disconnect(); // Disconnect on auth failure
+					} else if (data.type === "stt_result" && this.options.onTextMessage) {
+                        this.options.onTextMessage(data); // Pass STT results if client wants them
+                    } else if (data.type === "llm_response" && this.options.onTextMessage) {
+                        this.options.onTextMessage(data); // Pass LLM text if client wants them
+                    } else if (data.type === "tts_stream_end") {
+						// Handle end of TTS stream if needed
+						console.log("[WebSocketAudioClient] Received TTS stream end signal.");
+					} else if (data.type === "pong"){
+						// console.log("[WebSocketAudioClient] Received pong from server.");
+					}
+					// Handle other non-audio JSON messages if necessary
+				} catch (e) {
+					console.error("[WebSocketAudioClient] Error parsing received JSON message:", e, "Raw data:", event.data)
 				}
 			}
 		}
@@ -294,117 +205,103 @@ export class WebSocketAudioClient {
 		this.ws.onerror = (error) => {
 			console.error("[WebSocketAudioClient] WebSocket error:", error)
 			this.handleError(new Error("WebSocket connection error."))
-			// The disconnect method will be called by onclose usually
 		}
 
 		this.ws.onclose = (event) => {
-			console.log(
-				`[WebSocketAudioClient] WebSocket closed: Code=${event.code}, Reason=${event.reason}`
-			)
+			console.log(`[WebSocketAudioClient] WebSocket closed: Code=${event.code}, Reason=${event.reason}`)
 			this.isConnected = false
-			if (this.options.onDisconnected) {
-				this.options.onDisconnected()
-			}
-			this.cleanupAudioProcessing() // Clean up audio resources on close
-			this.ws = null // Clear reference
-		} // End setupWebSocketHandlers
+			if (this.options.onDisconnected) this.options.onDisconnected()
+			this.cleanupAudioProcessing()
+			this.ws = null
+		}
 	}
+
+	// startAnalysisLoop, stopAnalysis, cleanupAudioProcessing, disconnect, setMuted, handleError remain largely the same
+	// Ensure they correctly reference instance variables.
 
 	startAnalysisLoop() {
-		if (
-			this.animationFrameId ||
-			!this.analyser ||
-			!this.dataArray ||
-			!this.options.onAudioLevel
-		)
-			return
-		let lastUpdateTime = 0
-		const throttleInterval = 100
+        if (this.animationFrameId || !this.analyser || !this.dataArray || !this.options.onAudioLevel) return;
+        let lastUpdateTime = 0;
+        const throttleInterval = 100; // ms
 
-		const analyze = () => {
-			if (!this.analyser || !this.dataArray) {
-				this.animationFrameId = null
-				return
-			}
-			this.analyser.getByteFrequencyData(this.dataArray)
-			const currentTime = performance.now()
-			if (currentTime - lastUpdateTime > throttleInterval) {
-				let sum = 0
-				for (let i = 0; i < this.dataArray.length; i++) {
-					sum += this.dataArray[i]
-				}
-				const averageLevel = sum / this.dataArray.length / 128.0
-				this.options.onAudioLevel(Math.min(averageLevel * 1.5, 1.0))
-				lastUpdateTime = currentTime
-			}
-			this.animationFrameId = requestAnimationFrame(analyze)
-		}
-		this.animationFrameId = requestAnimationFrame(analyze)
-	}
+        const analyze = () => {
+            if (!this.analyser || !this.dataArray) { // Check if analyser still exists
+                this.animationFrameId = null;
+                return;
+            }
+            this.analyser.getByteFrequencyData(this.dataArray);
+            const currentTime = performance.now();
+            if (currentTime - lastUpdateTime > throttleInterval) {
+                let sum = 0;
+                for (let i = 0; i < this.dataArray.length; i++) {
+                    sum += this.dataArray[i];
+                }
+                const averageLevel = sum / this.dataArray.length / 128.0; // Normalize to 0-1 range, 128 for Uint8
+                this.options.onAudioLevel(Math.min(averageLevel * 1.5, 1.0)); // Amplify slightly, cap at 1
+                lastUpdateTime = currentTime;
+            }
+            this.animationFrameId = requestAnimationFrame(analyze);
+        };
+        this.animationFrameId = requestAnimationFrame(analyze);
+    }
 
-	stopAnalysis() {
-		if (this.animationFrameId !== null) {
-			cancelAnimationFrame(this.animationFrameId)
-			this.animationFrameId = null
-		}
-		this.analyser = null
-		this.dataArray = null
-	}
+    stopAnalysis() {
+        if (this.animationFrameId !== null) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+        this.analyser = null; // Release analyser
+        this.dataArray = null;
+    }
 
 	cleanupAudioProcessing() {
-		console.log(
-			"[WebSocketAudioClient] Cleaning up audio processing nodes..."
-		)
-		this.stopAnalysis()
+        console.log("[WebSocketAudioClient] Cleaning up audio processing nodes...");
+        this.stopAnalysis();
 
-		if (this.workletNode) {
-			this.workletNode.port.close() // Close the message port
-			// Disconnect worklet node safely
-			try {
-				if (this.sourceNode) this.workletNode.disconnect() // Disconnect worklet if source exists
-			} catch (e) {
-				console.warn("Error disconnecting worklet node", e)
-			}
-			this.workletNode = null
-		}
-		if (this.sourceNode) {
-			try {
-				// Disconnect source from analyser
-				if (this.analyser) this.sourceNode.disconnect(this.analyser)
-			} catch (e) {
-				console.warn("Error disconnecting source node", e)
-			}
-			this.sourceNode = null
-		}
-		if (this.mediaStream) {
-			this.mediaStream.getTracks().forEach((track) => track.stop())
-			console.log("[WebSocketAudioClient] Media tracks stopped.")
-			this.mediaStream = null
-		}
-		// Close AudioContext - might be better to keep it if app needs it later
-		// if (this.audioContext && this.audioContext.state !== 'closed') {
-		//     this.audioContext.close().then(() => console.log('[WebSocketAudioClient] AudioContext closed.'));
-		//     this.audioContext = null;
-		// }
-		console.log("[WebSocketAudioClient] Audio processing cleanup finished.")
-	}
+        if (this.workletNode) {
+            this.workletNode.port.onmessage = null; // Remove listener
+            this.workletNode.port.close();
+            if (this.sourceNode) {
+                try { this.sourceNode.disconnect(this.workletNode); } catch(e) { /* ignore */ }
+            }
+            try { this.workletNode.disconnect(); } catch(e) { /* ignore */ }
+            this.workletNode = null;
+        }
+        if (this.sourceNode) {
+            if (this.analyser) { // If analyser was connected
+                try { this.sourceNode.disconnect(this.analyser); } catch(e) { /* ignore */ }
+            }
+            try { this.sourceNode.disconnect(); } catch(e) { /* ignore */ }
+            this.sourceNode = null;
+        }
+        if (this.mediaStream) {
+            this.mediaStream.getTracks().forEach(track => track.stop());
+            this.mediaStream = null;
+        }
+        if (this.audioContext && this.audioContext.state !== 'closed') {
+            this.audioContext.close().then(() => console.log('[WebSocketAudioClient] AudioContext closed.'));
+            this.audioContext = null;
+        }
+        console.log("[WebSocketAudioClient] Audio processing cleanup finished.");
+    }
 
 	disconnect() {
 		console.log("[WebSocketAudioClient] Disconnecting...")
 		this.cleanupAudioProcessing()
 
 		if (this.ws) {
-			this.ws.onclose = null
-			this.ws.onerror = null
-			this.ws.close(1000, "Client disconnecting normally") // Normal closure
-			this.ws = null // Clear reference immediately
+			this.ws.onopen = null; // Prevent handlers from firing on a closed socket
+            this.ws.onmessage = null;
+            this.ws.onerror = null;
+            this.ws.onclose = null; 
+			if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
+                this.ws.close(1000, "Client disconnecting normally");
+            }
+			this.ws = null
 		}
 
 		this.isConnected = false
-		// Ensure onDisconnected is called if not already triggered by onclose
 		if (this.options.onDisconnected) {
-			// Check if already called by onclose handler? Needs careful state mgmt
-			// For simplicity, call it again, the receiver should be idempotent.
 			this.options.onDisconnected()
 		}
 		console.log("[WebSocketAudioClient] Disconnected.")
@@ -419,7 +316,6 @@ export class WebSocketAudioClient {
 		}
 	}
 
-	/** @param {Error} error */
 	handleError(error) {
 		console.error("[WebSocketAudioClient] Error:", error)
 		if (this.options.onError) {

@@ -1,4 +1,3 @@
-# src/server/main/app.py
 import time
 import datetime
 from datetime import timezone, timedelta
@@ -31,7 +30,8 @@ from server.main.db_utils import MongoManager
 from server.main.models import (
     OnboardingRequest, ChatMessageInput, DataSourceToggleRequest,
     EncryptionRequest, DecryptionRequest, AuthTokenStoreRequest,
-    VoiceOfferRequest, VoiceAnswerResponse
+    VoiceOfferRequest, VoiceAnswerResponse,
+    GoogleTokenStoreRequest # ADDED
 )
 from server.main.config import (
     AUTH0_DOMAIN, AUTH0_AUDIENCE, ALGORITHMS,
@@ -94,36 +94,66 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-# === Token Management (New) ===
+# === Token Management (Auth0 & Google) ===
 @app.post("/auth/store_session", tags=["Authentication"])
 async def store_session_tokens(
     request: AuthTokenStoreRequest, 
-    user_id: str = Depends(auth.get_current_user_id) # Requires a valid access token to identify the user
+    user_id: str = Depends(auth.get_current_user_id) 
 ):
     """
-    Receives a refresh token from the client, encrypts, and stores it in MongoDB
+    Receives an Auth0 refresh token from the client, encrypts, and stores it in MongoDB
     associated with the user_id derived from the validated access token.
     """
-    print(f"[{datetime.datetime.now()}] [AUTH_STORE_SESSION] Storing refresh token for user {user_id}")
+    print(f"[{datetime.datetime.now()}] [AUTH_STORE_SESSION] Storing Auth0 refresh token for user {user_id}")
     try:
         encrypted_refresh_token = aes_encrypt(request.refresh_token)
         update_payload = {"userData.encrypted_refresh_token": encrypted_refresh_token}
         success = await mongo_manager.update_user_profile(user_id, update_payload)
         if not success:
-            raise HTTPException(status_code=500, detail="Failed to store refresh token.")
-        return JSONResponse(content={"message": "Session tokens stored securely."})
+            raise HTTPException(status_code=500, detail="Failed to store Auth0 refresh token.")
+        return JSONResponse(content={"message": "Auth0 session tokens stored securely."})
     except Exception as e:
         print(f"[{datetime.datetime.now()}] [AUTH_STORE_SESSION_ERROR] User {user_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Error storing session: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error storing Auth0 session: {str(e)}")
 
-# TODO: Add /auth/refresh endpoint if main server is responsible for refreshing Auth0 tokens
-# This would involve:
-# 1. Client calls this when access token expires.
-# 2. Server retrieves encrypted refresh token from MongoDB for user_id.
-# 3. Server decrypts it.
-# 4. Server calls Auth0 /oauth/token with grant_type=refresh_token.
-# 5. Server encrypts and stores new refresh token (if rotated).
-# 6. Server returns new access token (and ID token) to client.
+# ADDED: Endpoint to store Google Refresh Token
+@app.post("/auth/google/store_token", summary="Store Google OAuth Refresh Token", tags=["Authentication"])
+async def store_google_token_endpoint(
+    request_body: GoogleTokenStoreRequest, # Uses the new Pydantic model
+    user_id: str = Depends(PermissionChecker(required_permissions=["manage:google_auth"])) # User must be authenticated with Auth0
+):
+    """
+    Receives a Google refresh token from the client (obtained via Electron OAuth flow),
+    encrypts it, and stores it in the user's profile in MongoDB.
+    """
+    print(f"[{datetime.datetime.now()}] [GOOGLE_TOKEN_STORE] Storing Google refresh token for user {user_id}, service: {request_body.service_name}")
+    if not request_body.service_name or request_body.service_name not in DATA_SOURCES_CONFIG: # Validate service
+        raise HTTPException(status_code=400, detail=f"Invalid service name: {request_body.service_name}")
+    try:
+        encrypted_google_refresh_token = aes_encrypt(request_body.google_refresh_token)
+        
+        # Store the token in a structured way, e.g., under userData.google_tokens.<service_name>.encrypted_refresh_token
+        # This makes it easier to manage tokens for multiple Google services if needed in the future.
+        # For now, specifically for Gmail.
+        field_path = f"userData.google_services.{request_body.service_name}.encrypted_refresh_token"
+        update_payload = {field_path: encrypted_google_refresh_token}
+        
+        success = await mongo_manager.update_user_profile(user_id, update_payload)
+
+        if not success:
+            print(f"[{datetime.datetime.now()}] [GOOGLE_TOKEN_STORE_ERROR] Failed to store token for user {user_id}, service {request_body.service_name}.")
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to store Google refresh token.")
+        
+        print(f"[{datetime.datetime.now()}] [GOOGLE_TOKEN_STORE] Successfully stored Google refresh token for user {user_id}, service {request_body.service_name}.")
+        return JSONResponse(content={"message": f"Google refresh token for {request_body.service_name} stored successfully."})
+    except ValueError as ve: # Handle AES key configuration errors
+        print(f"[{datetime.datetime.now()}] [GOOGLE_TOKEN_STORE_ERROR] User {user_id}: Encryption error - {ve}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Server configuration error: {str(ve)}")
+    except Exception as e:
+        print(f"[{datetime.datetime.now()}] [GOOGLE_TOKEN_STORE_ERROR] User {user_id}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error storing Google refresh token: {str(e)}")
+
 
 # === Onboarding Routes ===
 @app.post("/onboarding", status_code=status.HTTP_200_OK, summary="Save Onboarding Data", tags=["Onboarding"])
@@ -276,21 +306,7 @@ async def handle_webrtc_offer(
     offer_request: VoiceOfferRequest, # Pydantic model for offer
     user_id: str = Depends(auth.get_current_user_id) # Ensure user is authenticated
 ):
-    # For a dummy implementation, we might not fully process the SDP.
-    # The goal is to establish a channel. FastRTC handles this for WebRTC.
-    # If we are NOT using FastRTC on the server and client uses WebRTCClient,
-    # this endpoint becomes more complex.
-    # For now, acknowledging the client's structure:
     print(f"[{datetime.datetime.now()}] [VOICE_OFFER] Received WebRTC offer from {user_id}, type: {offer_request.type}")
-    
-    # This is highly simplified. A real WebRTC server would generate a proper SDP answer.
-    # For dummy, we can return a placeholder or an answer that establishes a data channel.
-    # If actual audio streaming to/from this endpoint is required, a full WebRTC stack (like aiortc) is needed here.
-    # Given "dummy response", perhaps the client's WebRTC is for something other than direct audio to this FastAPI server.
-    # Or, this server is expected to be a simple WebRTC peer.
-    
-    # For a dummy data channel setup, you might not even need to parse SDP much.
-    # If just acknowledging to make client happy:
     return VoiceAnswerResponse(sdp="dummy-answer-sdp", type="answer")
 
 @app.websocket("/ws/voice")
@@ -305,23 +321,16 @@ async def voice_websocket_endpoint(websocket: WebSocket):
 
         while True:
             data = await websocket.receive_bytes() # Expecting audio bytes
-            # print(f"[{datetime.datetime.now()}] [VOICE_WS] Received audio data (bytes: {len(data)}) from {authenticated_user_id}")
             
-            # 1. Dummy STT
             transcribed_text = await dummy_stt_logic(data) 
-            # Optionally send transcription back for client display (if UI supports it)
             await websocket.send_json({"type": "stt_result", "text": transcribed_text})
 
-            # 2. Get dummy LLM response based on "transcribed_text" (or ignore STT for pure dummy)
             dummy_llm_response = f"Dummy voice agent acknowledges: {transcribed_text}"
-            # Optionally send LLM text response back
             await websocket.send_json({"type": "llm_response", "text": dummy_llm_response})
             
-            # 3. Dummy TTS and stream back audio bytes
             async for audio_chunk_bytes in generate_dummy_voice_stream_logic(dummy_llm_response):
                 await websocket.send_bytes(audio_chunk_bytes)
             
-            # Signal end of TTS stream (optional, depends on client handling)
             await websocket.send_json({"type": "tts_stream_end"})
 
     except WebSocketDisconnect:
@@ -330,7 +339,7 @@ async def voice_websocket_endpoint(websocket: WebSocket):
         print(f"[{datetime.datetime.now()}] [VOICE_WS_ERROR] Error (User: {authenticated_user_id or 'unknown'}): {e}")
         traceback.print_exc()
     finally:
-        if authenticated_user_id: main_websocket_manager.disconnect_voice(websocket) # Use specific disconnect
+        if authenticated_user_id: main_websocket_manager.disconnect_voice(websocket)
 
 # === Notifications WebSocket (General Purpose) ===
 @app.websocket("/ws/notifications")
@@ -343,7 +352,7 @@ async def notifications_websocket_endpoint(websocket: WebSocket):
 
         await main_websocket_manager.connect_notifications(websocket, authenticated_user_id)
         while True:
-            data = await websocket.receive_text() # Keepalive pings or other control messages
+            data = await websocket.receive_text() 
             message_payload = json.loads(data)
             if message_payload.get("type") == "ping":
                 await websocket.send_json({"type": "pong"})
@@ -391,20 +400,16 @@ async def get_referrer_status_endpoint_main(payload: dict = Depends(auth.get_dec
 
 @app.post("/utils/authenticate-google", summary="Validate or Refresh Stored Google Token", tags=["Utilities"])
 async def authenticate_google_endpoint_main(user_id: str = Depends(PermissionChecker(required_permissions=["manage:google_auth"]))):
-    # This endpoint now assumes tokens are stored server-side (MongoDB) and client initiates flows.
-    # For this version, we'll just check if a token exists and is "valid" (placeholder logic).
-    # A real implementation would use google-auth library.
     user_profile = await mongo_manager.get_user_profile(user_id)
-    encrypted_google_refresh_token = user_profile.get("userData", {}).get("encrypted_google_refresh_token")
+    
+    # Check for Gmail token specifically
+    encrypted_google_refresh_token_gmail = user_profile.get("userData", {}).get("google_services", {}).get("gmail", {}).get("encrypted_refresh_token")
 
-    if not encrypted_google_refresh_token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google credentials not found for user. Please authenticate via client.")
+    if not encrypted_google_refresh_token_gmail:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google Gmail credentials not found for user. Please authenticate via client.")
 
-    # Dummy validation: if token exists, assume it's valid for now.
-    # A real app would try to use it or refresh it.
-    print(f"[{datetime.datetime.now()}] [GOOGLE_AUTH_DUMMY_VALIDATION] Found stored Google token for user {user_id}. Assuming valid for dummy purposes.")
-    return JSONResponse(content={"success": True, "message": "Google token present and assumed valid (dummy check)."})
-    # TODO: Implement proper Google token refresh logic using the stored refresh token if server is to manage this.
+    print(f"[{datetime.datetime.now()}] [GOOGLE_AUTH_DUMMY_VALIDATION] Found stored Google Gmail token for user {user_id}. Assuming valid for dummy purposes.")
+    return JSONResponse(content={"success": True, "message": "Google Gmail token present and assumed valid (dummy check)."})
 
 @app.post("/notifications/get", summary="Get User Notifications", tags=["Notifications"])
 async def get_notifications_endpoint_main(user_id: str = Depends(PermissionChecker(required_permissions=["read:notifications"]))):
@@ -418,10 +423,6 @@ async def user_activity_heartbeat_endpoint_main(user_id: str = Depends(Permissio
         return JSONResponse(content={"message": "User activity timestamp updated."})
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update user activity.")
 
-# Note: /users/force-sync is more relevant to polling worker or an admin interface,
-# but if client needs to trigger it, it would call the *polling worker's API* if it had one,
-# or this main server would need to message the polling worker (e.g., via Kafka or another IPC).
-# For simplicity, if main server needs to influence polling, it would update the MongoDB polling_state.
 
 # --- General App Information ---
 @app.get("/", tags=["General"], summary="Root endpoint for the Main Server")
@@ -433,7 +434,5 @@ async def health():
     # Could add DB connection check here
     return {"status": "healthy", "timestamp": datetime.datetime.now(timezone.utc).isoformat()}
 
-# This is the script that will be run by uvicorn directly or via `server.main.service`
-# Uvicorn setup is moved to service.py
 END_TIME = time.time()
 print(f"[{datetime.datetime.now()}] [MAIN_SERVER_APP_PY_LOADED] Main Server app.py loaded in {END_TIME - START_TIME:.2f} seconds.")

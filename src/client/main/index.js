@@ -1,3 +1,4 @@
+// src/client/main/index.js
 /**
  * @file Main process file for the Electron application.
  * Handles application lifecycle, window management, inter-process communication (IPC),
@@ -48,6 +49,7 @@ import {
 } from "../utils/auth.js"
 // The import of getPrivateData from ../utils/api.js has been removed as it was causing a SyntaxError
 import { createAuthWindow } from "./auth.js" // Window creation functions
+import { getGoogleAuthURL, exchangeCodeForTokens, storeGoogleRefreshTokenOnServer, createGoogleAuthWindow } from "./googleAuth.js" // ADDED: Google Auth utils
 
 // --- Constants and Path Configurations ---
 const isWindows = process.platform === "win32"
@@ -151,7 +153,7 @@ function connectWebSocket() {
 	const wsBaseUrl = (
 		process.env.APP_SERVER_URL || "http://127.0.0.1:5000"
 	).replace(/^http/, "ws")
-	const websocketUrl = `${wsBaseUrl}/ws` // Backend WebSocket URL (from common/routes.py)
+	const websocketUrl = `${wsBaseUrl}/ws/notifications` // Main server WebSocket endpoint for notifications
 	console.log(
 		`Attempting to establish WebSocket connection to ${websocketUrl}...`
 	)
@@ -212,11 +214,6 @@ function connectWebSocket() {
 					return // Authentication message handled
 				}
 
-				// Optional: Ignore further messages if not authenticated
-				// if (!wsAuthenticated) {
-				//     console.warn("WebSocket: Ignoring incoming message - connection is not authenticated.");
-				//     return;
-				// }
 
 				// Process Other Message Types (e.g., Notifications)
 				let notificationTitle = ""
@@ -2140,12 +2137,11 @@ ipcMain.handle("get-notifications", async () => {
 	console.log(`IPC: get-notifications called for user ${userId}.`)
 	try {
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/get-notifications`, // in common/routes.py, no prefix
+			`${process.env.APP_SERVER_URL}/notifications/get`, // Updated route
 			{
-				method: "POST", // Changed to POST to align with backend
+				method: "POST", 
 				headers: { "Content-Type": "application/json", ...authHeader }
-				// Body is likely empty.
-			} // Corrected path
+			}
 		)
 
 		if (!response.ok) {
@@ -2310,23 +2306,20 @@ ipcMain.handle("get-data-sources", async () => {
 		console.warn(
 			"IPC: get-data-sources - User not authenticated or token missing. Proceeding with potential default or error."
 		)
-		// Depending on backend, this might fail or return defaults. For now, proceed.
-		// return { error: "User not authenticated.", data_sources: [] };
 	}
 
 	console.log(`IPC: get-data-sources called by user ${userId || "N/A"}.`)
 	try {
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/get_data_sources`, // Assuming in common/routes.py, no prefix
+			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/get_data_sources`,
 			{
-				method: "POST", // Changed to POST for consistency and potential future user context
+				method: "POST", 
 				headers: {
 					"Content-Type": "application/json",
 					...(authHeader || {})
-				} // Include auth header if available
-				// Body is likely empty.
-			} // Corrected path
-		) // Note: /get_data_sources endpoint is not present in the provided Python files. This path assumes it would be in common/routes.py.
+				}
+			}
+		)
 
 		if (!response.ok) {
 			const errorText = await response.text()
@@ -2334,7 +2327,7 @@ ipcMain.handle("get-data-sources", async () => {
 				`Failed to fetch data sources configuration. Status: ${response.status}. Details: ${errorText}`
 			)
 		}
-		const data = await response.json() // Expects { data_sources: [...] }
+		const data = await response.json()
 		console.log(
 			`IPC: Get Data Sources API call successful. Found ${data.data_sources?.length || 0} sources.`
 		)
@@ -2366,15 +2359,15 @@ ipcMain.handle(
 		)
 		try {
 			const response = await fetch(
-				`${process.env.APP_SERVER_URL || "http://localhost:5000"}/set_data_source_enabled`, // in common/routes.py, no prefix
+				`${process.env.APP_SERVER_URL || "http://localhost:5000"}/set_data_source_enabled`,
 				{
 					method: "POST",
 					headers: {
 						"Content-Type": "application/json",
 						...authHeader
 					},
-					body: JSON.stringify({ source, enabled }) // Backend gets user from token
-				} // Corrected path
+					body: JSON.stringify({ source, enabled })
+				}
 			)
 
 			if (!response.ok) {
@@ -2383,7 +2376,7 @@ ipcMain.handle(
 					`Failed to set data source status. Status: ${response.status}. Details: ${errorText}`
 				)
 			}
-			const data = await response.json() // Expects { status, message }
+			const data = await response.json()
 			console.log(
 				`IPC: Set Data Source Enabled API call successful for user ${userId}, source '${source}'.`
 			)
@@ -2408,19 +2401,18 @@ ipcMain.handle("clear-chat-history", async (_event) => {
 	}
 
 	console.log(`IPC: clear-chat-history request received for user ${userId}.`)
-	const targetUrl = `${process.env.APP_SERVER_URL || "http://localhost:5000"}/clear-chat-history` // in common/routes.py, no prefix
+	const targetUrl = `${process.env.APP_SERVER_URL || "http://localhost:5000"}/clear-chat-history`
 	try {
 		const response = await fetch(targetUrl, {
 			method: "POST",
 			headers: { "Content-Type": "application/json", ...authHeader }
-			// Body is likely empty.
-		}) // Corrected path
+		})
 
 		if (!response.ok) {
 			let errorDetail = `Backend responded with status ${response.status}`
 			try {
 				const d = await response.json()
-				errorDetail = d.detail || JSON.stringify(d) // Get specific detail if available
+				errorDetail = d.detail || JSON.stringify(d)
 			} catch {
 				/* Ignore if response not JSON */
 			}
@@ -2432,7 +2424,7 @@ ipcMain.handle("clear-chat-history", async (_event) => {
 				error: `Failed to clear history: ${errorDetail}`
 			}
 		}
-		const responseData = await response.json() // Expects { message, activeChatId }
+		const responseData = await response.json()
 		console.log(
 			`IPC: Backend successfully cleared chat history for user ${userId}.`
 		)
@@ -2467,12 +2459,12 @@ ipcMain.handle("save-onboarding-data", async (_event, onboardingData) => {
 	)
 	try {
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/onboarding`, // in common/routes.py, no prefix
+			`${process.env.APP_SERVER_URL}/onboarding`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },
-				body: JSON.stringify({ data: onboardingData }) // Backend expects { data: { ...answers } }
-			} // Corrected path
+				body: JSON.stringify({ data: onboardingData })
+			}
 		)
 
 		if (!response.ok) {
@@ -2492,7 +2484,7 @@ ipcMain.handle("save-onboarding-data", async (_event, onboardingData) => {
 		console.log(
 			`IPC: Save Onboarding Data API call successful for user ${userId}.`
 		)
-		return result // Contains { message, status } from backend
+		return result
 	} catch (error) {
 		console.error(
 			`IPC Error: Exception in save-onboarding-data handler for user ${userId}:`,
@@ -2517,12 +2509,11 @@ ipcMain.handle("fetch-memory-categories", async () => {
 	console.log(`IPC: fetch-memory-categories called for user ${userId}.`)
 	try {
 		const response = await fetch(
-			// The get-memory-categories endpoint is now in memory/routes.py
 			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/memory/get-memory-categories`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader }
-			} // Corrected path
+			}
 		)
 
 		if (!response.ok) {
@@ -2531,7 +2522,7 @@ ipcMain.handle("fetch-memory-categories", async () => {
 				`Failed to fetch memory categories. Status: ${response.status}. Details: ${errorText}`
 			)
 		}
-		const result = await response.json() // Expects { categories: [...] }
+		const result = await response.json()
 		console.log(
 			`IPC: Fetch Memory Categories API call successful for user ${userId}. Fetched ${result.categories?.length || 0} categories.`
 		)
@@ -2554,7 +2545,7 @@ ipcMain.handle("user-activity-heartbeat", async () => {
 	try {
 		const backendUrl = process.env.APP_SERVER_URL || "http://localhost:5000"
 		const response = await fetch(
-			`${backendUrl}/users/activity/heartbeat`, // in common/routes.py, no prefix
+			`${backendUrl}/activity/heartbeat`, // Updated route
 			{
 				method: "POST",
 				headers: {
@@ -2594,7 +2585,7 @@ ipcMain.handle("force-sync-service", async (event, serviceName) => {
 	try {
 		const backendUrl = process.env.APP_SERVER_URL || "http://localhost:5000"
 		const response = await fetch(
-			`${backendUrl}/users/force-sync/${serviceName}`, // in common/routes.py, no prefix
+			`${backendUrl}/users/force-sync/${serviceName}`,
 			{
 				method: "POST",
 				headers: {
@@ -2623,6 +2614,73 @@ ipcMain.handle("force-sync-service", async (event, serviceName) => {
 		return { success: false, error: error.message }
 	}
 })
+
+// ADDED: IPC Handler for Google OAuth
+ipcMain.handle("start-google-auth", async (_event, serviceName) => {
+	console.log(`[IPC GOOGLE_AUTH] Start Google OAuth for service: ${serviceName}`)
+	try {
+		const authUrl = getGoogleAuthURL(serviceName)
+		const googleAuthWindow = createGoogleAuthWindow(authUrl)
+
+		return new Promise((resolve, reject) => {
+			const { webRequest } = googleAuthWindow.webContents.session
+
+			const filter = { urls: [`${process.env.GOOGLE_OAUTH_REDIRECT_URI}*`] }
+
+			webRequest.onBeforeRequest(filter, async ({ url: callbackUrl }) => {
+				googleAuthWindow.close() // Close the auth window
+
+				const urlParts = new URL(callbackUrl)
+				const code = urlParts.searchParams.get("code")
+				const error = urlParts.searchParams.get("error")
+
+				if (error) {
+					console.error("[IPC GOOGLE_AUTH] OAuth error from Google:", error)
+					reject({ success: false, message: `Google OAuth Error: ${error}` })
+					return
+				}
+				if (!code) {
+					console.error("[IPC GOOGLE_AUTH] No authorization code in callback.")
+					reject({ success: false, message: "Google OAuth failed: No authorization code." })
+					return
+				}
+
+				try {
+					const tokens = await exchangeCodeForTokens(code)
+					if (!tokens.refresh_token) {
+						console.error("[IPC GOOGLE_AUTH] No refresh token received from Google.")
+						reject({ success: false, message: "Failed to get Google refresh token." })
+						return
+					}
+
+					// Store the refresh token on the server
+					await storeGoogleRefreshTokenOnServer(serviceName, tokens.refresh_token, getAuthHeader)
+					
+					console.log(`[IPC GOOGLE_AUTH] ${serviceName} connected and token stored.`)
+					resolve({ success: true, message: `${serviceName} connected successfully.` })
+				} catch (tokenError) {
+					console.error("[IPC GOOGLE_AUTH] Error processing Google tokens or storing on server:", tokenError)
+					reject({ success: false, message: `Error connecting ${serviceName}: ${tokenError.message}` })
+				}
+			})
+
+			googleAuthWindow.on("closed", () => {
+				// If window closed by user without completing auth
+				webRequest.onBeforeRequest(filter, null) // Clean up listener
+				// Check if promise is still pending (i.e., not resolved or rejected yet)
+				// This part is tricky as promises don't have a direct "isPending" state.
+				// A common way is to use a flag, or assume if it's closed without redirect, it's a cancellation.
+				// For simplicity, if it closes and hasn't resolved/rejected, assume cancellation.
+				// console.log("[IPC GOOGLE_AUTH] Google Auth window closed by user.");
+				// Consider resolving with a "cancelled" status if not already handled by the redirect.
+			})
+		})
+	} catch (error) {
+		console.error("[IPC GOOGLE_AUTH] Error starting Google OAuth flow:", error)
+		return { success: false, message: `Error starting Google OAuth: ${error.message}` }
+	}
+})
+
 
 // --- End of File ---
 console.log("Electron main process script execution completed initial setup.")

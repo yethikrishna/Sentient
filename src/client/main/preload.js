@@ -1,3 +1,4 @@
+// src/client/main/preload.js
 /**
  * @file Preload script for the Electron renderer process.
  * This script bridges the gap between the secure renderer process and the main process,
@@ -179,5 +180,7 @@ contextBridge.exposeInMainWorld("electron", {
 	sendUserActivityHeartbeat: () =>
 		ipcRenderer.invoke("user-activity-heartbeat"),
 	forceSyncService: (serviceName) =>
-		ipcRenderer.invoke("force-sync-service", serviceName)
+		ipcRenderer.invoke("force-sync-service", serviceName),
+	// ADDED: IPC for Google OAuth
+	startGoogleAuth: (serviceName) => ipcRenderer.invoke("start-google-auth", serviceName)
 })

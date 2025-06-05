@@ -1,7 +1,8 @@
+# utils/collect_codefiles.py
 import os
 
 # List of file names to exclude
-exclude_files = ['.env', '.env.template', ".prettierrc", "eslint.config.js", "jsconfig.json", "next.config.js", "package-lock.json", "package.json", "postcss.config.js", "README.md", "tailwind.config.js", "chatsDb.json", "userProfileDb.json", "requirements.txt", "token.pickle", "run_servers.sh", "version.txt", "collect_code.py", "prompts.py", "formats.py", "runnables.py", "functions.py", "helpers.py", "externals.py", "constants.py"]
+exclude_files = ['.env', '.env.template', '.prettierrc', 'eslint.config.js', 'jsconfig.json', 'next.config.js', 'package-lock.json', 'package.json', 'postcss.config.js', 'README.md', 'tailwind.config.js', 'chatsDb.json', 'userProfileDb.json', 'requirements.txt', 'token.pickle', 'run_servers.sh', 'version.txt', 'collect_code.py', 'prompts.py', 'formats.py', 'runnables.py', 'functions.py', 'helpers.py', 'externals.py', 'constants.py']
 
 # List of folders to exclude
 exclude_dirs = ['node_modules', '.next', 'public', 'styles', 'input', 'venv', '__pycache__', 'chroma_db']

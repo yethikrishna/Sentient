@@ -1,11 +1,11 @@
+# utils/collect_codebase.py
 import os
 
 # List of file names to exclude (add full file names here, e.g., 'file1.py', 'file2.js')
-exclude_files = ['.env', '.env.template', ".prettierrc", "eslint.config.js", "jsconfig.json", "next.config.js", "package-lock.json", "package.json", "postcss.config.js", "README.md", "tailwind.config.js", "chatsDb.json", "userProfileDb.json", "requirements.txt", "token.pickle", "run_servers.sh", "version.txt", "collect_code.py"]  # Specify the files to exclude
+exclude_files = ['.env', '.env.template', '.prettierrc', 'eslint.config.js', 'jsconfig.json', 'next.config.js', 'package-lock.json', 'package.json', 'postcss.config.js', 'README.md', 'tailwind.config.js', 'chatsDb.json', 'userProfileDb.json', 'requirements.txt', 'token.pickle', 'run_servers.sh', 'version.txt', 'collect_code.py']  # Specify the files to exclude
 
 # List of folder names to exclude (add folder names here, e.g., 'folder1', 'folder2')
-exclude_dirs = ['node_modules', '.next', 'public', 'styles', 'input', 'venv', '__pycache__', 'chroma_db',
-                'agents', 'scraper']  # Specify the folders to exclude
+exclude_dirs = ['node_modules', '.next', 'public', 'styles', 'input', 'venv', '__pycache__', 'chroma_db', 'agents', 'scraper']  # Specify the folders to exclude
 
 def get_code_from_files(directory, exclude_files, exclude_dirs):
     all_code = []

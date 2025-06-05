@@ -1,4 +1,4 @@
-# src/server/main/db_utils.py
+# src/server/main/db.py
 import os
 import datetime
 import uuid 
@@ -14,8 +14,8 @@ USER_PROFILES_COLLECTION = "user_profiles"
 CHAT_HISTORY_COLLECTION = "chat_history" 
 NOTIFICATIONS_COLLECTION = "notifications" 
 POLLING_STATE_COLLECTION = "polling_state_store" 
-PROCESSED_ITEMS_COLLECTION = "processed_items_log" # Used by pollers, but main server might read for context
-TASK_COLLECTION = "tasks" # For agent tasks
+PROCESSED_ITEMS_COLLECTION = "processed_items_log" 
+TASK_COLLECTION = "tasks" 
 
 class MongoManager:
     def __init__(self):
@@ -66,7 +66,7 @@ class MongoManager:
             self.task_collection: [
                 IndexModel([("user_id", ASCENDING), ("created_at", DESCENDING)], name="task_user_created_idx"),
                 IndexModel([("user_id", ASCENDING), ("status", ASCENDING), ("priority", ASCENDING)], name="task_user_status_priority_idx"),
-                IndexModel([("status", ASCENDING), ("agent_id", ASCENDING)], name="task_status_agent_idx", sparse=True), # For agent assignment
+                IndexModel([("status", ASCENDING), ("agent_id", ASCENDING)], name="task_status_agent_idx", sparse=True), 
                 IndexModel([("task_id", ASCENDING)], unique=True, name="task_id_unique_idx")
             ]
         }
@@ -97,22 +97,19 @@ class MongoManager:
         update_operations["$setOnInsert"]["user_id"] = user_id
         update_operations["$setOnInsert"]["createdAt"] = now_utc
         
-        # Ensure userData exists on insert if not explicitly set by top-level profile_data
-        # and not being set by a direct userData.* path
         if "userData" not in profile_data and not any(k.startswith("userData.") for k in profile_data):
              update_operations["$setOnInsert"]["userData"] = {}
 
-        # Ensure google_services and specific service (e.g., gmail) objects exist on insert if setting their sub-fields
         for key_to_set in profile_data.keys():
             if key_to_set.startswith("userData.google_services."):
                 parts = key_to_set.split('.')
-                if len(parts) >= 3: # e.g., userData.google_services.gmail
+                if len(parts) >= 3: 
                     service_name_for_insert = parts[2] 
                     
                     user_data_on_insert = update_operations["$setOnInsert"].setdefault("userData", {})
                     google_services_on_insert = user_data_on_insert.setdefault("google_services", {})
                     google_services_on_insert.setdefault(service_name_for_insert, {})
-                break # Only need to do this structural setup once
+                break 
 
         if not update_operations["$set"]: del update_operations["$set"] 
         if not update_operations["$setOnInsert"]: del update_operations["$setOnInsert"]

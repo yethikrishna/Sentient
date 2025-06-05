@@ -1,3 +1,4 @@
+// src/client/components/Sidebar.js
 "use client"
 import { useRouter } from "next/navigation"
 import { useEffect, useState, React } from "react"

@@ -1,72 +1,108 @@
+# src/server/legacy/voice/stt.py
 import numpy as np
 from faster_whisper import WhisperModel
 import librosa
+import logging # Added logging
+
+logger = logging.getLogger(__name__)
 
 class FasterWhisperSTT:
     def __init__(self, model_size="base", device="cpu", compute_type="int8"):
         """
         Initialize the Faster Whisper STT model.
-
-        Args:
-            model_size (str): Size of the Whisper model (e.g., "base", "tiny").
-            device (str): Device to run the model on ("cpu" or "cuda").
-            compute_type (str): Compute type (e.g., "int8", "float16").
         """
         try:
-            print(f"Loading Whisper model '{model_size}' on {device} ({compute_type})...")
+            logger.info(f"Loading Whisper model '{model_size}' on {device} ({compute_type})...")
             self.whisper_model = WhisperModel(model_size, device=device, compute_type=compute_type)
-            print("Whisper model loaded successfully.")
+            logger.info("Whisper model loaded successfully.")
         except Exception as e:
-            print(f"Error loading Whisper model: {e}")
-            self.whisper_model = None
+            logger.error(f"Error loading Whisper model: {e}")
+            self.whisper_model = None # Ensure it's None on failure
 
-    def stt(self, audio: tuple[int, np.ndarray]) -> str:
+    def stt(self, audio_data: bytes, input_sample_rate: int = 16000) -> str:
         """
-        Transcribe audio to text using the Faster Whisper model.
+        Transcribe audio bytes to text using the Faster Whisper model.
+        Assumes input audio is raw PCM.
 
         Args:
-            audio (tuple): Tuple of (sample_rate, audio_array) where audio_array is np.int16 or np.float32.
+            audio_data (bytes): Raw audio data bytes.
+            input_sample_rate (int): Sample rate of the input audio_data.
 
         Returns:
             str: Transcribed text.
         """
         if self.whisper_model is None:
-            print("Error: Whisper model not loaded.")
+            logger.error("Whisper model not loaded. Cannot transcribe.")
             return ""
 
-        sample_rate, audio_array = audio
-
-        # --- FIX: Convert to float32 BEFORE resampling ---
-        if audio_array.dtype == np.int16:
-            # Normalize int16 to [-1.0, 1.0] range
-            audio_array = audio_array.astype(np.float32) / 32768.0
-        elif audio_array.dtype != np.float32:
-            # Ensure other types are converted to float32
-            # (Normalization might be needed depending on the source type,
-            # but for now, just casting is the direct fix for librosa)
-            audio_array = audio_array.astype(np.float32)
-        # --- END FIX ---
-
-        # Resample to 16000 Hz if necessary (Now audio_array is guaranteed float32)
-        if sample_rate != 16000:
-            # Using y= explicitly matches librosa documentation better
-            audio_array = librosa.resample(y=audio_array, orig_sr=sample_rate, target_sr=16000)
-
-        # Ensure audio is 1D (This might be redundant if librosa.resample always returns 1D, but safe to keep)
-        if audio_array.ndim != 1:
-            audio_array = audio_array.flatten()
-
         try:
-            # print(f"DEBUG: Transcribing audio with shape {audio_array.shape} and dtype {audio_array.dtype}") # Optional debug print
+            # Convert raw bytes to NumPy array (assuming 16-bit PCM, which is common)
+            # This might need adjustment if client sends audio in a different format (e.g., float32 bytes)
+            audio_np = np.frombuffer(audio_data, dtype=np.int16)
+            
+            # Convert to float32 and normalize
+            audio_float32 = audio_np.astype(np.float32) / 32768.0
+            
+            # Resample to 16000 Hz if necessary for Whisper model
+            target_sr = 16000
+            if input_sample_rate != target_sr:
+                # logger.debug(f"Resampling audio from {input_sample_rate} Hz to {target_sr} Hz.")
+                audio_float32 = librosa.resample(y=audio_float32, orig_sr=input_sample_rate, target_sr=target_sr)
+
+            if audio_float32.ndim != 1:
+                audio_float32 = audio_float32.flatten()
+            
+            # logger.debug(f"Transcribing audio with shape {audio_float32.shape}, dtype {audio_float32.dtype}")
             segments, _ = self.whisper_model.transcribe(
-                audio_array,
-                language="en",
+                audio_float32,
+                language="en", # Make configurable if needed
                 task="transcribe"
+                # beam_size=5 # Optional: for potentially better accuracy at cost of speed
             )
             transcription = " ".join([seg.text for seg in segments]).strip()
-            # print(f"DEBUG: Transcription: {transcription}") # Optional debug print
+            # logger.debug(f"Transcription: '{transcription}'")
+            return transcription
         except Exception as e:
-            print(f"Error during transcription: {e}")
-            transcription = ""
+            logger.error(f"Error during STT transcription: {e}")
+            import traceback
+            traceback.print_exc()
+            return ""
 
-        return transcription
+    def stt_from_tuple(self, audio_tuple: tuple[int, np.ndarray]) -> str:
+        """
+        Compatibility method to transcribe audio from a (sample_rate, audio_array) tuple.
+        This is kept if other parts of the system still use this format.
+        """
+        if self.whisper_model is None:
+            logger.error("Whisper model not loaded. Cannot transcribe (from tuple).")
+            return ""
+
+        sample_rate, audio_array = audio_tuple
+
+        if audio_array.dtype == np.int16:
+            audio_float32 = audio_array.astype(np.float32) / 32768.0
+        elif audio_array.dtype == np.float32:
+            audio_float32 = audio_array # Already float32
+        else:
+            logger.warning(f"Unsupported audio array dtype: {audio_array.dtype}. Attempting conversion to float32.")
+            audio_float32 = audio_array.astype(np.float32) 
+            # Normalization might be needed here depending on the original scale.
+            # If it was, for example, uint8, simple casting isn't enough.
+            # For now, assuming it's reasonably scaled if not int16/float32.
+
+        target_sr = 16000
+        if sample_rate != target_sr:
+            audio_float32 = librosa.resample(y=audio_float32, orig_sr=sample_rate, target_sr=target_sr)
+
+        if audio_float32.ndim != 1:
+            audio_float32 = audio_float32.flatten()
+        
+        try:
+            segments, _ = self.whisper_model.transcribe(
+                audio_float32, language="en", task="transcribe"
+            )
+            transcription = " ".join([seg.text for seg in segments]).strip()
+            return transcription
+        except Exception as e:
+            logger.error(f"Error during STT transcription (from tuple): {e}")
+            return ""

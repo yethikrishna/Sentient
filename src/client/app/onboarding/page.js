@@ -1,9 +1,10 @@
+// src/client/app/onboarding/page.js
 "use client"
 import React, { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/utils/cn"
+import toast from "react-hot-toast" // Added toast for error display
 
-// Reusing MultiStepLoader's CheckIcon and CheckFilled for visual consistency
 const CheckIcon = ({ className }) => (
 	<svg
 		xmlns="http://www.w3.org/2000/svg"
@@ -33,152 +34,19 @@ const CheckFilled = ({ className }) => (
 )
 
 const questions = [
-	{
-		id: "user-name",
-		question: "What is your name?",
-		type: "text-input"
-	},
-	{
-		id: "personal-info",
-		question: "What are your primary personal interests?",
-		type: "multiple-choice",
-		options: [
-			"Reading & Literature",
-			"Sports & Fitness",
-			"Arts & Crafts",
-			"Technology & Gadgets",
-			"Travel & Exploration",
-			"Cooking & Food",
-			"Gaming",
-			"Music & Concerts"
-		]
-	},
-	{
-		id: "professional-aspirations",
-		question: "What are your professional aspirations or career goals?",
-		type: "multiple-choice",
-		options: [
-			"Career Advancement",
-			"Skill Development",
-			"Entrepreneurship",
-			"Work-Life Balance",
-			"Innovation & Research",
-			"Leadership",
-			"Social Impact",
-			"Financial Growth"
-		]
-	},
-	{
-		id: "political-views",
-		question: "Which political ideology do you most align with?",
-		type: "multiple-choice",
-		options: [
-			"Liberal",
-			"Conservative",
-			"Centrist",
-			"Socialist",
-			"Libertarian",
-			"Anarchist",
-			"Green",
-			"Other / Prefer not to say"
-		]
-	},
-	{
-		id: "hobbies",
-		question: "What are some of your favorite hobbies?",
-		type: "multiple-choice",
-		options: [
-			"Hiking",
-			"Photography",
-			"Gardening",
-			"Playing Musical Instruments",
-			"Writing",
-			"Painting",
-			"Collecting",
-			"Volunteering"
-		]
-	},
-	{
-		id: "values",
-		question: "What values are most important to you?",
-		type: "multiple-choice",
-		options: [
-			"Integrity",
-			"Compassion",
-			"Creativity",
-			"Ambition",
-			"Security",
-			"Freedom",
-			"Community",
-			"Knowledge"
-		]
-	},
-	{
-		id: "learning-style",
-		question: "How do you prefer to learn new things?",
-		type: "multiple-choice",
-		options: [
-			"Hands-on (Kinesthetic)",
-			"Visual (Seeing)",
-			"Auditory (Hearing)",
-			"Reading/Writing",
-			"Through discussion",
-			"By teaching others"
-		]
-	},
-	{
-		id: "social-preferences",
-		question: "What is your preferred social setting?",
-		type: "multiple-choice",
-		options: [
-			"Large gatherings",
-			"Small intimate groups",
-			"One-on-one conversations",
-			"Online communities",
-			"Quiet environments",
-			"Loud and energetic environments"
-		]
-	},
-	{
-		id: "decision-making",
-		question: "How do you typically make decisions?",
-		type: "multiple-choice",
-		options: [
-			"Logically and analytically",
-			"Intuitively and emotionally",
-			"By consulting others",
-			"By weighing pros and cons",
-			"Quickly and decisively",
-			"Slowly and deliberately"
-		]
-	},
-	{
-		id: "future-outlook",
-		question: "What is your general outlook on the future?",
-		type: "multiple-choice",
-		options: [
-			"Optimistic",
-			"Pessimistic",
-			"Realistic",
-			"Uncertain",
-			"Hopeful",
-			"Anxious"
-		]
-	},
-	{
-		id: "communication-style",
-		question: "What best describes your communication style?",
-		type: "multiple-choice",
-		options: [
-			"Direct and to the point",
-			"Indirect and diplomatic",
-			"Expressive and open",
-			"Reserved and thoughtful",
-			"Assertive",
-			"Passive"
-		]
-	}
+	{ id: "user-name", question: "What is your name?", type: "text-input" },
+	{ id: "personal-interests", question: "What are your primary personal interests?", type: "multiple-choice", options: ["Reading & Literature", "Sports & Fitness", "Arts & Crafts", "Technology & Gadgets", "Travel & Exploration", "Cooking & Food", "Gaming", "Music & Concerts"] },
+	{ id: "professional-aspirations", question: "What are your professional aspirations or career goals?", type: "multiple-choice", options: ["Career Advancement", "Skill Development", "Entrepreneurship", "Work-Life Balance", "Innovation & Research", "Leadership", "Social Impact", "Financial Growth"] },
+	{ id: "political-views", question: "Which political ideology do you most align with?", type: "multiple-choice", options: ["Liberal", "Conservative", "Centrist", "Socialist", "Libertarian", "Anarchist", "Green", "Other / Prefer not to say"] },
+	{ id: "hobbies", question: "What are some of your favorite hobbies?", type: "multiple-choice", options: ["Hiking", "Photography", "Gardening", "Playing Musical Instruments", "Writing", "Painting", "Collecting", "Volunteering"] },
+	{ id: "values", question: "What values are most important to you?", type: "multiple-choice", options: ["Integrity", "Compassion", "Creativity", "Ambition", "Security", "Freedom", "Community", "Knowledge"] },
+	{ id: "learning-style", question: "How do you prefer to learn new things?", type: "multiple-choice", options: ["Hands-on (Kinesthetic)", "Visual (Seeing)", "Auditory (Hearing)", "Reading/Writing", "Through discussion", "By teaching others"] },
+	{ id: "social-preferences", question: "What is your preferred social setting?", type: "multiple-choice", options: ["Large gatherings", "Small intimate groups", "One-on-one conversations", "Online communities", "Quiet environments", "Loud and energetic environments"] },
+	{ id: "decision-making", question: "How do you typically make decisions?", type: "multiple-choice", options: ["Logically and analytically", "Intuitively and emotionally", "By consulting others", "By weighing pros and cons", "Quickly and decisively", "Slowly and deliberately"] },
+	{ id: "future-outlook", question: "What is your general outlook on the future?", type: "multiple-choice", options: ["Optimistic", "Pessimistic", "Realistic", "Uncertain", "Hopeful", "Anxious"] },
+	{ id: "communication-style", question: "What best describes your communication style?", type: "multiple-choice", options: ["Direct and to the point", "Indirect and diplomatic", "Expressive and open", "Reserved and thoughtful", "Assertive", "Passive"] }
 ]
+
 
 const OnboardingForm = () => {
 	const [currentStep, setCurrentStep] = useState(0)
@@ -191,30 +59,19 @@ const OnboardingForm = () => {
 	const handleAnswer = (questionId, answer) => {
 		setAnswers((prev) => {
 			if (currentQuestion.type === "text-input") {
-				return { ...prev, [questionId]: answer } // Store single string for text-input
+				return { ...prev, [questionId]: answer } 
 			} else {
 				const currentAnswers = prev[questionId] || []
 				if (currentAnswers.includes(answer)) {
-					// Deselect if already selected
-					return {
-						...prev,
-						[questionId]: currentAnswers.filter(
-							(item) => item !== answer
-						)
-					}
+					return { ...prev, [questionId]: currentAnswers.filter( (item) => item !== answer ) }
 				} else {
-					// Select if not already selected
-					return {
-						...prev,
-						[questionId]: [...currentAnswers, answer]
-					}
+					return { ...prev, [questionId]: [...currentAnswers, answer] }
 				}
 			}
 		})
 	}
 
 	const handleNext = () => {
-		// Reset custom input state when moving to next question
 		setCustomOptionInput("")
 		setShowCustomInput(false)
 
@@ -226,7 +83,6 @@ const OnboardingForm = () => {
 	}
 
 	const handlePrevious = () => {
-		// Reset custom input state when moving to previous question
 		setCustomOptionInput("")
 		setShowCustomInput(false)
 
@@ -238,23 +94,26 @@ const OnboardingForm = () => {
 	const handleSubmit = async () => {
 		setIsSubmitting(true)
 		try {
-			// Use IPC to send data to the main process
 			const result = await window.electron.invoke(
 				"save-onboarding-data",
 				answers
 			)
 			if (result && result.status && result.status >= 400) {
-				console.error("Failed to save onboarding data:", result.message)
-				alert(`Failed to save onboarding data: ${result.message}`)
-			} else {
+				console.error("Failed to save onboarding data:", result.message, result)
+				toast.error(`Failed to save onboarding data: ${result.message || 'Unknown server error'}`)
+			} else if (result && result.status === 200) {
 				console.log("Onboarding data saved successfully.")
 				setSubmissionComplete(true)
-				// Redirect to main app page after successful save
-				window.location.href = "/"
-			}
+                // No automatic redirect here, main/index.js checkValidity will handle it.
+                // Or, could redirect after a short delay to main app if desired:
+                // setTimeout(() => window.location.href = "/", 2000); 
+			} else {
+                console.error("Unexpected response from save-onboarding-data:", result);
+                toast.error("Unexpected response while saving onboarding data.");
+            }
 		} catch (error) {
 			console.error("Error calling IPC to save onboarding data:", error)
-			alert(`Error saving onboarding data: ${error.message}`)
+			toast.error(`Error saving onboarding data: ${error.message}`)
 		} finally {
 			setIsSubmitting(false)
 		}
@@ -265,15 +124,13 @@ const OnboardingForm = () => {
 	const handleAddCustomOption = () => {
 		const newOption = customOptionInput.trim()
 		if (newOption) {
-			// Add to current question's options if it doesn't exist
 			const currentOptions = currentQuestion.options
 			if (!currentOptions.includes(newOption)) {
-				currentQuestion.options.push(newOption) // Mutate directly for simplicity in this context
+				currentQuestion.options.push(newOption) 
 			}
-			// Select the new custom option
 			handleAnswer(currentQuestion.id, newOption)
-			setCustomOptionInput("") // Clear input
-			setShowCustomInput(false) // Hide input
+			setCustomOptionInput("") 
+			setShowCustomInput(false) 
 		}
 	}
 
@@ -295,10 +152,12 @@ const OnboardingForm = () => {
 						things up for you.
 					</p>
 					<p className="text-md text-gray-400 mt-2">
-						You can now proceed to the main application.
+						You will be redirected shortly.
 					</p>
-					{/* Add a button to navigate to the main app if needed */}
-					<button className="mt-8 px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-semibold transition-colors duration-300">
+                    {/* Button to manually go to dashboard if auto-redirect is delayed or fails */}
+                     <button 
+                        onClick={() => window.location.href = "/"} // Force reload to trigger main/index.js logic
+                        className="mt-8 px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-semibold transition-colors duration-300">
 						Go to Dashboard
 					</button>
 				</motion.div>
@@ -374,7 +233,7 @@ const OnboardingForm = () => {
 									)
 								})}
 								{showCustomInput ? (
-									<div className="flex items-center gap-2">
+									<div className="flex items-center gap-2 md:col-span-2"> {/* Span across two columns if needed */}
 										<input
 											type="text"
 											value={customOptionInput}
@@ -386,8 +245,7 @@ const OnboardingForm = () => {
 											onKeyPress={(e) => {
 												if (
 													e.key === "Enter" &&
-													customOptionInput.trim() !==
-														""
+													customOptionInput.trim() !== ""
 												) {
 													handleAddCustomOption()
 												}
@@ -406,8 +264,11 @@ const OnboardingForm = () => {
 										</button>
 									</div>
 								) : (
+                                    // Ensure "Other" button aligns with grid
 									<button
-										className="px-6 py-3 rounded-lg text-lg transition-all duration-200 bg-gray-700 text-gray-200 hover:bg-gray-600"
+										className={cn("px-6 py-3 rounded-lg text-lg transition-all duration-200 bg-gray-700 text-gray-200 hover:bg-gray-600",
+                                        currentQuestion.options.length % 2 !== 0 ? "md:col-span-2" : "" // Span if odd number of options
+                                        )}
 										onClick={() => setShowCustomInput(true)}
 									>
 										Other
@@ -435,7 +296,7 @@ const OnboardingForm = () => {
 						onClick={handleNext}
 						disabled={
 							(currentQuestion.type === "multiple-choice" &&
-								answers[currentQuestion.id]?.length === 0 &&
+								(!answers[currentQuestion.id] || answers[currentQuestion.id]?.length === 0) && // Check if undefined or empty
 								!showCustomInput) ||
 							(currentQuestion.type === "text-input" &&
 								!answers[currentQuestion.id]) ||
@@ -443,7 +304,8 @@ const OnboardingForm = () => {
 						}
 						className={cn(
 							"px-6 py-3 rounded-lg text-lg font-semibold transition-colors duration-300",
-							!answers[currentQuestion.id] || isSubmitting
+                            // Disable if no answer for current question (text or multiple choice)
+							(!answers[currentQuestion.id] || (currentQuestion.type === "multiple-choice" && answers[currentQuestion.id]?.length === 0 && !showCustomInput) ) || isSubmitting
 								? "bg-blue-800 text-blue-300 cursor-not-allowed"
 								: "bg-blue-600 hover:bg-blue-700 text-white"
 						)}

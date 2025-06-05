@@ -1,3 +1,4 @@
+// src/client/app/settings/page.js
 "use client"
 
 import { useState, useEffect, useCallback } from "react" // Added useCallback
@@ -40,6 +41,8 @@ const Settings = () => {
 	const [customizeLoading, setCustomizeLoading] = useState(false) // Separate loading for customize
 	const [recreateGraphLoading, setRecreateGraphLoading] = useState(false)
 	const [updateCheckLoading, setUpdateCheckLoading] = useState(false) // New state for update check loading
+	const [togglingSource, setTogglingSource] = useState(null) // For loading state on individual toggles
+
 
 	// --- Data Fetching ---
 	// MODIFIED: Wrapped fetchDataSources in useCallback
@@ -72,50 +75,56 @@ const Settings = () => {
 	}, []) // Empty dependency array
 
 	const handleToggle = async (sourceName, enabled) => {
-		console.log(`Toggling ${sourceName} to ${enabled}`) // Log toggle action
-		setDataSources(
-			(
-				prev // Optimistic UI update
-			) =>
-				prev.map((ds) =>
-					ds.name === sourceName ? { ...ds, enabled } : ds
-				)
-		)
 		console.log(`Toggling ${sourceName} to ${enabled}`)
+		setTogglingSource(sourceName) // Set loading state for this specific toggle
+
+		// Original optimistic UI update
+		const originalDataSources = [...dataSources]
+		setDataSources((prev) =>
+			prev.map((ds) => (ds.name === sourceName ? { ...ds, enabled } : ds))
+		)
+
 		try {
-			const response = await window.electron.invoke(
-				"set-data-source-enabled",
-				{ source: sourceName, enabled }
-			) // Pass object
-			if (response.error) {
-				console.error(
-					`Error updating ${sourceName} data source:`,
-					response.error
-				)
-				toast.error(`Error updating ${sourceName}: ${response.error}`) // Toast on backend error
-				setDataSources((prev) =>
-					prev.map((ds) =>
-						ds.name === sourceName
-							? { ...ds, enabled: !enabled }
-							: ds
+			if (sourceName === "gmail" && enabled) {
+				// Trigger Google OAuth flow
+				console.log("Initiating Google OAuth for Gmail...")
+				const authResult = await window.electron.startGoogleAuth("gmail")
+
+				if (authResult && authResult.success) {
+					toast.success("Gmail connected successfully!")
+					// Proceed to set data source enabled on backend
+					const response = await window.electron.invoke(
+						"set-data-source-enabled",
+						{ source: sourceName, enabled }
 					)
-				)
+					if (response.error) throw new Error(response.error)
+					toast.success(`${sourceName} enabled.`)
+				} else {
+					toast.error(authResult?.message || "Gmail connection failed or cancelled.")
+					// Revert optimistic UI update
+					setDataSources(originalDataSources)
+					setTogglingSource(null)
+					return // Stop further processing
+				}
 			} else {
-				toast.success(
-					`${sourceName} ${enabled ? "enabled" : "disabled"}.`
+				// For other sources or disabling Gmail
+				const response = await window.electron.invoke(
+					"set-data-source-enabled",
+					{ source: sourceName, enabled }
 				)
+				if (response.error) throw new Error(response.error)
+				toast.success(`${sourceName} ${enabled ? "enabled" : "disabled"}.`)
 			}
 		} catch (error) {
 			console.error(`Error updating ${sourceName} data source:`, error)
-			toast.error(`Error updating ${sourceName}.`)
-			// Revert optimistic update on error
-			setDataSources((prev) =>
-				prev.map((ds) =>
-					ds.name === sourceName ? { ...ds, enabled: !enabled } : ds
-				)
-			)
+			toast.error(`Error updating ${sourceName}: ${error.message || "Unknown error"}`)
+			// Revert optimistic UI update on any error
+			setDataSources(originalDataSources)
+		} finally {
+			setTogglingSource(null) // Clear loading state for this toggle
 		}
 	}
+
 
 	const fetchUserDetails = useCallback(async () => {
 		// Fetch user details
@@ -316,36 +325,40 @@ const Settings = () => {
 													</span>
 												</div>
 												{/* MODIFIED: Radix Switch with custom theme styling */}
-												<Switch
-													checked={source.enabled}
-													onCheckedChange={(
-														enabled
-													) =>
-														handleToggle(
-															source.name,
+												{togglingSource === source.name ? (
+													<IconLoader className="w-5 h-5 animate-spin text-lightblue" />
+												) : (
+													<Switch
+														checked={source.enabled}
+														onCheckedChange={(
 															enabled
-														)
-													}
-													className={cn(
-														"group relative inline-flex h-[24px] w-[44px] flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-lightblue focus:ring-offset-2 focus:ring-offset-neutral-800",
-														source.enabled
-															? "bg-lightblue" // Active color
-															: "bg-neutral-600" // Background color based on state
-													)}
-												>
-													<span className="sr-only">
-														Toggle {source.name}
-													</span>
-													<span
-														aria-hidden="true"
+														) =>
+															handleToggle(
+																source.name,
+																enabled
+															)
+														}
 														className={cn(
-															"pointer-events-none inline-block h-[20px] w-[20px] transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+															"group relative inline-flex h-[24px] w-[44px] flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-lightblue focus:ring-offset-2 focus:ring-offset-neutral-800",
 															source.enabled
-																? "translate-x-[20px]"
-																: "translate-x-0" // Thumb position based on state
+																? "bg-lightblue" // Active color
+																: "bg-neutral-600" // Background color based on state
 														)}
-													/>
-												</Switch>
+													>
+														<span className="sr-only">
+															Toggle {source.name}
+														</span>
+														<span
+															aria-hidden="true"
+															className={cn(
+																"pointer-events-none inline-block h-[20px] w-[20px] transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+																source.enabled
+																	? "translate-x-[20px]"
+																	: "translate-x-0" // Thumb position based on state
+															)}
+														/>
+													</Switch>
+												)}
 											</div>
 										)
 									})

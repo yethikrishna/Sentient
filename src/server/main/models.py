@@ -1,9 +1,20 @@
 # src/server/main/models.py
+# src/server/main/models.py
 from pydantic import BaseModel, Field, validator
 from typing import Dict, Any, Optional, List, Union
 import datetime
 
 # --- User Profile Models ---
+class GoogleServiceTokenData(BaseModel):
+    encrypted_refresh_token: Optional[str] = None
+    # access_token: Optional[str] = None # Not typically stored long-term
+    # expiry_timestamp: Optional[datetime.datetime] = None # If access token is stored
+
+class UserGoogleServicesData(BaseModel):
+    gmail: Optional[GoogleServiceTokenData] = None
+    calendar: Optional[GoogleServiceTokenData] = None
+    # Add other services as needed
+
 class UserProfileData(BaseModel):
     onboardingAnswers: Optional[Dict[str, Any]] = Field(default_factory=dict)
     onboardingComplete: Optional[bool] = False
@@ -11,9 +22,8 @@ class UserProfileData(BaseModel):
     active_chat_id: Optional[str] = None
     last_active_timestamp: Optional[datetime.datetime] = None
     data_sources_config: Optional[Dict[str, Dict[str, Any]]] = Field(default_factory=dict) # e.g. {"gmail": {"enabled": True}}
-    # Store encrypted refresh tokens here if main server manages them
-    encrypted_refresh_token: Optional[str] = None
-    encrypted_google_refresh_token: Optional[str] = None # For Gmail API
+    encrypted_refresh_token: Optional[str] = None # Auth0 refresh token
+    google_services: Optional[UserGoogleServicesData] = Field(default_factory=UserGoogleServicesData) # For Google service tokens
 
 class UserProfile(BaseModel):
     user_id: str = Field(..., description="The Auth0 user ID (sub claim)")
@@ -25,10 +35,8 @@ class UserProfile(BaseModel):
     def ensure_datetime_objects(cls, v):
         if isinstance(v, str):
             try:
-                # Handle ISO format with or without 'Z'
                 return datetime.datetime.fromisoformat(v.replace('Z', '+00:00'))
             except ValueError:
-                # Fallback for other string formats if necessary, or raise error
                 raise ValueError(f"Invalid datetime string format: {v}")
         if isinstance(v, datetime.datetime):
             return v
@@ -37,14 +45,14 @@ class UserProfile(BaseModel):
 # --- API Request/Response Models ---
 class ChatMessageInput(BaseModel):
     input: str
-    pricing: Optional[str] = "free" # Client might send this
-    credits: Optional[int] = 0      # Client might send this
+    pricing: Optional[str] = "free" 
+    credits: Optional[int] = 0      
 
 class OnboardingRequest(BaseModel):
-    data: Dict[str, Any] # Expects a dictionary of answers
+    data: Dict[str, Any] 
 
 class DataSourceToggleRequest(BaseModel):
-    source: str # e.g., "gmail"
+    source: str 
     enabled: bool
 
 class EncryptionRequest(BaseModel):
@@ -53,16 +61,16 @@ class EncryptionRequest(BaseModel):
 class DecryptionRequest(BaseModel):
     encrypted_data: str
 
-class AuthTokenStoreRequest(BaseModel):
+class AuthTokenStoreRequest(BaseModel): # For Auth0 refresh token
     refresh_token: str
-    # Optional: id_token, access_token if client wants server to have them initially
-    # id_token: Optional[str] = None
-    # access_token: Optional[str] = None
+
+class GoogleTokenStoreRequest(BaseModel): # ADDED: For Google refresh token
+    service_name: str # e.g., "gmail", "calendar"
+    google_refresh_token: str
 
 class VoiceOfferRequest(BaseModel):
     sdp: str
     type: str
-    # webrtc_id: Optional[str] = None # If client generates and sends this
 
 class VoiceAnswerResponse(BaseModel):
     sdp: str

@@ -1,11 +1,11 @@
-# src/server/main/voice/stt_services/faster_whisper_stt.py
+# src/server/main/voice/stt/faster_whisper.py
 import numpy as np
 from faster_whisper import WhisperModel
 import librosa
 import logging
-import asyncio # For run_in_executor
+import asyncio 
 
-from .base_stt import BaseSTT
+from .base import BaseSTT # Corrected import from base.py
 
 logger = logging.getLogger(__name__)
 
@@ -18,10 +18,9 @@ class FasterWhisperSTT(BaseSTT):
         except Exception as e:
             logger.error(f"Error loading FasterWhisper model: {e}")
             self.whisper_model = None
-            raise  # Re-raise exception to signal failure at startup
+            raise 
 
     def _transcribe_sync(self, audio_float32: np.ndarray) -> str:
-        """Synchronous transcription part."""
         if self.whisper_model is None:
             logger.error("FasterWhisper model not loaded. Cannot transcribe.")
             return ""
@@ -34,27 +33,24 @@ class FasterWhisperSTT(BaseSTT):
 
     async def transcribe(self, audio_bytes: bytes, sample_rate: int) -> str:
         if self.whisper_model is None:
-            return "" # Already logged during init
+            return "" 
 
         try:
             audio_np = np.frombuffer(audio_bytes, dtype=np.int16)
             audio_float32 = audio_np.astype(np.float32) / 32768.0
             
-            target_sr = 16000 # Whisper native sample rate
+            target_sr = 16000 
             if sample_rate != target_sr:
                 audio_float32 = librosa.resample(y=audio_float32, orig_sr=sample_rate, target_sr=target_sr)
 
-            if audio_float32.ndim != 1: # Ensure 1D array
+            if audio_float32.ndim != 1: 
                 audio_float32 = audio_float32.flatten()
             
             loop = asyncio.get_running_loop()
-            # Run the blocking CTranslate2 model in a thread pool executor
             transcription = await loop.run_in_executor(None, self._transcribe_sync, audio_float32)
             
             logger.debug(f"FasterWhisper Transcription: '{transcription}'")
             return transcription
         except Exception as e:
-            logger.error(f"Error during FasterWhisper STT transcription: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error during FasterWhisper STT transcription: {e}", exc_info=True)
             return ""

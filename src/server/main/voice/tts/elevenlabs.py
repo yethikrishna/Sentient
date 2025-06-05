@@ -1,55 +1,67 @@
-# src/server/main/voice/tts_services/eleven_labs_tts.py
+# src/server/main/voice/tts/elevenlabs.py
 import os
 from elevenlabs.client import ElevenLabs
 from elevenlabs import Voice, VoiceSettings
 import logging
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
-from .base_tts import BaseTTS, TTSOptionsBase
-from ...config import ELEVENLABS_API_KEY # Import API key from main config
+from .base import BaseTTS, TTSOptionsBase # Corrected import from base.py
+from ...config import ELEVENLABS_API_KEY 
 
 logger = logging.getLogger(__name__)
 
 class ElevenLabsTTS(BaseTTS):
-    def __init__(self):
+    def __init__(self, voice_id: Optional[str] = None, model_id: Optional[str] = None):
         if not ELEVENLABS_API_KEY:
             logger.error("ELEVENLABS_API_KEY environment variable not set.")
             raise ValueError("ELEVENLABS_API_KEY environment variable not set for ElevenLabsTTS.")
         
         self.client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
-        self.voice_id = "JBFqnCBsd6RMkjVDRZzb"  # Example: "Rachel"
-        self.model_id = "eleven_multilingual_v2" 
+        # Default voice "Rachel" ID: JBFqnCBsd6RMkjVDRZzb
+        self.voice_id = voice_id or "JBFqnCBsd6RMkjVDRZzb" 
+        self.model_id = model_id or "eleven_multilingual_v2" 
         logger.info(f"ElevenLabs TTS initialized with voice_id: {self.voice_id}, model_id: {self.model_id}")
 
     async def stream_tts(self, text: str, options: TTSOptionsBase = None) -> AsyncGenerator[bytes, None]:
         voice_id_to_use = self.voice_id
-        # Options could allow overriding voice_id, stability, similarity_boost etc.
-        custom_settings = {}
+        model_id_to_use = self.model_id
+        
+        custom_settings_dict = {}
         if options:
             voice_id_to_use = options.get("voice_id", self.voice_id)
-            if "stability" in options: custom_settings["stability"] = options["stability"]
-            if "similarity_boost" in options: custom_settings["similarity_boost"] = options["similarity_boost"]
+            model_id_to_use = options.get("model_id", self.model_id)
+            if "stability" in options: custom_settings_dict["stability"] = options["stability"]
+            if "similarity_boost" in options: custom_settings_dict["similarity_boost"] = options["similarity_boost"]
+            if "style" in options: custom_settings_dict["style"] = options["style"]
+            if "use_speaker_boost" in options: custom_settings_dict["use_speaker_boost"] = options["use_speaker_boost"]
         
         effective_settings = VoiceSettings(
-            stability=custom_settings.get("stability", 0.7), # Default stability
-            similarity_boost=custom_settings.get("similarity_boost", 0.8) # Default similarity boost
+            stability=custom_settings_dict.get("stability", 0.71), 
+            similarity_boost=custom_settings_dict.get("similarity_boost", 0.5),
+            style=custom_settings_dict.get("style", 0.0), 
+            use_speaker_boost=custom_settings_dict.get("use_speaker_boost", True)
         )
 
-        logger.debug(f"ElevenLabs streaming TTS for text: '{text[:50]}...' using voice {voice_id_to_use}")
+        logger.debug(f"ElevenLabs streaming TTS for text: '{text[:50]}...' using voice {voice_id_to_use}, model {model_id_to_use}")
         
         try:
             audio_stream = self.client.generate(
                 text=text,
                 voice=Voice(voice_id=voice_id_to_use, settings=effective_settings),
-                model=self.model_id,
+                model=model_id_to_use,
                 stream=True,
-                output_format="pcm_16000", # Raw PCM at 16kHz
+                output_format="pcm_16000", 
             )
 
-            for chunk in audio_stream:
+            if not hasattr(audio_stream, '__iter__') and not hasattr(audio_stream, '__aiter__'):
+                logger.error("ElevenLabs client.generate did not return a streamable object.")
+                return
+
+            for chunk in audio_stream: # type: ignore
                 if chunk:
                     yield chunk 
             logger.debug(f"Finished streaming audio from ElevenLabs TTS for text: '{text[:50]}...'")
         except Exception as e:
-            logger.error(f"Error during ElevenLabs TTS streaming: {e}")
+            logger.error(f"Error during ElevenLabs TTS streaming: {e}", exc_info=True)
+            yield b"" 
             return

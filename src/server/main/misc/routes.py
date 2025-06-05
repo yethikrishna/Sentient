@@ -1,4 +1,4 @@
-# src/server/main/api/routes.py
+# src/server/main/misc/routes.py
 import datetime
 import uuid
 import json
@@ -7,16 +7,26 @@ from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, Depends, HTTPException, status, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
-from ..models import OnboardingRequest, DataSourceToggleRequest, UserProfile # Common models
-from ..auth.utils import PermissionChecker # Use auth.utils
+# Assuming models like OnboardingRequest are in the main models.py or a shared location
+from ..models import OnboardingRequest, DataSourceToggleRequest 
+# UserProfile might not be directly used as request/response here but good for context.
+
+from ..auth.utils import PermissionChecker 
 from ..config import (
     AUTH0_AUDIENCE, DATA_SOURCES_CONFIG, SUPPORTED_POLLING_SERVICES, POLLING_INTERVALS
 )
-from ..app import mongo_manager_instance as mongo_manager # Global instance
-from ..app import auth_helper # Global instance
-from ..app import main_websocket_manager # Global instance
+from ..app import mongo_manager_instance as mongo_manager 
+from ..app import auth_helper 
+from ..app import main_websocket_manager # Ensure this path is correct if ws_manager.py was renamed to websocket.py
 
-# Utilities for data sources, previously in main/utils.py
+# Router instance for miscellaneous routes
+router = APIRouter(
+    prefix="/api", # Using /api prefix as it seems common for such routes
+    tags=["Miscellaneous API"]
+)
+
+
+# --- Utilities for data sources (moved here from original api/routes.py for clarity) ---
 async def get_data_sources_config_for_user_api(user_id: str, db_manager: MongoManager):
     user_sources_config = []
     for source_name in SUPPORTED_POLLING_SERVICES:
@@ -50,7 +60,7 @@ async def toggle_data_source_for_user_api(user_id: str, source_name: str, enable
         update_payload["is_currently_polling"] = False 
         update_payload["error_backoff_until_timestamp"] = None
         update_payload["consecutive_failure_count"] = 0
-        update_payload["current_polling_tier"] = "user_enabled" # Example tier
+        update_payload["current_polling_tier"] = "user_enabled" 
         update_payload["current_polling_interval_seconds"] = POLLING_INTERVALS["ACTIVE_USER_SECONDS"]
     
     success = await db_manager.update_polling_state(user_id, source_name, update_payload)
@@ -59,11 +69,6 @@ async def toggle_data_source_for_user_api(user_id: str, source_name: str, enable
     
     print(f"[{datetime.datetime.now()}] [API_Utils] Polling state for {user_id}/{source_name} set to enabled={enable}")
     return success
-
-
-router = APIRouter(
-    tags=["Miscellaneous API"]
-)
 
 # === Onboarding Routes ===
 @router.post("/onboarding", status_code=status.HTTP_200_OK, summary="Save Onboarding Data")
@@ -104,10 +109,9 @@ async def get_user_data_endpoint(user_id: str = Depends(auth_helper.get_current_
     profile_doc = await mongo_manager.get_user_profile(user_id)
     if profile_doc and "userData" in profile_doc:
         return JSONResponse(content={"data": profile_doc["userData"], "status": 200})
-    # If no profile or no userData, create a basic entry
     print(f"[{datetime.datetime.now()}] [GET_USER_DATA] No profile/userData for {user_id}. Creating basic entry.")
-    await mongo_manager.update_user_profile(user_id, {"userData": {}}) # Upsert with empty userData
-    return JSONResponse(content={"data": {}, "status": 200}) # Return empty data
+    await mongo_manager.update_user_profile(user_id, {"userData": {}}) 
+    return JSONResponse(content={"data": {}, "status": 200}) 
 
 # === Settings Routes (Data Sources) ===
 @router.post("/get_data_sources", summary="Get Data Sources Configuration")
@@ -145,7 +149,6 @@ async def notifications_websocket_endpoint(websocket: WebSocket):
             message_payload = json.loads(data)
             if message_payload.get("type") == "ping":
                 await websocket.send_json({"type": "pong"})
-            # Add more message handling here if needed
     except WebSocketDisconnect:
         print(f"[{datetime.datetime.now()}] [NOTIF_WS] Client disconnected (User: {authenticated_user_id or 'unknown'}).")
     except Exception as e:

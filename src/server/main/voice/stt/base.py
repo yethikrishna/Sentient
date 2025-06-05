@@ -1,4 +1,4 @@
-# src/server/main/voice/stt_services/base_stt.py
+# src/server/main/voice/stt/base.py
 from abc import ABC, abstractmethod
 
 class BaseSTT(ABC):

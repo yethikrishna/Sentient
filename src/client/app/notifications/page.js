@@ -1,3 +1,4 @@
+// src/client/app/notifications/page.js
 "use client"
 import React, { useState, useEffect, useCallback } from "react"
 import { IconLoader, IconBell, IconAlertCircle } from "@tabler/icons-react"
@@ -17,44 +18,36 @@ const Notifications = () => {
 		setIsLoading(true)
 		setError(null) // Clear previous errors
 		try {
-			const response = await window.electron?.invoke("get-notifications")
+			const response = await fetch("/api/notifications")
 
-			if (!response) {
-				// Handle case where electron API is not available
-				const errorMsg = "Notification service not available."
-				toast.error(errorMsg)
-				setNotifications([])
-				setError(errorMsg)
-			} else if (
-				response.status === 200 &&
-				Array.isArray(response.notifications)
-			) {
-				// Sort notifications by timestamp, newest first
-				const sortedNotifications = response.notifications.sort(
-					(a, b) => {
-						try {
-							return (
-								new Date(b.timestamp).getTime() -
-								new Date(a.timestamp).getTime()
-							)
-						} catch {
-							return 0
-						} // Keep order if dates invalid
-					}
+			if (!response.ok) {
+				const errorData = await response.json()
+				throw new Error(
+					errorData.error ||
+						`Server responded with ${response.status}`
 				)
+			}
+
+			const data = await response.json()
+			if (Array.isArray(data.notifications)) {
+				// Sort notifications by timestamp, newest first
+				const sortedNotifications = data.notifications.sort((a, b) => {
+					try {
+						return (
+							new Date(b.timestamp).getTime() -
+							new Date(a.timestamp).getTime()
+						)
+					} catch {
+						return 0
+					} // Keep order if dates invalid
+				})
 				setNotifications(sortedNotifications)
 				console.log(
 					"Notifications fetched:",
 					sortedNotifications.length
 				)
 			} else {
-				// Handle backend errors or unexpected response structure
-				const errorMsg =
-					response?.error || "Unknown error fetching notifications"
-				console.error("Error fetching notifications:", errorMsg)
-				toast.error(errorMsg)
-				setNotifications([])
-				setError(errorMsg)
+				throw new Error("Invalid notification data format")
 			}
 		} catch (error) {
 			// Handle network or other exceptions during fetch
@@ -66,14 +59,17 @@ const Notifications = () => {
 		} finally {
 			setIsLoading(false) // Always set loading to false after fetch attempt
 		}
-		// MODIFIED: Removed isLoading from dependency array
-	}, []) // useCallback dependency array is now empty
+	}, [])
 
-	// Function to fetch user details (remains the same)
+	// Function to fetch user details
 	const fetchUserDetails = async () => {
 		try {
-			const response = await window.electron?.invoke("get-profile")
-			setUserDetails(response || {})
+			const response = await fetch("/api/user/profile")
+			if (!response.ok) {
+				throw new Error("Failed to fetch user profile")
+			}
+			const data = await response.json()
+			setUserDetails(data || {})
 		} catch (error) {
 			toast.error("Error fetching user details for sidebar.")
 			console.error("Error fetching user details for sidebar:", error)
@@ -89,7 +85,7 @@ const Notifications = () => {
 		return () => clearInterval(intervalId) // Cleanup interval on unmount
 	}, [fetchNotifications]) // Dependency array correctly contains fetchNotifications
 
-	// Helper function to format timestamp (remains the same)
+	// Helper function to format timestamp
 	const formatTimestamp = (timestamp) => {
 		if (!timestamp) return "No timestamp"
 		try {

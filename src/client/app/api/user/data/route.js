@@ -1,0 +1,46 @@
+// src/client/app/api/user/data/route.js
+import { NextResponse } from "next/server"
+import { getSession, getBackendAuthHeader } from "@/lib/auth"
+
+export async function GET() {
+	const session = await getSession()
+	if (!session?.user?.sub) {
+		return NextResponse.json(
+			{ message: "Not authenticated" },
+			{ status: 401 }
+		)
+	}
+
+	const authHeader = await getBackendAuthHeader()
+	if (!authHeader) {
+		return NextResponse.json(
+			{ message: "Could not create auth header" },
+			{ status: 500 }
+		)
+	}
+
+	try {
+		const response = await fetch(
+			`${process.env.APP_SERVER_URL}/get-user-data`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json", ...authHeader }
+			}
+		)
+
+		const data = await response.json()
+		if (!response.ok) {
+			throw new Error(
+				data.message || "Failed to fetch user data from backend"
+			)
+		}
+
+		return NextResponse.json(data)
+	} catch (error) {
+		console.error("API Error in /user/data:", error)
+		return NextResponse.json(
+			{ message: "Internal Server Error", error: error.message },
+			{ status: 500 }
+		)
+	}
+}

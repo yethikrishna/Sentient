@@ -1,11 +1,6 @@
+// src/client/app/chat/page.js
 "use client"
-import React, {
-	useState,
-	useEffect,
-	useRef,
-	useCallback
-	// No longer need forwardRef here
-} from "react"
+import React, { useState, useEffect, useRef, useCallback } from "react"
 import ChatBubble from "@components/ChatBubble"
 import ToolResultBubble from "@components/ToolResultBubble"
 import Sidebar from "@components/Sidebar"
@@ -16,38 +11,30 @@ import {
 	IconLoader,
 	IconPhone,
 	IconPhoneOff
-	// REMOVED: Mute/unmute icons are no longer needed here
-	// IconMicrophone,
-	// IconMicrophoneOff,
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
-
-// Import the DEFAULT export (forwardRef-wrapped component)
 import BackgroundCircleProvider from "@components/voice-test/background-circle-provider"
 
 const Chat = () => {
 	// --- State Variables ---
 	const [messages, setMessages] = useState([])
 	const [input, setInput] = useState("")
-	const [userDetails, setUserDetails] = useState("")
+	const [userDetails, setUserDetails] = useState(null)
 	const [thinking, setThinking] = useState(false)
-	const [serverStatus, setServerStatus] = useState(true)
 	const [isSidebarVisible, setSidebarVisible] = useState(false)
-	const [currentModel, setCurrentModel] = useState("")
-	const [chatMode, setChatMode] = useState("voice")
+	const [chatMode, setChatMode] = useState("text")
 	const [isLoading, setIsLoading] = useState(() => chatMode === "text")
-	const [connectionStatus, setConnectionStatus] = useState("disconnected") // "disconnected", "connecting", "connected"
+	const [connectionStatus, setConnectionStatus] = useState("disconnected")
 	const [audioInputDevices, setAudioInputDevices] = useState([])
 	const [selectedAudioInputDevice, setSelectedAudioInputDevice] = useState("")
 
 	// --- Refs ---
 	const textareaRef = useRef(null)
 	const chatEndRef = useRef(null)
-	const eventListenersAdded = useRef(false)
 	const backgroundCircleProviderRef = useRef(null)
 	const ringtoneAudioRef = useRef(null)
 	const connectedAudioRef = useRef(null)
-	// REMOVED: timerIntervalRef
+	const abortControllerRef = useRef(null)
 
 	// --- Handlers ---
 	const handleInputChange = (e) => {
@@ -86,16 +73,11 @@ const Chat = () => {
 						console.error("Error playing connected sound:", e)
 					)
 			}
-			// REMOVED: Timer starting logic
-		} else {
-			// REMOVED: Timer clearing logic
-			// REMOVED: Reset duration logic
 		}
 	}, [])
 
 	// --- Voice Control Handlers ---
 	const handleStartVoice = async () => {
-		// MODIFIED: No longer needs to pass deviceId to connect
 		if (
 			connectionStatus !== "disconnected" ||
 			!backgroundCircleProviderRef.current
@@ -111,7 +93,6 @@ const Chat = () => {
 				.catch((e) => console.error("Error playing ringtone:", e))
 		}
 		try {
-			// Call connect without arguments
 			await backgroundCircleProviderRef.current?.connect()
 		} catch (error) {
 			console.error("ChatPage: Error starting voice connection:", error)
@@ -132,37 +113,34 @@ const Chat = () => {
 		backgroundCircleProviderRef.current?.disconnect()
 	}
 
-	// REMOVED: handleToggleMute handler
-
-	// MODIFIED: Device change handler - only updates state
 	const handleDeviceChange = (event) => {
 		const deviceId = event.target.value
 		console.log("ChatPage: Selected audio input device changed:", deviceId)
 		setSelectedAudioInputDevice(deviceId)
-		// Inform user that a reconnect is needed for the change to take effect
 		toast.success(
 			"Microphone selection changed. Please restart the call to use the new device.",
 			{ duration: 4000 }
 		)
-		// REMOVED: Automatic reconnect logic
 	}
 
-	// --- Data Fetching and IPC ---
+	// --- Data Fetching and API Calls ---
 	const fetchChatHistory = async () => {
 		try {
-			const response = await window.electron?.invoke("fetch-chat-history")
-			if (response?.status === 200) {
+			const response = await fetch("/api/chat/history")
+			if (response.ok) {
+				const data = await response.json()
 				console.log(
 					"fetchChatHistory: Received history",
-					response.messages?.length
+					data.messages?.length
 				)
-				setMessages(response.messages || [])
+				setMessages(data.messages || [])
 			} else {
+				const errorData = await response.json()
 				console.error(
-					"fetchChatHistory: Error status from IPC:",
-					response?.status
+					"fetchChatHistory: Error from API:",
+					errorData.message
 				)
-				toast.error("Error fetching chat history.")
+				toast.error(`Error fetching chat history: ${errorData.message}`)
 				setMessages([])
 			}
 		} catch (error) {
@@ -179,97 +157,142 @@ const Chat = () => {
 
 	const fetchUserDetails = async () => {
 		try {
-			const response = await window.electron?.invoke("get-profile")
-			setUserDetails(response)
+			const response = await fetch("/api/user/profile")
+			if (!response.ok) {
+				throw new Error("Failed to fetch user details")
+			}
+			const data = await response.json()
+			setUserDetails(data)
 		} catch (error) {
 			toast.error("Error fetching user details.")
-		}
-	}
-
-	const fetchCurrentModel = async () => {
-		setCurrentModel("llama3.2:3b")
-	}
-
-	const setupIpcListeners = () => {
-		if (!eventListenersAdded.current && window.electron) {
-			const handleMessageStream = ({ messageId, token }) => {
-				setMessages((prev) => {
-					const messageIndex = prev.findIndex(
-						(msg) => msg.id === messageId
-					)
-					if (messageIndex === -1) {
-						return [
-							...prev,
-							{
-								id: messageId,
-								message: token,
-								isUser: false,
-								memoryUsed: false,
-								agentsUsed: false,
-								internetUsed: false,
-								type: "text"
-							}
-						]
-					}
-					return prev.map((msg, index) =>
-						index === messageIndex
-							? { ...msg, message: msg.message + token }
-							: msg
-					)
-				})
-			}
-			window.electron.onMessageStream(handleMessageStream)
-			eventListenersAdded.current = true
 		}
 	}
 
 	const sendMessage = async () => {
 		if (input.trim() === "" || chatMode !== "text") return
 
-		const newMessage = {
+		const newUserMessage = {
 			message: input,
 			isUser: true,
 			id: Date.now(),
 			type: "text"
 		}
-		setMessages((prev) => [...prev, newMessage])
+		setMessages((prev) => [...prev, newUserMessage])
+		const currentInput = input
 		setInput("")
 		if (textareaRef.current) {
 			textareaRef.current.style.height = "auto"
 		}
 		setThinking(true)
-		setupIpcListeners()
+
+		abortControllerRef.current = new AbortController()
 
 		try {
-			const response = await window.electron?.invoke("send-message", {
-				input: newMessage.message
+			const response = await fetch("/api/chat/message", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json"
+				},
+				body: JSON.stringify({ input: currentInput }),
+				signal: abortControllerRef.current.signal
 			})
-			if (response.status === 200) {
-				console.log(
-					"Message send invoked, waiting for stream/completion."
+
+			if (!response.ok || !response.body) {
+				const errorData = await response.json()
+				throw new Error(
+					errorData.message || "Failed to get streaming response"
 				)
-			} else {
-				toast.error("Failed to send message via IPC.")
-				setThinking(false)
+			}
+			setThinking(false)
+
+			const reader = response.body.getReader()
+			const decoder = new TextDecoder()
+			let assistantMessageId = null
+
+			// eslint-disable-next-line no-constant-condition
+			while (true) {
+				const { value, done } = await reader.read()
+				if (done) break
+
+				const chunk = decoder.decode(value)
+				// Assuming NDJSON stream format from backend
+				const lines = chunk
+					.split("\n")
+					.filter((line) => line.trim() !== "")
+
+				for (const line of lines) {
+					try {
+						// Each line is a JSON object
+						const parsed = JSON.parse(line)
+
+						if (
+							parsed.type === "assistantStream" ||
+							parsed.type === "assistantMessage"
+						) {
+							const token = parsed.token || parsed.message || ""
+							if (!assistantMessageId) {
+								assistantMessageId =
+									parsed.messageId ||
+									`assistant-${Date.now()}`
+							}
+
+							setMessages((prev) => {
+								const existingMsgIndex = prev.findIndex(
+									(msg) => msg.id === assistantMessageId
+								)
+								if (existingMsgIndex !== -1) {
+									const updatedMessages = [...prev]
+									updatedMessages[existingMsgIndex].message +=
+										token
+									return updatedMessages
+								} else {
+									return [
+										...prev,
+										{
+											id: assistantMessageId,
+											message: token,
+											isUser: false,
+											type: "text"
+										}
+									]
+								}
+							})
+						}
+					} catch (e) {
+						console.error(
+							"Error parsing stream data:",
+							e,
+							"Line:",
+							line
+						)
+					}
+				}
 			}
 		} catch (error) {
-			toast.error("Error sending message.")
+			if (error.name === "AbortError") {
+				console.log("Fetch aborted by user.")
+			} else {
+				toast.error(`Error sending message: ${error.message}`)
+				console.error("Error sending message:", error)
+			}
 			setThinking(false)
 		} finally {
-			setThinking(false)
-			fetchChatHistory() // Fetch history after sending
+			await fetchChatHistory()
 		}
 	}
 
 	const clearChatHistory = async () => {
 		try {
-			const response = await window.electron?.invoke("clear-chat-history")
-			if (response.status === 200) {
+			const response = await fetch("/api/chat/clear", { method: "POST" })
+			if (response.ok) {
 				setMessages([])
 				if (chatMode === "text") setInput("")
 				toast.success("Chat history cleared.")
 			} else {
-				toast.error("Failed to clear chat history via IPC.")
+				const errorData = await response.json()
+				toast.error(
+					`Failed to clear chat history: ${errorData.message}`
+				)
 			}
 		} catch (error) {
 			toast.error("Error clearing chat history.")
@@ -277,128 +300,75 @@ const Chat = () => {
 	}
 
 	// --- Effects ---
-	// Initial setup effect
 	useEffect(() => {
-		console.log("ChatPage: Initial Mount Effect - chatMode:", chatMode)
 		fetchUserDetails()
-		fetchCurrentModel()
 
-		// ADDED: Fetch audio input devices on mount directly using navigator
 		const getDevices = async () => {
 			try {
 				if (
 					!navigator.mediaDevices ||
 					!navigator.mediaDevices.enumerateDevices
 				) {
-					console.warn("ChatPage: enumerateDevices() not supported.")
-					setAudioInputDevices([])
+					console.warn("enumerateDevices() not supported.")
 					return
 				}
+				await navigator.mediaDevices.getUserMedia({
+					audio: true,
+					video: false
+				})
 				const devices = await navigator.mediaDevices.enumerateDevices()
 				const audioInputDevices = devices.filter(
 					(device) => device.kind === "audioinput"
 				)
-
 				if (audioInputDevices.length > 0) {
-					console.log(
-						"ChatPage: Fetched audio devices:",
-						audioInputDevices
-					)
 					setAudioInputDevices(
 						audioInputDevices.map((d) => ({
-							// Store only needed info
 							deviceId: d.deviceId,
 							label:
 								d.label ||
 								`Microphone ${audioInputDevices.indexOf(d) + 1}`
 						}))
 					)
-					// Set default selected device only if not already set
 					if (!selectedAudioInputDevice) {
-						const defaultDevice =
-							audioInputDevices.find(
-								(d) => d.deviceId === "default"
-							) || audioInputDevices[0]
-						if (defaultDevice) {
-							setSelectedAudioInputDevice(defaultDevice.deviceId)
-							console.log(
-								"ChatPage: Set default audio input device:",
-								defaultDevice.deviceId
-							)
-						}
+						setSelectedAudioInputDevice(
+							audioInputDevices[0].deviceId
+						)
 					}
-				} else {
-					console.log("ChatPage: No audio input devices found.")
-					setAudioInputDevices([])
-					setSelectedAudioInputDevice("")
 				}
 			} catch (error) {
-				console.error("ChatPage: Error fetching audio devices:", error)
-				toast.error("Could not get microphone list.")
+				toast.error(
+					"Could not get microphone list. Please grant permission."
+				)
 			}
 		}
 		getDevices()
 
 		if (chatMode === "text") {
-			console.log(
-				"ChatPage: Initial Mount - Fetching history (text mode)."
-			)
 			fetchChatHistory()
 		} else {
-			console.log(
-				"ChatPage: Initial Mount - Setting isLoading false (voice mode)."
-			)
-			setIsLoading(false) // Ensure loader is off if starting in voice mode
+			setIsLoading(false)
 		}
-		setupIpcListeners()
 
-		// Cleanup
 		return () => {
-			console.log("ChatPage: Unmount Cleanup")
-			eventListenersAdded.current = false
-			// REMOVED: Timer cleanup
+			if (abortControllerRef.current) {
+				abortControllerRef.current.abort()
+			}
 			if (
 				backgroundCircleProviderRef.current &&
 				connectionStatus !== "disconnected"
 			) {
-				console.log("ChatPage: Disconnecting voice on unmount")
 				backgroundCircleProviderRef.current.disconnect()
-			}
-			if (ringtoneAudioRef.current) {
-				ringtoneAudioRef.current.pause()
-				ringtoneAudioRef.current.currentTime = 0
-			}
-			if (connectedAudioRef.current) {
-				connectedAudioRef.current.pause()
-				connectedAudioRef.current.currentTime = 0
 			}
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [])
 
-	// Effect for scrolling and fetching history on mode switch
 	useEffect(() => {
-		console.log(
-			"ChatPage: Mode/Messages Effect - chatMode:",
-			chatMode,
-			"isLoading:",
-			isLoading
-		)
-		if (chatMode === "text") {
-			if (chatEndRef.current) {
-				chatEndRef.current.scrollIntoView({ behavior: "smooth" })
-			}
-			// Fetch logic
-			if (!isLoading) {
-				console.log(
-					"ChatPage: Switched to text mode, fetching history."
-				)
-				fetchChatHistory()
-			}
+		if (chatMode === "text" && chatEndRef.current) {
+			chatEndRef.current.scrollIntoView({ behavior: "smooth" })
 		}
-	}, [chatMode, isLoading]) // isLoading dependency ensures fetch only when not already loading
+	}, [messages, chatMode])
 
-	// Effect for textarea resize
 	useEffect(() => {
 		if (chatMode === "text" && textareaRef.current) {
 			handleInputChange({ target: textareaRef.current })
@@ -406,7 +376,7 @@ const Chat = () => {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [chatMode, input])
 
-	// --- Component Return (JSX) ---
+	// --- JSX ---
 	return (
 		<div className="h-screen bg-matteblack relative overflow-hidden dark">
 			<Sidebar
@@ -414,51 +384,24 @@ const Chat = () => {
 				isSidebarVisible={isSidebarVisible}
 				setSidebarVisible={setSidebarVisible}
 			/>
-
 			<TopControlBar
 				chatMode={chatMode}
 				onToggleMode={handleToggleMode}
 			/>
-
-			{/* Main Content Area */}
 			<div className="absolute inset-0 flex flex-col justify-center items-center h-full w-full bg-matteblack z-10 pt-20">
-				{/* Top Right Buttons */}
-				<div className="absolute top-5 right-5 z-20 flex gap-3">
-					<button
-						onClick={() =>
-							toast.error(
-								"Server restart from client is deprecated."
-							)
-						}
-						className="p-3 hover-button rounded-full text-white cursor-pointer"
-						title="Restart Server"
-					>
-						{!serverStatus ? (
-							<IconLoader className="w-4 h-4 text-white animate-spin" />
-						) : (
-							<IconRefresh className="w-4 h-4 text-white" />
-						)}
-					</button>
-				</div>
-
-				{/* Conditional Content Container */}
 				<div className="w-full h-full flex flex-col items-center justify-center p-5 text-white">
-					{isLoading ? ( // Simple loading check
+					{isLoading ? (
 						<div className="flex justify-center items-center h-full w-full">
 							<IconLoader className="w-10 h-10 text-white animate-spin" />
 						</div>
 					) : chatMode === "text" ? (
-						// --- Text Chat UI ---
 						<div className="w-full max-w-4xl h-full flex flex-col">
-							{/* Message Display */}
 							<div className="grow overflow-y-auto p-4 rounded-xl no-scrollbar mb-4 flex flex-col gap-4">
 								{messages.length === 0 && !thinking ? (
 									<div className="font-Poppins h-full flex flex-col justify-center items-center text-gray-400">
-										{" "}
 										<p className="text-3xl text-white mb-4">
-											{" "}
-											Send a message to start{" "}
-										</p>{" "}
+											Send a message to start
+										</p>
 									</div>
 								) : (
 									messages.map((msg) => (
@@ -466,7 +409,6 @@ const Chat = () => {
 											key={msg.id || Math.random()}
 											className={`flex ${msg.isUser ? "justify-end" : "justify-start"} w-full`}
 										>
-											{" "}
 											{msg.type === "tool_result" ? (
 												<ToolResultBubble
 													task={msg.task}
@@ -487,29 +429,28 @@ const Chat = () => {
 														msg.internetUsed
 													}
 												/>
-											)}{" "}
+											)}
 										</div>
 									))
 								)}
 								{thinking && (
 									<div className="flex justify-start w-full mt-2">
-										{" "}
 										<div className="flex items-center gap-2 p-3 bg-gray-700 rounded-lg">
-											{" "}
-											<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-75"></div>{" "}
-											<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-150"></div>{" "}
-											<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-300"></div>{" "}
-										</div>{" "}
+											<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-75"></div>
+											<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-150"></div>
+											<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-300"></div>
+										</div>
 									</div>
 								)}
 								<div ref={chatEndRef} />
 							</div>
-							{/* Input Area */}
 							<div className="w-full flex flex-col items-center">
 								<p className="text-gray-400 font-Poppins text-xs mb-2">
 									Check out our{" "}
 									<a
 										href="https://sentient-2.gitbook.io/docs"
+										target="_blank"
+										rel="noopener noreferrer"
 										className="text-lightblue hover:text-lightblue/80"
 									>
 										docs
@@ -547,38 +488,28 @@ const Chat = () => {
 											className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-white disabled:opacity-50 disabled:cursor-not-allowed"
 											title="Send Message"
 										>
-											{" "}
-											<IconSend className="w-4 h-4 text-white" />{" "}
+											<IconSend className="w-4 h-4 text-white" />
 										</button>
 										<button
 											onClick={clearChatHistory}
 											className="p-2 rounded-full hover-button scale-100 cursor-pointer hover:scale-110 text-white"
 											title="Clear Chat History"
 										>
-											{" "}
-											<IconRefresh className="w-4 h-4 text-white" />{" "}
+											<IconRefresh className="w-4 h-4 text-white" />
 										</button>
 									</div>
 								</div>
 							</div>
 						</div>
 					) : (
-						// --- Voice Chat UI ---
 						<div className="flex flex-col items-center justify-center h-full w-full relative">
-							{/* Background Blobs */}
 							<BackgroundCircleProvider
 								ref={backgroundCircleProviderRef}
 								onStatusChange={handleStatusChange}
 								connectionStatusProp={connectionStatus}
 							/>
-
 							<div className="absolute inset-0 flex flex-col items-center justify-center z-20 pointer-events-none">
-								{" "}
-								{/* Maintained for positioning */}
 								<div className="flex flex-col items-center pointer-events-auto">
-									{" "}
-									{/* Removed background box for cleaner look */}
-									{/* Disconnected State: Show Start Button */}
 									{connectionStatus === "disconnected" && (
 										<button
 											onClick={handleStartVoice}
@@ -588,7 +519,6 @@ const Chat = () => {
 											<IconPhone size={32} />
 										</button>
 									)}
-									{/* Connecting State: Show Loader */}
 									{connectionStatus === "connecting" && (
 										<div className="p-4 text-yellow-400">
 											<IconLoader
@@ -597,7 +527,6 @@ const Chat = () => {
 											/>
 										</div>
 									)}
-									{/* Connected State: Show Hang Up Button */}
 									{connectionStatus === "connected" && (
 										<button
 											onClick={handleStopVoice}
@@ -613,19 +542,17 @@ const Chat = () => {
 					)}
 				</div>
 			</div>
-			{/* Mic Selection Dropdown (Bottom Right) - Always visible when not loading */}
 			{!isLoading && (
 				<div className="absolute bottom-6 right-6 z-30">
 					<select
 						value={selectedAudioInputDevice}
 						onChange={handleDeviceChange}
 						className="bg-neutral-700/80 backdrop-blur-sm border border-neutral-600 text-white text-xs rounded px-3 py-2 focus:outline-none focus:border-lightblue appearance-none max-w-[200px] truncate shadow-lg"
-						title="Select Microphone (Restart call to apply)" // Updated tooltip
+						title="Select Microphone (Restart call to apply)"
 					>
 						{audioInputDevices.length === 0 ? (
 							<option value="">No mics found</option>
 						) : (
-							// Changed default message if no devices
 							audioInputDevices.map((device) => (
 								<option
 									key={device.deviceId}
@@ -638,7 +565,6 @@ const Chat = () => {
 					</select>
 				</div>
 			)}
-
 			<audio
 				ref={ringtoneAudioRef}
 				src="/audio/ringing.mp3"

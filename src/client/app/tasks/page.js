@@ -1,6 +1,6 @@
+// src/client/app/tasks/page.js
 "use client"
 
-// ADDED: Import necessary icons for status etc.
 import React, { useState, useEffect, useCallback } from "react"
 import {
 	IconLoader,
@@ -16,8 +16,8 @@ import {
 	IconMailQuestion,
 	IconAlertCircle,
 	IconFilter,
-	IconChevronUp, // For potential drop-up visual cue if needed
-	IconPlus // Using Plus icon for add task button again
+	IconChevronUp,
+	IconPlus
 } from "@tabler/icons-react"
 import Sidebar from "@components/Sidebar"
 import toast from "react-hot-toast"
@@ -25,7 +25,6 @@ import { Tooltip } from "react-tooltip"
 import "react-tooltip/dist/react-tooltip.css"
 import { cn } from "@utils/cn"
 
-// --- Task Status Mapping ---
 const statusMap = {
 	pending: {
 		icon: IconClock,
@@ -71,7 +70,6 @@ const statusMap = {
 	}
 }
 
-// --- Priority Mapping ---
 const priorityMap = {
 	0: { label: "High", color: "text-red-400" },
 	1: { label: "Medium", color: "text-yellow-400" },
@@ -100,15 +98,13 @@ const Tasks = () => {
 		}
 		setError(null)
 		try {
-			const response = await window.electron.invoke("fetch-tasks")
-			console.log("Raw tasks response:", response)
-			if (response.error) {
-				console.error("Error fetching tasks:", response.error)
-				setError(response.error)
-				setTasks([])
-			} else if (Array.isArray(response.tasks)) {
-				// Sort tasks
-				const sortedTasks = response.tasks.sort((a, b) => {
+			const response = await fetch("/api/tasks")
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(data.error || "Failed to fetch tasks")
+			}
+			if (Array.isArray(data.tasks)) {
+				const sortedTasks = data.tasks.sort((a, b) => {
 					const statusOrder = {
 						processing: 0,
 						approval_pending: 1,
@@ -138,9 +134,7 @@ const Tasks = () => {
 				setTasks(sortedTasks)
 				console.log("Tasks fetched and sorted:", sortedTasks.length)
 			} else {
-				console.error("Invalid tasks response format:", response)
-				setError("Failed to fetch tasks: Invalid response format")
-				setTasks([])
+				throw new Error("Invalid tasks response format")
 			}
 		} catch (err) {
 			console.error("Exception fetching tasks:", err)
@@ -154,8 +148,10 @@ const Tasks = () => {
 
 	const fetchUserDetails = async () => {
 		try {
-			const response = await window.electron?.invoke("get-profile")
-			setUserDetails(response || {})
+			const response = await fetch("/api/user/profile")
+			if (!response.ok) throw new Error("Failed to fetch user profile")
+			const data = await response.json()
+			setUserDetails(data || {})
 		} catch (error) {
 			toast.error("Error fetching user details for sidebar.")
 			console.error("Error fetching user details for sidebar:", error)
@@ -185,19 +181,22 @@ const Tasks = () => {
 				description: newTaskDescription,
 				priority: newTaskPriorityLevel
 			}
-			const response = await window.electron.invoke("add-task", taskData)
-			if (response.error) {
-				console.error("Error adding task via IPC:", response.error)
-				toast.error(`Failed to add task: ${response.error}`)
-			} else {
-				toast.success("Task added successfully!")
-				setNewTaskDescription("")
-				setNewTaskPriorityLevel(1)
-				await fetchTasksData()
+			const response = await fetch("/api/tasks/add", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(taskData)
+			})
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(data.error || "Failed to add task")
 			}
+			toast.success("Task added successfully!")
+			setNewTaskDescription("")
+			setNewTaskPriorityLevel(1)
+			await fetchTasksData()
 		} catch (error) {
 			console.error("Exception adding task:", error)
-			toast.error("Failed to add task: An unexpected error occurred.")
+			toast.error(`Failed to add task: ${error.message}`)
 		}
 	}
 
@@ -224,22 +223,25 @@ const Tasks = () => {
 			priority: editingTask.priority
 		})
 		try {
-			const response = await window.electron.invoke("update-task", {
-				taskId: editingTask.task_id,
-				description: editingTask.description,
-				priority: editingTask.priority
+			const response = await fetch("/api/tasks/update", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					taskId: editingTask.task_id,
+					description: editingTask.description,
+					priority: editingTask.priority
+				})
 			})
-			if (response.error) {
-				console.error("Error updating task via IPC:", response.error)
-				toast.error(`Failed to update task: ${response.error}`)
-			} else {
-				toast.success("Task updated successfully!")
-				setEditingTask(null)
-				await fetchTasksData()
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(data.error || "Failed to update task")
 			}
+			toast.success("Task updated successfully!")
+			setEditingTask(null)
+			await fetchTasksData()
 		} catch (error) {
 			console.error("Exception updating task:", error)
-			toast.error("Failed to update task: An unexpected error occurred.")
+			toast.error(`Failed to update task: ${error.message}`)
 		}
 	}
 
@@ -247,17 +249,20 @@ const Tasks = () => {
 		if (!taskId) return
 		console.log("Deleting task:", taskId)
 		try {
-			const response = await window.electron.invoke("delete-task", taskId)
-			if (response.error) {
-				console.error("Error deleting task via IPC:", response.error)
-				toast.error(`Failed to delete task: ${response.error}`)
-			} else {
-				toast.success("Task deleted successfully!")
-				await fetchTasksData()
+			const response = await fetch("/api/tasks/delete", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ taskId })
+			})
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(data.error || "Failed to delete task")
 			}
+			toast.success("Task deleted successfully!")
+			await fetchTasksData()
 		} catch (error) {
 			console.error("Exception deleting task:", error)
-			toast.error("Failed to delete task: An unexpected error occurred.")
+			toast.error(`Failed to delete task: ${error.message}`)
 		}
 	}
 
@@ -265,30 +270,20 @@ const Tasks = () => {
 		if (!taskId) return
 		console.log("Fetching approval data for task:", taskId)
 		try {
-			const response = await window.electron.invoke(
-				"get-task-approval-data",
-				taskId
+			const response = await fetch(
+				`/api/tasks/approval-data?taskId=${taskId}`
 			)
-			console.log("Approval data response:", response)
-			if (response.status === 200 && response.approval_data) {
-				setSelectedTask({
-					taskId,
-					approvalData: response.approval_data
-				})
-			} else {
-				console.error(
-					"Error fetching approval data:",
-					response.error || "Invalid response"
-				)
-				toast.error(
-					`Error fetching approval data: ${response.error || "No data found"}`
-				)
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(data.error || "Failed to fetch approval data")
 			}
+			setSelectedTask({
+				taskId,
+				approvalData: data.approval_data
+			})
 		} catch (error) {
 			console.error("Exception fetching approval data:", error)
-			toast.error(
-				"Error fetching approval data: An unexpected error occurred."
-			)
+			toast.error(`Error fetching approval data: ${error.message}`)
 		}
 	}
 
@@ -296,27 +291,21 @@ const Tasks = () => {
 		if (!taskId) return
 		console.log("Approving task:", taskId)
 		try {
-			const response = await window.electron.invoke(
-				"approve-task",
-				taskId
-			)
-			console.log("Approve task response:", response)
-			if (response.status === 200) {
-				toast.success("Task approved and completed!")
-				setSelectedTask(null)
-				await fetchTasksData()
-			} else {
-				console.error(
-					"Error approving task:",
-					response.error || "Invalid status"
-				)
-				toast.error(
-					`Error approving task: ${response.error || "Approval failed"}`
-				)
+			const response = await fetch("/api/tasks/approve", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ taskId })
+			})
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(data.error || "Approval failed")
 			}
+			toast.success("Task approved and completed!")
+			setSelectedTask(null)
+			await fetchTasksData()
 		} catch (error) {
 			console.error("Exception approving task:", error)
-			toast.error("Error approving task: An unexpected error occurred.")
+			toast.error(`Error approving task: ${error.message}`)
 		}
 	}
 
@@ -336,9 +325,8 @@ const Tasks = () => {
 		// Show loader only on initial load
 		return (
 			<div className="flex justify-center items-center h-screen bg-matteblack">
-				{" "}
-				<IconLoader className="w-10 h-10 animate-spin text-white" />{" "}
-				<span className="ml-2 text-white">Loading tasks...</span>{" "}
+				<IconLoader className="w-10 h-10 animate-spin text-white" />
+				<span className="ml-2 text-white">Loading tasks...</span>
 			</div>
 		)
 	}
@@ -346,19 +334,16 @@ const Tasks = () => {
 		// Show error only if there are no tasks to display
 		return (
 			<div className="flex flex-col justify-center items-center h-screen bg-matteblack text-red-500">
-				{" "}
-				<p>Error loading tasks: {error}</p>{" "}
+				<p>Error loading tasks: {error}</p>
 				<button
 					onClick={fetchTasksData}
 					className="mt-4 py-2 px-4 bg-lightblue text-white rounded hover:bg-blue-700"
 				>
 					Retry
-				</button>{" "}
+				</button>
 			</div>
 		)
 	}
-
-	console.log(filteredTasks)
 
 	// --- Main Render ---
 	return (
@@ -378,7 +363,7 @@ const Tasks = () => {
 							placeholder="Search tasks..."
 							value={searchTerm}
 							onChange={(e) => setSearchTerm(e.target.value)}
-							className="bg-transparent text-white focus:outline-none w-full flex-grow px-2 placeholder-gray-500 text-base rounded-md py-1" // Removed redundant border
+							className="bg-transparent text-white focus:outline-none w-full flex-grow px-2 placeholder-gray-500 text-base rounded-md py-1"
 						/>
 						<div className="relative flex-shrink-0">
 							<IconFilter className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
@@ -478,30 +463,27 @@ const Tasks = () => {
 												{task.status ===
 												"approval_pending" ? (
 													<button
-														onClick={async () =>
-															await handleViewApprovalData(
+														onClick={() =>
+															handleViewApprovalData(
 																task.task_id
 															)
 														}
 														className="hover:underline text-blue-400"
 													>
-														{" "}
-														{task.description}{" "}
+														{task.description}
 													</button>
 												) : (
 													task.description
 												)}
 											</p>
 											<p className="text-sm text-gray-400 mt-1">
-												{" "}
 												ID: {task.task_id} | Added:{" "}
 												{task.created_at
 													? new Date(
 															task.created_at
 														).toLocaleString()
-													: "N/A"}{" "}
+													: "N/A"}
 											</p>
-											{/* --- MODIFIED: Safely render result/error --- */}
 											{task.result != null &&
 												task.result !== "" && (
 													<p
@@ -542,7 +524,6 @@ const Tasks = () => {
 															: "[Error Details]"}
 													</p>
 												)}
-											{/* --- End Fix --- */}
 										</div>
 										{/* Actions */}
 										<div className="flex items-center gap-2 flex-shrink-0">
@@ -561,8 +542,7 @@ const Tasks = () => {
 												)}
 												title="Edit Task"
 											>
-												{" "}
-												<IconPencil className="h-5 w-5" />{" "}
+												<IconPencil className="h-5 w-5" />
 											</button>
 											<button
 												onClick={() =>
@@ -573,8 +553,7 @@ const Tasks = () => {
 												className="p-2 rounded-md text-red-400 hover:bg-neutral-700 transition-colors"
 												title="Delete Task"
 											>
-												{" "}
-												<IconTrash className="h-5 w-5" />{" "}
+												<IconTrash className="h-5 w-5" />
 											</button>
 										</div>
 									</div>
@@ -595,7 +574,7 @@ const Tasks = () => {
 								setNewTaskDescription(e.target.value)
 							}
 							rows={1}
-							className="flex-grow p-2.5 bg-transparent text-white text-base focus:outline-none resize-none placeholder-gray-500 min-h-[48px] max-h-[120px] rounded-md" // Removed border here as parent has one
+							className="flex-grow p-2.5 bg-transparent text-white text-base focus:outline-none resize-none placeholder-gray-500 min-h-[48px] max-h-[120px] rounded-md"
 						/>
 						{/* Priority Dropdown */}
 						<div className="relative flex-shrink-0">
@@ -638,8 +617,7 @@ const Tasks = () => {
 									htmlFor="edit-description"
 									className="block text-gray-300 text-sm font-medium mb-2"
 								>
-									{" "}
-									Description{" "}
+									Description
 								</label>
 								<input
 									type="text"
@@ -659,8 +637,7 @@ const Tasks = () => {
 									htmlFor="edit-priority"
 									className="block text-gray-300 text-sm font-medium mb-2"
 								>
-									{" "}
-									Priority{" "}
+									Priority
 								</label>
 								<select
 									id="edit-priority"
@@ -683,15 +660,13 @@ const Tasks = () => {
 									onClick={() => setEditingTask(null)}
 									className="py-2.5 px-5 rounded bg-neutral-600 hover:bg-neutral-500 text-white text-sm font-medium transition-colors"
 								>
-									{" "}
-									Cancel{" "}
+									Cancel
 								</button>
 								<button
 									onClick={handleUpdateTask}
 									className="py-2.5 px-5 rounded bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors"
 								>
-									{" "}
-									Save Changes{" "}
+									Save Changes
 								</button>
 							</div>
 						</div>
@@ -761,8 +736,7 @@ const Tasks = () => {
 									onClick={() => setSelectedTask(null)}
 									className="py-2.5 px-5 rounded bg-neutral-600 hover:bg-neutral-500 text-white text-sm font-medium transition-colors"
 								>
-									{" "}
-									Cancel{" "}
+									Cancel
 								</button>
 								<button
 									onClick={() =>
@@ -770,8 +744,7 @@ const Tasks = () => {
 									}
 									className="py-2.5 px-5 rounded bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors"
 								>
-									{" "}
-									Approve{" "}
+									Approve
 								</button>
 							</div>
 						</div>
@@ -815,9 +788,8 @@ const Tasks = () => {
 						)}
 					</div>
 				</div>
-			</div>{" "}
-			{/* End Main Content Area */}
-		</div> // End Page Container
+			</div>
+		</div>
 	)
 }
 

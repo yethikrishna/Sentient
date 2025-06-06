@@ -1,151 +1,97 @@
+// src/client/app/memory/page.js
 "use client"
 
 import React, { useEffect, useState, useCallback } from "react"
 import GraphVisualization from "@components/GraphViz"
 import Sidebar from "@components/Sidebar"
 import {
-	IconInfoCircle,
 	IconRefresh,
-	IconDatabase,
-	IconBrain,
 	IconTrash,
 	IconSettingsCog,
 	IconLoader
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import ProIcon from "@components/ProIcon"
-// REMOVED: ShiningButton import (can be re-added if desired for action buttons)
 import SQLiteMemoryDisplay from "@components/SQLiteMemoryDisplay"
-// ADDED: Import the new switcher component
 import MemoryTypeSwitcher from "@components/MemoryTypeSwitcher"
 
 const Memories = () => {
-	const [userDetails, setUserDetails] = useState({})
-	const [personalityType, setPersonalityType] = useState("")
+	const [userDetails, setUserDetails] = useState(null)
 	const [isSidebarVisible, setSidebarVisible] = useState(false)
-	// State for controlling customize input visibility
 	const [isCustomizeInputVisible, setCustomizeInputVisible] = useState(false)
 	const [newGraphInfo, setNewGraphInfo] = useState("")
 	const [graphData, setGraphData] = useState({ nodes: [], edges: [] })
 	const [addMemoriesLoading, setAddMemoriesLoading] = useState(false)
 	const [recreateGraphLoading, setRecreateGraphLoading] = useState(false)
 	const [pricing, setPricing] = useState("free")
-	const [credits, setCredits] = useState(null) // Initialize as null
+	const [credits, setCredits] = useState(0)
 	const [memoryDisplayType, setMemoryDisplayType] = useState("neo4j")
 	const [clearMemoriesLoading, setClearMemoriesLoading] = useState(false)
-	// State for graph loading indicator
 	const [graphLoading, setGraphLoading] = useState(false)
-	// ADDED: State for triggering refresh in SQLite view
 	const [refreshSqlite, setRefreshSqlite] = useState(0)
-	// ADDED: State for short-term memory categories
 	const [shortTermMemoryCategories, setShortTermMemoryCategories] = useState(
 		[]
 	)
 
-	// --- Fetching Data ---
+	// --- Data Fetching ---
 	const fetchUserDetails = async () => {
 		try {
-			const response = await window.electron?.invoke("get-profile")
-			setUserDetails(response)
+			const response = await fetch("/api/user/profile")
+			if (!response.ok) throw new Error("Failed to fetch user details")
+			setUserDetails(await response.json())
 		} catch (error) {
-			toast.error(`Error fetching user details: ${error}`)
-		}
-	}
-
-	const fetchPersonalityType = async () => {
-		try {
-			const response = await window.electron?.invoke("get-user-data")
-			if (response?.data?.personalityType) {
-				setPersonalityType(response.data.personalityType)
-			}
-		} catch (error) {
-			toast.error(`Error fetching personality type: ${error}`)
+			toast.error(`Error fetching user details: ${error.message}`)
 		}
 	}
 
 	const fetchPricingPlan = async () => {
 		try {
-			const response = await window.electron?.invoke("fetch-pricing-plan")
-			setPricing(response || "free")
+			const response = await fetch("/api/user/pricing")
+			if (!response.ok) throw new Error("Failed to fetch pricing plan")
+			const data = await response.json()
+			setPricing(data.pricing || "free")
+			setCredits(data.credits || 0)
 		} catch (error) {
-			toast.error(`Error fetching pricing plan: ${error}`)
-		}
-	}
-	const fetchProCredits = async () => {
-		try {
-			const response = await window.electron?.invoke("fetch-pro-credits")
-			setCredits(response || 0)
-		} catch (error) {
-			toast.error(`Error fetching pro credits: ${error}`)
+			toast.error(`Error fetching pricing plan: ${error.message}`)
 		}
 	}
 
 	const loadGraphData = useCallback(async () => {
-		// useCallback ensures stable function reference
-		console.log("Attempting to load graph data via IPC...")
 		setGraphLoading(true)
 		setGraphData({ nodes: [], edges: [] })
 		try {
-			const response = await window.electron?.invoke(
-				"fetch-long-term-memories"
-			)
-			if (response?.error) {
-				console.error(
-					"Error received from fetch-long-term-memories IPC:",
-					response.error
-				)
-				toast.error(`Error loading graph data: ${response.error}`)
-				setGraphData({ nodes: [], edges: [] })
-			} else if (response?.nodes && response?.edges) {
-				if (
-					Array.isArray(response.nodes) &&
-					Array.isArray(response.edges)
-				) {
-					console.log("Graph data loaded successfully via IPC.")
-					setGraphData({
-						nodes: response.nodes,
-						edges: response.edges
-					})
-				} else {
-					console.error(
-						"Invalid data format received from fetch-long-term-memories IPC:",
-						response
-					)
-					toast.error("Received invalid graph data format.")
-					setGraphData({ nodes: [], edges: [] })
-				}
+			const response = await fetch("/api/memory/long-term")
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(data.error || "Unknown API error")
+			}
+			if (data.nodes && data.edges) {
+				setGraphData({ nodes: data.nodes, edges: data.edges })
 			} else {
-				console.error(
-					"Unexpected response structure from fetch-long-term-memories IPC:",
-					response
-				)
-				toast.error("Failed to load graph data: Unexpected response.")
 				setGraphData({ nodes: [], edges: [] })
+				toast.error("Received invalid graph data format from API.")
 			}
 		} catch (error) {
-			console.error("Error invoking fetch-long-term-memories IPC:", error)
 			toast.error(`Error loading graph data: ${error.message}`)
 			setGraphData({ nodes: [], edges: [] })
 		} finally {
 			setGraphLoading(false)
 		}
-	}, []) // Empty dependency array as this function does not depend on component state/props to define itself
+	}, [])
 
 	// --- Action Handlers ---
 	const handleRecreateGraph = async () => {
 		setRecreateGraphLoading(true)
 		try {
-			const response = await window.electron?.invoke(
-				"reset-long-term-memories"
-			)
-			if (response?.status === 200) {
-				await loadGraphData()
-				toast.success("Graph recreated successfully!")
-			} else {
-				toast.error(
-					`Failed to recreate graph: ${response?.error || "Unknown error"}`
-				)
+			const response = await fetch("/api/memory/long-term/reset", {
+				method: "POST"
+			})
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(data.error || "Unknown API error")
 			}
+			await loadGraphData()
+			toast.success("Graph recreated successfully!")
 		} catch (error) {
 			toast.error(`Error recreating graph: ${error.message}`)
 		} finally {
@@ -160,19 +106,18 @@ const Memories = () => {
 		}
 		setAddMemoriesLoading(true)
 		try {
-			const result = await window.electron?.invoke(
-				"customize-long-term-memories",
-				{ newGraphInfo }
-			) // Pass object
-			if (result.status === 200) {
-				await loadGraphData()
-				setNewGraphInfo("")
-				toast.success("Graph customized successfully!")
-			} else {
-				toast.error(
-					`Failed to customize graph: ${result.error || "Unknown error"}`
-				)
+			const response = await fetch("/api/memory/long-term/customize", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ newGraphInfo })
+			})
+			const result = await response.json()
+			if (!response.ok) {
+				throw new Error(result.error || "Unknown API error")
 			}
+			await loadGraphData()
+			setNewGraphInfo("")
+			toast.success("Graph customized successfully!")
 		} catch (error) {
 			toast.error(`Error customizing graph: ${error.message}`)
 		} finally {
@@ -184,52 +129,34 @@ const Memories = () => {
 	const handleClearAllMemories = async () => {
 		setClearMemoriesLoading(true)
 		try {
-			const response = await window.electron.invoke(
-				"clear-all-short-term-memories",
-				{ user_id: userDetails?.sub || "default_user" }
-			) // Pass user_id if available
-			if (response.error) {
-				toast.error(`Failed to clear memories: ${response.error}`)
-			} else {
-				toast.success("All short-term memories cleared successfully")
-				setRefreshSqlite((prev) => prev + 1) // Increment to trigger refresh
-			} // Trigger refresh
+			const response = await fetch("/api/memory/short-term/clear", {
+				method: "POST"
+			})
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(data.error || "Unknown API error")
+			}
+			toast.success("All short-term memories cleared successfully")
+			setRefreshSqlite((prev) => prev + 1)
 		} catch (error) {
-			toast.error("Failed to clear memories")
+			toast.error(`Failed to clear memories: ${error.message}`)
 		} finally {
 			setClearMemoriesLoading(false)
 		}
 	}
 
-	// Descriptions for personality traits
-	const descriptions = {
-		E: "Extroverts are outgoing and gain energy from being around others.",
-		I: "Introverts are reserved and gain energy from spending time alone.",
-		S: "Sensors focus on facts and details, preferring practical approaches.",
-		N: "Intuitives look at the bigger picture and focus on abstract concepts.",
-		T: "Thinkers base decisions on logic and objectivity.",
-		F: "Feelers prioritize emotions and value empathy and harmony.",
-		J: "Judgers prefer structure, organization, and planning.",
-		P: "Perceivers are flexible and enjoy spontaneity and adaptability."
-	}
-
 	useEffect(() => {
 		fetchUserDetails()
-		fetchPersonalityType()
 		fetchPricingPlan()
-		fetchProCredits()
 
 		const fetchMemoryCategories = async () => {
 			try {
-				const response = await window.electron?.invoke(
-					"fetch-memory-categories"
-				)
-				if (response?.categories) {
-					setShortTermMemoryCategories(response.categories)
-				} else if (response?.error) {
-					toast.error(
-						`Error fetching memory categories: ${response.error}`
-					)
+				const response = await fetch("/api/memory/categories")
+				const data = await response.json()
+				if (!response.ok)
+					throw new Error(data.error || "Failed to fetch categories")
+				if (data.categories) {
+					setShortTermMemoryCategories(data.categories)
 				}
 			} catch (error) {
 				toast.error(
@@ -245,43 +172,28 @@ const Memories = () => {
 		}
 	}, [loadGraphData, memoryDisplayType])
 
+	// --- JSX ---
 	return (
-		// MODIFIED: Overall page structure uses flex
 		<div className="h-screen bg-matteblack flex relative overflow-hidden dark">
 			<Sidebar
 				userDetails={userDetails}
 				isSidebarVisible={isSidebarVisible}
 				setSidebarVisible={setSidebarVisible}
 			/>
-			{/* MODIFIED: Main content area with flex-grow */}
 			<div className="flex-grow flex flex-col h-full bg-matteblack text-white relative overflow-hidden p-6 gap-4">
-				{" "}
-				{/* Adjusted padding and gap */}
-				{/* Added gap */}
-				{/* --- Top Section: Heading and Switcher --- */}
 				<div className="flex justify-between items-center px-4 pt-2 flex-shrink-0">
-					{" "}
-					{/* Kept for layout consistency */}
 					<h1 className="font-Poppins text-white text-4xl font-light">
-						{" "}
-						Memories {/* Adjusted size */}
+						Memories
 					</h1>
-					{/* ADDED: Memory Type Switcher Component */}
 					<MemoryTypeSwitcher
 						currentType={memoryDisplayType}
 						onTypeChange={setMemoryDisplayType}
 					/>
-					{/* Personality display remains similar, maybe adjust position if needed */}
 				</div>
-				{/* --- Memory View Area --- */}
 				<div className="flex-grow w-full relative overflow-hidden rounded-lg bg-neutral-900/30 border border-neutral-800 shadow-inner">
-					{" "}
-					{/* Adjusted background/border */}
-					{/* Conditional Rendering based on memoryDisplayType */}
 					{memoryDisplayType === "neo4j" ? (
-						// --- Graph View ---
 						<>
-							{graphLoading && ( // Loading overlay for graph
+							{graphLoading && (
 								<div className="absolute inset-0 flex items-center justify-center bg-matteblack/80 z-10">
 									<IconLoader className="w-8 h-8 animate-spin text-lightblue" />
 									<span className="ml-3 text-lg">
@@ -289,28 +201,22 @@ const Memories = () => {
 									</span>
 								</div>
 							)}
-							{/* Ensure GraphVisualization fills container */}
 							<GraphVisualization
 								nodes={graphData.nodes}
 								edges={graphData.edges}
 							/>
 						</>
 					) : (
-						// --- Short Term Memory List View ---
 						<SQLiteMemoryDisplay
 							userDetails={userDetails}
-							refreshTrigger={refreshSqlite} // Pass trigger to re-fetch on clear
-							categories={shortTermMemoryCategories} // Pass categories to SQLiteMemoryDisplay
+							refreshTrigger={refreshSqlite}
+							categories={shortTermMemoryCategories}
 						/>
 					)}
 				</div>
-				{/* --- Action Buttons Area (Bottom Right) --- */}
 				<div className="absolute bottom-6 right-6 flex flex-col items-end space-y-3 z-40">
-					{" "}
-					{/* Button container styling */}
 					{memoryDisplayType === "neo4j" && (
 						<>
-							{/* Input section for adding/customizing graph */}
 							{isCustomizeInputVisible &&
 								(pricing !== "free" || credits > 0) && (
 									<div className="bg-neutral-800 p-4 rounded-lg shadow-lg w-96 space-y-3 border border-neutral-700">
@@ -322,7 +228,7 @@ const Memories = () => {
 												setNewGraphInfo(e.target.value)
 											}
 										/>
-										<button // Submit customize button
+										<button
 											className="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 transition text-sm font-medium disabled:opacity-50"
 											onClick={handleCustomizeGraph}
 											disabled={
@@ -338,11 +244,7 @@ const Memories = () => {
 										</button>
 									</div>
 								)}
-
-							{/* Button to toggle customize input */}
 							<div>
-								{" "}
-								{/* Wrap button for layout control */}
 								{pricing !== "free" || credits > 0 ? (
 									<button
 										onClick={() =>
@@ -350,7 +252,7 @@ const Memories = () => {
 												(prev) => !prev
 											)
 										}
-										className="flex items-center gap-2 py-2 px-4 rounded-full bg-darkblue hover:bg-lightblue text-white text-sm font-medium transition-colors shadow-md" // Themed button
+										className="flex items-center gap-2 py-2 px-4 rounded-full bg-darkblue hover:bg-lightblue text-white text-sm font-medium transition-colors shadow-md"
 									>
 										<IconSettingsCog className="w-5 h-5" />
 										{isCustomizeInputVisible
@@ -358,9 +260,8 @@ const Memories = () => {
 											: "Customize Memories"}
 									</button>
 								) : (
-									// Disabled state for free users without credits
 									<button
-										disabled // Disabled button for free users
+										disabled
 										className="relative flex items-center justify-center py-2 px-4 rounded-full font-medium text-white text-sm bg-neutral-700 cursor-not-allowed opacity-60 shadow-md"
 									>
 										<IconSettingsCog className="w-5 h-5 mr-2" />
@@ -371,11 +272,9 @@ const Memories = () => {
 									</button>
 								)}
 							</div>
-
-							{/* Recreate Graph Button */}
 							<button
 								className="flex items-center gap-2 py-2 px-4 rounded-full bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors shadow-md disabled:opacity-50"
-								onClick={handleRecreateGraph} // Recreate graph action
+								onClick={handleRecreateGraph}
 								disabled={recreateGraphLoading || graphLoading}
 							>
 								{recreateGraphLoading ? (
@@ -390,10 +289,9 @@ const Memories = () => {
 						</>
 					)}
 					{memoryDisplayType === "sqlite" && (
-						// Button to clear short-term memories
 						<button
 							className="flex items-center gap-2 py-2 px-4 rounded-full bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors shadow-md disabled:opacity-50"
-							onClick={handleClearAllMemories} // Clear short-term memories action
+							onClick={handleClearAllMemories}
 							disabled={clearMemoriesLoading}
 						>
 							{clearMemoriesLoading ? (
@@ -407,9 +305,8 @@ const Memories = () => {
 						</button>
 					)}
 				</div>
-			</div>{" "}
-			{/* End Main Content Area */}
-		</div> // End Page Container
+			</div>
+		</div>
 	)
 }
 

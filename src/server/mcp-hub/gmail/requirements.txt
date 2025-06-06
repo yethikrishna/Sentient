@@ -1,0 +1,20 @@
+# server/mcp-hub/gmail/requirements.txt
+
+# Core framework
+fastmcp
+
+# Google API
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+
+# Database
+motor         # Async MongoDB driver
+python-dotenv # For loading .env files
+
+# HTTP and async
+httpx
+
+# ML / NLP for email matching
+sentence-transformers
+torch

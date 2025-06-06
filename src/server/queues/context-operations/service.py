@@ -1,4 +1,4 @@
-# src/server/queues/context_operations/service.py
+# src/server/queues/context-operations/service.py
 import asyncio
 import datetime
 import traceback

@@ -1,7 +1,7 @@
 // src/client/app/layout.js
 import "@styles/globals.css" // Import global styles for the application
 import { Toaster } from "react-hot-toast" // Import Toaster component for displaying toast notifications
-import React, { useEffect } from "react" // Added useEffect
+import React from "react" // No longer need useEffect here
 
 /**
  * Metadata for the RootLayout component.
@@ -25,39 +25,8 @@ export const metadata = {
  * @returns {React.ReactNode} - The RootLayout component UI.
  */
 export default function RootLayout({ children }) {
-	useEffect(() => {
-		let intervalId
-		const sendHeartbeat = () => {
-			if (
-				document.hasFocus() &&
-				window.electron &&
-				typeof window.electron.sendUserActivityHeartbeat === "function"
-			) {
-				// console.log("Client: Sending activity heartbeat...") // Kept console.log for debugging
-				window.electron
-					.sendUserActivityHeartbeat()
-					.catch((err) =>
-						console.error("Heartbeat IPC error:", err)
-					)
-			}
-		}
-
-		// Send heartbeat immediately on mount (if focused) and then every 5 minutes
-		sendHeartbeat()
-		intervalId = setInterval(sendHeartbeat, 5 * 60 * 1000) // 5 minutes
-
-		// Also send on window focus
-		const handleFocus = () => {
-			// console.log("Client: Window focused, sending heartbeat.") // Kept console.log
-			sendHeartbeat()
-		}
-		window.addEventListener("focus", handleFocus)
-
-		return () => {
-			clearInterval(intervalId)
-			window.removeEventListener("focus", handleFocus)
-		}
-	}, []) // Empty dependency array means this runs once on mount and cleans up on unmount
+	// Removed the useEffect hook that was sending Electron-specific heartbeats.
+	// This functionality is not applicable in a web-only environment.
 
 	return (
 		<html lang="en" suppressHydrationWarning>

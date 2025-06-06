@@ -46,10 +46,15 @@ import {
 	fetchAndSetReferrerStatus,
 	getReferralCodeFromKeytar,
 	logout // Import the logout function
-} from "../utils/auth.js"
+} from "../utils/legacyAuth.js"
 // The import of getPrivateData from ../utils/api.js has been removed as it was causing a SyntaxError
 import { createAuthWindow } from "./auth.js" // Window creation functions
-import { getGoogleAuthURL, exchangeCodeForTokens, storeGoogleRefreshTokenOnServer, createGoogleAuthWindow } from "./googleAuth.js" // ADDED: Google Auth utils
+import {
+	getGoogleAuthURL,
+	exchangeCodeForTokens,
+	storeGoogleRefreshTokenOnServer,
+	createGoogleAuthWindow
+} from "./googleAuth.js" // ADDED: Google Auth utils
 
 // --- Constants and Path Configurations ---
 const isWindows = process.platform === "win32"
@@ -213,7 +218,6 @@ function connectWebSocket() {
 					// Optionally notify the UI about the authentication failure
 					return // Authentication message handled
 				}
-
 
 				// Process Other Message Types (e.g., Notifications)
 				let notificationTitle = ""
@@ -2139,7 +2143,7 @@ ipcMain.handle("get-notifications", async () => {
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL}/notifications/get`, // Updated route
 			{
-				method: "POST", 
+				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader }
 			}
 		)
@@ -2313,7 +2317,7 @@ ipcMain.handle("get-data-sources", async () => {
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL || "http://localhost:5000"}/get_data_sources`,
 			{
-				method: "POST", 
+				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
 					...(authHeader || {})
@@ -2617,7 +2621,9 @@ ipcMain.handle("force-sync-service", async (event, serviceName) => {
 
 // ADDED: IPC Handler for Google OAuth
 ipcMain.handle("start-google-auth", async (_event, serviceName) => {
-	console.log(`[IPC GOOGLE_AUTH] Start Google OAuth for service: ${serviceName}`)
+	console.log(
+		`[IPC GOOGLE_AUTH] Start Google OAuth for service: ${serviceName}`
+	)
 	try {
 		const authUrl = getGoogleAuthURL(serviceName)
 		const googleAuthWindow = createGoogleAuthWindow(authUrl)
@@ -2625,7 +2631,9 @@ ipcMain.handle("start-google-auth", async (_event, serviceName) => {
 		return new Promise((resolve, reject) => {
 			const { webRequest } = googleAuthWindow.webContents.session
 
-			const filter = { urls: [`${process.env.GOOGLE_OAUTH_REDIRECT_URI}*`] }
+			const filter = {
+				urls: [`${process.env.GOOGLE_OAUTH_REDIRECT_URI}*`]
+			}
 
 			webRequest.onBeforeRequest(filter, async ({ url: callbackUrl }) => {
 				googleAuthWindow.close() // Close the auth window
@@ -2635,32 +2643,63 @@ ipcMain.handle("start-google-auth", async (_event, serviceName) => {
 				const error = urlParts.searchParams.get("error")
 
 				if (error) {
-					console.error("[IPC GOOGLE_AUTH] OAuth error from Google:", error)
-					reject({ success: false, message: `Google OAuth Error: ${error}` })
+					console.error(
+						"[IPC GOOGLE_AUTH] OAuth error from Google:",
+						error
+					)
+					reject({
+						success: false,
+						message: `Google OAuth Error: ${error}`
+					})
 					return
 				}
 				if (!code) {
-					console.error("[IPC GOOGLE_AUTH] No authorization code in callback.")
-					reject({ success: false, message: "Google OAuth failed: No authorization code." })
+					console.error(
+						"[IPC GOOGLE_AUTH] No authorization code in callback."
+					)
+					reject({
+						success: false,
+						message: "Google OAuth failed: No authorization code."
+					})
 					return
 				}
 
 				try {
 					const tokens = await exchangeCodeForTokens(code)
 					if (!tokens.refresh_token) {
-						console.error("[IPC GOOGLE_AUTH] No refresh token received from Google.")
-						reject({ success: false, message: "Failed to get Google refresh token." })
+						console.error(
+							"[IPC GOOGLE_AUTH] No refresh token received from Google."
+						)
+						reject({
+							success: false,
+							message: "Failed to get Google refresh token."
+						})
 						return
 					}
 
 					// Store the refresh token on the server
-					await storeGoogleRefreshTokenOnServer(serviceName, tokens.refresh_token, getAuthHeader)
-					
-					console.log(`[IPC GOOGLE_AUTH] ${serviceName} connected and token stored.`)
-					resolve({ success: true, message: `${serviceName} connected successfully.` })
+					await storeGoogleRefreshTokenOnServer(
+						serviceName,
+						tokens.refresh_token,
+						getAuthHeader
+					)
+
+					console.log(
+						`[IPC GOOGLE_AUTH] ${serviceName} connected and token stored.`
+					)
+					resolve({
+						success: true,
+						message: `${serviceName} connected successfully.`
+					})
 				} catch (tokenError) {
-					console.error("[IPC GOOGLE_AUTH] Error processing Google tokens or storing on server:", tokenError)
-					reject({ success: false, message: `Error connecting ${serviceName}: ${tokenError.message}` })
+					console.error(
+						"[IPC GOOGLE_AUTH] Error processing Google tokens or storing on server:",
+						tokenError
+					)
+					reject({
+						success: false,
+						message: `Error connecting ${serviceName}: ${tokenError.message}`
+					})
 				}
 			})
 
@@ -2676,11 +2715,16 @@ ipcMain.handle("start-google-auth", async (_event, serviceName) => {
 			})
 		})
 	} catch (error) {
-		console.error("[IPC GOOGLE_AUTH] Error starting Google OAuth flow:", error)
-		return { success: false, message: `Error starting Google OAuth: ${error.message}` }
+		console.error(
+			"[IPC GOOGLE_AUTH] Error starting Google OAuth flow:",
+			error
+		)
+		return {
+			success: false,
+			message: `Error starting Google OAuth: ${error.message}`
+		}
 	}
 })
-
 
 // --- End of File ---
 console.log("Electron main process script execution completed initial setup.")

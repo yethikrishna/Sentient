@@ -18,22 +18,19 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 	const router = useRouter()
 	const [pricing, setPricing] = useState("free")
 
-	const toggleUserMenu = () => {
-		const userMenu = document.getElementById("user-menu")
-		if (userMenu) userMenu.classList.toggle("hidden")
-	}
-
 	const fetchPricingPlan = async () => {
 		try {
-			const response = await window.electron?.invoke("fetch-pricing-plan")
-			setPricing(response || "free")
+			const response = await fetch("/api/user/pricing")
+			if (!response.ok) throw new Error("Failed to fetch")
+			const data = await response.json()
+			setPricing(data.pricing || "free")
 		} catch (error) {
 			toast.error("Error fetching pricing plan.")
 		}
 	}
 
 	const logout = async () => {
-		await window.electron.logOut()
+		router.push("/api/auth/logout")
 	}
 
 	useEffect(() => {
@@ -44,10 +41,9 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 		<>
 			<div
 				id="sidebar"
-				className={`w-1/5 h-full flex flex-col bg-smokeblack overflow-y-auto transform transition-all duration-300 fixed top-0 left-0 ${isSidebarVisible ? "translate-x-0 opacity-100 z-40 pointer-events-auto" : "-translate-x-full opacity-0 z-0 pointer-events-none"}`} // z-index 40 when visible, 0 when hidden
-				onMouseLeave={() => setSidebarVisible(false)} // Hide sidebar on mouse leave
+				className={`w-1/5 h-full flex flex-col bg-smokeblack overflow-y-auto transform transition-all duration-300 fixed top-0 left-0 ${isSidebarVisible ? "translate-x-0 opacity-100 z-40 pointer-events-auto" : "-translate-x-full opacity-0 z-0 pointer-events-none"}`}
+				onMouseLeave={() => setSidebarVisible(false)}
 			>
-				{/* Sidebar Content (remains the same) */}
 				<div className="flex items-center px-6 py-6">
 					<div className="flex items-center justify-center rounded-xl w-12 h-12">
 						<img
@@ -138,22 +134,35 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 						<IconLogout className="w-5 h-5" />
 					</button>
 				</div>
-				<div
-					id="user-profile"
-					className="px-6 py-3 mt-auto border-t border-[#373a43]"
-				>
-					<div
-						className="flex items-center space-x-3"
-						onClick={toggleUserMenu}
-					>
-						{/* User profile display and menu toggle (content remains the same) */}
+				<div className="px-6 py-3 mt-auto border-t border-[#373a43]">
+					<div className="flex items-center space-x-3">
+						{userDetails?.picture ? (
+							<img
+								src={userDetails.picture}
+								alt="User"
+								className="w-10 h-10 rounded-full"
+							/>
+						) : (
+							<div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center">
+								<IconUser className="w-6 h-6 text-white" />
+							</div>
+						)}
+						<div>
+							<p className="text-white font-semibold">
+								{userDetails?.given_name || "User"}
+							</p>
+							<p className="text-sm text-gray-400">
+								{pricing.charAt(0).toUpperCase() +
+									pricing.slice(1)}{" "}
+								Plan
+							</p>
+						</div>
 					</div>
 				</div>
 			</div>
-			{/* Sidebar Trigger Area: Fixed position and higher z-index */}
 			<div
 				className="fixed top-0 left-0 bg-transparent w-[5%] h-full z-30 flex items-center justify-start"
-				onMouseEnter={() => setSidebarVisible(true)} // Keep mouse enter behavior
+				onMouseEnter={() => setSidebarVisible(true)}
 			>
 				<div className="ml-3">
 					<IconChevronRight className="text-white w-6 h-6 animate-pulse font-bold" />

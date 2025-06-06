@@ -1,9 +1,8 @@
 // src/client/app/settings/page.js
 "use client"
 
-import { useState, useEffect, useCallback } from "react" 
+import { useState, useEffect, useCallback } from "react"
 import Sidebar from "@components/Sidebar"
-import ProIcon from "@components/ProIcon"
 import toast from "react-hot-toast"
 import ModalDialog from "@components/ModalDialog"
 import {
@@ -11,19 +10,18 @@ import {
 	IconRocket,
 	IconMail,
 	IconCalendarEvent,
-	IconWorldSearch, 
+	IconWorldSearch,
 	IconLoader,
-	IconSettingsCog, 
-	IconDownload 
+	IconSettingsCog
 } from "@tabler/icons-react"
 import React from "react"
-import { Switch } from "@radix-ui/react-switch" 
-import { cn } from "@utils/cn" 
+import { Switch } from "@radix-ui/react-switch"
+import { cn } from "@utils/cn"
 
 const dataSourceIcons = {
 	gmail: IconMail,
-	gcalendar: IconCalendarEvent, // Example, not yet implemented for polling
-	internet_search: IconWorldSearch // Example, not yet implemented for polling
+	gcalendar: IconCalendarEvent,
+	internet_search: IconWorldSearch
 }
 
 const Settings = () => {
@@ -33,163 +31,128 @@ const Settings = () => {
 	const [showReferralDialog, setShowReferralDialog] = useState(false)
 	const [referralCode, setReferralCode] = useState("DUMMY")
 	const [referrerStatus, setReferrerStatus] = useState(false)
-	const [dataSources, setDataSources] = useState([]) 
-	// Removed graph-related states as they are on memory page now
-	const [updateCheckLoading, setUpdateCheckLoading] = useState(false)
-	const [togglingSource, setTogglingSource] = useState(null) 
-
+	const [dataSources, setDataSources] = useState([])
+	const [togglingSource, setTogglingSource] = useState(null)
 
 	const fetchDataSources = useCallback(async () => {
 		console.log("Fetching data sources...")
 		try {
-			const response = await window.electron.invoke("get-data-sources")
-			if (response.error) {
-				console.error("Error fetching data sources:", response.error)
-				toast.error(`Error fetching data sources: ${response.error}`) 
-				setDataSources([])
-			} else {
-				const sourcesWithIcons = (
-					Array.isArray(response.data_sources)
-						? response.data_sources
-						: []
-				).map((ds) => ({
-					...ds,
-					icon: dataSourceIcons[ds.name] || IconSettingsCog 
-				})) 
-				setDataSources(sourcesWithIcons)
-				console.log("Data sources fetched:", sourcesWithIcons)
+			const response = await fetch("/api/settings/data-sources")
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(data.error || "Failed to fetch data sources")
 			}
+			const sourcesWithIcons = (
+				Array.isArray(data.data_sources) ? data.data_sources : []
+			).map((ds) => ({
+				...ds,
+				icon: dataSourceIcons[ds.name] || IconSettingsCog
+			}))
+			setDataSources(sourcesWithIcons)
+			console.log("Data sources fetched:", sourcesWithIcons)
 		} catch (error) {
 			console.error("Error fetching data sources:", error)
-			toast.error(`Error fetching data sources: ${error.message || error}`)
+			toast.error(`Error fetching data sources: ${error.message}`)
 			setDataSources([])
 		}
-	}, []) 
+	}, [])
 
 	const handleToggle = async (sourceName, enabled) => {
 		console.log(`Toggling ${sourceName} to ${enabled}`)
 		setTogglingSource(sourceName)
 
-		const originalDataSources = JSON.parse(JSON.stringify(dataSources)); // Deep copy for reliable revert
+		const originalDataSources = JSON.parse(JSON.stringify(dataSources))
 		setDataSources((prev) =>
 			prev.map((ds) => (ds.name === sourceName ? { ...ds, enabled } : ds))
 		)
 
 		try {
-			if (sourceName === "gmail" && enabled) {
-				console.log("Initiating Google OAuth for Gmail...")
-				// The 'start-google-auth' IPC will handle storing token on server
-				const authResult = await window.electron.startGoogleAuth("gmail") 
+			// In a web environment, enabling a source like Gmail would typically involve
+			// a redirect-based OAuth flow. This flow is initiated and handled by the backend.
+			// Clicking the switch now directly calls our API endpoint to toggle the source.
+			// The backend should handle authentication checks and potential redirects.
+			const response = await fetch("/api/settings/data-sources/toggle", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ source: sourceName, enabled })
+			})
 
-				if (authResult && authResult.success) {
-					toast.success("Gmail connected successfully!")
-					// After successful OAuth & server-side token storage, now enable the source on the server
-					const response = await window.electron.invoke(
-						"set-data-source-enabled",
-						{ source: sourceName, enabled: true } // Explicitly set enabled to true
-					)
-					if (response.error) throw new Error(response.error)
-					toast.success(`${sourceName} enabled. Data polling will begin shortly.`)
-                    await fetchDataSources(); // Refresh data sources to reflect the change from backend
-				} else {
-					toast.error(authResult?.message || "Gmail connection failed or was cancelled.")
-					setDataSources(originalDataSources) // Revert UI
-				}
-			} else {
-				// For other sources or disabling Gmail
-				const response = await window.electron.invoke(
-					"set-data-source-enabled",
-					{ source: sourceName, enabled }
-				)
-				if (response.error) throw new Error(response.error)
-				toast.success(`${sourceName} ${enabled ? "enabled" : "disabled"}.`)
-                await fetchDataSources(); // Refresh data sources
+			const data = await response.json()
+			if (!response.ok) {
+				// If the server indicates auth is needed (e.g., via a specific error or status code),
+				// a real app would redirect the user to the auth URL.
+				// For now, we just show the error.
+				throw new Error(data.error || "Failed to toggle data source")
 			}
+
+			toast.success(`${sourceName} ${enabled ? "enabled" : "disabled"}.`)
+			await fetchDataSources() // Refresh data sources from backend
 		} catch (error) {
 			console.error(`Error updating ${sourceName} data source:`, error)
-			toast.error(`Error updating ${sourceName}: ${error.message || "Unknown error"}`)
+			toast.error(`Error updating ${sourceName}: ${error.message}`)
 			setDataSources(originalDataSources) // Revert UI on any error
 		} finally {
-			setTogglingSource(null) 
+			setTogglingSource(null)
 		}
 	}
 
-
 	const fetchUserDetails = useCallback(async () => {
 		try {
-			const response = await window.electron?.invoke("get-profile")
-			setUserDetails(response || {}) 
+			const response = await fetch("/api/user/profile")
+			if (!response.ok) throw new Error("Failed to fetch user profile")
+			const data = await response.json()
+			setUserDetails(data || {})
 		} catch (error) {
-			toast.error("Error fetching user details for sidebar.")
+			toast.error(`Error fetching user details: ${error.message}`)
 			console.error("Error fetching user details:", error)
 		}
-	}, []) 
+	}, [])
 
 	const fetchPricingPlan = useCallback(async () => {
 		try {
-			const response = await window.electron?.invoke("fetch-pricing-plan")
-			setPricing(response || "free") 
+			const response = await fetch("/api/user/pricing")
+			if (!response.ok) throw new Error("Failed to fetch pricing plan")
+			const data = await response.json()
+			setPricing(data.pricing || "free")
 		} catch (error) {
-			toast.error("Error fetching pricing plan.")
+			toast.error(`Error fetching pricing plan: ${error.message}`)
 			console.error("Error fetching pricing plan:", error)
 		}
-	}, []) 
+	}, [])
 
 	const fetchReferralDetails = useCallback(async () => {
 		try {
-			const code = await window.electron?.invoke("fetch-referral-code")
-			const status = await window.electron?.invoke(
-				"fetch-referrer-status"
-			)
-			setReferralCode(code || "N/A") 
-			setReferrerStatus(status || false) 
+			const response = await fetch("/api/user/referral")
+			if (!response.ok)
+				throw new Error("Failed to fetch referral details")
+			const data = await response.json()
+			setReferralCode(data.referralCode || "N/A")
+			setReferrerStatus(data.referrerStatus || false)
 		} catch (error) {
-			toast.error("Error fetching referral details.")
+			toast.error(`Error fetching referral details: ${error.message}`)
 			console.error("Error fetching referral details:", error)
 		}
-	}, []) 
+	}, [])
 
-	const handleCheckForUpdates = useCallback(async () => {
-		setUpdateCheckLoading(true)
-		console.log("Initiating manual update check via IPC...")
-		try {
-			const response = await window.electron.invoke(
-				"check-for-updates-manual"
-			)
-			if (response.success) {
-				toast.success(response.message)
-				console.log("Manual update check initiated:", response.message)
-			} else {
-				toast.error(response.message)
-				console.error("Manual update check failed:", response.message)
-			}
-		} catch (error) {
-			toast.error("Error initiating update check.")
-			console.error("Error calling check-for-updates-manual IPC:", error)
-		} finally {
-			setUpdateCheckLoading(false)
-		}
-	}, []) 
-
-	// Fetching generic user data (which might include social connection status or other settings)
-    // This is distinct from just the profile used for the sidebar.
 	const fetchData = useCallback(async () => {
-		console.log("Fetching user data (excluding social media connection status for this specific function)...")
+		console.log("Fetching user data...")
 		try {
-			const response = await window.electron?.invoke("get-user-data")
-			if (response.status === 200 && response.data) {
-				console.log("User data fetched successfully (ignoring specific social media flags here).")
-				// Example: if response.data contains { "data_sources": {"gmail_connected": true} }
-                // You could use this to initialize switch states if needed, though `fetchDataSources` is primary for that.
-			} else {
-				console.error("Error fetching DB data, status:", response?.status, "response:", response )
-				toast.error(`Failed to fetch user data: ${response?.message || response?.error || "Unknown error"}`)
+			const response = await fetch("/api/user/data")
+			if (!response.ok) {
+				const errorData = await response.json()
+				throw new Error(
+					errorData.message || "Failed to fetch user data"
+				)
+			}
+			const result = await response.json()
+			if (result.data) {
+				console.log("User data fetched successfully.")
 			}
 		} catch (error) {
 			console.error("Error fetching user data:", error)
-            toast.error(`Failed to fetch user data: ${error.message || error}`);
+			toast.error(`Failed to fetch user data: ${error.message}`)
 		}
-	}, []) 
+	}, [])
 
 	useEffect(() => {
 		console.log("Initial useEffect running...")
@@ -198,7 +161,7 @@ const Settings = () => {
 		fetchPricingPlan()
 		fetchReferralDetails()
 		fetchDataSources()
-	}, [ // Dependencies for initial data load
+	}, [
 		fetchData,
 		fetchUserDetails,
 		fetchPricingPlan,
@@ -222,7 +185,7 @@ const Settings = () => {
 						<button
 							onClick={() =>
 								window.open(
-									"https://existence-sentient.vercel.app/dashboard", // Example dashboard URL
+									"https://existence-sentient.vercel.app/dashboard",
 									"_blank"
 								)
 							}
@@ -248,26 +211,7 @@ const Settings = () => {
 							<IconGift size={18} />
 							<span>Refer Sentient</span>
 						</button>
-						<button
-							onClick={handleCheckForUpdates}
-							disabled={updateCheckLoading}
-							className="flex items-center gap-2 py-2 px-4 rounded-full bg-purple-700 hover:bg-purple-600 text-white text-xs sm:text-sm font-medium transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-							title="Check for application updates"
-						>
-							{updateCheckLoading ? (
-								<IconLoader
-									size={18}
-									className="animate-spin"
-								/>
-							) : (
-								<IconDownload size={18} />
-							)}
-							<span>
-								{updateCheckLoading
-									? "Checking..."
-									: "Check for Updates"}
-							</span>
-						</button>
+						{/* "Check for Updates" button removed as it's an Electron-specific feature */}
 					</div>
 				</div>
 				<div className="w-full max-w-5xl mx-auto space-y-10 flex-grow">
@@ -289,10 +233,12 @@ const Settings = () => {
 												<div className="flex items-center gap-3">
 													<SourceIcon className="w-6 h-6 text-lightblue" />
 													<span className="font-medium text-white text-base">
-														{source.display_name || source.name} {/* Use display_name */}
+														{source.display_name ||
+															source.name}
 													</span>
 												</div>
-												{togglingSource === source.name ? (
+												{togglingSource ===
+												source.name ? (
 													<IconLoader className="w-5 h-5 animate-spin text-lightblue" />
 												) : (
 													<Switch
@@ -308,8 +254,8 @@ const Settings = () => {
 														className={cn(
 															"group relative inline-flex h-[24px] w-[44px] flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-lightblue focus:ring-offset-2 focus:ring-offset-neutral-800",
 															source.enabled
-																? "bg-lightblue" 
-																: "bg-neutral-600" 
+																? "bg-lightblue"
+																: "bg-neutral-600"
 														)}
 													>
 														<span className="sr-only">
@@ -321,7 +267,7 @@ const Settings = () => {
 																"pointer-events-none inline-block h-[20px] w-[20px] transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
 																source.enabled
 																	? "translate-x-[20px]"
-																	: "translate-x-0" 
+																	: "translate-x-0"
 															)}
 														/>
 													</Switch>
@@ -331,7 +277,8 @@ const Settings = () => {
 									})
 								) : (
 									<p className="text-gray-400 italic text-center py-4">
-										Data source settings loading or none available...
+										Data source settings loading or none
+										available...
 									</p>
 								)}
 							</div>
@@ -355,7 +302,7 @@ const Settings = () => {
 							}
 							onConfirm={() => setShowReferralDialog(false)}
 							confirmButtonText="Close"
-							cancelButton={false} // No cancel button needed for info dialog
+							cancelButton={false}
 						/>
 					)}
 				</div>

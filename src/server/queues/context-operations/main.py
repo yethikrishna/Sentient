@@ -1,4 +1,4 @@
-# src/server/queues/context_operations/main.py
+# src/server/queues/context-operations/main.py
 import asyncio
 import signal
 import datetime

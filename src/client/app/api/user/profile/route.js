@@ -13,10 +13,10 @@ export async function GET() {
 	}
 
 	// The user profile comes directly from the session token.
-	// This matches the original app's behavior of using the decoded JWT.
+	// We ensure `given_name` is provided for the UI.
 	const userProfile = {
 		sub: session.user.sub,
-		given_name: session.user.name,
+		given_name: session.user.given_name || session.user.name || "User",
 		picture:
 			session.user.picture ||
 			`https://i.pravatar.cc/150?u=${session.user.sub}`

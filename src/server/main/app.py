@@ -29,9 +29,8 @@ from .auth.utils import AuthHelper
 # --- STT/TTS Service Imports ---
 # These imports will be adjusted if class names/files change in voice.stt and voice.tts
 from .voice.stt import BaseSTT, FasterWhisperSTT, ElevenLabsSTT
-from .voice.tts import BaseTTS, OrpheusTTS, ElevenLabsTTS as ElevenLabsTTSImpl
-# Assuming GCPTTS would be in voice.tts as well if used
-from .voice.tts import GCPTTS
+from .voice.tts import BaseTTS, ElevenLabsTTS as ElevenLabsTTSImpl
+# OrpheusTTS is imported conditionally inside initialize_tts() to avoid loading heavy dependencies in production.
 
 
 # --- Routers ---
@@ -85,6 +84,8 @@ def initialize_tts():
     logger.info("Initializing TTS model...")
     if IS_DEV_ENVIRONMENT:
         try:
+            from .voice.tts import OrpheusTTS # Conditionally import here
+
             if not ORPHEUS_MODEL_PATH or not os.path.exists(ORPHEUS_MODEL_PATH):
                  logger.warning(f"Orpheus model path not found or not set. TTS might not work. Path: {ORPHEUS_MODEL_PATH}")
                  tts_model_instance = None

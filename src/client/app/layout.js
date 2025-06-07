@@ -1,4 +1,5 @@
 // src/client/app/layout.js
+import { UserProvider } from "@auth0/nextjs-auth0/client"
 import "@styles/globals.css" // Import global styles for the application
 import { Toaster } from "react-hot-toast" // Import Toaster component for displaying toast notifications
 import React from "react" // No longer need useEffect here
@@ -30,10 +31,12 @@ export default function RootLayout({ children }) {
 
 	return (
 		<html lang="en" suppressHydrationWarning>
-			<body className="bg-black">
-				<Toaster position="bottom-right" />
-				{children}
-			</body>
+			<UserProvider>
+				<body className="bg-black">
+					<Toaster position="bottom-right" />
+					{children}
+				</body>
+			</UserProvider>
 		</html>
 	)
 }

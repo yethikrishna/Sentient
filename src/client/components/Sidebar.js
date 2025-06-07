@@ -29,7 +29,7 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 		}
 	}
 
-	const logout = async () => {
+	const logout = () => {
 		router.push("/api/auth/logout")
 	}
 

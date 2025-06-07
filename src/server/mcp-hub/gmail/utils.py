@@ -64,7 +64,7 @@ async def create_message(to: str, subject: str, message: str) -> str:
         msg = MIMEText(message)
         msg["To"] = to
         msg["Subject"] = subject
-        return urlsafe_b64encode(msg.as_bytes()).decode()
+        return base64.urlsafe_b64encode(msg.as_bytes()).decode()
     except Exception as error:
         raise Exception(f"Error creating message: {error}")
 

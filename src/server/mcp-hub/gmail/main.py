@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from urllib.parse import quote
 import base64
 from email.mime.text import MIMEText
+import asyncio
 
 from fastmcp import FastMCP, Context
 from fastmcp.exceptions import ToolError
@@ -13,8 +14,8 @@ from fastmcp.prompts.prompt import Message
 
 # Local imports for modularity
 from . import auth
-from . import helpers
 from . import prompts
+from . import utils as helpers
 
 # Load environment variables from .env file
 load_dotenv()
@@ -86,29 +87,34 @@ async def create_draft(ctx: Context, to: str, subject: str, body: str) -> Dict[s
         return {"status": "failure", "error": str(e)}
 
 @mcp.tool
-def search_inbox(ctx: Context, query: str) -> Dict[str, Any]:
+async def search_inbox(ctx: Context, query: str) -> Dict[str, Any]:
     """Searches the Gmail inbox for emails matching a query."""
     try:
         user_id = auth.get_user_id_from_context(ctx)
-        # This can be a sync function, but creds fetching is async
-        import asyncio
-        creds = asyncio.run(auth.get_google_creds(user_id))
+        # Function is now async, so we can await creds fetching directly
+        creds = await auth.get_google_creds(user_id)
         service = auth.authenticate_gmail(creds)
-        
-        results = service.users().messages().list(userId="me", q=query).execute()
-        messages = results.get("messages", [])
-        email_data: List[Dict[str, Any]] = []
 
-        for message in messages[:10]:
-            msg = service.users().messages().get(userId="me", id=message["id"], format="full").execute()
-            headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
-            email_data.append({
-                "id": message["id"],
-                "subject": headers.get("Subject", "No Subject"),
-                "from": headers.get("From", "Unknown Sender"),
-                "snippet": msg.get("snippet", ""),
-                "body": helpers.extract_email_body(msg.get("payload", {})),
-            })
+        # The Google API client is synchronous. To avoid blocking the event loop,
+        # run the blocking I/O calls in a separate thread.
+        def _execute_sync_search():
+            results = service.users().messages().list(userId="me", q=query).execute()
+            messages = results.get("messages", [])
+            email_data: List[Dict[str, Any]] = []
+
+            for message in messages[:10]:
+                msg = service.users().messages().get(userId="me", id=message["id"], format="full").execute()
+                headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
+                email_data.append({
+                    "id": message["id"],
+                    "subject": headers.get("Subject", "No Subject"),
+                    "from": headers.get("From", "Unknown Sender"),
+                    "snippet": msg.get("snippet", ""),
+                    "body": helpers.extract_email_body(msg.get("payload", {})),
+                })
+            return email_data
+
+        email_data = await asyncio.to_thread(_execute_sync_search)
         
         gmail_search_url = f"https://mail.google.com/mail/u/0/#search/{quote(query)}"
         return {
@@ -266,4 +272,4 @@ if __name__ == "__main__":
     print(f"Starting GMail MCP Server on http://{host}:{port}")
     
     # Run the server using the recommended streamable HTTP transport
-    mcp.run(transport="streamable-http", host=host, port=port)
+    mcp.run(transport="sse", host=host, port=port)

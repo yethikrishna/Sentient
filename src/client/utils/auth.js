@@ -1,4 +1,3 @@
-// src/client/lib/auth.js
 import {
 	getSession as getAuth0Session,
 	getAccessToken

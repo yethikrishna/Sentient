@@ -3,7 +3,8 @@ import datetime
 import traceback
 import asyncio
 import numpy as np 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, HTTPException, status, WebSocketState
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, HTTPException, status
+from starlette.websockets import WebSocketState
 import logging 
 
 from .models import VoiceOfferRequest, VoiceAnswerResponse
@@ -14,8 +15,7 @@ from ..app import stt_model_instance
 from ..app import tts_model_instance 
 from ..app import is_dev_env 
 
-# Corrected imports for TTS options, assuming OrpheusTTS and OrpheusTTSOptions are in .tts.orpheus
-from .tts import OrpheusTTS, OrpheusTTSOptions 
+# OrpheusTTS and related classes are now imported conditionally below to avoid loading them in production.
 from .tts import TTSOptionsBase # Base options from .tts.base
 
 

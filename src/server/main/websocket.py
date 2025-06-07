@@ -2,7 +2,8 @@
 import datetime
 import logging 
 from typing import Dict, Any, Optional
-from fastapi import WebSocket, status, WebSocketDisconnect, WebSocketState 
+from fastapi import WebSocket, status, WebSocketDisconnect
+from starlette.websockets import WebSocketState 
 
 logger = logging.getLogger(__name__) 
 

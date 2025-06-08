@@ -22,9 +22,10 @@ from .config import (
     FASTER_WHISPER_MODEL_SIZE, FASTER_WHISPER_DEVICE, FASTER_WHISPER_COMPUTE_TYPE,
     APP_SERVER_PORT
 )
-from .db import MongoManager
-from .websocket import MainWebSocketManager # Corrected import path
-from .auth.utils import AuthHelper 
+# --- Centralized Dependencies ---
+# Import shared instances from the dependencies module
+from .dependencies import mongo_manager
+
 
 # --- STT/TTS Service Imports ---
 # These imports will be adjusted if class names/files change in voice.stt and voice.tts
@@ -39,10 +40,7 @@ from .chat.routes import router as chat_router
 from .voice.routes import router as voice_router
 from .misc.routes import router as misc_router # Corrected router import
 
-# --- Global Instances ---
-mongo_manager_instance = MongoManager()
-auth_helper = AuthHelper() 
-main_websocket_manager = MainWebSocketManager() # Instance of the corrected import
+# --- Other Global Instances ---
 http_client: httpx.AsyncClient = httpx.AsyncClient()
 
 stt_model_instance: BaseSTT | None = None
@@ -126,15 +124,15 @@ def initialize_tts():
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI):
     print(f"[{datetime.datetime.now(timezone.utc).isoformat()}] [LIFESPAN] App startup...")
-    await mongo_manager_instance.initialize_db()
+    await mongo_manager.initialize_db()
     initialize_stt()
     initialize_tts()
     print(f"[{datetime.datetime.now(timezone.utc).isoformat()}] [LIFESPAN] App startup complete.")
     yield 
     print(f"[{datetime.datetime.now(timezone.utc).isoformat()}] [LIFESPAN] App shutdown sequence initiated...")
     await http_client.aclose()
-    if mongo_manager_instance and mongo_manager_instance.client:
-        mongo_manager_instance.client.close() 
+    if mongo_manager and mongo_manager.client:
+        mongo_manager.client.close() 
         print(f"[{datetime.datetime.now()}] [LIFESPAN] MongoManager client closed attempt.")
     print(f"[{datetime.datetime.now(timezone.utc).isoformat()}] [LIFESPAN] App shutdown complete.")
 
@@ -166,10 +164,10 @@ async def root():
 
 @app.get("/health", tags=["General"], summary="Health check for the Main Server")
 async def health():
-    db_status = "connected" if mongo_manager_instance.client else "disconnected"
+    db_status = "connected" if mongo_manager.client else "disconnected"
     stt_status = "loaded" if stt_model_instance else "not_loaded"
     tts_status = "loaded" if tts_model_instance else "not_loaded"
-    llm_status = "qwen_agent_on_demand" 
+    llm_status = "qwen_agent_on_demand"
     
     return {
         "status": "healthy", 

@@ -9,10 +9,10 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from .models import ChatMessageInput
 from .utils import get_chat_history_util, generate_chat_llm_stream # generate_chat_llm_stream will use Qwen
-from ..auth.utils import PermissionChecker 
-from ..app import mongo_manager_instance as mongo_manager 
-from ..app import auth_helper 
-# is_dev_env is not directly needed here if generate_chat_llm_stream handles it via qwen_agent_utils
+from ..auth.utils import PermissionChecker, AuthHelper  # Import PermissionChecker and AuthHelper from auth.utils
+from ..dependencies import mongo_manager
+
+auth_helper = AuthHelper()
 
 router = APIRouter(
     tags=["Chat"]

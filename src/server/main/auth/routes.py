@@ -4,26 +4,20 @@ import traceback
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 
-from .utils import aes_encrypt, PermissionChecker
+from .utils import aes_encrypt, PermissionChecker, AuthHelper
 from .models import AuthTokenStoreRequest, GoogleTokenStoreRequest, EncryptionRequest, DecryptionRequest
-from ..db import MongoManager
+from ..dependencies import mongo_manager
 from ..config import DATA_SOURCES_CONFIG # For validating service_name
-from ..app import auth_helper # Import the global auth_helper instance
+auth_helper = AuthHelper() 
 
 router = APIRouter(
     prefix="/auth",
     tags=["Authentication & Authorization"]
 )
 
-# This instance of MongoManager will be initialized in app.py and used globally
-# For routers, we can either import it or pass it via Depends if that's preferred.
-# Here, importing the global instance from app.py for mongo_manager.
-from ..app import mongo_manager_instance as mongo_manager
-
-
 @router.post("/store_session")
 async def store_session_tokens(
-    request: AuthTokenStoreRequest, 
+    request: AuthTokenStoreRequest,
     user_id: str = Depends(auth_helper.get_current_user_id) 
 ):
     print(f"[{datetime.datetime.now()}] [AUTH_STORE_SESSION] Storing Auth0 refresh token for user {user_id}")

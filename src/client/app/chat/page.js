@@ -13,7 +13,7 @@ import {
 	IconPhoneOff
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
-import BackgroundCircleProvider from "@components/voice-test/background-circle-provider"
+import BackgroundCircleProvider from "@components/voice-visualization/background-circle-provider"
 
 const Chat = () => {
 	// --- State Variables ---

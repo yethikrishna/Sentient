@@ -1,11 +1,11 @@
-# src/server/main/qwen_agent_utils.py
+# src/server/main/llm.py
 import os
 import logging
 from qwen_agent.agents import Assistant
 from qwen_agent.llm import get_chat_model
 
 from .config import (
-    IS_DEV_ENVIRONMENT,
+    LLM_PROVIDER,
     OLLAMA_MODEL_NAME, OLLAMA_BASE_URL,
     OPENROUTER_MODEL_NAME, OPENROUTER_API_KEY
 )
@@ -19,7 +19,7 @@ def get_qwen_assistant(system_message: str = DEFAULT_SYSTEM_PROMPT, function_lis
     Initializes and returns a Qwen Assistant agent configured for the current environment.
     """
     llm_cfg = {}
-    if IS_DEV_ENVIRONMENT:
+    if LLM_PROVIDER == "OLLAMA":
         # Ollama configuration for Qwen Agent (expects OpenAI-compatible v1 endpoint)
         # Ensure OLLAMA_BASE_URL is like "http://localhost:11434"
         ollama_v1_url = f"{OLLAMA_BASE_URL.rstrip('/')}/v1"
@@ -31,8 +31,8 @@ def get_qwen_assistant(system_message: str = DEFAULT_SYSTEM_PROMPT, function_lis
                 'temperature': 0.7, # Example generation parameter
             }
         }
-        logger.info(f"Qwen Agent configured for Development (Ollama): model={OLLAMA_MODEL_NAME}, server={ollama_v1_url}")
-    else:
+        logger.info(f"Qwen Agent configured for LLM_PROVIDER='OLLAMA': model={OLLAMA_MODEL_NAME}, server={ollama_v1_url}")
+    elif LLM_PROVIDER == "OPENROUTER":
         # OpenRouter configuration for Qwen Agent
         openrouter_v1_url = "https://openrouter.ai/api/v1" # Standard OpenRouter API base
         llm_cfg = {
@@ -47,7 +47,10 @@ def get_qwen_assistant(system_message: str = DEFAULT_SYSTEM_PROMPT, function_lis
         # e.g. 'model': 'openrouter/meta-llama/llama-3.1-8b-instruct'
         # However, Qwen's OpenAI client usually takes the model name as passed.
         # The 'model_server' determines the endpoint.
-        logger.info(f"Qwen Agent configured for Production (OpenRouter): model={OPENROUTER_MODEL_NAME}, server={openrouter_v1_url}")
+        logger.info(f"Qwen Agent configured for LLM_PROVIDER='OPENROUTER': model={OPENROUTER_MODEL_NAME}, server={openrouter_v1_url}")
+    else:
+        logger.error(f"Invalid LLM_PROVIDER: '{LLM_PROVIDER}'. Must be 'OLLAMA' or 'OPENROUTER'.")
+        raise ValueError(f"Invalid LLM_PROVIDER configured: {LLM_PROVIDER}")
 
     if not llm_cfg.get('model'):
         logger.error("LLM model name is not configured. Qwen Agent cannot be initialized.")

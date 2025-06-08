@@ -40,8 +40,20 @@ export async function POST(request) {
 		)
 
 		if (!backendResponse.ok) {
-			const errorData = await backendResponse.json()
-			throw new Error(errorData.message || "Backend chat endpoint failed")
+			const errorText = await backendResponse.text()
+			let errorMessage
+			try {
+				const errorJson = JSON.parse(errorText)
+				errorMessage =
+					errorJson.detail ||
+					errorJson.message ||
+					"Backend chat endpoint failed"
+			} catch (e) {
+				errorMessage =
+					errorText ||
+					`Backend chat endpoint failed with status ${backendResponse.status}`
+			}
+			throw new Error(errorMessage)
 		}
 
 		// Return the streaming response directly to the client

@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # --- Core Components ---
 from .config import (
-    IS_DEV_ENVIRONMENT, TTS_PROVIDER, ELEVENLABS_API_KEY, ORPHEUS_MODEL_PATH, ORPHEUS_N_GPU_LAYERS,
+    STT_PROVIDER, TTS_PROVIDER, ELEVENLABS_API_KEY, ORPHEUS_MODEL_PATH, ORPHEUS_N_GPU_LAYERS,
     FASTER_WHISPER_MODEL_SIZE, FASTER_WHISPER_DEVICE, FASTER_WHISPER_COMPUTE_TYPE,
     APP_SERVER_PORT
 )
@@ -45,15 +45,14 @@ http_client: httpx.AsyncClient = httpx.AsyncClient()
 
 stt_model_instance: BaseSTT | None = None
 tts_model_instance: BaseTTS | None = None
-is_dev_env: bool = IS_DEV_ENVIRONMENT
 
-logging.basicConfig(level=logging.INFO if not IS_DEV_ENVIRONMENT else logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__) 
 
 def initialize_stt():
     global stt_model_instance
     logger.info("Initializing STT model...")
-    if IS_DEV_ENVIRONMENT:
+    if STT_PROVIDER == "FASTER_WHISPER":
         try:
             stt_model_instance = FasterWhisperSTT(
                 model_size=FASTER_WHISPER_MODEL_SIZE,
@@ -64,7 +63,7 @@ def initialize_stt():
         except Exception as e:
             logger.error(f"Failed to initialize FasterWhisper STT: {e}", exc_info=True)
             stt_model_instance = None
-    else: 
+    elif STT_PROVIDER == "ELEVENLABS":
         try:
             if not ELEVENLABS_API_KEY:
                 logger.error("ELEVENLABS_API_KEY not set for Production STT.")
@@ -75,12 +74,15 @@ def initialize_stt():
         except Exception as e:
             logger.error(f"Failed to initialize ElevenLabsSTT for Production: {e}", exc_info=True)
             stt_model_instance = None
+    else:
+        logger.warning(f"STT_PROVIDER is set to '{STT_PROVIDER}', which is not a valid option ('FASTER_WHISPER', 'ELEVENLABS'). No STT model loaded.")
+        stt_model_instance = None
     logger.info("STT model initialization complete.")
 
 def initialize_tts():
     global tts_model_instance
     logger.info("Initializing TTS model...")
-    if IS_DEV_ENVIRONMENT:
+    if TTS_PROVIDER == "ORPHEUS":
         try:
             from .voice.tts import OrpheusTTS # Conditionally import here
 
@@ -97,28 +99,29 @@ def initialize_tts():
         except Exception as e:
             logger.error(f"Failed to initialize OrpheusTTS for Development: {e}", exc_info=True)
             tts_model_instance = None
-    else: 
-        if TTS_PROVIDER == "ELEVENLABS":
-            try:
-                if not ELEVENLABS_API_KEY:
-                    logger.error("ELEVENLABS_API_KEY not set for Production TTS (ElevenLabs).")
-                    tts_model_instance = None
-                else:
-                    tts_model_instance = ElevenLabsTTSImpl() 
-                    logger.info("ElevenLabsTTS initialized for Production.")
-            except Exception as e:
-                logger.error(f"Failed to initialize ElevenLabsTTS for Production: {e}", exc_info=True)
+    elif TTS_PROVIDER == "ELEVENLABS":
+        try:
+            if not ELEVENLABS_API_KEY:
+                logger.error("ELEVENLABS_API_KEY not set for TTS (ElevenLabs).")
                 tts_model_instance = None
-        elif TTS_PROVIDER == "GCP":
-            try:
-                tts_model_instance = GCPTTS()
-                logger.info("GCPTTS initialized for Production.")
-            except Exception as e:
-                logger.error(f"Failed to initialize GCPTTS for Production: {e}", exc_info=True)
-                tts_model_instance = None
-        else:
-            logger.warning(f"TTS_PROVIDER is '{TTS_PROVIDER}'. No specific production TTS loaded.")
+            else:
+                tts_model_instance = ElevenLabsTTSImpl()
+                logger.info("ElevenLabsTTS initialized.")
+        except Exception as e:
+            logger.error(f"Failed to initialize ElevenLabsTTS: {e}", exc_info=True)
             tts_model_instance = None
+    elif TTS_PROVIDER == "GCP":
+        try:
+            # from .voice.tts import GCPTTS # Assuming a GCPTTS class exists
+            # tts_model_instance = GCPTTS()
+            logger.warning("GCPTTS is mentioned but not implemented in the provided files. Skipping.")
+            # logger.info("GCPTTS initialized for Production.")
+        except Exception as e:
+            logger.error(f"Failed to initialize GCPTTS for Production: {e}", exc_info=True)
+            tts_model_instance = None
+    else:
+        logger.warning(f"TTS_PROVIDER is set to '{TTS_PROVIDER}', which is not a valid option ('ORPHEUS', 'ELEVENLABS', 'GCP'). No TTS model loaded.")
+        tts_model_instance = None
     logger.info("TTS model initialization complete.")
 
 @asynccontextmanager
@@ -202,13 +205,12 @@ if __name__ == "__main__":
     log_config["formatters"]["access"]["fmt"] = '%(asctime)s %(levelname)s %(client_addr)s - "[MAIN_SERVER_ACCESS] %(request_line)s" %(status_code)s'
     log_config["formatters"]["default"]["fmt"] = '%(asctime)s %(levelname)s [%(name)s] [MAIN_SERVER_DEFAULT] %(message)s'
     print(f"[{datetime.datetime.now()}] [MainServer_Service] Attempting to start Main Server on host 0.0.0.0, port {APP_SERVER_PORT}...")
-    print(f"[{datetime.datetime.now()}] [MainServer_Service] Development Mode: {IS_DEV_ENVIRONMENT}")
     uvicorn.run(
         "server.main.app:app", 
         host="0.0.0.0",
         port=APP_SERVER_PORT,
         lifespan="on",
-        reload=IS_DEV_ENVIRONMENT,
+        reload=False,
         workers=1, 
         log_config=log_config
     )

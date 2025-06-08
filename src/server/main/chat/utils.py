@@ -3,12 +3,12 @@ import datetime
 import uuid
 import json
 import asyncio
+import threading
 import logging
 from typing import List, Dict, Any, Tuple, AsyncGenerator, Optional
 
 from ..db import MongoManager
 from ..llm import get_qwen_assistant # Import the Qwen Agent initializer
-# from qwen_agent.llm.schema import Message as QwenMessage # If precise typing is needed
 
 logger = logging.getLogger(__name__)
 
@@ -51,107 +51,102 @@ async def generate_chat_llm_stream(
     db_manager: MongoManager,
     assistant_message_id_override: Optional[str] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
-    """
-    Handles LLM streaming logic using Qwen Agent.
-    """
     assistant_message_id = assistant_message_id_override or str(uuid.uuid4())
-    
+
     try:
-        # 1. Initialize Qwen Assistant
-        # System prompt could be customized, e.g., using username
-        # For now, using default system prompt from qwen_agent_utils
-        system_prompt = f"You are a helpful AI assistant. The user's name is {username}."
-        qwen_assistant = get_qwen_assistant(system_message=system_prompt)
-
-        # 2. Fetch and format chat history
-        # `get_chat_history` already returns visible messages for the active_chat_id
-        history_from_db, _ = await get_chat_history_util(user_id, db_manager, active_chat_id)
-        
-        qwen_formatted_history = []
-        for msg_from_db in history_from_db:
-            role = "user" if msg_from_db.get("isUser") else "assistant"
-            content = str(msg_from_db.get("message", "")) # Ensure content is string
-            # Qwen Agent expects {'role': ..., 'content': ...}
-            # It can also handle more complex content like ContentItem list
-            qwen_formatted_history.append({"role": role, "content": content})
-        
-        # Add current user input
-        qwen_formatted_history.append({"role": "user", "content": str(user_input)})
-
-        # 3. Stream response from Qwen Assistant
-        full_response_text_accumulator = []
-        streamed_content_length_for_current_msg = 0
-        
-        # The 'run' method is an async generator yielding lists of new messages (steps)
-        async for new_step_messages in qwen_assistant.run(messages=qwen_formatted_history):
-            if not new_step_messages:
-                continue
-
-            for qwen_msg in new_step_messages: # qwen_msg is a dict
-                role = qwen_msg.get('role')
-                content = qwen_msg.get('content', '') # Default to empty string if None
-                function_call = qwen_msg.get('function_call')
-
-                if role == 'assistant':
-                    if function_call:
-                        # This is a tool call request
-                        streamed_content_length_for_current_msg = 0 # Reset for next potential content
-                        yield {
-                            "type": "intermediary", 
-                            "message": f"Thinking... (tool: {function_call.get('name', 'unknown')})",
-                            "details": f"Arguments: {function_call.get('arguments', '{}')}",
-                            "id": assistant_message_id 
-                        }
-                        # Accumulate this step for the final full_message if desired
-                        full_response_text_accumulator.append(f"[ToolCall: {function_call.get('name')}({function_call.get('arguments')})]")
-                    
-                    elif content is not None: # Check for not None, empty string is fine
-                        # This is textual content from the assistant.
-                        # Qwen Agent streams by updating the content of this message object.
-                        if len(content) > streamed_content_length_for_current_msg:
-                            new_token_chunk = content[streamed_content_length_for_current_msg:]
-                            yield {
-                                "type": "assistantStream", 
-                                "token": new_token_chunk, 
-                                "done": False, 
-                                "messageId": assistant_message_id
-                            }
-                            full_response_text_accumulator.append(new_token_chunk)
-                            streamed_content_length_for_current_msg = len(content)
-                        # If content length hasn't changed, it might be a re-yield of the same message state,
-                        # or an empty update, common in streaming. We only yield if there's new text.
-                
-                elif role == 'function':
-                    # This is a tool execution result
-                    streamed_content_length_for_current_msg = 0 # Reset for next potential content
-                    yield {
-                        "type": "intermediary",
-                        "message": f"Tool '{qwen_msg.get('name', 'unknown')}' executed.",
-                        "details": f"Result: {str(content)[:100]}...", # Show partial result
-                        "id": assistant_message_id
-                    }
-                    full_response_text_accumulator.append(f"[ToolResponse({qwen_msg.get('name')}): {content}]")
-                
-                # We don't typically stream 'user' role messages from here as they are inputs.
-
-        # 4. Signal end of stream
-        final_text_output = "".join(part for part in full_response_text_accumulator if isinstance(part, str) and not part.startswith("[ToolCall:") and not part.startswith("[ToolResponse("))
-        
-        # Filter out tool call/response strings from final_text_output if they were added to accumulator
-        # A more robust way is to only append to full_response_text_accumulator when it's actual LLM text token.
-        # The current logic appends tokens directly, so `final_text_output` made from those parts should be correct.
-
-        yield {
-            "type": "assistantStream", "token": "", "done": True, "messageId": assistant_message_id,
-            "full_message": final_text_output,
-            "memoryUsed": False, "agentsUsed": True, "internetUsed": False, "proUsed": False # Adjust as needed
+        # 1. Save the user's message
+        user_message_payload = {
+            "id": str(uuid.uuid4()), "message": user_input, "isUser": True, "type": "text", "isVisible": True,
         }
+        await db_manager.add_chat_message(user_id, active_chat_id, user_message_payload)
+        logger.info(f"Saved user message for user {user_id} in chat {active_chat_id}")
 
+        # 2. Save a placeholder for the assistant's response
+        assistant_placeholder_payload = {
+            "id": assistant_message_id, "message": "", "isUser": False, "type": "text", "isVisible": True,
+            "memoryUsed": False, "agentsUsed": True, "internetUsed": False
+        }
+        await db_manager.add_chat_message(user_id, active_chat_id, assistant_placeholder_payload)
+        logger.info(f"Saved assistant placeholder for user {user_id} in chat {active_chat_id}")
     except Exception as e:
-        logger.error(f"Error in Qwen Agent LLM stream for user {user_id}: {e}", exc_info=True)
-        yield {
-            "type": "error", # Consistent with chat_endpoint error handling
-            "messageId": assistant_message_id,
-            "message": "Sorry, an unexpected error occurred with the AI assistant."
-        }
-        # The chat_endpoint will save an error message to DB
+        logger.error(f"Failed to save initial messages for user {user_id}: {e}", exc_info=True)
+        yield {"type": "error", "message": "Failed to save message to the database. Please try again."}
+        return
+
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue[Optional[Any]] = asyncio.Queue()
+    history_from_db, _ = await get_chat_history_util(user_id, db_manager, active_chat_id)
+    qwen_formatted_history = []
+    for msg_from_db in history_from_db:
+        role = "user" if msg_from_db.get("isUser") else "assistant"
+        content = str(msg_from_db.get("message", ""))
+        qwen_formatted_history.append({"role": role, "content": content})
+
+    full_response_accumulator = ""
+    stream_interrupted = False
+
+    try:
+        # Worker thread to run the synchronous Qwen agent
+        def worker(initial_history: List[Dict[str, Any]]):
+            try:
+                system_prompt = f"You are a helpful AI assistant. The user's name is {username}."
+                qwen_assistant = get_qwen_assistant(system_message=system_prompt, function_list=['web_extractor'])
+                for new_history_step in qwen_assistant.run(messages=initial_history):
+                    loop.call_soon_threadsafe(queue.put_nowait, new_history_step)
+            except Exception as e:
+                logger.error(f"Error in Qwen Agent worker thread for user {user_id}: {e}", exc_info=True)
+                error_payload = {"_error": str(e)}
+                loop.call_soon_threadsafe(queue.put_nowait, error_payload)
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+
+        thread = threading.Thread(target=worker, args=(qwen_formatted_history,), daemon=True)
+        thread.start()
+
+        last_yielded_content_str = ""
+
+        while True:
+            current_history = await queue.get()
+            if current_history is None: break
+            if isinstance(current_history, dict) and "_error" in current_history:
+                raise Exception(f"Qwen Agent failed: {current_history['_error']}")
+            if not isinstance(current_history, list): continue
+
+            # This logic correctly diffs the agent's turn and yields chunks
+            assistant_turn_start_index = next((i + 1 for i in range(len(current_history) - 1, -1, -1) if current_history[i].get('role') == 'user'), 0)
+            assistant_messages = current_history[assistant_turn_start_index:]
+            current_turn_str = "".join(
+                (f"<tool_code name=\"{msg.get('function_call', {}).get('name')}\">\n{json.dumps(json.loads(msg.get('function_call', {}).get('arguments', '{}')), indent=2) if 'arguments' in msg.get('function_call', {}) else ''}\n</tool_code>\n" if msg.get('role') == 'assistant' and msg.get('function_call') else
+                 f"<tool_result tool_name=\"{msg.get('name')}\">\n{msg.get('content', '')}\n</tool_result>\n" if msg.get('role') == 'function' else
+                 msg.get('content', ''))
+                for msg in assistant_messages
+            )
+
+            if len(current_turn_str) > len(last_yielded_content_str):
+                new_chunk = current_turn_str[len(last_yielded_content_str):]
+                full_response_accumulator += new_chunk
+                yield {"type": "assistantStream", "token": new_chunk, "done": False, "messageId": assistant_message_id}
+                last_yielded_content_str = current_turn_str
+
+    except asyncio.CancelledError:
+        logger.warning(f"Chat stream for user {user_id} was cancelled by the client.")
+        stream_interrupted = True
+        raise # Re-raise the error to be handled by the FastAPI framework
+    finally:
+        # 3. Update the final message in the database, whether complete or interrupted
+        final_content = full_response_accumulator
+        if stream_interrupted and not final_content.endswith("[STREAM STOPPED BY USER]"):
+            final_content += "\n\n[STREAM STOPPED BY USER]"
+
+        update_payload = {"message": final_content, "agentsUsed": True} # Add other final fields here
+
+        if final_content.strip():
+            await db_manager.update_chat_message(user_id, active_chat_id, assistant_message_id, update_payload)
+            logger.info(f"Finalized assistant message for user {user_id} in chat {active_chat_id}. Interrupted: {stream_interrupted}")
+        else:
+            # If nothing was generated, we might want to remove the placeholder
+            logger.info(f"No content generated for {user_id}, placeholder will remain empty.")
+
+        yield {"type": "assistantStream", "token": "", "done": True, "messageId": assistant_message_id}
+        await asyncio.to_thread(thread.join) # Ensure thread finishes
+

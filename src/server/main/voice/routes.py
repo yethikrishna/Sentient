@@ -10,7 +10,6 @@ import logging
 from .models import VoiceOfferRequest, VoiceAnswerResponse
 from ..auth.utils import AuthHelper, PermissionChecker 
 from ..websocket import MainWebSocketManager
-from ..config import IS_DEV_ENVIRONMENT as is_dev_env
 
 auth_helper = AuthHelper()
 main_websocket_manager = MainWebSocketManager() # Instance of the corrected import

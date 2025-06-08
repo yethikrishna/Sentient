@@ -9,10 +9,12 @@ import {
 	IconSend,
 	IconRefresh,
 	IconLoader,
+	IconPlayerStopFilled,
 	IconPhone,
 	IconPhoneOff
 } from "@tabler/icons-react"
-import toast from "react-hot-toast"
+import toast from "react-hot-toast" // Corrected import from react-hot-toast
+import GmailSearchResults from "@components/agents/GmailSearchResults"
 import BackgroundCircleProvider from "@components/voice-visualization/background-circle-provider"
 
 const Chat = () => {
@@ -21,7 +23,7 @@ const Chat = () => {
 	const [input, setInput] = useState("")
 	const [userDetails, setUserDetails] = useState(null)
 	const [thinking, setThinking] = useState(false)
-	const [isSidebarVisible, setSidebarVisible] = useState(false)
+	const [isSidebarVisible, setSidebarVisible] = useState(false) // State for sidebar visibility
 	const [chatMode, setChatMode] = useState("text")
 	const [isLoading, setIsLoading] = useState(() => chatMode === "text")
 	const [connectionStatus, setConnectionStatus] = useState("disconnected")
@@ -186,7 +188,6 @@ const Chat = () => {
 		setThinking(true)
 
 		abortControllerRef.current = new AbortController()
-
 		try {
 			const response = await fetch("/api/chat/message", {
 				method: "POST",
@@ -198,61 +199,83 @@ const Chat = () => {
 			})
 
 			if (!response.ok || !response.body) {
-				const errorData = await response.json()
+				const errorData = await response
+					.json()
+					.catch(() => ({ message: "An unknown error occurred" }))
 				throw new Error(
 					errorData.message || "Failed to get streaming response"
 				)
 			}
-			setThinking(false)
 
 			const reader = response.body.getReader()
 			const decoder = new TextDecoder()
 			let assistantMessageId = null
+			let buffer = ""
 
 			// eslint-disable-next-line no-constant-condition
 			while (true) {
 				const { value, done } = await reader.read()
 				if (done) break
 
-				const chunk = decoder.decode(value)
-				// Assuming NDJSON stream format from backend
-				const lines = chunk
-					.split("\n")
-					.filter((line) => line.trim() !== "")
+				buffer += decoder.decode(value, { stream: true })
+				let newlineIndex
+				while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+					const line = buffer.slice(0, newlineIndex)
+					buffer = buffer.slice(newlineIndex + 1)
 
-				for (const line of lines) {
+					if (line.trim() === "") continue
+
 					try {
-						// Each line is a JSON object
 						const parsed = JSON.parse(line)
+						if (parsed.type === "error") {
+							toast.error(`An error occurred: ${parsed.message}`)
+							continue
+						}
 
-						if (
-							parsed.type === "assistantStream" ||
-							parsed.type === "assistantMessage"
-						) {
+						if (parsed.type === "agent_step") {
+							setMessages((prev) => [
+								...prev,
+								{ ...parsed, isUser: false }
+							])
+						} else if (parsed.type === "gmail_search") {
+							setMessages((prev) => [
+								...prev,
+								{ ...parsed, isUser: false }
+							])
+						} else if (parsed.type === "assistantStream") {
 							const token = parsed.token || parsed.message || ""
-							if (!assistantMessageId) {
-								assistantMessageId =
-									parsed.messageId ||
-									`assistant-${Date.now()}`
-							}
+							assistantMessageId = parsed.messageId
 
 							setMessages((prev) => {
 								const existingMsgIndex = prev.findIndex(
 									(msg) => msg.id === assistantMessageId
 								)
 								if (existingMsgIndex !== -1) {
-									const updatedMessages = [...prev]
-									updatedMessages[existingMsgIndex].message +=
-										token
-									return updatedMessages
+									// Append token to existing message
+									return prev.map((msg, index) =>
+										index === existingMsgIndex
+											? {
+													...msg,
+													message: msg.message + token
+												}
+											: msg
+									)
 								} else {
+									// Create new message for the stream
 									return [
 										...prev,
 										{
 											id: assistantMessageId,
 											message: token,
 											isUser: false,
-											type: "text"
+											type: "text",
+											// Add default properties for AI messages
+											memoryUsed:
+												parsed.memoryUsed || false,
+											agentsUsed:
+												parsed.agentsUsed || false,
+											internetUsed:
+												parsed.internetUsed || false
 										}
 									]
 								}
@@ -272,12 +295,24 @@ const Chat = () => {
 			if (error.name === "AbortError") {
 				console.log("Fetch aborted by user.")
 			} else {
+				// Handle other errors
 				toast.error(`Error sending message: ${error.message}`)
-				console.error("Error sending message:", error)
 			}
-			setThinking(false)
 		} finally {
-			await fetchChatHistory()
+			setThinking(false)
+		}
+	}
+
+	const handleStopStreaming = () => {
+		if (abortControllerRef.current) {
+			abortControllerRef.current.abort()
+			setMessages((prev) => {
+				const lastMessage = prev[prev.length - 1]
+				if (lastMessage && !lastMessage.isUser) {
+					lastMessage.message += "\n\n[STREAM STOPPED BY USER]"
+				}
+				return [...prev]
+			})
 		}
 	}
 
@@ -406,11 +441,21 @@ const Chat = () => {
 								) : (
 									messages.map((msg) => (
 										<div
-											key={msg.id || Math.random()}
+											key={msg.id}
 											className={`flex ${msg.isUser ? "justify-end" : "justify-start"} w-full`}
 										>
-											{msg.type === "tool_result" ? (
+											{msg.type === "agent_step" ? (
 												<ToolResultBubble
+													task={msg.task}
+													result={msg.message}
+													memoryUsed={msg.memoryUsed}
+													agentsUsed={msg.agentsUsed}
+													internetUsed={
+														msg.internetUsed
+													}
+												/>
+											) : msg.type === "gmail_search" ? (
+												<GmailSearchResults
 													task={msg.task}
 													result={msg.message}
 													memoryUsed={msg.memoryUsed}
@@ -480,16 +525,25 @@ const Chat = () => {
 										rows={1}
 									/>
 									<div className="absolute right-4 bottom-3 flex flex-row items-center gap-2">
-										<button
-											onClick={sendMessage}
-											disabled={
-												thinking || input.trim() === ""
-											}
-											className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-white disabled:opacity-50 disabled:cursor-not-allowed"
-											title="Send Message"
-										>
-											<IconSend className="w-4 h-4 text-white" />
-										</button>
+										{thinking ? (
+											<button
+												onClick={handleStopStreaming}
+												className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-white bg-red-600 hover:bg-red-500"
+												title="Stop Generation"
+											>
+												<IconPlayerStopFilled className="w-4 h-4 text-white" />
+											</button>
+										) : (
+											<button
+												onClick={sendMessage}
+												disabled={input.trim() === ""}
+												className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-white disabled:opacity-50 disabled:cursor-not-allowed"
+												title="Send Message"
+											>
+												<IconSend className="w-4 h-4 text-white" />
+											</button>
+										)}
+
 										<button
 											onClick={clearChatHistory}
 											className="p-2 rounded-full hover-button scale-100 cursor-pointer hover:scale-110 text-white"

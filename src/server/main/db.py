@@ -150,7 +150,7 @@ class MongoManager:
             {"user_id": user_id, "chat_id": chat_id},
             {"$push": {"messages": message_data},
              "$set": {"last_updated": datetime.datetime.now(datetime.timezone.utc)},
-             "$setOnInsert": {"user_id": user_id, "chat_id": chat_id, "created_at": datetime.datetime.now(datetime.timezone.utc), "messages": []}
+             "$setOnInsert": {"user_id": user_id, "chat_id": chat_id, "created_at": datetime.datetime.now(datetime.timezone.utc)}
             },
             upsert=True
         )
@@ -177,6 +177,42 @@ class MongoManager:
         if not user_id or not chat_id: return False
         result = await self.chat_history_collection.delete_one({"user_id": user_id, "chat_id": chat_id})
         return result.deleted_count > 0
+
+    async def update_chat_message(self, user_id: str, chat_id: str, message_id: str, update_data: Dict) -> bool:
+        if not all([user_id, chat_id, message_id, update_data]):
+            raise ValueError("user_id, chat_id, message_id, and update_data are required.")
+
+        set_payload = {f"messages.$.{key}": value for key, value in update_data.items()}
+        set_payload["last_updated"] = datetime.datetime.now(datetime.timezone.utc)
+        
+        result = await self.chat_history_collection.update_one(
+            {"user_id": user_id, "chat_id": chat_id, "messages.id": message_id},
+            {"$set": set_payload}
+        )
+        if result.matched_count == 0:
+            print(f"[{datetime.datetime.now()}] [DB_UPDATE_WARN] No message found with ID {message_id} in chat {chat_id} for user {user_id} to update.")
+            return False
+        return result.modified_count > 0
+
+    async def create_new_chat_session(self, user_id: str, chat_id: str) -> bool:
+        if not user_id or not chat_id: return False
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        # Use update_one with upsert to avoid race conditions and ensure idempotency.
+        # If a chat with this ID somehow already exists, this does nothing.
+        result = await self.chat_history_collection.update_one(
+            {"user_id": user_id, "chat_id": chat_id},
+            {
+                "$setOnInsert": {
+                    "user_id": user_id,
+                    "chat_id": chat_id,
+                    "messages": [],
+                    "created_at": now_utc,
+                    "last_updated": now_utc
+                }
+            },
+            upsert=True
+        )
+        return result.upserted_id is not None
 
     # --- Notification Methods ---
     async def get_notifications(self, user_id: str) -> List[Dict]:

@@ -24,7 +24,7 @@ from .config import (
 )
 # --- Centralized Dependencies ---
 # Import shared instances from the dependencies module
-from .dependencies import mongo_manager
+from .dependencies import mongo_manager, neo4j_manager, memory_mongo_manager
 
 
 # --- STT/TTS Service Imports ---
@@ -38,6 +38,7 @@ from .voice.tts import BaseTTS, ElevenLabsTTS as ElevenLabsTTSImpl
 from .auth.routes import router as auth_router
 from .chat.routes import router as chat_router
 from .voice.routes import router as voice_router
+from .memory.routes import router as memory_router
 from .misc.routes import router as misc_router # Corrected router import
 
 # --- Other Global Instances ---
@@ -47,6 +48,7 @@ stt_model_instance: BaseSTT | None = None
 tts_model_instance: BaseTTS | None = None
 
 logging.basicConfig(level=logging.INFO)
+from .memory.dependencies import initialize_memory_managers, close_memory_managers
 logger = logging.getLogger(__name__) 
 
 def initialize_stt():
@@ -130,11 +132,13 @@ async def lifespan(app_instance: FastAPI):
     await mongo_manager.initialize_db()
     initialize_stt()
     initialize_tts()
+    initialize_memory_managers()
     print(f"[{datetime.datetime.now(timezone.utc).isoformat()}] [LIFESPAN] App startup complete.")
     yield 
     print(f"[{datetime.datetime.now(timezone.utc).isoformat()}] [LIFESPAN] App shutdown sequence initiated...")
     await http_client.aclose()
     if mongo_manager and mongo_manager.client:
+        close_memory_managers()
         mongo_manager.client.close() 
         print(f"[{datetime.datetime.now()}] [LIFESPAN] MongoManager client closed attempt.")
     print(f"[{datetime.datetime.now(timezone.utc).isoformat()}] [LIFESPAN] App shutdown complete.")
@@ -159,6 +163,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(voice_router)
+app.include_router(memory_router)
 app.include_router(misc_router) # Corrected router name
 
 @app.get("/", tags=["General"], summary="Root endpoint for the Main Server")

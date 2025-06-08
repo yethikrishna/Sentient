@@ -19,8 +19,8 @@ const MemoryTypeSwitcher = ({ currentType, onTypeChange }) => {
 			{/* Increased padding */}
 			{/* Graph (Long-Term) Button */}
 			<button
-				onClick={() => onTypeChange("neo4j")}
-				className={buttonStyle("neo4j")}
+				onClick={() => onTypeChange("long-term")}
+				className={buttonStyle("long-term")}
 				title="View Long-Term Knowledge Graph"
 			>
 				<IconDatabase className="w-5 h-5" /> {/* Increased size */}
@@ -28,8 +28,8 @@ const MemoryTypeSwitcher = ({ currentType, onTypeChange }) => {
 			</button>
 			{/* List (Short-Term) Button */}
 			<button
-				onClick={() => onTypeChange("sqlite")}
-				className={buttonStyle("sqlite")}
+				onClick={() => onTypeChange("short-term")}
+				className={buttonStyle("short-term")}
 				title="View Short-Term Memories List"
 			>
 				<IconBrain className="w-5 h-5" /> {/* Increased size */}

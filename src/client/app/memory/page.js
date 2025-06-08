@@ -4,34 +4,25 @@
 import React, { useEffect, useState, useCallback } from "react"
 import GraphVisualization from "@components/GraphViz"
 import Sidebar from "@components/Sidebar"
-import {
-	IconRefresh,
-	IconTrash,
-	IconSettingsCog,
-	IconLoader
-} from "@tabler/icons-react"
+import { IconRefresh, IconSettingsCog, IconLoader } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import ProIcon from "@components/ProIcon"
-import SQLiteMemoryDisplay from "@components/SQLiteMemoryDisplay"
+import ShortTermMemoryDisplay from "@components/ShortTermMemoryDisplay"
 import MemoryTypeSwitcher from "@components/MemoryTypeSwitcher"
 
 const Memories = () => {
 	const [userDetails, setUserDetails] = useState(null)
 	const [isSidebarVisible, setSidebarVisible] = useState(false)
 	const [isCustomizeInputVisible, setCustomizeInputVisible] = useState(false)
-	const [newGraphInfo, setNewGraphInfo] = useState("")
+	const [memoryInstruction, setMemoryInstruction] = useState("")
 	const [graphData, setGraphData] = useState({ nodes: [], edges: [] })
 	const [addMemoriesLoading, setAddMemoriesLoading] = useState(false)
 	const [recreateGraphLoading, setRecreateGraphLoading] = useState(false)
 	const [pricing, setPricing] = useState("free")
 	const [credits, setCredits] = useState(0)
-	const [memoryDisplayType, setMemoryDisplayType] = useState("neo4j")
-	const [clearMemoriesLoading, setClearMemoriesLoading] = useState(false)
+	const [memoryDisplayType, setMemoryDisplayType] = useState("long-term")
 	const [graphLoading, setGraphLoading] = useState(false)
-	const [refreshSqlite, setRefreshSqlite] = useState(0)
-	const [shortTermMemoryCategories, setShortTermMemoryCategories] = useState(
-		[]
-	)
+	const [refreshShortTerm, setRefreshShortTerm] = useState(0)
 
 	// --- Data Fetching ---
 	const fetchUserDetails = async () => {
@@ -84,23 +75,25 @@ const Memories = () => {
 		setRecreateGraphLoading(true)
 		try {
 			const response = await fetch("/api/memory/long-term/reset", {
-				method: "POST"
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ clear_graph: true })
 			})
 			const data = await response.json()
 			if (!response.ok) {
 				throw new Error(data.error || "Unknown API error")
 			}
-			await loadGraphData()
+			loadGraphData() // Re-fetch data
 			toast.success("Graph recreated successfully!")
 		} catch (error) {
-			toast.error(`Error recreating graph: ${error.message}`)
+			toast.error(`Error recreating memories: ${error.message}`)
 		} finally {
 			setRecreateGraphLoading(false)
 		}
 	}
 
 	const handleCustomizeGraph = async () => {
-		if (!newGraphInfo.trim()) {
+		if (!memoryInstruction.trim()) {
 			toast.error("Information cannot be empty.")
 			return
 		}
@@ -109,14 +102,21 @@ const Memories = () => {
 			const response = await fetch("/api/memory/long-term/customize", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ newGraphInfo })
+				body: JSON.stringify({ information: memoryInstruction })
 			})
 			const result = await response.json()
 			if (!response.ok) {
 				throw new Error(result.error || "Unknown API error")
 			}
-			await loadGraphData()
-			setNewGraphInfo("")
+
+			// Refresh the current view
+			if (memoryDisplayType === "long-term") {
+				loadGraphData()
+			} else {
+				setRefreshShortTerm((prev) => prev + 1)
+			}
+
+			setMemoryInstruction("")
 			toast.success("Graph customized successfully!")
 		} catch (error) {
 			toast.error(`Error customizing graph: ${error.message}`)
@@ -126,51 +126,14 @@ const Memories = () => {
 		}
 	}
 
-	const handleClearAllMemories = async () => {
-		setClearMemoriesLoading(true)
-		try {
-			const response = await fetch("/api/memory/short-term/clear", {
-				method: "POST"
-			})
-			const data = await response.json()
-			if (!response.ok) {
-				throw new Error(data.error || "Unknown API error")
-			}
-			toast.success("All short-term memories cleared successfully")
-			setRefreshSqlite((prev) => prev + 1)
-		} catch (error) {
-			toast.error(`Failed to clear memories: ${error.message}`)
-		} finally {
-			setClearMemoriesLoading(false)
-		}
-	}
-
 	useEffect(() => {
 		fetchUserDetails()
 		fetchPricingPlan()
 
-		const fetchMemoryCategories = async () => {
-			try {
-				const response = await fetch("/api/memory/categories")
-				const data = await response.json()
-				if (!response.ok)
-					throw new Error(data.error || "Failed to fetch categories")
-				if (data.categories) {
-					setShortTermMemoryCategories(data.categories)
-				}
-			} catch (error) {
-				toast.error(
-					`Error fetching memory categories: ${error.message}`
-				)
-			}
-		}
-
-		if (memoryDisplayType === "neo4j") {
+		if (memoryDisplayType === "long-term") {
 			loadGraphData()
-		} else if (memoryDisplayType === "sqlite") {
-			fetchMemoryCategories()
 		}
-	}, [loadGraphData, memoryDisplayType])
+	}, [loadGraphData, memoryDisplayType, refreshShortTerm])
 
 	// --- JSX ---
 	return (
@@ -191,7 +154,7 @@ const Memories = () => {
 					/>
 				</div>
 				<div className="flex-grow w-full relative overflow-hidden rounded-lg bg-neutral-900/30 border border-neutral-800 shadow-inner">
-					{memoryDisplayType === "neo4j" ? (
+					{memoryDisplayType === "long-term" ? (
 						<>
 							{graphLoading && (
 								<div className="absolute inset-0 flex items-center justify-center bg-matteblack/80 z-10">
@@ -207,101 +170,82 @@ const Memories = () => {
 							/>
 						</>
 					) : (
-						<SQLiteMemoryDisplay
+						<ShortTermMemoryDisplay
 							userDetails={userDetails}
-							refreshTrigger={refreshSqlite}
-							categories={shortTermMemoryCategories}
+							refreshTrigger={refreshShortTerm}
 						/>
 					)}
 				</div>
 				<div className="absolute bottom-6 right-6 flex flex-col items-end space-y-3 z-40">
-					{memoryDisplayType === "neo4j" && (
-						<>
-							{isCustomizeInputVisible &&
-								(pricing !== "free" || credits > 0) && (
-									<div className="bg-neutral-800 p-4 rounded-lg shadow-lg w-96 space-y-3 border border-neutral-700">
-										<textarea
-											className="w-full p-2.5 border border-neutral-600 rounded-md bg-neutral-700 text-white resize-none h-24 focus:outline-none focus:border-lightblue text-sm"
-											placeholder="Enter information to add, update, or delete from your long-term memory..."
-											value={newGraphInfo}
-											onChange={(e) =>
-												setNewGraphInfo(e.target.value)
-											}
-										/>
-										<button
-											className="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 transition text-sm font-medium disabled:opacity-50"
-											onClick={handleCustomizeGraph}
-											disabled={
-												addMemoriesLoading ||
-												!newGraphInfo.trim()
-											}
-										>
-											{addMemoriesLoading ? (
-												<IconLoader className="w-5 h-5 animate-spin mx-auto" />
-											) : (
-												"Submit Information"
-											)}
-										</button>
-									</div>
-								)}
-							<div>
-								{pricing !== "free" || credits > 0 ? (
-									<button
-										onClick={() =>
-											setCustomizeInputVisible(
-												(prev) => !prev
-											)
-										}
-										className="flex items-center gap-2 py-2 px-4 rounded-full bg-darkblue hover:bg-lightblue text-white text-sm font-medium transition-colors shadow-md"
-									>
-										<IconSettingsCog className="w-5 h-5" />
-										{isCustomizeInputVisible
-											? "Cancel"
-											: "Customize Memories"}
-									</button>
-								) : (
-									<button
-										disabled
-										className="relative flex items-center justify-center py-2 px-4 rounded-full font-medium text-white text-sm bg-neutral-700 cursor-not-allowed opacity-60 shadow-md"
-									>
-										<IconSettingsCog className="w-5 h-5 mr-2" />
-										Customize Memories{" "}
-										{pricing === "free" && (
-											<ProIcon className="ml-1.5" />
-										)}
-									</button>
-								)}
+					{isCustomizeInputVisible &&
+						(pricing === "free" || credits > 0) && (
+							<div className="bg-neutral-800 p-4 rounded-lg shadow-lg w-96 space-y-3 border border-neutral-700">
+								<textarea
+									className="w-full p-2.5 border border-neutral-600 rounded-md bg-neutral-700 text-white resize-none h-24 focus:outline-none focus:border-lightblue text-sm"
+									placeholder="Tell me what to remember or forget... e.g., 'My best friend's name is Alex' or 'Forget the reminder about the meeting.'"
+									value={memoryInstruction}
+									onChange={(e) =>
+										setMemoryInstruction(e.target.value)
+									}
+								/>
+								<button
+									className="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 transition text-sm font-medium disabled:opacity-50"
+									onClick={handleCustomizeGraph}
+									disabled={
+										addMemoriesLoading ||
+										!memoryInstruction.trim()
+									}
+								>
+									{addMemoriesLoading ? (
+										<IconLoader className="w-5 h-5 animate-spin mx-auto" />
+									) : (
+										"Submit to Memory Agent"
+									)}
+								</button>
 							</div>
+						)}
+					<div>
+						{/* CHANGE THIS IN PROD TO CHECK PRICING FOR PRO INSTEAD OF FREE */}
+						{pricing === "free" || credits > 0 ? (
 							<button
-								className="flex items-center gap-2 py-2 px-4 rounded-full bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors shadow-md disabled:opacity-50"
-								onClick={handleRecreateGraph}
-								disabled={recreateGraphLoading || graphLoading}
+								onClick={() =>
+									setCustomizeInputVisible((prev) => !prev)
+								}
+								className="flex items-center gap-2 py-2 px-4 rounded-full bg-darkblue hover:bg-lightblue text-white text-sm font-medium transition-colors shadow-md"
 							>
-								{recreateGraphLoading ? (
-									<IconLoader className="w-5 h-5 animate-spin" />
-								) : (
-									<IconRefresh className="w-5 h-5" />
-								)}
-								{recreateGraphLoading
-									? "Recreating..."
-									: "Recreate Graph"}
+								<IconSettingsCog className="w-5 h-5" />
+								{isCustomizeInputVisible
+									? "Cancel"
+									: "Use Memory Agent"}
 							</button>
-						</>
-					)}
-					{memoryDisplayType === "sqlite" && (
+						) : (
+							<button
+								disabled
+								className="relative flex items-center justify-center py-2 px-4 rounded-full font-medium text-white text-sm bg-neutral-700 cursor-not-allowed opacity-60 shadow-md"
+							>
+								<IconSettingsCog className="w-5 h-5 mr-2" />
+								Use Memory Agent{" "}
+								{pricing === "free" && (
+									<ProIcon className="ml-1.5" />
+								)}
+							</button>
+						)}
+					</div>
+
+					{memoryDisplayType === "long-term" && (
 						<button
 							className="flex items-center gap-2 py-2 px-4 rounded-full bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors shadow-md disabled:opacity-50"
-							onClick={handleClearAllMemories}
-							disabled={clearMemoriesLoading}
+							onClick={handleRecreateGraph}
+							disabled={recreateGraphLoading || graphLoading}
 						>
-							{clearMemoriesLoading ? (
+							{recreateGraphLoading ? (
 								<IconLoader className="w-5 h-5 animate-spin" />
 							) : (
-								<IconTrash className="w-5 h-5" />
+								<IconRefresh className="w-5 h-5" />
 							)}
-							{clearMemoriesLoading
-								? "Clearing..."
-								: "Clear Short-Term"}
+							{recreateGraphLoading
+								? "Resetting..."
+								: "Reset Long-Term"}
 						</button>
 					)}
 				</div>

@@ -29,15 +29,18 @@ const GraphVisualization = ({ nodes, edges }) => {
 		// --- Vis Network Data ---
 		const visNodes = new DataSet(
 			uniqueNodes.map((node) => ({
-				id: node.id,
+				id: node.id, // The unique ID for the node
+				// Set the visible label. Prioritize specific names/text over the general type.
 				label:
-					node.properties?.name ||
+					node.name ||
+					node.text ||
 					node.label ||
-					node.id.substring(0, 8), // Use part of ID if no label
-				title: node.label
-					? `Label: ${node.label}\nID: ${node.id}`
-					: `ID: ${node.id}` // Tooltip
-				// Properties can be added to 'title' or handled via events
+					String(node.id).substring(0, 8),
+				// Create a detailed tooltip for hovering
+				title: `<b>Type:</b> ${node.label || "N/A"}<br>
+                        <b>Name:</b> ${node.name || "N/A"}<br>
+                        <b>Text:</b> ${node.text || "N/A"}<br>
+                        <b>ID:</b> ${node.id}`
 			}))
 		)
 
@@ -46,8 +49,9 @@ const GraphVisualization = ({ nodes, edges }) => {
 				id: edge.id, // Use edge ID if available
 				from: edge.from,
 				to: edge.to,
-				label: edge.label || edge.properties?.type || "",
-				title: `Type: ${edge.label || edge.properties?.type || "related"}`, // Tooltip
+				// The backend now provides the correct label directly.
+				label: edge.label,
+				title: `Type: ${edge.label || "related"}`, // Tooltip for the edge
 				arrows: "to",
 				smooth: { type: "curvedCW", roundness: 0.1 } // Subtle curve
 			}))
@@ -93,6 +97,7 @@ const GraphVisualization = ({ nodes, edges }) => {
 				navigationButtons: false, // Hide default buttons (can add custom ones if needed)
 				keyboard: true,
 				tooltipDelay: 200, // Faster tooltip
+				hideEdgesOnDrag: true,
 				zoomView: true,
 				dragView: true
 			},
@@ -116,9 +121,6 @@ const GraphVisualization = ({ nodes, edges }) => {
 
 		// --- Network Initialization ---
 		const network = new Network(container, data, options)
-
-		// Optional: Add event listeners here if needed (e.g., click, doubleClick)
-		// network.on("click", function (params) { ... });
 
 		// Cleanup function for the useEffect hook
 		return () => {

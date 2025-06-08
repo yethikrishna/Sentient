@@ -23,7 +23,7 @@ export async function GET() {
 	try {
 		// This single backend call can fetch all pricing-related info
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/get-user-data`,
+			`${process.env.APP_SERVER_URL}/api/get-user-data`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader }

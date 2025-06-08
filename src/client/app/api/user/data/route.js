@@ -22,7 +22,7 @@ export async function GET() {
 
 	try {
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/get-user-data`,
+			`${process.env.APP_SERVER_URL}/api/get-user-data`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader }

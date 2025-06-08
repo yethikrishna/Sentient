@@ -18,7 +18,7 @@ export async function POST(request) {
 
 		// Fetch user pricing/credits to pass to the backend
 		const pricingResponse = await fetch(
-			`${process.env.APP_SERVER_URL}/get-user-data`,
+			`${process.env.APP_SERVER_URL}/api/get-user-data`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader }

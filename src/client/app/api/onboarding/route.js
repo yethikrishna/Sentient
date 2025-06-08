@@ -1,9 +1,9 @@
 // src/client/app/api/onboarding/route.js
 import { NextResponse } from "next/server"
-import { getSession, getBackendAuthHeader } from "@/lib/auth"
+import { auth0, getBackendAuthHeader } from "@lib/auth0"
 
 export async function POST(request) {
-	const session = await getSession()
+	const session = await auth0.getSession()
 	if (!session?.user?.sub) {
 		return NextResponse.json(
 			{ message: "Not authenticated" },
@@ -22,7 +22,7 @@ export async function POST(request) {
 	try {
 		const onboardingData = await request.json()
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/onboarding`,
+			`${process.env.APP_SERVER_URL}/api/onboarding`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },

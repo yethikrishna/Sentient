@@ -1,9 +1,10 @@
 // src/client/app/api/user/pricing/route.js
 import { NextResponse } from "next/server"
-import { getSession, getBackendAuthHeader } from "@/lib/auth"
+import { auth0 } from "@lib/auth0"
+import { getBackendAuthHeader } from "@lib/auth0"
 
 export async function GET() {
-	const session = await getSession()
+	const session = await auth0.getSession()
 	if (!session?.user?.sub) {
 		return NextResponse.json(
 			{ message: "Not authenticated" },

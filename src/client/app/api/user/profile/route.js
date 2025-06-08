@@ -1,9 +1,9 @@
 // src/client/app/api/user/profile/route.js
 import { NextResponse } from "next/server"
-import { getSession } from "@/lib/auth"
+import { auth0 } from "@lib/auth0"
 
 export async function GET() {
-	const session = await getSession()
+	const session = await auth0.getSession()
 
 	if (!session?.user) {
 		return NextResponse.json(

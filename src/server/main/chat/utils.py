@@ -7,7 +7,7 @@ import logging
 from typing import List, Dict, Any, Tuple, AsyncGenerator, Optional
 
 from ..db import MongoManager
-from ..qwen_agent_utils import get_qwen_assistant # Import the Qwen Agent initializer
+from ..llm import get_qwen_assistant # Import the Qwen Agent initializer
 # from qwen_agent.llm.schema import Message as QwenMessage # If precise typing is needed
 
 logger = logging.getLogger(__name__)

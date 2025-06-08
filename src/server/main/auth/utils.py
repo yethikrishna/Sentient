@@ -169,7 +169,7 @@ class PermissionChecker:
         # Re-evaluating: The original `main.py` does `auth = AuthHelper()`.
         # This `auth` instance is then used in `Depends(auth.get_current_user_id)`.
         # So `PermissionChecker` should also use this global instance.
-        from ..app import auth_helper as global_auth_helper # Import the global instance
+        from ..dependencies import auth_helper as global_auth_helper # Import from dependencies
 
         user_id, token_permissions_list = await global_auth_helper.get_current_user_id_and_permissions(token=token)
         token_permissions_set = set(token_permissions_list)

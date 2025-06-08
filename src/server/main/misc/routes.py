@@ -15,9 +15,8 @@ from ..auth.utils import PermissionChecker
 from ..config import (
     AUTH0_AUDIENCE, DATA_SOURCES_CONFIG, SUPPORTED_POLLING_SERVICES, POLLING_INTERVALS
 )
-from ..app import mongo_manager_instance as mongo_manager 
-from ..app import auth_helper 
-from ..app import main_websocket_manager # Ensure this path is correct if ws_manager.py was renamed to websocket.py
+from ..dependencies import mongo_manager, auth_helper, websocket_manager as main_websocket_manager
+from ..db import MongoManager
 
 # Router instance for miscellaneous routes
 router = APIRouter(

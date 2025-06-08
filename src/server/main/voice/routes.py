@@ -9,13 +9,12 @@ import logging
 
 from .models import VoiceOfferRequest, VoiceAnswerResponse
 from ..auth.utils import AuthHelper, PermissionChecker 
-from ..app import auth_helper 
-from ..app import main_websocket_manager 
-from ..app import stt_model_instance 
-from ..app import tts_model_instance 
-from ..app import is_dev_env 
+from ..websocket import MainWebSocketManager
+from ..config import IS_DEV_ENVIRONMENT as is_dev_env
 
-# OrpheusTTS and related classes are now imported conditionally below to avoid loading them in production.
+auth_helper = AuthHelper()
+main_websocket_manager = MainWebSocketManager() # Instance of the corrected import
+
 from .tts import TTSOptionsBase # Base options from .tts.base
 
 
@@ -23,7 +22,7 @@ router = APIRouter(
     prefix="/voice",
     tags=["Voice Communication"]
 )
-logger = logging.getLogger(__name__) 
+logger = logging.getLogger(__name__)
 
 
 @router.post("/webrtc/offer", summary="Handle WebRTC Offer")
@@ -37,6 +36,9 @@ async def handle_webrtc_offer(
 @router.websocket("/ws/voice")
 async def voice_websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    # --- Local Imports to prevent circular dependency ---
+    from ..app import stt_model_instance, tts_model_instance
+
     authenticated_user_id: str | None = None
     try:
         authenticated_user_id = await auth_helper.ws_authenticate(websocket)
@@ -84,9 +86,16 @@ async def voice_websocket_endpoint(websocket: WebSocket):
                 await websocket.send_json({"type": "tts_stream_end"}) 
                 continue
 
-            tts_options: TTSOptionsBase = {} 
-            if is_dev_env and isinstance(tts_model_instance, OrpheusTTS): 
-               tts_options = OrpheusTTSOptions(voice_id="tara") 
+            tts_options: TTSOptionsBase = {}
+            if is_dev_env:
+                try:
+                    # Conditionally import OrpheusTTS to check instance type and avoid NameError
+                    from .tts import OrpheusTTS, OrpheusTTSOptions
+                    if isinstance(tts_model_instance, OrpheusTTS):
+                        tts_options = OrpheusTTSOptions(voice_id="tara")
+                except ImportError:
+                    # This is expected in production where OrpheusTTS is not available.
+                    pass
 
             logger.info(f"[{datetime.datetime.now()}] [VOICE_WS_TTS] Streaming TTS for user {authenticated_user_id}: '{llm_response_text[:30]}...'")
             async for audio_chunk in tts_model_instance.stream_tts(llm_response_text, options=tts_options):

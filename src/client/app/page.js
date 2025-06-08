@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { useUser } from "@auth0/nextjs-auth0/client"
+import { useUser } from "@auth0/nextjs-auth0"
 import AnimatedLogo from "@components/AnimatedLogo"
 import toast from "react-hot-toast"
 import React from "react"
@@ -12,7 +12,7 @@ import React from "react"
  * Home Component - The initial loading screen of the application.
  *
  * This component is responsible for checking the user's authentication and onboarding status,
- * then redirecting them to the appropriate page (/api/auth/login, /onboarding, or /chat).
+ * then redirecting them to the appropriate page (/auth/login, /onboarding, or /chat).
  * It displays a loading animation during this process.
  *
  * @returns {React.ReactNode} - The Home component UI.
@@ -34,14 +34,14 @@ const Home = () => {
 			console.error("Authentication error:", authError)
 			toast.error("Authentication failed. Please try again.")
 			// Redirect to login to re-attempt authentication.
-			router.push("/api/auth/login")
+			router.push("/auth/login")
 			return
 		}
 
 		if (!user) {
 			// User is not authenticated. Redirect to the Auth0 login page.
 			console.log("No user session found, redirecting to login.")
-			router.push("/api/auth/login")
+			router.push("/auth/login")
 			return
 		}
 

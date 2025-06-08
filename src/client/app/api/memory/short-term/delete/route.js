@@ -1,9 +1,10 @@
 // src/client/app/api/memory/short-term/delete/route.js
 import { NextResponse } from "next/server"
-import { getSession, getBackendAuthHeader } from "@/lib/auth"
+import { auth0 } from "@lib/auth0"
+import { getBackendAuthHeader } from "@lib/auth0"
 
 export async function POST(request) {
-	const session = await getSession()
+	const session = await auth0.getSession()
 	if (!session?.user?.sub) {
 		return NextResponse.json(
 			{ error: "Not authenticated" },

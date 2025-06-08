@@ -1,6 +1,7 @@
 # src/server/main/chat/utils.py
 import datetime
 import uuid
+import os
 import json
 import asyncio
 import threading
@@ -9,6 +10,7 @@ from typing import List, Dict, Any, Tuple, AsyncGenerator, Optional
 
 from ..db import MongoManager
 from ..llm import get_qwen_assistant # Import the Qwen Agent initializer
+from ..config import MEMORY_MCP_SERVER_URL
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +60,15 @@ async def generate_chat_llm_stream(
         user_message_payload = {
             "id": str(uuid.uuid4()), "message": user_input, "isUser": True, "type": "text", "isVisible": True,
         }
-        await db_manager.add_chat_message(user_id, active_chat_id, user_message_payload)
         logger.info(f"Saved user message for user {user_id} in chat {active_chat_id}")
+
+        # Construct tools for the Qwen agent, including memory tools
+        tools = [{
+            "mcpServers": {
+                "memory_server": { "url": MEMORY_MCP_SERVER_URL, "headers": {"X-User-ID": user_id} },
+                # Other MCP servers like gdrive could be added here
+            }
+        }]
 
         # 2. Save a placeholder for the assistant's response
         assistant_placeholder_payload = {
@@ -68,6 +77,9 @@ async def generate_chat_llm_stream(
         }
         await db_manager.add_chat_message(user_id, active_chat_id, assistant_placeholder_payload)
         logger.info(f"Saved assistant placeholder for user {user_id} in chat {active_chat_id}")
+
+        # Save user message after placeholder to ensure chronological order for history fetching
+        await db_manager.add_chat_message(user_id, active_chat_id, user_message_payload)
     except Exception as e:
         logger.error(f"Failed to save initial messages for user {user_id}: {e}", exc_info=True)
         yield {"type": "error", "message": "Failed to save message to the database. Please try again."}
@@ -89,8 +101,12 @@ async def generate_chat_llm_stream(
         # Worker thread to run the synchronous Qwen agent
         def worker(initial_history: List[Dict[str, Any]]):
             try:
-                system_prompt = f"You are a helpful AI assistant. The user's name is {username}."
-                qwen_assistant = get_qwen_assistant(system_message=system_prompt, function_list=['web_extractor'])
+                system_prompt = (
+                    f"You are a helpful AI assistant. The user's name is {username}. "
+                    "Before answering, ALWAYS use the `search_memories` tool to see if you already know relevant information. "
+                    "When the user shares new information about themselves, their preferences, or relationships, use the `save_long_term_fact` tool to remember it."
+                )
+                qwen_assistant = get_qwen_assistant(system_message=system_prompt, function_list=tools)
                 for new_history_step in qwen_assistant.run(messages=initial_history):
                     loop.call_soon_threadsafe(queue.put_nowait, new_history_step)
             except Exception as e:

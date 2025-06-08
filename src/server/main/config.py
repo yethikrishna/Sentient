@@ -92,6 +92,14 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL_NAME = os.getenv("OLLAMA_MODEL_NAME", "qwen3:4b") 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY") 
 OPENROUTER_MODEL_NAME = os.getenv("OPENROUTER_MODEL_NAME", "qwen/qwen3-8b:free") 
+# MCP Server URLs
+MEMORY_MCP_SERVER_URL = os.getenv("MEMORY_MCP_SERVER_URL", "http://localhost:8001/sse")
+
+MONGO_URI= os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+MONGO_DB_NAME= os.getenv("MONGO_DB_NAME", "sentient_db")
+NEO4J_URI= os.getenv("NEO4J_URI", "bolt://localhost:7687")
+NEO4J_USER= os.getenv("NEO4J_USER", "neo4j")
+NEO4J_PASSWORD= os.getenv("NEO4J_PASSWORD", "password")
 
 print(f"[{datetime.datetime.now()}] [MainServer_Config] Configuration loaded. AUTH0_DOMAIN: {'SET' if AUTH0_DOMAIN else 'NOT SET'}")
 print(f"[{datetime.datetime.now()}] [MainServer_Config] LLM Provider: {LLM_PROVIDER}")

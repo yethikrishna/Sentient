@@ -21,13 +21,13 @@ export async function POST(request) {
 	}
 
 	try {
-		const { newGraphInfo } = await request.json()
+		const { information } = await request.json()
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL}/memory/customize-long-term-memories`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },
-				body: JSON.stringify({ information: newGraphInfo })
+				body: JSON.stringify({ information: information })
 			}
 		)
 

@@ -9,6 +9,10 @@ import {
 	IconSend,
 	IconRefresh,
 	IconLoader,
+	IconMail,
+	IconBrandGoogleDrive,
+	IconBrandSlack,
+	IconCalendarEvent,
 	IconPlayerStopFilled,
 	IconPhone,
 	IconPhoneOff
@@ -16,6 +20,13 @@ import {
 import toast from "react-hot-toast" // Corrected import from react-hot-toast
 import GmailSearchResults from "@components/agents/GmailSearchResults"
 import BackgroundCircleProvider from "@components/voice-visualization/background-circle-provider"
+
+const integrationIcons = {
+	gmail: IconMail,
+	gcalendar: IconCalendarEvent,
+	gdrive: IconBrandGoogleDrive,
+	slack: IconBrandSlack
+}
 
 const Chat = () => {
 	// --- State Variables ---
@@ -29,6 +40,7 @@ const Chat = () => {
 	const [connectionStatus, setConnectionStatus] = useState("disconnected")
 	const [audioInputDevices, setAudioInputDevices] = useState([])
 	const [selectedAudioInputDevice, setSelectedAudioInputDevice] = useState("")
+	const [connectedIntegrations, setConnectedIntegrations] = useState([])
 
 	// --- Refs ---
 	const textareaRef = useRef(null)
@@ -167,6 +179,26 @@ const Chat = () => {
 			setUserDetails(data)
 		} catch (error) {
 			toast.error("Error fetching user details.")
+		}
+	}
+
+	const fetchConnectedIntegrations = async () => {
+		try {
+			const response = await fetch("/api/integrations/connected")
+			if (response.ok) {
+				const data = await response.json()
+				const connected = (data.integrations || [])
+					.filter(
+						(i) =>
+							i.connected &&
+							(i.auth_type === "oauth" ||
+								i.auth_type === "manual")
+					)
+					.map((i) => ({ ...i, icon: integrationIcons[i.name] }))
+				setConnectedIntegrations(connected)
+			}
+		} catch (error) {
+			console.error("Failed to fetch connected integrations", error)
 		}
 	}
 
@@ -337,6 +369,7 @@ const Chat = () => {
 	// --- Effects ---
 	useEffect(() => {
 		fetchUserDetails()
+		fetchConnectedIntegrations()
 
 		const getDevices = async () => {
 			try {
@@ -490,6 +523,29 @@ const Chat = () => {
 								<div ref={chatEndRef} />
 							</div>
 							<div className="w-full flex flex-col items-center">
+								{connectedIntegrations.length > 0 && (
+									<div className="flex items-center gap-2 mb-2 text-xs text-gray-500">
+										<span>Tools connected:</span>
+										<div className="flex items-center gap-1.5">
+											{connectedIntegrations.map(
+												(integ) => {
+													const Icon = integ.icon
+													return (
+														Icon && (
+															<Icon
+																key={integ.name}
+																size={16}
+																title={
+																	integ.display_name
+																}
+															/>
+														)
+													)
+												}
+											)}
+										</div>
+									</div>
+								)}
 								<p className="text-gray-400 font-Poppins text-xs mb-2">
 									Check out our{" "}
 									<a

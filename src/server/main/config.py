@@ -18,6 +18,10 @@ ALGORITHMS = ["RS256"]
 AUTH0_MANAGEMENT_CLIENT_ID = os.getenv("AUTH0_MANAGEMENT_CLIENT_ID")
 AUTH0_MANAGEMENT_CLIENT_SECRET = os.getenv("AUTH0_MANAGEMENT_CLIENT_SECRET")
 
+# Google OAuth Configuration
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+
 
 # MongoDB Configuration
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
@@ -34,17 +38,17 @@ if AES_SECRET_KEY_HEX:
     if len(AES_SECRET_KEY_HEX) == 64: # 32 bytes = 64 hex chars
         AES_SECRET_KEY = bytes.fromhex(AES_SECRET_KEY_HEX)
     else:
-        print(f"[{datetime.datetime.now()}] [MainServer_Config_WARNING] AES_SECRET_KEY is invalid (must be 64 hex chars). Encryption/Decryption will fail.")
+        print(f"[{datetime.datetime.now()}] [MainServer_Config_WARNING] AES_SECRET_KEY is invalid (must be 64 hex characters for a 256-bit key). Encryption/Decryption will fail.")
 else:
-    print(f"[{datetime.datetime.now()}] [MainServer_Config_WARNING] AES_SECRET_KEY is missing. Encryption/Decryption will fail.")
+    print(f"[{datetime.datetime.now()}] [MainServer_Config_WARNING] AES_SECRET_KEY is not set. Encryption/Decryption will fail.")
 
 if AES_IV_HEX:
     if len(AES_IV_HEX) == 32: # 16 bytes = 32 hex chars
         AES_IV = bytes.fromhex(AES_IV_HEX)
     else:
-        print(f"[{datetime.datetime.now()}] [MainServer_Config_WARNING] AES_IV is invalid (must be 32 hex chars). Encryption/Decryption will fail.")
+        print(f"[{datetime.datetime.now()}] [MainServer_Config_WARNING] AES_IV is invalid (must be 32 hex characters for a 128-bit IV). Encryption/Decryption will fail.")
 else:
-    print(f"[{datetime.datetime.now()}] [MainServer_Config_WARNING] AES_IV is missing. Encryption/Decryption will fail.")
+    print(f"[{datetime.datetime.now()}] [MainServer_Config_WARNING] AES_IV is not set. Encryption/Decryption will fail.")
 
 
 # Google API Config (mainly for token storage path if server handles auth code exchange)
@@ -59,12 +63,99 @@ POLLING_INTERVALS = {
 }
 SUPPORTED_POLLING_SERVICES = ["gmail"] 
 
-DATA_SOURCES_CONFIG = {
-    "gmail": {
+# Note: For "oauth" type, the client ID will be added dynamically in the /sources endpoint
+INTEGRATIONS_CONFIG = {
+    "gdrive": { # User-configurable OAuth
+        "display_name": "Google Drive",
+        "description": "Access and manage files in your Google Drive.",
+        "auth_type": "oauth",
+        "icon": "IconBrandGoogleDrive",
+        "mcp_server_config": {
+            "name": "gdrive_server",
+            "url": os.getenv("GDRIVE_MCP_SERVER_URL", "http://localhost:9003/sse")
+        }
+    },
+    "gcalendar": { # User-configurable OAuth
+        "display_name": "Google Calendar",
+        "description": "Read and manage events on your Google Calendar.",
+        "auth_type": "oauth",
+        "icon": "IconCalendarEvent",
+        "mcp_server_config": {
+            "name": "gcal_server",
+            "url": os.getenv("GCAL_MCP_SERVER_URL", "http://localhost:9002/sse")
+        }
+    },
+    "gmail": { # User-configurable OAuth
         "display_name": "Gmail",
-        "description": "Polls your Gmail inbox for new emails.",
-        "enabled_by_default": False,
-        "configurable": True, 
+        "description": "Read, send, and manage emails.",
+        "auth_type": "oauth",
+        "icon": "IconMail",
+        "mcp_server_config": {
+            "name": "gmail_server",
+            "url": os.getenv("GMAIL_MCP_SERVER_URL", "http://localhost:9001/sse")
+        }
+    },
+    "slack": { # User-configurable Manual
+        "display_name": "Slack",
+        "description": "Connect to your Slack workspace to send messages and more.",
+        "auth_type": "manual",
+        "icon": "IconBrandSlack",
+        "manual_auth_info": {
+            "instructions": [
+                "1. Go to api.slack.com/apps and create a new app from scratch.",
+                "2. In 'OAuth & Permissions', add User Token Scopes like `chat:write`, `channels:read`.",
+                "3. Install the app and copy the 'User OAuth Token' (starts with `xoxp-`).",
+                "4. Find your 'Team ID' (starts with `T`) from your Slack URL or settings."
+            ],
+            "fields": [
+                {"id": "token", "label": "User OAuth Token", "type": "password"},
+                {"id": "team_id", "label": "Team ID", "type": "text"}
+            ]
+        },
+        "mcp_server_config": {
+            "name": "slack_server",
+            "url": os.getenv("SLACK_MCP_SERVER_URL", "http://localhost:9006/sse")
+        }
+    },
+    "internet_search": { # Built-in
+        "display_name": "Internet Search",
+        "description": "Allows the agent to search the web using Brave Search.",
+        "auth_type": "builtin",
+        "icon": "IconWorldSearch",
+        "mcp_server_config": {
+            "name": "brave_server",
+            "url": os.getenv("BRAVE_MCP_SERVER_URL", "http://localhost:9004/sse")
+        }
+    },
+    "accuweather": { # Built-in
+        "display_name": "AccuWeather",
+        "description": "Provides current weather conditions and forecasts.",
+        "auth_type": "builtin",
+        "icon": "IconCloud", # Frontend needs to map this string to the icon component
+        "mcp_server_config": {
+            "name": "weather_server",
+            "url": os.getenv("ACCUWEATHER_MCP_SERVER_URL", "http://localhost:9007/sse")
+        }
+    },
+    "quickchart": { # Built-in
+        "display_name": "QuickChart",
+        "description": "Generates charts and data visualizations on the fly.",
+        "auth_type": "builtin",
+        "icon": "IconChartPie", # Frontend needs to map this
+        "mcp_server_config": {
+            "name": "quickchart_server",
+            "url": os.getenv("QUICKCHART_MCP_SERVER_URL", "http://localhost:9008/sse")
+        }
+    },
+    "memory": { # Built-in
+        "display_name": "Long & Short-Term Memory",
+        "description": "Allows the agent to remember facts and context.",
+        "auth_type": "builtin",
+        "icon": "IconBrain", # Frontend needs to map this
+         "mcp_server_config": {
+             "name": "memory_server",
+             "url": os.getenv("MEMORY_MCP_SERVER_URL", "http://localhost:8001/sse")
+        }
     }
 }
 

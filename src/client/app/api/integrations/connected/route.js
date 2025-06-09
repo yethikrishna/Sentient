@@ -1,9 +1,8 @@
-// src/client/app/api/settings/data-sources/toggle/route.js
+// src/client/app/api/integrations/connected/route.js
 import { NextResponse } from "next/server"
-import { auth0 } from "@lib/auth0"
-import { getBackendAuthHeader } from "@lib/auth0"
+import { getBackendAuthHeader, auth0 } from "@lib/auth0"
 
-export async function POST(request) {
+export async function GET() {
 	const session = await auth0.getSession()
 	if (!session?.user?.sub) {
 		return NextResponse.json(
@@ -21,23 +20,22 @@ export async function POST(request) {
 	}
 
 	try {
-		const { source, enabled } = await request.json()
+		// This reuses the same backend endpoint but we will filter on the client
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/set_data_source_enabled`,
+			`${process.env.APP_SERVER_URL}/integrations/sources`,
 			{
-				method: "POST",
-				headers: { "Content-Type": "application/json", ...authHeader },
-				body: JSON.stringify({ source, enabled })
+				method: "GET",
+				headers: { "Content-Type": "application/json", ...authHeader }
 			}
 		)
 
 		const data = await response.json()
 		if (!response.ok) {
-			throw new Error(data.error || "Failed to toggle data source")
+			throw new Error(data.detail || "Failed to fetch integrations")
 		}
 		return NextResponse.json(data)
 	} catch (error) {
-		console.error("API Error in /settings/data-sources/toggle:", error)
+		console.error("API Error in /integrations/connected:", error)
 		return NextResponse.json({ error: error.message }, { status: 500 })
 	}
 }

@@ -1,8 +1,6 @@
 // src/client/app/settings/page.js
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import Sidebar from "@components/Sidebar"
 import toast from "react-hot-toast"
 import ModalDialog from "@components/ModalDialog"
 import {
@@ -12,16 +10,182 @@ import {
 	IconCalendarEvent,
 	IconWorldSearch,
 	IconLoader,
-	IconSettingsCog
+	IconSettingsCog,
+	IconBrandGoogleDrive,
+	IconBrandSlack,
+	IconPlugConnected,
+	IconPlugOff,
+	IconCloud,
+	IconChartPie,
+	IconBrain
 } from "@tabler/icons-react"
+import { useState, useEffect, useCallback } from "react"
+import Sidebar from "@components/Sidebar"
 import React from "react"
-import { Switch } from "@radix-ui/react-switch"
-import { cn } from "@utils/cn"
 
-const dataSourceIcons = {
+const integrationIcons = {
 	gmail: IconMail,
 	gcalendar: IconCalendarEvent,
-	internet_search: IconWorldSearch
+	internet_search: IconWorldSearch,
+	gdrive: IconBrandGoogleDrive,
+	slack: IconBrandSlack,
+	accuweather: IconCloud,
+	quickchart: IconChartPie,
+	memory: IconBrain,
+	google_search: IconWorldSearch,
+	brave: IconWorldSearch
+}
+
+// Hardcoded configuration for manual integrations
+const MANUAL_INTEGRATION_CONFIGS = {
+	slack: {
+		instructions: [
+			"1. Go to api.slack.com/apps and create a new app from scratch.",
+			"2. In 'OAuth & Permissions', add User Token Scopes like `chat:write`, `channels:read`.",
+			"3. Install the app and copy the 'User OAuth Token' (starts with `xoxp-`).",
+			"4. Find your 'Team ID' (starts with `T`) from your Slack URL or settings."
+		],
+		fields: [
+			{ id: "token", label: "User OAuth Token", type: "password" },
+			{ id: "team_id", label: "Team ID", type: "text" }
+		]
+	}
+	// Add other manual integrations here, e.g., 'notion': { ... }
+}
+
+const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {
+	const [credentials, setCredentials] = useState({})
+	const [isSubmitting, setIsSubmitting] = useState(false)
+
+	// This component should only attempt to render if an integration is passed.
+	if (!integration) {
+		return null
+	}
+
+	// Use the hardcoded config based on the integration name
+	const config = MANUAL_INTEGRATION_CONFIGS[integration?.name]
+
+	// Defensively get the fields and instructions.
+	// This ensures they are ALWAYS arrays, preventing crashes if one is missing.
+	const instructions = config?.instructions || []
+	const fields = config?.fields || []
+
+	// If there are no fields to render, there's no point showing the modal.
+	if (fields.length === 0) {
+		console.error(
+			`No fields configured for manual integration: ${integration?.name}`
+		)
+		return null
+	}
+
+	const handleChange = (e) => {
+		setCredentials({
+			...credentials,
+			[e.target.name]: e.target.value
+		})
+	}
+
+	const handleSubmit = async () => {
+		for (const field of fields) {
+			// Now safe to iterate
+			if (!credentials[field.id]?.trim()) {
+				toast.error(`Please provide the ${field.label}.`)
+				return
+			}
+		}
+
+		setIsSubmitting(true)
+		try {
+			const response = await fetch(
+				"/api/settings/integrations/connect/manual",
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						service_name: integration.name,
+						credentials
+					})
+				}
+			)
+
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(
+					data.error ||
+						`Failed to connect ${integration.display_name}`
+				)
+			}
+
+			toast.success(`${integration.display_name} connected successfully!`)
+			onSuccess() // This will refetch integrations
+			onClose()
+		} catch (error) {
+			console.error(
+				`Error connecting ${integration.display_name}:`,
+				error
+			)
+			toast.error(error.message)
+		} finally {
+			setIsSubmitting(false)
+		}
+	}
+
+	const modalContent = (
+		<div className="text-left space-y-4 my-4">
+			<div>
+				<h4 className="font-semibold text-gray-300 mb-2">
+					Instructions:
+				</h4>
+				<ol className="list-decimal list-inside space-y-1 text-sm text-gray-400">
+					{instructions.map(
+						(
+							step,
+							index // Safe to map
+						) => (
+							<li key={index}>{step}</li>
+						)
+					)}
+				</ol>
+			</div>
+			<div className="space-y-3">
+				{fields.map(
+					(
+						field // Safe to map
+					) => (
+						<div key={field.id}>
+							<label
+								htmlFor={field.id}
+								className="block text-sm font-medium text-gray-300 mb-1"
+							>
+								{field.label}
+							</label>
+							<input
+								type={field.type}
+								name={field.id}
+								id={field.id}
+								onChange={handleChange}
+								value={credentials[field.id] || ""}
+								className="w-full bg-neutral-700 border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-lightblue"
+								autoComplete="off"
+							/>
+						</div>
+					)
+				)}
+			</div>
+		</div>
+	)
+
+	return (
+		<ModalDialog
+			title={`Connect to ${integration.display_name}`}
+			description="Follow the instructions below and enter your credentials."
+			onConfirm={handleSubmit}
+			onCancel={onClose}
+			confirmButtonText={isSubmitting ? "Connecting..." : "Connect"}
+			isConfirmDisabled={isSubmitting}
+			extraContent={modalContent}
+		/>
+	)
 }
 
 const Settings = () => {
@@ -31,68 +195,118 @@ const Settings = () => {
 	const [showReferralDialog, setShowReferralDialog] = useState(false)
 	const [referralCode, setReferralCode] = useState("DUMMY")
 	const [referrerStatus, setReferrerStatus] = useState(false)
-	const [dataSources, setDataSources] = useState([])
-	const [togglingSource, setTogglingSource] = useState(null)
+	const [userIntegrations, setUserIntegrations] = useState([])
+	const [defaultTools, setDefaultTools] = useState([])
+	const [loadingIntegrations, setLoadingIntegrations] = useState(true)
+	const [activeManualIntegration, setActiveManualIntegration] = useState(null)
+	const [processingIntegration, setProcessingIntegration] = useState(null)
 
-	const fetchDataSources = useCallback(async () => {
-		console.log("Fetching data sources...")
+	const fetchIntegrations = useCallback(async () => {
+		setLoadingIntegrations(true)
+		console.log("Fetching integrations...")
 		try {
-			const response = await fetch("/api/settings/data-sources")
+			const response = await fetch("/api/settings/integrations")
 			const data = await response.json()
 			if (!response.ok) {
-				throw new Error(data.error || "Failed to fetch data sources")
+				throw new Error(data.error || "Failed to fetch integrations")
 			}
-			const sourcesWithIcons = (
-				Array.isArray(data.data_sources) ? data.data_sources : []
+			const integrationsWithIcons = (
+				Array.isArray(data.integrations) ? data.integrations : []
 			).map((ds) => ({
 				...ds,
-				icon: dataSourceIcons[ds.name] || IconSettingsCog
+				icon: integrationIcons[ds.name] || IconSettingsCog
 			}))
-			setDataSources(sourcesWithIcons)
-			console.log("Data sources fetched:", sourcesWithIcons)
+
+			// Split integrations into user-configurable and default tools
+			const userConnectable = integrationsWithIcons.filter(
+				(i) => i.auth_type === "oauth" || i.auth_type === "manual"
+			)
+			const builtIn = integrationsWithIcons.filter(
+				(i) => i.auth_type === "builtin"
+			)
+			setUserIntegrations(userConnectable)
+			setDefaultTools(builtIn)
 		} catch (error) {
-			console.error("Error fetching data sources:", error)
-			toast.error(`Error fetching data sources: ${error.message}`)
-			setDataSources([])
+			console.error("Error fetching integrations:", error)
+			toast.error(`Error fetching integrations: ${error.message}`)
+			setUserIntegrations([])
+			setDefaultTools([])
+		} finally {
+			setLoadingIntegrations(false)
 		}
 	}, [])
 
-	const handleToggle = async (sourceName, enabled) => {
-		console.log(`Toggling ${sourceName} to ${enabled}`)
-		setTogglingSource(sourceName)
-
-		const originalDataSources = JSON.parse(JSON.stringify(dataSources))
-		setDataSources((prev) =>
-			prev.map((ds) => (ds.name === sourceName ? { ...ds, enabled } : ds))
-		)
-
-		try {
-			// In a web environment, enabling a source like Gmail would typically involve
-			// a redirect-based OAuth flow. This flow is initiated and handled by the backend.
-			// Clicking the switch now directly calls our API endpoint to toggle the source.
-			// The backend should handle authentication checks and potential redirects.
-			const response = await fetch("/api/settings/data-sources/toggle", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ source: sourceName, enabled })
-			})
-
-			const data = await response.json()
-			if (!response.ok) {
-				// If the server indicates auth is needed (e.g., via a specific error or status code),
-				// a real app would redirect the user to the auth URL.
-				// For now, we just show the error.
-				throw new Error(data.error || "Failed to toggle data source")
+	const handleConnect = (integration) => {
+		if (integration.auth_type === "oauth") {
+			const { name: serviceName, client_id: clientId } = integration
+			if (!clientId) {
+				toast.error(
+					`Client ID for ${integration.display_name} is not configured.`
+				)
+				return
 			}
 
-			toast.success(`${sourceName} ${enabled ? "enabled" : "disabled"}.`)
-			await fetchDataSources() // Refresh data sources from backend
+			const redirectUri = `${window.location.origin}/api/settings/integrations/connect/oauth/callback`
+			const scopes = {
+				gdrive: "https://www.googleapis.com/auth/drive.readonly",
+				gcalendar: "https://www.googleapis.com/auth/calendar",
+				gmail: "https://mail.google.com/"
+			}
+			const scope =
+				scopes[serviceName] ||
+				"https://www.googleapis.com/auth/userinfo.email"
+
+			const state = serviceName
+
+			const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=consent&state=${state}`
+			window.location.href = authUrl
+		} else if (integration.auth_type === "manual") {
+			// Use the hardcoded config for the modal
+			if (MANUAL_INTEGRATION_CONFIGS[integration.name]) {
+				setActiveManualIntegration(integration)
+			} else {
+				toast.error(
+					`UI configuration for ${integration.display_name} not found.`
+				)
+			}
+		}
+	}
+
+	const handleDisconnect = async (integrationName) => {
+		const displayName =
+			userIntegrations.find((i) => i.name === integrationName)
+				?.display_name || integrationName
+
+		if (
+			!window.confirm(
+				`Are you sure you want to disconnect ${displayName}?`
+			)
+		) {
+			return
+		}
+
+		setProcessingIntegration(integrationName)
+		try {
+			const response = await fetch(
+				"/api/settings/integrations/disconnect",
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ service_name: integrationName })
+				}
+			)
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(
+					data.error || `Failed to disconnect ${displayName}`
+				)
+			}
+			toast.success(`${displayName} disconnected.`)
+			fetchIntegrations()
 		} catch (error) {
-			console.error(`Error updating ${sourceName} data source:`, error)
-			toast.error(`Error updating ${sourceName}: ${error.message}`)
-			setDataSources(originalDataSources) // Revert UI on any error
+			toast.error(error.message)
 		} finally {
-			setTogglingSource(null)
+			setProcessingIntegration(null)
 		}
 	}
 
@@ -160,13 +374,27 @@ const Settings = () => {
 		fetchUserDetails()
 		fetchPricingPlan()
 		fetchReferralDetails()
-		fetchDataSources()
+		fetchIntegrations()
+
+		// Check for OAuth callback results in URL
+		const urlParams = new URLSearchParams(window.location.search)
+		const success = urlParams.get("integration_success")
+		const error = urlParams.get("integration_error")
+
+		if (success) {
+			toast.success(`Successfully connected to ${success}!`)
+			// Clean the URL
+			window.history.replaceState({}, document.title, "/settings")
+		} else if (error) {
+			toast.error(`Connection failed: ${error}`)
+			window.history.replaceState({}, document.title, "/settings")
+		}
 	}, [
 		fetchData,
 		fetchUserDetails,
 		fetchPricingPlan,
 		fetchReferralDetails,
-		fetchDataSources
+		fetchIntegrations
 	])
 
 	return (
@@ -217,78 +445,149 @@ const Settings = () => {
 				<div className="w-full max-w-5xl mx-auto space-y-10 flex-grow">
 					<section>
 						<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-neutral-700 pb-2">
-							Background Data Sources
+							Connected Apps & Integrations
 						</h2>
-						<div className="bg-neutral-800/50 p-4 md:p-6 rounded-lg border border-neutral-700">
-							<div className="space-y-4">
-								{dataSources.length > 0 ? (
-									dataSources.map((source) => {
-										const SourceIcon =
-											source.icon || IconSettingsCog
+						<div className="bg-neutral-800/50 p-2 md:p-4 rounded-lg border border-neutral-700">
+							<div className="divide-y divide-neutral-700/50">
+								{loadingIntegrations ? (
+									<div className="flex justify-center items-center py-10">
+										<IconLoader className="w-8 h-8 animate-spin text-lightblue" />
+									</div>
+								) : userIntegrations.length > 0 ? (
+									userIntegrations.map((integration) => {
+										const IntegrationIcon =
+											integration.icon || IconSettingsCog
+										const isProcessing =
+											processingIntegration ===
+											integration.name
 										return (
 											<div
-												key={source.name}
-												className="flex items-center justify-between py-2"
+												key={integration.name}
+												className="flex items-center justify-between p-4"
 											>
-												<div className="flex items-center gap-3">
-													<SourceIcon className="w-6 h-6 text-lightblue" />
-													<span className="font-medium text-white text-base">
-														{source.display_name ||
-															source.name}
-													</span>
+												<div className="flex items-center gap-4">
+													<IntegrationIcon className="w-8 h-8 text-lightblue" />
+													<div>
+														<h3 className="font-semibold text-white text-lg">
+															{
+																integration.display_name
+															}
+														</h3>
+														<p className="text-gray-400 text-sm">
+															{
+																integration.description
+															}
+														</p>
+													</div>
 												</div>
-												{togglingSource ===
-												source.name ? (
-													<IconLoader className="w-5 h-5 animate-spin text-lightblue" />
-												) : (
-													<Switch
-														checked={source.enabled}
-														onCheckedChange={(
-															enabled
-														) =>
-															handleToggle(
-																source.name,
-																enabled
-															)
-														}
-														className={cn(
-															"group relative inline-flex h-[24px] w-[44px] flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-lightblue focus:ring-offset-2 focus:ring-offset-neutral-800",
-															source.enabled
-																? "bg-lightblue"
-																: "bg-neutral-600"
-														)}
-													>
-														<span className="sr-only">
-															Toggle {source.name}
-														</span>
-														<span
-															aria-hidden="true"
-															className={cn(
-																"pointer-events-none inline-block h-[20px] w-[20px] transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-																source.enabled
-																	? "translate-x-[20px]"
-																	: "translate-x-0"
-															)}
-														/>
-													</Switch>
-												)}
+												<div className="w-36 text-right">
+													{isProcessing ? (
+														<IconLoader className="w-6 h-6 animate-spin text-lightblue ml-auto" />
+													) : integration.connected ? (
+														integration.auth_type !==
+															"builtin" && (
+															<button
+																onClick={() =>
+																	handleDisconnect(
+																		integration.name
+																	)
+																}
+																className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-red-600/20 hover:bg-red-600/40 text-red-400 text-sm font-medium transition-colors"
+															>
+																<IconPlugOff
+																	size={16}
+																/>
+																<span>
+																	Disconnect
+																</span>
+															</button>
+														)
+													) : (
+														<button
+															onClick={() =>
+																handleConnect(
+																	integration
+																)
+															}
+															className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-blue-600/50 hover:bg-blue-600/70 text-white text-sm font-medium transition-colors"
+														>
+															<IconPlugConnected
+																size={16}
+															/>
+															<span>Connect</span>
+														</button>
+													)}
+												</div>
 											</div>
 										)
 									})
 								) : (
-									<p className="text-gray-400 italic text-center py-4">
-										Data source settings loading or none
-										available...
+									<p className="text-gray-400 italic text-center py-8">
+										No integrations available.
 									</p>
 								)}
 							</div>
 						</div>
 					</section>
 
+					<section>
+						<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-neutral-700 pb-2">
+							Default System Tools
+						</h2>
+						<div className="bg-neutral-800/50 p-2 md:p-4 rounded-lg border border-neutral-700">
+							<div className="divide-y divide-neutral-700/50">
+								{loadingIntegrations ? (
+									<div className="flex justify-center items-center py-10">
+										<IconLoader className="w-8 h-8 animate-spin text-lightblue" />
+									</div>
+								) : defaultTools.length > 0 ? (
+									defaultTools.map((tool) => {
+										const ToolIcon =
+											tool.icon || IconSettingsCog
+										return (
+											<div
+												key={tool.name}
+												className="flex items-center justify-between p-4"
+											>
+												<div className="flex items-center gap-4">
+													<ToolIcon className="w-8 h-8 text-gray-400" />
+													<div>
+														<h3 className="font-semibold text-white text-lg">
+															{tool.display_name}
+														</h3>
+														<p className="text-gray-400 text-sm">
+															{tool.description}
+														</p>
+													</div>
+												</div>
+											</div>
+										)
+									})
+								) : (
+									<p className="text-gray-400 italic text-center py-8">
+										No default tools available.
+									</p>
+								)}
+							</div>
+						</div>
+					</section>
+
+					{activeManualIntegration && (
+						<ManualTokenEntryModal
+							integration={activeManualIntegration}
+							onClose={() => setActiveManualIntegration(null)}
+							onSuccess={() => fetchIntegrations()}
+						/>
+					)}
+
 					{showReferralDialog && (
 						<ModalDialog
 							title="Referral Code"
-							description={`Share this code with friends: ${referralCode === "N/A" || !referralCode ? "Loading..." : referralCode}`}
+							description={`Share this code with friends: ${
+								referralCode === "N/A" || !referralCode
+									? "Loading..."
+									: referralCode
+							}`}
 							extraContent={
 								referrerStatus ? (
 									<p className="text-sm text-green-400">

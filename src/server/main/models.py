@@ -3,24 +3,21 @@ from pydantic import BaseModel, Field, validator
 from typing import Dict, Any, Optional, List, Union
 import datetime
 
+# --- Integration Models ---
+class IntegrationData(BaseModel):
+    encrypted_token: str
+    connected_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc))
+
 # --- User Profile Models (Core) ---
-class GoogleServiceTokenData(BaseModel):
-    encrypted_refresh_token: Optional[str] = None
-
-class UserGoogleServicesData(BaseModel):
-    gmail: Optional[GoogleServiceTokenData] = None
-    calendar: Optional[GoogleServiceTokenData] = None
-    # Add other services as needed
-
 class UserProfileData(BaseModel):
     onboardingAnswers: Optional[Dict[str, Any]] = Field(default_factory=dict)
     onboardingComplete: Optional[bool] = False
     personalInfo: Optional[Dict[str, Any]] = Field(default_factory=dict)
     active_chat_id: Optional[str] = None
     last_active_timestamp: Optional[datetime.datetime] = None
-    data_sources_config: Optional[Dict[str, Dict[str, Any]]] = Field(default_factory=dict)
+    # The 'integrations' field below replaces the legacy 'data_sources_config' and 'google_services' fields.
+    integrations: Optional[Dict[str, IntegrationData]] = Field(default_factory=dict)
     encrypted_refresh_token: Optional[str] = None # Auth0 refresh token (auth module will handle specifics)
-    google_services: Optional[UserGoogleServicesData] = Field(default_factory=UserGoogleServicesData)
 
 class UserProfile(BaseModel):
     user_id: str = Field(..., description="The Auth0 user ID (sub claim)")
@@ -43,11 +40,7 @@ class UserProfile(BaseModel):
 # Specific models will be moved to their respective modules (auth, chat, voice)
 
 class OnboardingRequest(BaseModel):
-    data: Dict[str, Any] 
-
-class DataSourceToggleRequest(BaseModel):
-    source: str 
-    enabled: bool
+    data: Dict[str, Any]
 
 # Models that were in the original main.models.py and are not moved yet:
 # ChatMessageInput -> moved to chat/models.py

@@ -23,14 +23,20 @@ export async function GET() {
 	try {
 		// Fetch both details in parallel
 		const [codeRes, statusRes] = await Promise.all([
-			fetch(`${process.env.APP_SERVER_URL}/utils/get-referral-code`, {
+			fetch(`${process.env.APP_SERVER_URL}/api/utils/get-referral-code`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader }
 			}),
-			fetch(`${process.env.APP_SERVER_URL}/utils/get-referrer-status`, {
-				method: "POST",
-				headers: { "Content-Type": "application/json", ...authHeader }
-			})
+			fetch(
+				`${process.env.APP_SERVER_URL}/api/utils/get-referrer-status`,
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						...authHeader
+					}
+				}
+			)
 		])
 
 		const codeData = await codeRes.json()

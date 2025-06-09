@@ -1,22 +1,47 @@
 # server/mcp-hub/gdrive/auth.py
 
 import os
+import json
+import base64
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.backends import default_backend
 import motor.motor_asyncio
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build, Resource
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
 from dotenv import load_dotenv
+from typing import Optional
 
-load_dotenv()
+# Load from main server .env, which is two levels up from the 'gdrive' folder
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'server', '.env')
+load_dotenv(dotenv_path=dotenv_path)
 
 MONGO_URI = os.getenv("MONGO_URI")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
+AES_SECRET_KEY_HEX = os.getenv("AES_SECRET_KEY")
+AES_IV_HEX = os.getenv("AES_IV")
+
+AES_SECRET_KEY: Optional[bytes] = bytes.fromhex(AES_SECRET_KEY_HEX) if AES_SECRET_KEY_HEX and len(AES_SECRET_KEY_HEX) == 64 else None
+AES_IV: Optional[bytes] = bytes.fromhex(AES_IV_HEX) if AES_IV_HEX and len(AES_IV_HEX) == 32 else None
+
+def aes_decrypt(encrypted_data: str) -> str:
+    if not AES_SECRET_KEY or not AES_IV:
+        raise ValueError("AES encryption keys are not configured in the environment.")
+    backend = default_backend()
+    cipher = Cipher(algorithms.AES(AES_SECRET_KEY), modes.CBC(AES_IV), backend=backend)
+    decryptor = cipher.decryptor()
+    encrypted_bytes = base64.b64decode(encrypted_data)
+    decrypted = decryptor.update(encrypted_bytes) + decryptor.finalize()
+    unpadder = padding.PKCS7(algorithms.AES.block_size).unpadder()
+    unpadded_data = unpadder.update(decrypted) + unpadder.finalize()
+    return unpadded_data.decode()
 
 # Establish a single, reusable connection to MongoDB
 client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI)
 db = client[MONGO_DB_NAME]
-users_collection = db["users"]
+users_collection = db["user_profiles"]
 
 
 def get_user_id_from_context(ctx: Context) -> str:
@@ -38,16 +63,24 @@ async def get_google_creds(user_id: str) -> Credentials:
     """
     Fetches Google OAuth token from MongoDB for a given user_id.
     """
-    user_doc = await users_collection.find_one({"_id": user_id})
+    user_doc = await users_collection.find_one({"user_id": user_id})
 
-    if not user_doc or "google_token" not in user_doc:
-        raise ToolError(f"Google token not found for user_id: {user_id}. Please authenticate with Google.")
+    if not user_doc or not user_doc.get("userData"):
+        raise ToolError(f"User profile or userData not found for user_id: {user_id}.")
 
-    token_info = user_doc["google_token"]
+    gdrive_data = user_doc["userData"].get("integrations", {}).get("gdrive")
 
-    required_keys = ["token", "refresh_token", "token_uri", "client_id", "client_secret", "scopes"]
-    if not all(key in token_info for key in required_keys):
-        raise ToolError("Invalid token data in database. Re-authentication is required.")
+    if not gdrive_data or "credentials" not in gdrive_data:
+        raise ToolError(f"Google Drive integration not found or credentials are missing for user_id: {user_id}. Please connect it in settings.")
+
+    try:
+        decrypted_creds_str = aes_decrypt(gdrive_data["credentials"])
+        token_info = json.loads(decrypted_creds_str)
+    except Exception as e:
+        raise ToolError(f"Failed to decrypt or parse token for Google Drive: {e}")
+
+    if not all(k in token_info for k in ["token", "refresh_token", "client_id", "client_secret", "scopes"]):
+        raise ToolError("Invalid Google token data after decryption. Re-authentication is required.")
 
     return Credentials.from_authorized_user_info(token_info)
 

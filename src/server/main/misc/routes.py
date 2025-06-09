@@ -8,12 +8,12 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request, WebSocke
 from fastapi.responses import JSONResponse
 
 # Assuming models like OnboardingRequest are in the main models.py or a shared location
-from ..models import OnboardingRequest, DataSourceToggleRequest 
+from ..models import OnboardingRequest
 # UserProfile might not be directly used as request/response here but good for context.
 
 from ..auth.utils import PermissionChecker 
 from ..config import (
-    AUTH0_AUDIENCE, DATA_SOURCES_CONFIG, SUPPORTED_POLLING_SERVICES, POLLING_INTERVALS
+    AUTH0_AUDIENCE, SUPPORTED_POLLING_SERVICES, POLLING_INTERVALS
 )
 from ..dependencies import mongo_manager, auth_helper, websocket_manager as main_websocket_manager
 from ..db import MongoManager
@@ -24,50 +24,6 @@ router = APIRouter(
     tags=["Miscellaneous API"]
 )
 
-
-# --- Utilities for data sources (moved here from original api/routes.py for clarity) ---
-async def get_data_sources_config_for_user_api(user_id: str, db_manager: MongoManager):
-    user_sources_config = []
-    for source_name in SUPPORTED_POLLING_SERVICES:
-        if source_name in DATA_SOURCES_CONFIG:
-            general_config = DATA_SOURCES_CONFIG[source_name]
-            polling_state = await db_manager.get_polling_state(user_id, source_name)
-            
-            is_enabled = False
-            if polling_state:
-                is_enabled = polling_state.get("is_enabled", False)
-            else: 
-                is_enabled = general_config.get("enabled_by_default", False)
-            
-            user_sources_config.append({
-                "name": source_name,
-                "display_name": general_config.get("display_name", source_name.capitalize()),
-                "enabled": is_enabled,
-                "configurable": general_config.get("configurable", True)
-            })
-    return user_sources_config
-
-async def toggle_data_source_for_user_api(user_id: str, source_name: str, enable: bool, db_manager: MongoManager):
-    if source_name not in SUPPORTED_POLLING_SERVICES or source_name not in DATA_SOURCES_CONFIG:
-        raise ValueError(f"Data source '{source_name}' is not supported or configured.")
-
-    update_payload = {"is_enabled": enable}
-    now_utc = datetime.datetime.now(datetime.timezone.utc)
-
-    if enable:
-        update_payload["next_scheduled_poll_time"] = now_utc
-        update_payload["is_currently_polling"] = False 
-        update_payload["error_backoff_until_timestamp"] = None
-        update_payload["consecutive_failure_count"] = 0
-        update_payload["current_polling_tier"] = "user_enabled" 
-        update_payload["current_polling_interval_seconds"] = POLLING_INTERVALS["ACTIVE_USER_SECONDS"]
-    
-    success = await db_manager.update_polling_state(user_id, source_name, update_payload)
-    if not success:
-        raise Exception(f"Failed to update data source '{source_name}' status in database.")
-    
-    print(f"[{datetime.datetime.now()}] [API_Utils] Polling state for {user_id}/{source_name} set to enabled={enable}")
-    return success
 
 # === Onboarding Routes ===
 @router.post("/onboarding", status_code=status.HTTP_200_OK, summary="Save Onboarding Data")
@@ -111,26 +67,6 @@ async def get_user_data_endpoint(user_id: str = Depends(auth_helper.get_current_
     print(f"[{datetime.datetime.now()}] [GET_USER_DATA] No profile/userData for {user_id}. Creating basic entry.")
     await mongo_manager.update_user_profile(user_id, {"userData": {}}) 
     return JSONResponse(content={"data": {}, "status": 200}) 
-
-# === Settings Routes (Data Sources) ===
-@router.post("/get_data_sources", summary="Get Data Sources Configuration")
-async def get_data_sources_endpoint(user_id: str = Depends(PermissionChecker(required_permissions=["read:config"]))):
-    sources = await get_data_sources_config_for_user_api(user_id, mongo_manager)
-    return JSONResponse(content={"data_sources": sources})
-
-@router.post("/set_data_source_enabled", summary="Enable/Disable Data Source Polling")
-async def set_data_source_enabled_endpoint(
-    request_body: DataSourceToggleRequest, 
-    user_id: str = Depends(PermissionChecker(required_permissions=["write:config"]))
-):
-    try:
-        await toggle_data_source_for_user_api(user_id, request_body.source, request_body.enabled, mongo_manager)
-        return JSONResponse(content={"status": "success", "message": f"Data source '{request_body.source}' status set to {request_body.enabled}."})
-    except ValueError as ve:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
-    except Exception as e:
-        print(f"[{datetime.datetime.now()}] [SETTINGS_TOGGLE_ERROR] User {user_id}: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to set data source status.")
 
 # === Notifications Routes ===
 @router.websocket("/ws/notifications")

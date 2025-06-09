@@ -309,7 +309,19 @@ const ChatBubble = ({
 						{expandedStates[partId] && (
 							<div className="mt-2 p-3 bg-neutral-800/50 rounded-md">
 								<pre className="text-xs text-gray-300 whitespace-pre-wrap bg-transparent p-0 m-0 font-mono">
-									<code>{part.content}</code>
+									<code>
+										{(() => {
+											try {
+												return JSON.stringify(
+													JSON.parse(part.content),
+													null,
+													2
+												)
+											} catch (e) {
+												return part.content // Fallback to raw string if not valid JSON
+											}
+										})()}
+									</code>
 								</pre>
 							</div>
 						)}

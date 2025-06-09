@@ -1,9 +1,7 @@
-// src/client/app/api/settings/data-sources/route.js
 import { NextResponse } from "next/server"
-import { auth0 } from "@lib/auth0"
-import { getBackendAuthHeader } from "@lib/auth0"
+import { getBackendAuthHeader, auth0 } from "@lib/auth0"
 
-export async function GET() {
+export async function POST(request) {
 	const session = await auth0.getSession()
 	if (!session?.user?.sub) {
 		return NextResponse.json(
@@ -21,21 +19,26 @@ export async function GET() {
 	}
 
 	try {
+		const body = await request.json() // { service_name, credentials }
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/get_data_sources`,
+			`${process.env.APP_SERVER_URL}/integrations/connect/manual`,
 			{
 				method: "POST",
-				headers: { "Content-Type": "application/json", ...authHeader }
+				headers: { "Content-Type": "application/json", ...authHeader },
+				body: JSON.stringify(body)
 			}
 		)
 
 		const data = await response.json()
 		if (!response.ok) {
-			throw new Error(data.error || "Failed to fetch data sources")
+			throw new Error(data.detail || "Failed to connect integration")
 		}
 		return NextResponse.json(data)
 	} catch (error) {
-		console.error("API Error in /settings/data-sources:", error)
+		console.error(
+			"API Error in /settings/integrations/connect/manual:",
+			error
+		)
 		return NextResponse.json({ error: error.message }, { status: 500 })
 	}
 }

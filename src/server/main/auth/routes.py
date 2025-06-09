@@ -4,10 +4,10 @@ import traceback
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 
-from .utils import aes_encrypt, PermissionChecker, AuthHelper
+from .utils import aes_encrypt, aes_decrypt, PermissionChecker, AuthHelper
 from .models import AuthTokenStoreRequest, GoogleTokenStoreRequest, EncryptionRequest, DecryptionRequest
 from ..dependencies import mongo_manager
-from ..config import DATA_SOURCES_CONFIG # For validating service_name
+from ..config import INTEGRATIONS_CONFIG # For validating service_name
 auth_helper = AuthHelper() 
 
 router = APIRouter(
@@ -38,7 +38,7 @@ async def store_google_token_endpoint(
     user_id: str = Depends(PermissionChecker(required_permissions=["manage:google_auth"])) 
 ):
     print(f"[{datetime.datetime.now()}] [GOOGLE_TOKEN_STORE] Storing Google refresh token for user {user_id}, service: {request_body.service_name}")
-    if not request_body.service_name or request_body.service_name not in DATA_SOURCES_CONFIG: 
+    if not request_body.service_name or request_body.service_name not in INTEGRATIONS_CONFIG:
         raise HTTPException(status_code=400, detail=f"Invalid service name: {request_body.service_name}")
     try:
         encrypted_google_refresh_token = aes_encrypt(request_body.google_refresh_token)

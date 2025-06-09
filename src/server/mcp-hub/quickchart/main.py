@@ -68,7 +68,7 @@ async def download_chart(ctx: Context, chart_config: Dict[str, Any], output_path
 # --- Server Execution ---
 if __name__ == "__main__":
     host = os.getenv("MCP_SERVER_HOST", "127.0.0.1")
-    port = int(os.getenv("MCP_SERVER_PORT", 9007))
+    port = int(os.getenv("MCP_SERVER_PORT", 9008))
     
     print(f"Starting QuickChart MCP Server on http://{host}:{port}")
     mcp.run(transport="sse", host=host, port=port)

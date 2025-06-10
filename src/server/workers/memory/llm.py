@@ -1,0 +1,81 @@
+# src/server/workers/memory/llm.py
+import logging
+from qwen_agent.agents import Assistant
+
+from . import config
+
+logger = logging.getLogger(__name__)
+
+# UPDATED: The system prompt now includes both long-term and short-term memory tools.
+# It instructs the agent to make a decision based on the nature of the fact.
+SYSTEM_PROMPT_TEMPLATE = """
+You are an intelligent memory classification and storage agent. Your task is to analyze a given piece of information ("fact") and decide if it is a permanent, long-term memory or a temporary, short-term memory. Then, you must call the appropriate tool to save it.
+
+**Decision Criteria:**
+1.  **Long-Term Memory:** Use for permanent facts, relationships, preferences, and core information about the user's life.
+    -   Examples: "My brother's name is Mark.", "I am allergic to penicillin.", "I work at Acme Corp."
+    -   **Tool to use: `save_long_term_fact`**.
+
+2.  **Short-Term Memory:** Use for temporary information, reminders, or context that will expire soon.
+    -   Examples: "The meeting is at 3 PM today.", "My flight number is UA246 for tomorrow's trip.", "Remember to buy milk on the way home."
+    -   **Tool to use: `add_short_term_memory`**.
+
+**Tool-Specific Instructions:**
+-   For `save_long_term_fact`, assign a relevant category from: Personal, Professional, Social, Financial, Health, Preferences, Events, General.
+-   For `add_short_term_memory`, you MUST estimate a reasonable `ttl_seconds` (time-to-live in seconds).
+    -   A few hours: `10800` (3 hours)
+    -   One day: `86400`
+    -   A few days: `259200` (3 days)
+    -   One week: `604800`
+-   Do not ask for clarification. Make a decision and call one of the tools. Your entire response MUST be the tool call.
+"""
+
+def get_memory_qwen_agent(user_id: str):
+    """
+    Initializes a Qwen agent for classifying and saving a memory fact.
+    It is configured with the Memory MCP server as its only tool source.
+
+    Args:
+        user_id (str): The user ID, required for the MCP server's auth header.
+    """
+    llm_cfg = {}
+    if config.LLM_PROVIDER == "OLLAMA":
+        ollama_v1_url = f"{config.OLLAMA_BASE_URL.rstrip('/')}/v1"
+        llm_cfg = {
+            'model': config.OLLAMA_MODEL_NAME,
+            'model_server': ollama_v1_url,
+            'api_key': 'ollama',
+            'generate_cfg': {'temperature': 0.1} # Lower temp for more deterministic classification
+        }
+    elif config.LLM_PROVIDER == "OPENROUTER":
+        openrouter_v1_url = "https://openrouter.ai/api/v1"
+        llm_cfg = {
+            'model': config.OPENROUTER_MODEL_NAME,
+            'model_server': openrouter_v1_url,
+            'api_key': config.OPENROUTER_API_KEY,
+            'generate_cfg': {'temperature': 0.1}
+        }
+    else:
+        raise ValueError(f"Invalid LLM_PROVIDER: {config.LLM_PROVIDER}")
+
+    # The agent will have access to all tools on the memory server,
+    # including both `save_long_term_fact` and `add_short_term_memory`.
+    tools = [{
+        "mcpServers": {
+            "memory_server": {
+                "url": config.MEMORY_MCP_SERVER_URL,
+                "headers": {"X-User-ID": user_id},
+            }
+        }
+    }]
+
+    try:
+        agent = Assistant(
+            llm=llm_cfg,
+            system_message=SYSTEM_PROMPT_TEMPLATE,
+            function_list=tools
+        )
+        return agent
+    except Exception as e:
+        logger.error(f"Failed to initialize Qwen Memory Agent for user {user_id}: {e}", exc_info=True)
+        raise

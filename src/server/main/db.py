@@ -15,7 +15,7 @@ CHAT_HISTORY_COLLECTION = "chat_history"
 NOTIFICATIONS_COLLECTION = "notifications" 
 POLLING_STATE_COLLECTION = "polling_state_store" 
 PROCESSED_ITEMS_COLLECTION = "processed_items_log" 
-TASK_COLLECTION = "tasks" 
+TASK_COLLECTION = "tasks"
 
 class MongoManager:
     def __init__(self):
@@ -68,7 +68,7 @@ class MongoManager:
                 IndexModel([("user_id", ASCENDING), ("status", ASCENDING), ("priority", ASCENDING)], name="task_user_status_priority_idx"),
                 IndexModel([("status", ASCENDING), ("agent_id", ASCENDING)], name="task_status_agent_idx", sparse=True), 
                 IndexModel([("task_id", ASCENDING)], unique=True, name="task_id_unique_idx")
-            ]
+            ],
         }
 
         for collection, indexes in collections_with_indexes.items():

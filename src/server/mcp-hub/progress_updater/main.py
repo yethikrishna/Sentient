@@ -49,5 +49,5 @@ async def update_progress(ctx: Context, task_id: str, update_message: str) -> Di
 
 if __name__ == "__main__":
     host = os.getenv("MCP_SERVER_HOST", "127.0.0.1")
-    port = int(os.getenv("MCP_SERVER_PORT", 9010))
+    port = int(os.getenv("MCP_SERVER_PORT", 9011))
     mcp.run(transport="sse", host=host, port=port)

@@ -6,14 +6,13 @@ import motor.motor_asyncio
 from typing import Dict, Any, List
 
 from qwen_agent.agents import Assistant
-from dotenv import load_dotenv
-
 from server.celery_app import celery_app
-from server.main.config import MONGO_URI, MONGO_DB_NAME, INTEGRATIONS_CONFIG, OLLAMA_BASE_URL, OLLAMA_MODEL_NAME
 
 # Load environment variables for the worker
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
-load_dotenv(dotenv_path=dotenv_path)
+from server.main.config import (
+    MONGO_URI, MONGO_DB_NAME, INTEGRATIONS_CONFIG,
+    OLLAMA_BASE_URL, OLLAMA_MODEL_NAME
+)
 
 # --- LLM Config for Executor ---
 llm_cfg = {
@@ -97,8 +96,13 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     # 2. Prepare the plan for execution
     plan_description = task.get("description", "Unnamed plan")
     plan_steps_str = "\n".join([f"{i+1}. Use the '{step['tool']}' tool to '{step['description']}'" for i, step in enumerate(task.get("plan", []))])
-    full_plan_prompt = f"Execute the following plan titled '{plan_description}':\n{plan_steps_str}\n\nRemember to call the 'update_progress' tool to report your status after each major step."
 
+    full_plan_prompt = (
+        f"You are executing a task with ID: '{task_id}'. "
+        f"Use this ID *exactly* as the 'task_id' parameter when you call the 'update_progress' tool. "
+        f"The plan is titled '{plan_description}' and has the following steps:\n{plan_steps_str}\n\n"
+        "Remember to call the 'update_progress' tool to report your status after each major step. Do not call it with the plan title, use the provided task ID."
+    )
     # 3. Initialize and run the executor agent
     try:
         await add_progress_update(db, task_id, user_id, f"Initializing executor agent with tools: {list(active_mcp_servers.keys())}")
@@ -116,12 +120,19 @@ async def async_execute_task_plan(task_id: str, user_id: str):
         for responses in executor_agent.run(messages=messages):
             final_history = responses
 
-        final_result = final_history[-1].get('content', 'Plan execution finished.') if final_history else 'Plan execution finished.'
+        final_content = "Plan execution finished with no specific output."
+        if final_history and final_history[-1]['role'] == 'assistant':
+            content = final_history[-1].get('content')
+            if isinstance(content, str):
+                # Clean up the <think> tags if they exist from the agent's output
+                if content.strip().startswith('<think>'):
+                    content = content.replace('<think>', '').replace('</think>', '').strip()
+                final_content = content
 
-        await add_progress_update(db, task_id, user_id, f"Execution completed. Final result: {final_result}")
-        await update_task_status(db, task_id, "completed", user_id, details={"result": final_result})
+        await add_progress_update(db, task_id, user_id, "Execution script finished.")
+        await update_task_status(db, task_id, "completed", user_id, details={"result": final_content})
 
-        return {"status": "success", "result": final_result}
+        return {"status": "success", "result": final_content}
 
     except Exception as e:
         error_message = f"Executor agent failed: {str(e)}"

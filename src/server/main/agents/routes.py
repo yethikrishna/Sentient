@@ -110,6 +110,28 @@ async def approve_task(
     )
     return {"message": "Task approved and has been queued for execution."}
 
+@router.post("/rerun-task")
+async def rerun_task(
+    request: TaskIdRequest,
+    user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"]))
+):
+    original_task = await mongo_manager.task_collection.find_one({"task_id": request.taskId, "user_id": user_id})
+    if not original_task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Original task not found.")
+
+    new_task_id = str(uuid.uuid4())
+    new_task_doc = original_task.copy()
+    new_task_doc.pop("_id", None)
+    new_task_doc["task_id"] = new_task_id
+    new_task_doc["status"] = "approval_pending"
+    new_task_doc["created_at"] = new_task_doc["updated_at"] = datetime.datetime.now(datetime.timezone.utc)
+    new_task_doc["progress_updates"] = []
+    new_task_doc["result"] = None
+    new_task_doc["error"] = None
+
+    await mongo_manager.task_collection.insert_one(new_task_doc)
+    return {"message": "Task has been duplicated for re-run.", "new_task_id": new_task_id}
+
 @router.post("/get-task-approval-data")
 async def get_task_approval_data(
     request: TaskIdRequest,

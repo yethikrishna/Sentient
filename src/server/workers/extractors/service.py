@@ -63,12 +63,15 @@ class ExtractorService:
                 logger.error(f"Failed to decode JSON from LLM for event {event_id}. Response: {llm_response_str}")
                 return
 
+            # Pass the original context along with the action items for continuity
+            original_context = event_data.get("data", {})
+
             # Produce to output queues
             if memory_items and isinstance(memory_items, list):
-                await KafkaManager.produce_memories(user_id, memory_items)
+                await KafkaManager.produce_memories(user_id, memory_items, event_id)
             
             if action_items and isinstance(action_items, list):
-                await KafkaManager.produce_actions(user_id, action_items)
+                await KafkaManager.produce_actions(user_id, action_items, event_id, original_context)
 
             # Log the processing result
             await self.db_manager.log_extraction_result(

@@ -1,0 +1,11 @@
+# Kafka client
+aiokafka
+
+# For loading .env files
+python-dotenv
+
+# LLM Agent
+qwen-agent
+
+# Database
+motor # Async MongoDB driver

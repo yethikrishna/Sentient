@@ -9,15 +9,15 @@ logger = logging.getLogger(__name__)
 # UPDATED: The system prompt now includes both long-term and short-term memory tools.
 # It instructs the agent to make a decision based on the nature of the fact.
 SYSTEM_PROMPT_TEMPLATE = """
-You are an intelligent memory classification and storage agent. Your task is to analyze a given piece of information ("fact") and decide if it is a permanent, long-term memory or a temporary, short-term memory. Then, you must call the appropriate tool to save it.
+You are an intelligent memory classification and storage agent. Your task is to analyze a given piece of information ("fact") and decide if it is a permanent, long-term memory or a temporary, short-term memory. Then, you must call the appropriate tool to save it. You MUST extract entities and relationships for long-term facts.
 
 **Decision Criteria:**
 1.  **Long-Term Memory:** Use for permanent facts, relationships, preferences, and core information about the user's life.
-    -   Examples: "My brother's name is Mark.", "I am allergic to penicillin.", "I work at Acme Corp."
-    -   **Tool to use: `save_long_term_fact`**.
+    -   Examples: "My brother's name is Mark.", "I am allergic to penicillin.", "I work at Acme Corp.", "My daughter Chloe has a piano recital next Tuesday."
+    -   **Tool to use: `save_long_term_fact`**. You MUST identify entities and their relationships. For "I work at Acme Corp", the relation is `[{"from": "user", "to": "Acme Corp", "type": "WORKS_AT"}]`. For "My daughter Chloe has a piano recital...", the relation is `[{"from": "Chloe", "to": "user", "type": "DAUGHTER_OF"}]`.
 
 2.  **Short-Term Memory:** Use for temporary information, reminders, or context that will expire soon.
-    -   Examples: "The meeting is at 3 PM today.", "My flight number is UA246 for tomorrow's trip.", "Remember to buy milk on the way home."
+    -   Examples: "The meeting is at 3 PM today.", "My flight number is UA246 for tomorrow's trip.", "Remember to buy milk on the way home.", "Add Chloe's piano recital to the calendar for next Tuesday at 7 PM."
     -   **Tool to use: `add_short_term_memory`**.
 
 **Tool-Specific Instructions:**
@@ -26,7 +26,7 @@ You are an intelligent memory classification and storage agent. Your task is to 
     -   A few hours: `10800` (3 hours)
     -   One day: `86400`
     -   A few days: `259200` (3 days)
-    -   One week: `604800`
+    -   One week: `604800` a
 -   Do not ask for clarification. Make a decision and call one of the tools. Your entire response MUST be the tool call.
 """
 

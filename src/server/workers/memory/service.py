@@ -14,6 +14,7 @@ class MemoryService:
     def __init__(self, db_manager: MemoryWorkerMongoManager):
         self.db_manager = db_manager
         logger.info("MemoryService initialized.")
+        self.agent_cache = {} # Cache agent instances per user
 
     async def _invoke_memory_agent_for_fact(self, user_id: str, fact_text: str):
         """
@@ -23,11 +24,11 @@ class MemoryService:
         try:
             logger.info(f"Invoking memory agent for user {user_id} with fact: '{fact_text[:80]}...'")
             
-            # Get a Qwen agent instance configured for this specific user
-            agent = get_memory_qwen_agent(user_id)
+            # Get a cached or new Qwen agent instance configured for this specific user
+            if user_id not in self.agent_cache:
+                self.agent_cache[user_id] = get_memory_qwen_agent(user_id)
+            agent = self.agent_cache[user_id]
             
-            # The user's message to the agent is simply the fact to be processed.
-            # The agent's system prompt guides it on how to handle this fact.
             messages = [{'role': 'user', 'content': fact_text}]
 
             final_agent_response = None

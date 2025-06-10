@@ -14,16 +14,19 @@ import {
 	IconPlayerPlay,
 	IconCircleCheck,
 	IconMailQuestion,
+	IconArrowRight,
 	IconAlertCircle,
 	IconFilter,
 	IconChevronUp,
-	IconPlus
+	IconPlus,
+	IconGripVertical
 } from "@tabler/icons-react"
 import Sidebar from "@components/Sidebar"
 import toast from "react-hot-toast"
 import { Tooltip } from "react-tooltip"
 import "react-tooltip/dist/react-tooltip.css"
 import { cn } from "@utils/cn"
+import { motion, AnimatePresence } from "framer-motion"
 
 const statusMap = {
 	pending: {
@@ -67,6 +70,12 @@ const statusMap = {
 		color: "text-gray-400",
 		borderColor: "border-gray-400",
 		label: "Unknown"
+	},
+	plan: {
+		icon: IconPencil,
+		color: "text-indigo-400",
+		borderColor: "border-indigo-400",
+		label: "Plan"
 	}
 }
 
@@ -83,12 +92,17 @@ const Tasks = () => {
 	const [error, setError] = useState(null)
 	const [userDetails, setUserDetails] = useState({})
 	const [isSidebarVisible, setSidebarVisible] = useState(false)
-	const [newTaskDescription, setNewTaskDescription] = useState("")
-	const [newTaskPriorityLevel, setNewTaskPriorityLevel] = useState(1)
 	const [editingTask, setEditingTask] = useState(null)
 	const [filterStatus, setFilterStatus] = useState("all")
 	const [searchTerm, setSearchTerm] = useState("")
 	const [selectedTask, setSelectedTask] = useState(null)
+	const [isAdding, setIsAdding] = useState(false)
+	const [newTaskDescription, setNewTaskDescription] = useState("")
+	const [newTaskPriority, setNewTaskPriority] = useState(1)
+	const [newTaskPlan, setNewTaskPlan] = useState([
+		{ tool: "", description: "" }
+	])
+	const [availableTools, setAvailableTools] = useState([])
 
 	// --- Fetching Data ---
 	const fetchTasksData = useCallback(async () => {
@@ -158,10 +172,32 @@ const Tasks = () => {
 		}
 	}
 
+	const fetchAvailableTools = async () => {
+		try {
+			const response = await fetch("/api/settings/integrations")
+			if (!response.ok) throw new Error("Failed to fetch available tools")
+			const data = await response.json()
+			const integrations = data.integrations || []
+			const connectable = integrations.filter(
+				(i) =>
+					(i.auth_type === "oauth" || i.auth_type === "manual") &&
+					i.connected
+			)
+			const builtins = integrations.filter(
+				(i) => i.auth_type === "builtin"
+			)
+			setAvailableTools([...connectable, ...builtins])
+		} catch (err) {
+			toast.error(err.message)
+			setAvailableTools([])
+		}
+	}
+
 	// --- Effects ---
 	useEffect(() => {
 		fetchUserDetails()
 		fetchTasksData()
+		fetchAvailableTools()
 		const intervalId = setInterval(fetchTasksData, 60000)
 		return () => clearInterval(intervalId)
 	}, [fetchTasksData])
@@ -172,32 +208,76 @@ const Tasks = () => {
 			toast.error("Please enter a task description.")
 			return
 		}
-		console.log("Adding task:", {
-			description: newTaskDescription,
-			priority: newTaskPriorityLevel
-		})
+		if (
+			newTaskPlan.some((step) => !step.tool || !step.description.trim())
+		) {
+			toast.error("All plan steps must have a tool and description.")
+			return
+		}
+		setIsAdding(true)
 		try {
 			const taskData = {
 				description: newTaskDescription,
-				priority: newTaskPriorityLevel
+				priority: newTaskPriority,
+				plan: newTaskPlan
 			}
 			const response = await fetch("/api/tasks/add", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify(taskData)
 			})
-			const data = await response.json()
 			if (!response.ok) {
+				const data = await response.json()
 				throw new Error(data.error || "Failed to add task")
 			}
-			toast.success("Task added successfully!")
+			toast.success("New plan created successfully!")
 			setNewTaskDescription("")
-			setNewTaskPriorityLevel(1)
+			setNewTaskPriority(1)
+			setNewTaskPlan([{ tool: "", description: "" }])
 			await fetchTasksData()
 		} catch (error) {
 			console.error("Exception adding task:", error)
 			toast.error(`Failed to add task: ${error.message}`)
+		} finally {
+			setIsAdding(false)
 		}
+	}
+
+	const handleAddStep = () => {
+		setNewTaskPlan([...newTaskPlan, { tool: "", description: "" }])
+	}
+
+	const handleRemoveStep = (index) => {
+		const newPlan = newTaskPlan.filter((_, i) => i !== index)
+		setNewTaskPlan(newPlan)
+	}
+
+	const handleStepChange = (index, field, value) => {
+		const newPlan = [...newTaskPlan]
+		newPlan[index][field] = value
+		setNewTaskPlan(newPlan)
+	}
+
+	const handleEditStepChange = (index, field, value) => {
+		setEditingTask((prev) => {
+			const newPlan = [...prev.plan]
+			newPlan[index][field] = value
+			return { ...prev, plan: newPlan }
+		})
+	}
+
+	const handleAddStepToEditModal = () => {
+		setEditingTask((prev) => ({
+			...prev,
+			plan: [...prev.plan, { tool: "", description: "" }]
+		}))
+	}
+
+	const handleRemoveStepFromEditModal = (index) => {
+		setEditingTask((prev) => ({
+			...prev,
+			plan: prev.plan.filter((_, i) => i !== index)
+		}))
 	}
 
 	const handleEditTask = (task) => {
@@ -218,6 +298,14 @@ const Tasks = () => {
 			toast.error("Invalid priority selected.")
 			return
 		}
+		if (
+			editingTask.plan.some(
+				(step) => !step.tool || !step.description.trim()
+			)
+		) {
+			toast.error("All plan steps must have a tool and description.")
+			return
+		}
 		console.log("Updating task:", editingTask.task_id, {
 			description: editingTask.description,
 			priority: editingTask.priority
@@ -229,7 +317,8 @@ const Tasks = () => {
 				body: JSON.stringify({
 					taskId: editingTask.task_id,
 					description: editingTask.description,
-					priority: editingTask.priority
+					priority: editingTask.priority,
+					plan: editingTask.plan
 				})
 			})
 			const data = await response.json()
@@ -300,13 +389,20 @@ const Tasks = () => {
 			if (!response.ok) {
 				throw new Error(data.error || "Approval failed")
 			}
-			toast.success("Task approved and completed!")
+			toast.success("Plan approved! Task is now pending execution.")
 			setSelectedTask(null)
 			await fetchTasksData()
 		} catch (error) {
 			console.error("Exception approving task:", error)
 			toast.error(`Error approving task: ${error.message}`)
 		}
+	}
+
+	const handleApprove = async (taskId) => {
+		await handleApproveTask(taskId)
+		toast.success("Plan approved! Task is now pending execution.")
+		// Refetch data to update the UI
+		fetchTasksData()
 	}
 
 	// --- Filtering Logic ---
@@ -563,99 +659,235 @@ const Tasks = () => {
 					</div>
 				</div>
 
-				{/* --- Add Task Bar (Bottom) --- */}
-				<div className="absolute bottom-0 left-0 right-0 z-30 p-5">
-					<div className="max-w-5xl mx-auto flex items-center gap-3 border border-neutral-600 bg-neutral-800/80 backdrop-blur-sm rounded-full p-3 shadow-lg">
-						{/* Text Area */}
-						<textarea
-							placeholder="Enter new task description..."
-							value={newTaskDescription}
-							onChange={(e) =>
-								setNewTaskDescription(e.target.value)
-							}
-							rows={1}
-							className="flex-grow p-2.5 bg-transparent text-white text-base focus:outline-none resize-none placeholder-gray-500 min-h-[48px] max-h-[120px] rounded-md"
-						/>
-						{/* Priority Dropdown */}
-						<div className="relative flex-shrink-0">
-							<select
-								value={newTaskPriorityLevel}
+				<div className="absolute bottom-0 left-0 right-0 p-4 bg-matteblack/90 backdrop-blur-sm border-t border-neutral-700">
+					<div className="max-w-4xl mx-auto space-y-4">
+						<h3 className="text-lg font-semibold text-white">
+							Create a New Plan
+						</h3>
+						<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+							<input
+								type="text"
+								placeholder="Describe the overall goal..."
+								value={newTaskDescription}
 								onChange={(e) =>
-									setNewTaskPriorityLevel(
-										Number(e.target.value)
-									)
+									setNewTaskDescription(e.target.value)
 								}
-								className="appearance-none bg-neutral-700 border border-neutral-600 text-white text-sm rounded-full px-4 py-2.5 focus:outline-none focus:border-lightblue cursor-pointer"
-								title="Set task priority"
+								className="md:col-span-2 p-3 bg-neutral-700/60 border border-neutral-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-lightblue"
+							/>
+							<select
+								value={newTaskPriority}
+								onChange={(e) =>
+									setNewTaskPriority(Number(e.target.value))
+								}
+								className="p-3 bg-neutral-700/60 border border-neutral-600 rounded-lg text-white focus:outline-none focus:border-lightblue appearance-none"
 							>
-								<option value={0}>High</option>
-								<option value={1}>Medium</option>
-								<option value={2}>Low</option>
+								<option value={0}>High Priority</option>
+								<option value={1}>Medium Priority</option>
+								<option value={2}>Low Priority</option>
 							</select>
-							<IconChevronUp className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
 						</div>
-						{/* Add Button */}
-						<button
-							onClick={handleAddTask}
-							className="p-3 rounded-full bg-lightblue text-white hover:bg-blue-700 focus:outline-none transition-colors flex-shrink-0"
-							title="Add Task"
-						>
-							<IconPlus className="h-6 w-6" />
-						</button>
+						<div className="space-y-3">
+							<label className="text-sm font-medium text-gray-300">
+								Plan Steps
+							</label>
+							<AnimatePresence>
+								{newTaskPlan.map((step, index) => (
+									<motion.div
+										key={index}
+										initial={{ opacity: 0, y: -10 }}
+										animate={{ opacity: 1, y: 0 }}
+										exit={{ opacity: 0, x: -20 }}
+										className="flex items-center gap-3"
+									>
+										<IconGripVertical className="h-5 w-5 text-gray-500 flex-shrink-0" />
+										<select
+											value={step.tool}
+											onChange={(e) =>
+												handleStepChange(
+													index,
+													"tool",
+													e.target.value
+												)
+											}
+											className="w-1/3 p-2 bg-neutral-700/60 border border-neutral-600 rounded-md text-white focus:outline-none focus:border-lightblue text-sm"
+										>
+											<option value="">
+												Select a tool...
+											</option>
+											{availableTools.map((tool) => (
+												<option
+													key={tool.name}
+													value={tool.name}
+												>
+													{tool.display_name}
+												</option>
+											))}
+										</select>
+										<input
+											type="text"
+											placeholder="Describe what this step should do..."
+											value={step.description}
+											onChange={(e) =>
+												handleStepChange(
+													index,
+													"description",
+													e.target.value
+												)
+											}
+											className="flex-grow p-2 bg-neutral-700/60 border border-neutral-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:border-lightblue text-sm"
+										/>
+										<button
+											onClick={() =>
+												handleRemoveStep(index)
+											}
+											className="p-2 text-red-400 hover:bg-neutral-700 rounded-full transition-colors"
+										>
+											<IconX className="h-4 w-4" />
+										</button>
+									</motion.div>
+								))}
+							</AnimatePresence>
+						</div>
+						<div className="flex justify-between items-center">
+							<button
+								onClick={handleAddStep}
+								className="flex items-center gap-1.5 py-2 px-4 rounded-full bg-neutral-600 hover:bg-neutral-500 text-white text-xs font-medium transition-colors"
+							>
+								<IconPlus className="h-4 w-4" /> Add Step
+							</button>
+							<button
+								onClick={handleAddTask}
+								disabled={isAdding}
+								className="flex items-center gap-2 py-2.5 px-6 rounded-lg bg-lightblue hover:bg-blue-700 text-white text-sm font-semibold transition-colors disabled:opacity-50"
+							>
+								{isAdding ? (
+									<IconLoader className="h-5 w-5 animate-spin" />
+								) : (
+									<IconCircleCheck className="h-5 w-5" />
+								)}
+								{isAdding ? "Saving Plan..." : "Save New Plan"}
+							</button>
+						</div>
 					</div>
 				</div>
 
 				{/* --- Edit Task Modal --- */}
 				{editingTask && (
 					<div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 p-4">
-						<div className="bg-neutral-800 p-8 rounded-lg shadow-xl w-full max-w-lg mx-auto">
-							<h3 className="text-xl font-semibold mb-6 text-white">
+						<div className="bg-neutral-800 p-8 rounded-lg shadow-xl w-full max-w-2xl mx-auto max-h-[90vh] flex flex-col">
+							<h3 className="text-xl font-semibold mb-6 text-white flex justify-between items-center">
 								Edit Task
+								<button
+									onClick={() => setEditingTask(null)}
+									className="text-gray-400 hover:text-white"
+								>
+									<IconX />
+								</button>
 							</h3>
-							<div className="mb-5">
-								<label
-									htmlFor="edit-description"
-									className="block text-gray-300 text-sm font-medium mb-2"
-								>
-									Description
-								</label>
-								<input
-									type="text"
-									id="edit-description"
-									value={editingTask.description}
-									onChange={(e) =>
-										setEditingTask({
-											...editingTask,
-											description: e.target.value
-										})
-									}
-									className="p-3 rounded-md bg-neutral-700 border border-neutral-600 text-white focus:outline-none w-full focus:border-lightblue text-base"
-								/>
+							<div className="overflow-y-auto custom-scrollbar pr-4 space-y-4">
+								<div>
+									<label className="block text-gray-300 text-sm font-medium">
+										Description
+									</label>
+									<input
+										type="text"
+										value={editingTask.description}
+										onChange={(e) =>
+											setEditingTask({
+												...editingTask,
+												description: e.target.value
+											})
+										}
+										className="mt-1 p-3 rounded-md bg-neutral-700 border border-neutral-600 text-white focus:outline-none w-full focus:border-lightblue text-base"
+									/>
+								</div>
+								<div>
+									<label className="block text-gray-300 text-sm font-medium">
+										Priority
+									</label>
+									<select
+										value={editingTask.priority}
+										onChange={(e) =>
+											setEditingTask({
+												...editingTask,
+												priority: Number(e.target.value)
+											})
+										}
+										className="mt-1 p-3 rounded-md bg-neutral-700 border border-neutral-600 text-white focus:outline-none w-full focus:border-lightblue appearance-none text-base"
+									>
+										<option value={0}>High</option>
+										<option value={1}>Medium</option>
+										<option value={2}>Low</option>
+									</select>
+								</div>
+								<div className="space-y-3 pt-2">
+									<label className="text-sm font-medium text-gray-300">
+										Plan Steps
+									</label>
+									{editingTask.plan?.map((step, index) => (
+										<div
+											key={index}
+											className="flex items-center gap-3"
+										>
+											<IconGripVertical className="h-5 w-5 text-gray-500 flex-shrink-0" />
+											<select
+												value={step.tool}
+												onChange={(e) =>
+													handleEditStepChange(
+														index,
+														"tool",
+														e.target.value
+													)
+												}
+												className="w-1/3 p-2 bg-neutral-700/60 border border-neutral-600 rounded-md text-white focus:outline-none focus:border-lightblue text-sm"
+											>
+												<option value="">
+													Select a tool...
+												</option>
+												{availableTools.map((tool) => (
+													<option
+														key={tool.name}
+														value={tool.name}
+													>
+														{tool.display_name}
+													</option>
+												))}
+											</select>
+											<input
+												type="text"
+												placeholder="Describe what this step should do..."
+												value={step.description}
+												onChange={(e) =>
+													handleEditStepChange(
+														index,
+														"description",
+														e.target.value
+													)
+												}
+												className="flex-grow p-2 bg-neutral-700/60 border border-neutral-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:border-lightblue text-sm"
+											/>
+											<button
+												onClick={() =>
+													handleRemoveStepFromEditModal(
+														index
+													)
+												}
+												className="p-2 text-red-400 hover:bg-neutral-700 rounded-full transition-colors"
+											>
+												<IconX className="h-4 w-4" />
+											</button>
+										</div>
+									))}
+									<button
+										onClick={handleAddStepToEditModal}
+										className="flex items-center gap-1.5 py-1.5 px-3 rounded-full bg-neutral-600/70 hover:bg-neutral-600 text-white text-xs font-medium transition-colors"
+									>
+										<IconPlus className="h-4 w-4" /> Add
+										Step
+									</button>
+								</div>
 							</div>
-							<div className="mb-8">
-								<label
-									htmlFor="edit-priority"
-									className="block text-gray-300 text-sm font-medium mb-2"
-								>
-									Priority
-								</label>
-								<select
-									id="edit-priority"
-									value={editingTask.priority}
-									onChange={(e) =>
-										setEditingTask({
-											...editingTask,
-											priority: Number(e.target.value)
-										})
-									}
-									className="p-3 rounded-md bg-neutral-700 border border-neutral-600 text-white focus:outline-none w-full focus:border-lightblue appearance-none text-base"
-								>
-									<option value={0}>High</option>
-									<option value={1}>Medium</option>
-									<option value={2}>Low</option>
-								</select>
-							</div>
-							<div className="flex justify-end gap-4">
+							<div className="flex justify-end gap-4 mt-6 pt-4 border-t border-neutral-700">
 								<button
 									onClick={() => setEditingTask(null)}
 									className="py-2.5 px-5 rounded bg-neutral-600 hover:bg-neutral-500 text-white text-sm font-medium transition-colors"
@@ -672,7 +904,6 @@ const Tasks = () => {
 						</div>
 					</div>
 				)}
-
 				{/* --- Approval Modal --- */}
 				{selectedTask && (
 					<div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 p-4">
@@ -750,44 +981,6 @@ const Tasks = () => {
 						</div>
 					</div>
 				)}
-
-				{/* --- Status Legend --- */}
-				<div className="absolute bottom-24 right-6 z-30 bg-neutral-800/80 backdrop-blur-sm rounded-lg p-3 shadow-lg text-xs">
-					<h4 className="font-semibold text-gray-300 mb-2 text-center">
-						Status Legend
-					</h4>
-					<div className="space-y-1.5">
-						{Object.entries(statusMap).map(
-							([key, { label, color, borderColor }]) => {
-								if (key === "default") return null
-								const borderClass =
-									borderColor || "border-transparent"
-								const textClass = color || "text-gray-400"
-								return (
-									<div
-										key={key}
-										className="flex items-center gap-2"
-									>
-										<span
-											className={cn(
-												"block w-3 h-3 rounded-sm border-l-4",
-												borderClass
-											)}
-										></span>
-										<span
-											className={cn(
-												"capitalize",
-												textClass
-											)}
-										>
-											{label}
-										</span>
-									</div>
-								)
-							}
-						)}
-					</div>
-				</div>
 			</div>
 		</div>
 	)

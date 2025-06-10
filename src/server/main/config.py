@@ -155,6 +155,16 @@ INTEGRATIONS_CONFIG = {
          "mcp_server_config": {
              "name": "memory_server",
              "url": os.getenv("MEMORY_MCP_SERVER_URL", "http://localhost:8001/sse")
+         }
+    },
+    "progress_updater": { # Built-in tool for executor
+        "display_name": "Progress Updater",
+        "description": "Allows an executor agent to update task progress.",
+        "auth_type": "builtin",
+        "icon": "IconActivity", # Will need to add this icon
+        "mcp_server_config": {
+            "name": "progress_updater_server",
+            "url": os.getenv("PROGRESS_UPDATER_MCP_SERVER_URL", "http://localhost:9010/sse")
         }
     }
 }
@@ -185,6 +195,7 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_MODEL_NAME = os.getenv("OPENROUTER_MODEL_NAME", "qwen/qwen3-8b:free") 
 # MCP Server URLs
 MEMORY_MCP_SERVER_URL = os.getenv("MEMORY_MCP_SERVER_URL", "http://localhost:8001/sse")
+PROGRESS_UPDATER_MCP_SERVER_URL=os.getenv("PROGRESS_UPDATER_MCP_SERVER_URL", "http://localhost:9010/sse")
 
 MONGO_URI= os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 MONGO_DB_NAME= os.getenv("MONGO_DB_NAME", "sentient_db")

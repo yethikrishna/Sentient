@@ -41,6 +41,7 @@ from .voice.routes import router as voice_router
 from .memory.routes import router as memory_router
 from .integrations.routes import router as integrations_router
 from .misc.routes import router as misc_router # Corrected router import
+from .agents.routes import router as agents_router
 
 # --- Other Global Instances ---
 http_client: httpx.AsyncClient = httpx.AsyncClient()
@@ -167,6 +168,7 @@ app.include_router(voice_router)
 app.include_router(memory_router)
 app.include_router(integrations_router)
 app.include_router(misc_router) # Corrected router name
+app.include_router(agents_router)
 
 @app.get("/", tags=["General"], summary="Root endpoint for the Main Server")
 async def root():

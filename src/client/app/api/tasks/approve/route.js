@@ -27,7 +27,7 @@ export async function POST(request) {
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },
-				body: JSON.stringify({ task_id: taskId })
+				body: JSON.stringify({ taskId: taskId })
 			}
 		)
 

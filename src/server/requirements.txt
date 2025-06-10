@@ -33,6 +33,8 @@ sentence-transformers
 # Message Queues (Kafka)
 aiokafka
 kafka-python
+celery
+redis
 
 # Gmail MCP Hub & Tools
 fastmcp

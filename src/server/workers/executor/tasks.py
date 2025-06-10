@@ -96,12 +96,16 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     # 2. Prepare the plan for execution
     plan_description = task.get("description", "Unnamed plan")
     plan_steps_str = "\n".join([f"{i+1}. Use the '{step['tool']}' tool to '{step['description']}'" for i, step in enumerate(task.get("plan", []))])
+    original_context_data = task.get("original_context", {})
+    original_context_str = json.dumps(original_context_data, indent=2, default=str) if original_context_data else "No original context provided."
 
     full_plan_prompt = (
         f"You are executing a task with ID: '{task_id}'. "
+        f"The original context that triggered this plan is:\n---BEGIN CONTEXT---\n{original_context_str}\n---END CONTEXT---\n\n"
+        f"Your main goal is: '{plan_description}'.\n"
         f"Use this ID *exactly* as the 'task_id' parameter when you call the 'update_progress' tool. "
         f"The plan is titled '{plan_description}' and has the following steps:\n{plan_steps_str}\n\n"
-        "Remember to call the 'update_progress' tool to report your status after each major step. Do not call it with the plan title, use the provided task ID."
+        "Review the original context if needed to successfully complete the steps. Remember to call the 'update_progress' tool to report your status after each major step. Do not call it with the plan title, use the provided task ID."
     )
     # 3. Initialize and run the executor agent
     try:

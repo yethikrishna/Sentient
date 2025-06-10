@@ -1,0 +1,40 @@
+import logging
+from qwen_agent.agents import Assistant
+
+from . import config
+from . import prompts
+
+logger = logging.getLogger(__name__)
+
+def get_planner_agent(available_tools: list):
+    """Initializes and returns a Qwen Assistant agent for planning."""
+    system_prompt = prompts.SYSTEM_PROMPT.format(
+        available_tools=", ".join(available_tools)
+    )
+
+    llm_cfg = {}
+    if config.LLM_PROVIDER == "OLLAMA":
+        ollama_v1_url = f"{config.OLLAMA_BASE_URL.rstrip('/')}/v1"
+        llm_cfg = {
+            'model': config.OLLAMA_MODEL_NAME,
+            'model_server': ollama_v1_url,
+            'api_key': 'ollama',
+            'generate_cfg': {
+                'temperature': 0.3,
+                'response_format': {'type': 'json_object'},
+            }
+        }
+    else:
+        raise ValueError(f"Unsupported LLM_PROVIDER for planner: {config.LLM_PROVIDER}")
+
+    try:
+        agent = Assistant(
+            llm=llm_cfg,
+            system_message=system_prompt,
+            function_list=[]  # Planner doesn't call tools, just generates the plan
+        )
+        logger.info("Qwen Planner Agent initialized.")
+        return agent
+    except Exception as e:
+        logger.error(f"Failed to initialize Qwen Planner Agent: {e}", exc_info=True)
+        raise

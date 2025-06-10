@@ -77,8 +77,19 @@ class GmailKafkaProducer:
                 GmailKafkaProducer._producer = None
                 print(f"[{datetime.datetime.now()}] [GmailPoller_Kafka] Kafka Producer closed.")
 
-# --- AES Decryption Utility (Replicated) ---
-def aes_decrypt_for_poller(encrypted_data_b64: str) -> str:
+# --- AES Encryption/Decryption Utilities ---
+def aes_encrypt(data: str) -> str:
+    if not AES_SECRET_KEY or not AES_IV:
+        raise ValueError("AES encryption keys are not configured.")
+    backend = default_backend()
+    cipher = Cipher(algorithms.AES(AES_SECRET_KEY), modes.CBC(AES_IV), backend=backend)
+    encryptor = cipher.encryptor()
+    padder = padding.PKCS7(algorithms.AES.block_size).padder()
+    padded_data = padder.update(data.encode()) + padder.finalize()
+    encrypted = encryptor.update(padded_data) + encryptor.finalize()
+    return base64.b64encode(encrypted).decode()
+
+def aes_decrypt(encrypted_data_b64: str) -> str:
     if not AES_SECRET_KEY or not AES_IV:
         print(f"[{datetime.datetime.now()}] [GmailPoller_AES_ERROR] AES keys not configured for poller.")
         raise ValueError("AES encryption keys not configured in poller.")
@@ -97,72 +108,55 @@ def aes_decrypt_for_poller(encrypted_data_b64: str) -> str:
 
 
 # --- Gmail API Utilities ---
-SCOPES_GMAIL = ["https://www.googleapis.com/auth/gmail.readonly"]
 
 async def get_gmail_credentials(user_id: str, db_manager: PollerMongoManager) -> Optional[Credentials]:
     """
     Retrieves stored Google credentials for a user. If they exist and are valid or refreshable,
     returns them. Otherwise, indicates that re-authentication is needed (handled by main server).
     """
-    token_path = os.path.join(GOOGLE_TOKEN_STORAGE_DIR_POLLER, f"token_gmail_{user_id}.pickle")
-    
     user_profile = await db_manager.get_user_profile(user_id)
     if not user_profile or "userData" not in user_profile:
         print(f"[{datetime.datetime.now()}] [GmailPoller_Auth] No user profile found for {user_id} to get Google token.")
         return None
 
-    encrypted_refresh_token = user_profile["userData"].get("encrypted_google_refresh_token")
-    
-    creds = None
-    # Try loading from pickle file first (if poller manages its own tokens)
-    if os.path.exists(token_path):
-        try:
-            with open(token_path, "rb") as token_file:
-                creds = pickle.load(token_file)
-        except Exception as e:
-            print(f"[{datetime.datetime.now()}] [GmailPoller_Auth_ERROR] Error loading token from pickle for {user_id}: {e}")
-            creds = None # Proceed to try refresh token from DB
+    gmail_data = user_profile.get("userData", {}).get("integrations", {}).get("gmail")
 
-    # If pickle load failed or token invalid, try using refresh token from DB
-    if not creds or not creds.valid:
-        if encrypted_refresh_token:
+    if not gmail_data or not gmail_data.get("connected") or "credentials" not in gmail_data:
+        print(f"[{datetime.datetime.now()}] [GmailPoller_Auth] Gmail not connected or credentials missing for {user_id}.")
+        return None
+    
+    try:
+        decrypted_creds_str = aes_decrypt(gmail_data["credentials"])
+        token_info = json.loads(decrypted_creds_str)
+        creds = Credentials.from_authorized_user_info(token_info)
+
+        # Refresh token if needed
+        if creds.expired and creds.refresh_token:
+            print(f"[{datetime.datetime.now()}] [GmailPoller_Auth] Gmail token for {user_id} expired, attempting refresh.")
             try:
-                decrypted_refresh_token = aes_decrypt_for_poller(encrypted_refresh_token)
-                creds_data = {
-                    "token": None, # Access token will be fetched by refresh
-                    "refresh_token": decrypted_refresh_token,
-                    "token_uri": "https://oauth2.googleapis.com/token",
-                    "client_id": GOOGLE_CLIENT_ID,
-                    "client_secret": GOOGLE_CLIENT_SECRET,
-                    "scopes": SCOPES_GMAIL
-                }
-                creds = Credentials.from_authorized_user_info(creds_data)
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(None, creds.refresh, GoogleAuthRequest())
+                
+                # Persist the refreshed token back to the database
+                refreshed_token_info = json.loads(creds.to_json())
+                encrypted_refreshed_creds = aes_encrypt(json.dumps(refreshed_token_info))
+                await db_manager.user_profiles_collection.update_one(
+                    {"user_id": user_id},
+                    {"$set": {"userData.integrations.gmail.credentials": encrypted_refreshed_creds}}
+                )
+                print(f"[{datetime.datetime.now()}] [GmailPoller_Auth] Gmail token refreshed and saved for {user_id}.")
             except Exception as e:
-                print(f"[{datetime.datetime.now()}] [GmailPoller_Auth_ERROR] Failed to construct creds from DB refresh token for {user_id}: {e}")
-                return None # Cannot proceed without valid refresh token
-        else: # No pickle and no refresh token in DB
-            print(f"[{datetime.datetime.now()}] [GmailPoller_Auth] No stored token or refresh token in DB for user {user_id}.")
-            return None
-
-    # If credentials exist (either from pickle or DB refresh token), try to refresh if expired
-    if creds and creds.expired and creds.refresh_token:
-        print(f"[{datetime.datetime.now()}] [GmailPoller_Auth] Google token for {user_id} expired, attempting refresh.")
-        try:
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, creds.refresh, GoogleAuthRequest())
-            # Save refreshed token (important if poller manages its own token file)
-            with open(token_path, "wb") as token_file:
-                pickle.dump(creds, token_file)
-            print(f"[{datetime.datetime.now()}] [GmailPoller_Auth] Google token refreshed and saved for {user_id}.")
-        except Exception as e:
-            print(f"[{datetime.datetime.now()}] [GmailPoller_Auth_ERROR] Failed to refresh Google token for {user_id}: {e}. User may need to re-auth.")
-            return None # Refresh failed
-    
-    if creds and creds.valid:
-        return creds
-    
-    print(f"[{datetime.datetime.now()}] [GmailPoller_Auth] No valid Google credentials for user {user_id}.")
-    return None
+                print(f"[{datetime.datetime.now()}] [GmailPoller_Auth_ERROR] Failed to refresh Google token for {user_id}: {e}. User may need to re-auth.")
+                return None # Refresh failed
+        
+        if creds.valid:
+            return creds
+        
+        print(f"[{datetime.datetime.now()}] [GmailPoller_Auth] No valid Google credentials for user {user_id}.")
+        return None
+    except Exception as e:
+        print(f"[{datetime.datetime.now()}] [GmailPoller_Auth_ERROR] Failed to get credentials for {user_id}: {e}")
+        return None
 
 
 async def fetch_emails(creds: Credentials, last_processed_timestamp_unix: Optional[int] = None, max_results: int = 10) -> List[Dict]:

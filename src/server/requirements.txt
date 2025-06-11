@@ -2,42 +2,49 @@
 fastapi
 uvicorn
 pydantic
+fastmcp
+
+# Environment Variables
 python-dotenv
 
 # Authentication & Security
 python-jose[cryptography]
 cryptography
-requests
 
-# Asynchronous & Networking
+# HTTP & Async Networking
 httpx
 nest_asyncio
+requests
 
 # Database
-motor
+motor           # Async MongoDB driver
 pymongo
+neo4j
 
 # AI / Machine Learning (LLM, STT, TTS)
 qwen-agent
-faster-whisper
-librosa
 elevenlabs
-# llama-cpp-python
-# pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/<cuda-version>
-snac
-# torch
-# pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
-numpy
 sentence-transformers
+numpy
 
-# Message Queues (Kafka)
+# Google API Clients
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+
+# Message Queues & Workers
 aiokafka
 kafka-python
 celery
 redis
 
-# Gmail MCP Hub & Tools
-fastmcp
-google-api-python-client
-google-auth-httplib2
-google-auth-oauthlib
+
+# llama-cpp-python
+# snac
+# torch
+# pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/<cuda-version>
+# librosa
+# faster-whisper
+# snac
+# torch
+# pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126

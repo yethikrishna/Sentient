@@ -11,7 +11,7 @@ llm_cfg = {
 }
 
 # QuickChart MCP Server Configuration
-mcp_server_url = "http://127.0.0.1:9007/sse"
+mcp_server_url = "http://127.0.0.1:9008/sse"
 
 # User ID for header consistency
 USER_ID = "chart_user"

@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 import logging
 
 # Load .env file from the current directory
-dotenv_path = os.path.join(os.path.dirname(__file__), ".env")
+dotenv_path = "server/.env"
 if os.path.exists(dotenv_path):
     load_dotenv(dotenv_path=dotenv_path)
     logging.info(f"Loaded .env config from {dotenv_path}")
@@ -19,7 +19,7 @@ else:
 # LLM Configuration
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "OLLAMA")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL_NAME = os.getenv("OLLAMA_MODEL_NAME", "qwen")
+OLLAMA_MODEL_NAME = os.getenv("OLLAMA_MODEL_NAME", "qwen3:4b")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_MODEL_NAME = os.getenv("OPENROUTER_MODEL_NAME", "qwen/qwen-7b-chat")
 
@@ -32,6 +32,6 @@ KAFKA_CONSUMER_GROUP_ID = os.getenv("KAFKA_CONSUMER_GROUP_ID", "extractor_worker
 
 # MongoDB Configuration
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
-MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_db")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_agent_db")
 
 logging.info(f"Extractor Worker configured. LLM Provider: {LLM_PROVIDER}, Input Topic: {CONTEXT_EVENTS_TOPIC}")

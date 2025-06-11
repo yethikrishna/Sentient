@@ -42,8 +42,15 @@ class PollerMongoManager:
         now_utc = datetime.datetime.now(timezone.utc)
         state_data["last_updated_at"] = now_utc
 
-        # Do not attempt to re-set fields that should be immutable after creation.
-        if 'created_at' in state_data:
+        # Do not attempt to re-set fields that are part of the unique index or are immutable.
+        # This prevents the "Updating the path 'user_id' would create a conflict" error.
+        if '_id' in state_data:
+            del state_data['_id']
+        if 'user_id' in state_data:
+            del state_data['user_id']
+        if 'service_name' in state_data:
+            del state_data['service_name']
+        if 'created_at' in state_data: # Should only be set on insert
             del state_data['created_at']
 
         result = await self.polling_state_collection.update_one(

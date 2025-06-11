@@ -7,6 +7,7 @@ import traceback
 from .kafka_clients import KafkaManager
 from .llm import get_extractor_agent
 from .db import ExtractorMongoManager
+from ..tasks import process_memory_item, process_action_item
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +20,10 @@ class ExtractorService:
     async def process_message(self, msg):
         """Processes a single context event from Kafka."""
         try:
+            logger.info(f"Received message from Kafka at offset {msg.offset}. Processing...")
             event_batch = msg.value
             if not isinstance(event_batch, list):
-                logger.warning(f"Received non-list payload at offset {msg.offset}. Skipping.")
+                logger.warning(f"Received non-list payload at offset {msg.offset}. Skipping. Payload: {event_batch}")
                 return
 
             logger.info(f"Processing batch of {len(event_batch)} events from Kafka.")
@@ -35,7 +37,7 @@ class ExtractorService:
                 event_id = event_data.get("event_id")
 
                 if not all([user_id, event_id]):
-                    logger.warning(f"Skipping message in batch due to missing user_id or event_id.")
+                    logger.warning(f"Skipping message in batch due to missing user_id or event_id: {event_data}")
                     continue
 
                 email_content = event_data.get("data", {})
@@ -46,12 +48,13 @@ class ExtractorService:
                     logger.info(f"Skipping event {event_id} for user {user_id} as it has no content.")
                     continue
 
-                logger.info(f"Processing event {event_id} for user {user_id}...")
+                logger.info(f"Processing event {event_id} for user {user_id} with subject: '{subject[:50]}...'")
 
                 # Prepare content for the LLM
                 llm_input_content = f"Subject: {subject}\n\nBody:\n{body}"
                 messages = [{'role': 'user', 'content': llm_input_content}]
 
+                logger.info(f"Invoking LLM for event {event_id}...")
                 # Run the Qwen agent to get the structured JSON output
                 llm_response_str = ""
                 for chunk in self.agent.run(messages=messages):
@@ -65,6 +68,8 @@ class ExtractorService:
                     logger.error(f"LLM did not return a response for event {event_id}.")
                     continue
 
+                logger.info(f"LLM Response for event {event_id}: {llm_response_str}")
+
                 # Parse the JSON response
                 try:
                     extracted_data = json.loads(llm_response_str)
@@ -76,13 +81,17 @@ class ExtractorService:
 
                 # Pass the original context along with the action items for continuity
                 original_context = event_data.get("data", {})
+                logger.info(f"Extracted {len(memory_items)} memory items and {len(action_items)} action items for event {event_id}.")
 
-                # Produce to output queues
-                if memory_items and isinstance(memory_items, list):
-                    await KafkaManager.produce_memories(user_id, memory_items, event_id)
+                # Enqueue tasks into Celery instead of Kafka
+                for fact in memory_items:
+                    if isinstance(fact, str) and fact.strip():
+                        logger.info(f"Enqueuing memory task for user {user_id}: '{fact[:50]}...'")
+                        process_memory_item.delay(user_id, fact)
 
                 if action_items and isinstance(action_items, list):
-                    await KafkaManager.produce_actions(user_id, action_items, event_id, original_context)
+                    logger.info(f"Enqueuing planner task for user {user_id} with {len(action_items)} actions.")
+                    process_action_item.delay(user_id, action_items, event_id, original_context)
 
                 # Log the processing result
                 await self.db_manager.log_extraction_result(
@@ -93,7 +102,7 @@ class ExtractorService:
                 )
 
         except Exception as e:
-            logger.error(f"Error processing message at offset {msg.offset}: {e}")
+            logger.error(f"Error processing message at offset {msg.offset}: {e}", exc_info=True)
             traceback.print_exc()
 
     async def run(self, shutdown_event: asyncio.Event):
@@ -112,7 +121,7 @@ class ExtractorService:
                 # This is normal, just means no messages in the last second
                 continue
             except Exception as e:
-                logger.error(f"An error occurred in the consumer loop: {e}")
+                logger.error(f"An error occurred in the consumer loop: {e}", exc_info=True)
                 # Wait a bit before retrying to prevent rapid-fire errors
                 await asyncio.sleep(5)
         

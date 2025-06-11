@@ -245,7 +245,14 @@ class MongoManager:
             if isinstance(value, datetime.datetime):
                 state_data[key] = value.replace(tzinfo=datetime.timezone.utc) if value.tzinfo is None else value.astimezone(datetime.timezone.utc)
         
-        if "_id" in state_data: del state_data["_id"]
+        # Prevent conflict errors by not trying to $set fields that are part of the unique index
+        # or are immutable.
+        if '_id' in state_data:
+            del state_data['_id']
+        if 'user_id' in state_data:
+            del state_data['user_id']
+        if 'service_name' in state_data:
+            del state_data['service_name']
         now_utc = datetime.datetime.now(datetime.timezone.utc)
         state_data["last_updated_at"] = now_utc
 

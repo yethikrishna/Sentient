@@ -25,7 +25,7 @@ GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 
 # MongoDB Configuration
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
-MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_db")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_agent_db")
 
 # AES Encryption Keys
 AES_SECRET_KEY_HEX = os.getenv("AES_SECRET_KEY")
@@ -198,7 +198,7 @@ MEMORY_MCP_SERVER_URL = os.getenv("MEMORY_MCP_SERVER_URL", "http://localhost:800
 PROGRESS_UPDATER_MCP_SERVER_URL=os.getenv("PROGRESS_UPDATER_MCP_SERVER_URL", "http://localhost:9011/sse")
 
 MONGO_URI= os.getenv("MONGO_URI", "mongodb://localhost:27017/")
-MONGO_DB_NAME= os.getenv("MONGO_DB_NAME", "sentient_db")
+MONGO_DB_NAME= os.getenv("MONGO_DB_NAME", "sentient_agent_db")
 NEO4J_URI= os.getenv("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER= os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD= os.getenv("NEO4J_PASSWORD", "password")

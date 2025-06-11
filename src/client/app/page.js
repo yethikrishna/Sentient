@@ -66,9 +66,9 @@ const Home = () => {
 				}
 
 				const result = await response.json()
-				const firstRunCompleted =
-					result?.data?.firstRunCompleted ?? false
-				setOnboarded(firstRunCompleted)
+				const onboardingCompleted =
+					result?.data?.onboardingComplete ?? false
+				setOnboarded(onboardingCompleted)
 			} catch (error) {
 				toast.error(`Error initializing app: ${error.message}`)
 				// Default to sending to onboarding on error for safety.

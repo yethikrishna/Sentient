@@ -1,8 +1,7 @@
-# src/server/tools/kafka_topic_initializer.py
+# src/server/workers/utils/kafka_topic_initializer.py
 import asyncio
 import logging
-from aiokafka import AIOKafkaAdminClient
-from aiokafka.admin import NewTopic
+from aiokafka.admin import AIOKafkaAdminClient, NewTopic
 from aiokafka.errors import TopicAlreadyExistsError
 
 # --- Configuration ---

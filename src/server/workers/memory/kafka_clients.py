@@ -28,6 +28,9 @@ class KafkaManager:
                     value_deserializer=lambda v: json.loads(v.decode('utf-8')),
                     auto_offset_reset='earliest',
                     enable_auto_commit=True,
+                    session_timeout_ms=30000,
+                    request_timeout_ms=40000,
+                    retry_backoff_ms=500
                 )
                 await KafkaManager._consumer.start()
                 logger.info("Kafka Consumer for memory operations started.")

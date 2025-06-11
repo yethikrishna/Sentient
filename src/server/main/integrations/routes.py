@@ -52,6 +52,18 @@ async def connect_manual_integration(request: ManualConnectRequest, user_id: str
         success = await mongo_manager.update_user_profile(user_id, update_payload)
         if not success:
             raise HTTPException(status_code=500, detail="Failed to save integration credentials.")
+
+        # Create the polling state document to enable the poller for this service
+        await mongo_manager.update_polling_state(
+            user_id,
+            service_name,
+            {
+                "is_enabled": True,
+                "is_currently_polling": False,
+                "next_scheduled_poll_time": datetime.datetime.now(datetime.timezone.utc), # Poll immediately
+                "last_successful_poll_timestamp_unix": None,
+            }
+        )
         return JSONResponse(content={"message": f"{service_name} connected successfully."})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -99,6 +111,18 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
         success = await mongo_manager.update_user_profile(user_id, update_payload)
         if not success:
             raise HTTPException(status_code=500, detail="Failed to save integration credentials.")
+
+        # Create the polling state document to enable the poller for this service
+        await mongo_manager.update_polling_state(
+            user_id,
+            service_name,
+            {
+                "is_enabled": True,
+                "is_currently_polling": False,
+                "next_scheduled_poll_time": datetime.datetime.now(datetime.timezone.utc), # Poll immediately
+                "last_successful_poll_timestamp_unix": None,
+            }
+        )
 
         return JSONResponse(content={"message": f"{service_name} connected successfully."})
 

@@ -4,17 +4,20 @@ import datetime
 from datetime import timezone
 import traceback
 import time # For sleep
+import logging # Import logging
 
 from .config import POLLING_INTERVALS_WORKER as POLL_CFG, GMAIL_POLL_KAFKA_TOPIC, ACTIVE_THRESHOLD_MINUTES_WORKER, RECENTLY_ACTIVE_THRESHOLD_HOURS_WORKER, PEAK_HOURS_START_WORKER, PEAK_HOURS_END_WORKER
 from .db import PollerMongoManager
 from .utils import GmailKafkaProducer, get_gmail_credentials, fetch_emails # AES decryption is in get_gmail_credentials
 from googleapiclient.errors import HttpError # Import HttpError
 
+logger = logging.getLogger(__name__)
+
 class GmailPollingService:
     def __init__(self, db_manager: PollerMongoManager):
         self.db_manager = db_manager
         self.service_name = "gmail"
-        print(f"[{datetime.datetime.now()}] [GmailPollingService] Initialized.")
+        logger.info("GmailPollingService Initialized.")
 
     def _calculate_next_poll_interval(self, user_profile: dict) -> int:
         """Calculates the polling interval based on user activity."""
@@ -45,17 +48,17 @@ class GmailPollingService:
         polling_state["consecutive_failure_count"] = failures
         polling_state["last_successful_poll_status_message"] = error_message
         polling_state["next_scheduled_poll_time"] = datetime.datetime.now(timezone.utc) + datetime.timedelta(seconds=backoff_seconds)
-        print(f"[{datetime.datetime.now()}] [GmailPollingService_BACKOFF] User {user_id} experiencing {failures} failures. Backing off for {backoff_seconds}s.")
+        logger.warning(f"User {user_id} experiencing {failures} failures. Backing off for {backoff_seconds}s.")
 
     async def _run_single_user_poll_cycle(self, user_id: str, polling_state: dict):
-        print(f"[{datetime.datetime.now()}] [GmailPollingService] Starting poll cycle for user {user_id}")
+        logger.info(f"Starting poll cycle for user {user_id}")
         updated_state = polling_state.copy() # To modify and save later
         new_data_found = False
 
         try:
             creds = await get_gmail_credentials(user_id, self.db_manager)
             if not creds:
-                print(f"[{datetime.datetime.now()}] [GmailPollingService_AUTH_ERROR] No valid Gmail credentials for user {user_id}. Disabling polling.")
+                logger.error(f"No valid Gmail credentials for user {user_id}. Disabling polling.")
                 updated_state["is_enabled"] = False
                 updated_state["last_successful_poll_status_message"] = "Disabled due to auth failure."
                 updated_state["consecutive_failure_count"] = (updated_state.get("consecutive_failure_count", 0) + 1) % (POLL_CFG["MAX_CONSECUTIVE_FAILURES"] +1) # to prevent infinite loop
@@ -95,7 +98,7 @@ class GmailPollingService:
                     new_data_found = True
 
             if processed_count > 0:
-                print(f"[{datetime.datetime.now()}] [GmailPollingService] Processed and sent {processed_count} new emails to Kafka for user {user_id}.")
+                logger.info(f"Processed and sent {processed_count} new emails to Kafka for user {user_id}.")
             
             # Update last processed timestamp if new emails were found and processed
             if highest_email_ts_ms > 0 : # and new_data_found (implicit if highest_email_ts_ms is updated)
@@ -106,13 +109,13 @@ class GmailPollingService:
             updated_state["error_backoff_until_timestamp"] = None
 
         except HttpError as he: # Catch Google API specific errors
-            print(f"[{datetime.datetime.now()}] [GmailPollingService_API_ERROR] User {user_id}: {he}")
+            logger.error(f"Google API Error for user {user_id}: {he}")
             await self._handle_poll_failure(user_id, updated_state, f"API Error: {str(he)}. Status: {he.resp.status if he.resp else 'N/A'}")
             if he.resp and (he.resp.status == 401 or he.resp.status == 403): # Auth error
                 updated_state["is_enabled"] = False # Disable polling
-                print(f"[{datetime.datetime.now()}] [GmailPollingService_AUTH_ERROR] Disabling Gmail polling for user {user_id} due to {he.resp.status} error.")
+                logger.error(f"Disabling Gmail polling for user {user_id} due to {he.resp.status} error.")
         except Exception as e:
-            print(f"[{datetime.datetime.now()}] [GmailPollingService_ERROR] User {user_id}: {e}")
+            logger.error(f"General error during poll for user {user_id}: {e}", exc_info=True)
             traceback.print_exc()
             await self._handle_poll_failure(user_id, updated_state, f"Error: {str(e)}")
         
@@ -120,7 +123,7 @@ class GmailPollingService:
             failures = updated_state.get("consecutive_failure_count", 0)
             if failures > 0 :
                 if failures >= POLL_CFG["MAX_CONSECUTIVE_FAILURES"]:
-                    print(f"[{datetime.datetime.now()}] [GmailPollingService_MAX_FAILURES] User {user_id} reached max failures. Disabling polling.")
+                    logger.error(f"User {user_id} reached max failures. Disabling polling.")
                     updated_state["is_enabled"] = False # Disable after too many failures
                     updated_state["next_scheduled_poll_time"] = datetime.datetime.now(timezone.utc) + datetime.timedelta(days=1) # Check much later
             else:
@@ -130,14 +133,14 @@ class GmailPollingService:
             
             updated_state["is_currently_polling"] = False # Release lock
             await self.db_manager.update_polling_state(user_id, self.service_name, updated_state)
-            print(f"[{datetime.datetime.now()}] [GmailPollingService] Poll cycle finished for user {user_id}. Next poll at {updated_state['next_scheduled_poll_time']}.")
+            logger.info(f"Poll cycle finished for user {user_id}. Next poll at {updated_state['next_scheduled_poll_time']}.")
 
 
     async def run_scheduler_loop(self):
         """
         Periodically checks MongoDB for users whose Gmail polling is due.
         """
-        print(f"[{datetime.datetime.now()}] [GmailPollingService_Scheduler] Starting loop (interval: {POLL_CFG['SCHEDULER_TICK_SECONDS']}s)")
+        logger.info(f"Scheduler starting loop (interval: {POLL_CFG['SCHEDULER_TICK_SECONDS']}s)")
         await self.db_manager.initialize_indices_if_needed()
         await self.db_manager.reset_stale_polling_locks(self.service_name) # Reset locks for "gmail"
 
@@ -146,10 +149,10 @@ class GmailPollingService:
                 due_tasks_states = await self.db_manager.get_due_polling_tasks_for_service(self.service_name)
                 
                 if not due_tasks_states:
-                    # print(f"[{datetime.datetime.now()}] [GmailPollingService_Scheduler] No due Gmail polling tasks.")
+                    # logger.debug("Scheduler: No due Gmail polling tasks.")
                     pass
                 else:
-                    print(f"[{datetime.datetime.now()}] [GmailPollingService_Scheduler] Found {len(due_tasks_states)} due Gmail polling tasks.")
+                    logger.info(f"Scheduler: Found {len(due_tasks_states)} due Gmail polling tasks.")
 
                 for task_state in due_tasks_states:
                     user_id = task_state["user_id"]
@@ -158,14 +161,14 @@ class GmailPollingService:
                     locked_task_state = await self.db_manager.set_polling_status_and_get(user_id, self.service_name)
                     
                     if locked_task_state:
-                        print(f"[{datetime.datetime.now()}] [GmailPollingService_Scheduler] Acquired lock for {user_id}. Triggering poll cycle.")
+                        logger.info(f"Scheduler: Acquired lock for {user_id}. Triggering poll cycle.")
                         # Run the poll cycle in a new task to not block the scheduler loop
                         asyncio.create_task(self._run_single_user_poll_cycle(user_id, locked_task_state))
-                    # else:
-                        # print(f"[{datetime.datetime.now()}] [GmailPollingService_Scheduler] Could not acquire lock for {user_id} (already processing or no longer due).")
+                    else:
+                        logger.debug(f"Scheduler: Could not acquire lock for {user_id} (already processing or no longer due).")
 
             except Exception as e:
-                print(f"[{datetime.datetime.now()}] [GmailPollingService_Scheduler_ERROR] Error in scheduler loop: {e}")
+                logger.error(f"Error in scheduler loop: {e}", exc_info=True)
                 traceback.print_exc()
             
             await asyncio.sleep(POLL_CFG["SCHEDULER_TICK_SECONDS"])

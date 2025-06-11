@@ -13,7 +13,7 @@ celery_app = Celery(
     'tasks',
     broker=CELERY_BROKER_URL,
     backend=CELERY_RESULT_BACKEND,
-    include=['server.workers.executor.tasks']
+    include=['server.workers.executor.tasks', 'server.workers.tasks']
 )
 
 celery_app.conf.update(

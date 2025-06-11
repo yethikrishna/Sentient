@@ -8,7 +8,7 @@ print(f"[{datetime.datetime.now()}] [GmailPoller_Config] Loading .env from: {dot
 load_dotenv(dotenv_path=dotenv_path)
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
-MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_db")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_agent_db")
 
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092").split(',')
 GMAIL_POLL_KAFKA_TOPIC = os.getenv("GMAIL_POLL_KAFKA_TOPIC", "gmail_polling_results")

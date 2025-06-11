@@ -10,8 +10,6 @@ KAFKA_BOOTSTRAP_SERVERS = ["localhost:9092"]
 # Replication factor should be 1 for local dev, 3 for production clusters
 TOPICS_TO_CREATE = [
     NewTopic(name="gmail_polling_results", num_partitions=4, replication_factor=1),
-    NewTopic(name="memory_operations", num_partitions=4, replication_factor=1),
-    NewTopic(name="action_items", num_partitions=4, replication_factor=1),
 ]
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

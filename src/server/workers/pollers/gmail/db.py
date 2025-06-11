@@ -41,6 +41,11 @@ class PollerMongoManager:
         
         now_utc = datetime.datetime.now(timezone.utc)
         state_data["last_updated_at"] = now_utc
+
+        # Do not attempt to re-set fields that should be immutable after creation.
+        if 'created_at' in state_data:
+            del state_data['created_at']
+
         result = await self.polling_state_collection.update_one(
             {"user_id": user_id, "service_name": service_name},
             {"$set": state_data, "$setOnInsert": {"created_at": now_utc, "user_id": user_id, "service_name": service_name}},

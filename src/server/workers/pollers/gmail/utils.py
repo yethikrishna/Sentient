@@ -23,7 +23,8 @@ from .config import (
     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_PROJECT_ID, GOOGLE_TOKEN_STORAGE_DIR_POLLER,
     AES_SECRET_KEY, AES_IV, POLLING_INTERVALS_WORKER
 )
-from .db_utils import PollerMongoManager
+from .db import PollerMongoManager
+from typing import Optional, List, Dict
 
 # --- Kafka Producer Utility (Replicated) ---
 class GmailKafkaProducer:

@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 import datetime
 
-dotenv_path = os.path.join(os.path.dirname(__file__), ".env")
+dotenv_path = "server/.env"
 print(f"[{datetime.datetime.now()}] [GmailPoller_Config] Loading .env from: {dotenv_path}")
 load_dotenv(dotenv_path=dotenv_path)
 

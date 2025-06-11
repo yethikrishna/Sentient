@@ -19,67 +19,78 @@ class ExtractorService:
     async def process_message(self, msg):
         """Processes a single context event from Kafka."""
         try:
-            event_data = msg.value
-            user_id = event_data.get("user_id")
-            event_id = event_data.get("event_id")
-
-            if not all([user_id, event_id]):
-                logger.warning(f"Skipping message due to missing user_id or event_id. Offset: {msg.offset}")
+            event_batch = msg.value
+            if not isinstance(event_batch, list):
+                logger.warning(f"Received non-list payload at offset {msg.offset}. Skipping.")
                 return
 
-            email_content = event_data.get("data", {})
-            subject = email_content.get("subject", "")
-            body = email_content.get("body", "")
+            logger.info(f"Processing batch of {len(event_batch)} events from Kafka.")
 
-            if not body and not subject:
-                logger.info(f"Skipping event {event_id} for user {user_id} as it has no content.")
-                return
+            for event_data in event_batch:
+                if not isinstance(event_data, dict):
+                    logger.warning(f"Skipping non-dict item in event batch: {event_data}")
+                    continue
 
-            logger.info(f"Processing event {event_id} for user {user_id}...")
+                user_id = event_data.get("user_id")
+                event_id = event_data.get("event_id")
 
-            # Prepare content for the LLM
-            llm_input_content = f"Subject: {subject}\n\nBody:\n{body}"
-            messages = [{'role': 'user', 'content': llm_input_content}]
+                if not all([user_id, event_id]):
+                    logger.warning(f"Skipping message in batch due to missing user_id or event_id.")
+                    continue
 
-            # Run the Qwen agent to get the structured JSON output
-            llm_response_str = ""
-            for chunk in self.agent.run(messages=messages):
-                # The response for a non-streaming JSON output agent is typically the last message
-                if isinstance(chunk, list) and chunk:
-                    last_message = chunk[-1]
-                    if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
-                        llm_response_str = last_message["content"]
-            
-            if not llm_response_str:
-                logger.error(f"LLM did not return a response for event {event_id}.")
-                return
-            
-            # Parse the JSON response
-            try:
-                extracted_data = json.loads(llm_response_str)
-                memory_items = extracted_data.get("memory_items", [])
-                action_items = extracted_data.get("action_items", [])
-            except json.JSONDecodeError:
-                logger.error(f"Failed to decode JSON from LLM for event {event_id}. Response: {llm_response_str}")
-                return
+                email_content = event_data.get("data", {})
+                subject = email_content.get("subject", "")
+                body = email_content.get("body", "")
 
-            # Pass the original context along with the action items for continuity
-            original_context = event_data.get("data", {})
+                if not body and not subject:
+                    logger.info(f"Skipping event {event_id} for user {user_id} as it has no content.")
+                    continue
 
-            # Produce to output queues
-            if memory_items and isinstance(memory_items, list):
-                await KafkaManager.produce_memories(user_id, memory_items, event_id)
-            
-            if action_items and isinstance(action_items, list):
-                await KafkaManager.produce_actions(user_id, action_items, event_id, original_context)
+                logger.info(f"Processing event {event_id} for user {user_id}...")
 
-            # Log the processing result
-            await self.db_manager.log_extraction_result(
-                original_event_id=event_id,
-                user_id=user_id,
-                memory_count=len(memory_items),
-                action_count=len(action_items)
-            )
+                # Prepare content for the LLM
+                llm_input_content = f"Subject: {subject}\n\nBody:\n{body}"
+                messages = [{'role': 'user', 'content': llm_input_content}]
+
+                # Run the Qwen agent to get the structured JSON output
+                llm_response_str = ""
+                for chunk in self.agent.run(messages=messages):
+                    # The response for a non-streaming JSON output agent is typically the last message
+                    if isinstance(chunk, list) and chunk:
+                        last_message = chunk[-1]
+                        if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
+                            llm_response_str = last_message["content"]
+
+                if not llm_response_str:
+                    logger.error(f"LLM did not return a response for event {event_id}.")
+                    continue
+
+                # Parse the JSON response
+                try:
+                    extracted_data = json.loads(llm_response_str)
+                    memory_items = extracted_data.get("memory_items", [])
+                    action_items = extracted_data.get("action_items", [])
+                except json.JSONDecodeError:
+                    logger.error(f"Failed to decode JSON from LLM for event {event_id}. Response: {llm_response_str}")
+                    continue
+
+                # Pass the original context along with the action items for continuity
+                original_context = event_data.get("data", {})
+
+                # Produce to output queues
+                if memory_items and isinstance(memory_items, list):
+                    await KafkaManager.produce_memories(user_id, memory_items, event_id)
+
+                if action_items and isinstance(action_items, list):
+                    await KafkaManager.produce_actions(user_id, action_items, event_id, original_context)
+
+                # Log the processing result
+                await self.db_manager.log_extraction_result(
+                    original_event_id=event_id,
+                    user_id=user_id,
+                    memory_count=len(memory_items),
+                    action_count=len(action_items)
+                )
 
         except Exception as e:
             logger.error(f"Error processing message at offset {msg.offset}: {e}")

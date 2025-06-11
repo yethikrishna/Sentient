@@ -6,7 +6,7 @@ import os
 
 # Import from local modules
 from .config import MONGO_URI, MONGO_DB_NAME # To ensure config is loaded
-from .db_utils import PollerMongoManager
+from .db import PollerMongoManager
 from .service import GmailPollingService
 from .utils import GmailKafkaProducer # For graceful shutdown
 

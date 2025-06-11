@@ -6,7 +6,7 @@ import traceback
 import time # For sleep
 
 from .config import POLLING_INTERVALS_WORKER as POLL_CFG, GMAIL_POLL_KAFKA_TOPIC, ACTIVE_THRESHOLD_MINUTES_WORKER, RECENTLY_ACTIVE_THRESHOLD_HOURS_WORKER, PEAK_HOURS_START_WORKER, PEAK_HOURS_END_WORKER
-from .db_utils import PollerMongoManager
+from .db import PollerMongoManager
 from .utils import GmailKafkaProducer, get_gmail_credentials, fetch_emails # AES decryption is in get_gmail_credentials
 from googleapiclient.errors import HttpError # Import HttpError
 

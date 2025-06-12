@@ -1,5 +1,3 @@
-# src/server/main/auth/utils.py
-# src/server/main/auth/utils.py
 import os
 import datetime
 import json
@@ -10,11 +8,11 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.backends import default_backend
 import base64
-import requests # Sync requests for JWKS and Auth0 Management API
+import requests
 
 from jose import jwt, JWTError
 from jose.exceptions import JOSEError
-from fastapi import HTTPException, status, Depends, WebSocket
+from fastapi import HTTPException, status, Depends, WebSocket, WebSocketDisconnect
 from fastapi.security import OAuth2PasswordBearer
 
 from ..config import (
@@ -42,7 +40,7 @@ if AUTH0_DOMAIN:
 else:
     print(f"[{datetime.datetime.now()}] [AuthUtils_FATAL_ERROR] AUTH0_DOMAIN not set. Cannot fetch JWKS.")
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token") # Placeholder
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 class AuthHelper:
     async def _validate_token_and_get_payload(self, token: str) -> dict:
@@ -150,26 +148,9 @@ class AuthHelper:
 class PermissionChecker:
     def __init__(self, required_permissions: List[str]):
         self.required_permissions = set(required_permissions)
-        # AuthHelper instance will be created in app.py and used globally
-        # For direct usage within this class if not passed, an instance would be needed.
-        # However, typical FastAPI usage involves Depends(auth_helper.method)
-        # This class is usually instantiated per endpoint in Depends.
 
     async def __call__(self, token: str = Depends(oauth2_scheme), auth_helper: AuthHelper = Depends()):
-        # Assuming auth_helper is available via Depends() if initialized globally in app.py
-        # Or, if app.auth_helper is the global instance:
-        # from ..app import auth_helper_instance
-        # user_id, token_permissions_list = await auth_helper_instance.get_current_user_id_and_permissions(token=token)
-        # For now, let's assume an AuthHelper instance is passed or available.
-        # The simplest is to re-instantiate or make AuthHelper methods static/class methods if they don't need state.
-        # Given current structure, AuthHelper methods are instance methods.
-        # The `Depends()` without args should pick up the global `auth_helper` if we make it available this way.
-        # We will define `auth_helper_dependency` in app.py
-
-        # Re-evaluating: The original `main.py` does `auth = AuthHelper()`.
-        # This `auth` instance is then used in `Depends(auth.get_current_user_id)`.
-        # So `PermissionChecker` should also use this global instance.
-        from ..dependencies import auth_helper as global_auth_helper # Import from dependencies
+        from ..dependencies import auth_helper as global_auth_helper
 
         user_id, token_permissions_list = await global_auth_helper.get_current_user_id_and_permissions(token=token)
         token_permissions_set = set(token_permissions_list)
@@ -178,7 +159,6 @@ class PermissionChecker:
             missing = self.required_permissions - token_permissions_set
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Missing permissions: {', '.join(missing)}")
         return user_id
-
 
 # --- AES Encryption/Decryption ---
 def aes_encrypt(data: str) -> str:

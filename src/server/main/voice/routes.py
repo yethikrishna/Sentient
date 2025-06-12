@@ -8,11 +8,8 @@ from starlette.websockets import WebSocketState
 import logging
 
 from .models import VoiceOfferRequest, VoiceAnswerResponse
-from ..auth.utils import AuthHelper
-from ..websocket import MainWebSocketManager
-from ..dependencies import mongo_manager, auth_helper
+from ..dependencies import mongo_manager, auth_helper, websocket_manager as main_websocket_manager
 from ..chat.utils import process_voice_command
-
 from .tts import TTSOptionsBase
 
 router = APIRouter(
@@ -21,8 +18,6 @@ router = APIRouter(
 )
 logger = logging.getLogger(__name__)
 
-# This endpoint is kept for compatibility but is part of the old WebRTC flow.
-# The new flow uses WebSockets exclusively.
 @router.post("/webrtc/offer", summary="Handle WebRTC Offer (Legacy)")
 async def handle_webrtc_offer(
     offer_request: VoiceOfferRequest,
@@ -106,8 +101,11 @@ async def voice_websocket_endpoint(websocket: WebSocket):
         err_msg = f"An internal server error occurred: {str(e)}"
         logger.error(f"Voice WS Error for User {authenticated_user_id or 'unknown'}: {e}", exc_info=True)
         if websocket.client_state == WebSocketState.CONNECTED:
-            await websocket.send_json({"type": "error", "message": err_msg})
+            try:
+                await websocket.send_json({"type": "error", "message": err_msg})
+            except Exception as send_err: 
+                logger.error(f"Failed to send error to client: {send_err}")
     finally:
         if authenticated_user_id:
-            main_websocket_manager.disconnect_voice(websocket)
+            await main_websocket_manager.disconnect_voice(websocket)
             logger.info(f"User {authenticated_user_id} voice WebSocket cleanup complete.")

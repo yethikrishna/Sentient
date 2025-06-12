@@ -24,7 +24,6 @@ load_dotenv()
 mcp = FastMCP(
     name="GMailServer",
     instructions="This server provides tools to interact with the GMail API for sending, searching, and managing emails.",
-    tags={"gsuite", "email", "gmail"},
 )
 
 

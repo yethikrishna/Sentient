@@ -7,6 +7,7 @@ print(f"[{datetime.datetime.now()}] [STARTUP] Main Server application script exe
 import os
 import asyncio
 from contextlib import asynccontextmanager
+from typing import Optional
 import logging
 import httpx 
 

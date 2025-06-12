@@ -18,7 +18,6 @@ load_dotenv()
 mcp = FastMCP(
     name="GoogleSearchServer",
     instructions="This server provides a tool to search the web using the Google Custom Search API.",
-    tags={"search", "web", "google"},
 )
 
 # --- Prompt Registration ---

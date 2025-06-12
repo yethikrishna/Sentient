@@ -18,7 +18,6 @@ load_dotenv()
 mcp = FastMCP(
     name="BraveSearchServer",
     instructions="This server provides a tool to search the web using the Brave Search API.",
-    tags={"search", "web", "brave"},
 )
 
 # --- Prompt Registration ---

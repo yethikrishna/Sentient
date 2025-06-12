@@ -1,9 +1,9 @@
-"use client";
-import React, { useState, useEffect, useRef, useCallback } from "react";
-import ChatBubble from "@components/ChatBubble";
-import ToolResultBubble from "@components/ToolResultBubble";
-import Sidebar from "@components/Sidebar";
-import TopControlBar from "@components/TopControlBar";
+"use client"
+import React, { useState, useEffect, useRef, useCallback } from "react"
+import ChatBubble from "@components/ChatBubble"
+import ToolResultBubble from "@components/ToolResultBubble"
+import Sidebar from "@components/Sidebar"
+import TopControlBar from "@components/TopControlBar"
 import {
 	IconSend,
 	IconRefresh,
@@ -16,213 +16,224 @@ import {
 	IconPhone,
 	IconPhoneOff,
 	IconMicrophone
-} from "@tabler/icons-react";
-import toast from "react-hot-toast";
-import GmailSearchResults from "@components/agents/GmailSearchResults";
-import BackgroundCircleProvider from "@components/voice-visualization/background-circle-provider";
-import { cn } from "@utils/cn";
+} from "@tabler/icons-react"
+import toast from "react-hot-toast"
+import GmailSearchResults from "@components/agents/GmailSearchResults"
+import BackgroundCircleProvider from "@components/voice-visualization/background-circle-provider"
+import { cn } from "@utils/cn"
 
 const integrationIcons = {
 	gmail: IconMail,
 	gcalendar: IconCalendarEvent,
 	gdrive: IconBrandGoogleDrive,
 	slack: IconBrandSlack
-};
+}
 
 const Chat = () => {
 	// --- State Variables ---
-	const [messages, setMessages] = useState([]);
-	const [input, setInput] = useState("");
-	const [userDetails, setUserDetails] = useState(null);
-	const [thinking, setThinking] = useState(false);
-	const [isSidebarVisible, setSidebarVisible] = useState(false);
-	const [chatMode, setChatMode] = useState("text");
-	const [isLoading, setIsLoading] = useState(() => chatMode === "text");
-	const [connectionStatus, setConnectionStatus] = useState("disconnected");
-	const [audioInputDevices, setAudioInputDevices] = useState([]);
-	const [selectedAudioInputDevice, setSelectedAudioInputDevice] = useState("");
-	const [connectedIntegrations, setConnectedIntegrations] = useState([]);
-	const [voiceStatusText, setVoiceStatusText] = useState("Click to Start");
+	const [messages, setMessages] = useState([])
+	const [input, setInput] = useState("")
+	const [userDetails, setUserDetails] = useState(null)
+	const [thinking, setThinking] = useState(false)
+	const [isSidebarVisible, setSidebarVisible] = useState(false)
+	const [chatMode, setChatMode] = useState("text")
+	const [isLoading, setIsLoading] = useState(() => chatMode === "text")
+	const [connectionStatus, setConnectionStatus] = useState("disconnected")
+	const [audioInputDevices, setAudioInputDevices] = useState([])
+	const [selectedAudioInputDevice, setSelectedAudioInputDevice] = useState("")
+	const [connectedIntegrations, setConnectedIntegrations] = useState([])
+	const [voiceStatusText, setVoiceStatusText] = useState("Click to Start")
 
 	// --- Refs ---
-	const textareaRef = useRef(null);
-	const chatEndRef = useRef(null);
-	const backgroundCircleProviderRef = useRef(null);
-	const ringtoneAudioRef = useRef(null);
-	const connectedAudioRef = useRef(null);
-	const abortControllerRef = useRef(null);
+	const textareaRef = useRef(null)
+	const chatEndRef = useRef(null)
+	const backgroundCircleProviderRef = useRef(null)
+	const ringtoneAudioRef = useRef(null)
+	const connectedAudioRef = useRef(null)
+	const abortControllerRef = useRef(null)
 
 	// --- Handlers ---
 	const handleInputChange = (e) => {
-		const value = e.target.value;
-		setInput(value);
+		const value = e.target.value
+		setInput(value)
 		if (textareaRef.current) {
-			textareaRef.current.style.height = "auto";
+			textareaRef.current.style.height = "auto"
 			textareaRef.current.style.height = `${Math.min(
 				textareaRef.current.scrollHeight,
 				200
-			)}px`;
+			)}px`
 		}
-	};
+	}
 
 	const handleToggleMode = (targetMode) => {
-		if (targetMode === chatMode) return;
-		setChatMode(targetMode);
+		if (targetMode === chatMode) return
+		setChatMode(targetMode)
 		if (targetMode === "text" && connectionStatus !== "disconnected") {
-			handleStopVoice();
+			handleStopVoice()
 		}
-	};
+	}
 
 	const handleStatusChange = useCallback(
 		(status) => {
-			console.log("Connection status changed:", status);
-			setConnectionStatus(status);
+			console.log("Connection status changed:", status)
+			setConnectionStatus(status)
 
 			if (status !== "connecting" && ringtoneAudioRef.current) {
-				ringtoneAudioRef.current.pause();
-				ringtoneAudioRef.current.currentTime = 0;
+				ringtoneAudioRef.current.pause()
+				ringtoneAudioRef.current.currentTime = 0
 			}
 
 			if (status === "connected") {
 				if (connectedAudioRef.current) {
-					connectedAudioRef.current.volume = 0.4;
+					connectedAudioRef.current.volume = 0.4
 					connectedAudioRef.current
 						.play()
 						.catch((e) =>
 							console.error("Error playing connected sound:", e)
-						);
+						)
 				}
-				setVoiceStatusText("Listening...");
+				setVoiceStatusText("Listening...")
 			} else if (status === "disconnected") {
-				setVoiceStatusText("Click to Start");
+				setVoiceStatusText("Click to Start")
 			} else if (status === "connecting") {
-				setVoiceStatusText("Connecting...");
+				setVoiceStatusText("Connecting...")
 			}
 		},
 		[setVoiceStatusText, setConnectionStatus]
-	);
+	)
 
 	const handleVoiceEvent = useCallback(
 		(event) => {
-			console.log("Received voice event:", event);
+			console.log("Received voice event:", event)
 			if (event.type === "stt_result" && event.text) {
 				const newUserMessage = {
 					id: `user_transcript_${Date.now()}`,
 					message: event.text,
 					isUser: true,
 					type: "text"
-				};
-				setMessages((prev) => [...prev, newUserMessage]);
+				}
+				setMessages((prev) => [...prev, newUserMessage])
 			} else if (event.type === "llm_result" && event.text) {
 				const newAssistantMessage = {
 					id: event.messageId || `assistant_${Date.now()}`,
 					message: event.text,
 					isUser: false,
 					type: "text"
-				};
-				setMessages((prev) => [...prev, newAssistantMessage]);
+				}
+				setMessages((prev) => [...prev, newAssistantMessage])
 			} else if (event.type === "status") {
 				if (event.message === "thinking") {
-					setVoiceStatusText("Thinking...");
+					setVoiceStatusText("Thinking...")
 				} else if (event.message === "speaking") {
-					setVoiceStatusText("Speaking...");
+					setVoiceStatusText("Speaking...")
 				} else if (event.message === "listening") {
-					setVoiceStatusText("Listening...");
+					setVoiceStatusText("Listening...")
 				}
 			} else if (event.type === "error") {
-				toast.error(`Voice Error: ${event.message}`);
-				setVoiceStatusText("Error. Click to retry.");
+				toast.error(`Voice Error: ${event.message}`)
+				setVoiceStatusText("Error. Click to retry.")
 			}
 		},
 		[setMessages, setVoiceStatusText]
-	);
+	)
 
 	const handleStartVoice = async () => {
 		if (
 			connectionStatus !== "disconnected" ||
 			!backgroundCircleProviderRef.current
 		)
-			return;
-		console.log("ChatPage: handleStartVoice called");
-		setConnectionStatus("connecting");
-		if (ringtoneAudioRef.current) {
-			ringtoneAudioRef.current.volume = 0.3;
-			ringtoneAudioRef.current.loop = true;
-			ringtoneAudioRef.current
-				.play()
-				.catch((e) => console.error("Error playing ringtone:", e));
-		}
+			return
+
+		console.log("ChatPage: handleStartVoice called")
+		setConnectionStatus("connecting")
+
 		try {
+			// Fetch the auth token first
+			const tokenResponse = await fetch("/api/auth/token")
+			if (!tokenResponse.ok) {
+				throw new Error("Could not get authentication token.")
+			}
+			const { accessToken } = await tokenResponse.json()
+
+			if (ringtoneAudioRef.current) {
+				ringtoneAudioRef.current.volume = 0.3
+				ringtoneAudioRef.current.loop = true
+				ringtoneAudioRef.current
+					.play()
+					.catch((e) => console.error("Error playing ringtone:", e))
+			}
+			// Pass the token to the connect method
 			await backgroundCircleProviderRef.current?.connect(
-				selectedAudioInputDevice
-			);
+				selectedAudioInputDevice,
+				accessToken
+			)
 		} catch (error) {
-			console.error("ChatPage: Error starting voice connection:", error);
+			console.error("ChatPage: Error starting voice connection:", error)
 			toast.error(
 				`Failed to connect: ${error.message || "Unknown error"}`
-			);
-			handleStatusChange("disconnected");
+			)
+			handleStatusChange("disconnected")
 		}
-	};
+	}
 
 	const handleStopVoice = () => {
 		if (
 			connectionStatus === "disconnected" ||
 			!backgroundCircleProviderRef.current
 		)
-			return;
-		console.log("ChatPage: handleStopVoice called");
-		backgroundCircleProviderRef.current?.disconnect();
-	};
+			return
+		console.log("ChatPage: handleStopVoice called")
+		backgroundCircleProviderRef.current?.disconnect()
+	}
 
 	const handleDeviceChange = (event) => {
-		const deviceId = event.target.value;
-		setSelectedAudioInputDevice(deviceId);
+		const deviceId = event.target.value
+		setSelectedAudioInputDevice(deviceId)
 		if (connectionStatus !== "disconnected") {
 			toast.success(
 				"Microphone changed. Please restart the call to apply.",
 				{ duration: 4000 }
-			);
+			)
 		}
-	};
+	}
 
 	const fetchChatHistory = async () => {
 		try {
-			const response = await fetch("/api/chat/history");
+			const response = await fetch("/api/chat/history")
 			if (response.ok) {
-				const data = await response.json();
-				setMessages(data.messages || []);
+				const data = await response.json()
+				setMessages(data.messages || [])
 			} else {
-				const errorData = await response.json();
-				toast.error(`Error fetching chat history: ${errorData.message}`);
-				setMessages([]);
+				const errorData = await response.json()
+				toast.error(`Error fetching chat history: ${errorData.message}`)
+				setMessages([])
 			}
 		} catch (error) {
-			toast.error("Error fetching chat history.");
-			setMessages([]);
+			toast.error("Error fetching chat history.")
+			setMessages([])
 		} finally {
-			setIsLoading(false);
+			setIsLoading(false)
 		}
-	};
+	}
 
 	const fetchUserDetails = async () => {
 		try {
-			const response = await fetch("/api/user/profile");
+			const response = await fetch("/api/user/profile")
 			if (!response.ok) {
-				throw new Error("Failed to fetch user details");
+				throw new Error("Failed to fetch user details")
 			}
-			const data = await response.json();
-			setUserDetails(data);
+			const data = await response.json()
+			setUserDetails(data)
 		} catch (error) {
-			toast.error("Error fetching user details.");
+			toast.error("Error fetching user details.")
 		}
-	};
+	}
 
 	const fetchConnectedIntegrations = async () => {
 		try {
-			const response = await fetch("/api/integrations/connected");
+			const response = await fetch("/api/integrations/connected")
 			if (response.ok) {
-				const data = await response.json();
+				const data = await response.json()
 				const connected = (data.integrations || [])
 					.filter(
 						(i) =>
@@ -230,32 +241,32 @@ const Chat = () => {
 							(i.auth_type === "oauth" ||
 								i.auth_type === "manual")
 					)
-					.map((i) => ({ ...i, icon: integrationIcons[i.name] }));
-				setConnectedIntegrations(connected);
+					.map((i) => ({ ...i, icon: integrationIcons[i.name] }))
+				setConnectedIntegrations(connected)
 			}
 		} catch (error) {
-			console.error("Failed to fetch connected integrations", error);
+			console.error("Failed to fetch connected integrations", error)
 		}
-	};
+	}
 
 	const sendMessage = async () => {
-		if (input.trim() === "" || chatMode !== "text") return;
+		if (input.trim() === "" || chatMode !== "text") return
 
 		const newUserMessage = {
 			message: input,
 			isUser: true,
 			id: Date.now(),
 			type: "text"
-		};
-		setMessages((prev) => [...prev, newUserMessage]);
-		const currentInput = input;
-		setInput("");
-		if (textareaRef.current) {
-			textareaRef.current.style.height = "auto";
 		}
-		setThinking(true);
+		setMessages((prev) => [...prev, newUserMessage])
+		const currentInput = input
+		setInput("")
+		if (textareaRef.current) {
+			textareaRef.current.style.height = "auto"
+		}
+		setThinking(true)
 
-		abortControllerRef.current = new AbortController();
+		abortControllerRef.current = new AbortController()
 		try {
 			const response = await fetch("/api/chat/message", {
 				method: "POST",
@@ -264,59 +275,59 @@ const Chat = () => {
 				},
 				body: JSON.stringify({ input: currentInput }),
 				signal: abortControllerRef.current.signal
-			});
+			})
 
 			if (!response.ok || !response.body) {
 				const errorData = await response
 					.json()
-					.catch(() => ({ message: "An unknown error occurred" }));
+					.catch(() => ({ message: "An unknown error occurred" }))
 				throw new Error(
 					errorData.message || "Failed to get streaming response"
-				);
+				)
 			}
 
-			const reader = response.body.getReader();
-			const decoder = new TextDecoder();
-			let assistantMessageId = null;
-			let buffer = "";
+			const reader = response.body.getReader()
+			const decoder = new TextDecoder()
+			let assistantMessageId = null
+			let buffer = ""
 
 			while (true) {
-				const { value, done } = await reader.read();
-				if (done) break;
+				const { value, done } = await reader.read()
+				if (done) break
 
-				buffer += decoder.decode(value, { stream: true });
-				let newlineIndex;
+				buffer += decoder.decode(value, { stream: true })
+				let newlineIndex
 				while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
-					const line = buffer.slice(0, newlineIndex);
-					buffer = buffer.slice(newlineIndex + 1);
+					const line = buffer.slice(0, newlineIndex)
+					buffer = buffer.slice(newlineIndex + 1)
 
-					if (line.trim() === "") continue;
+					if (line.trim() === "") continue
 
 					try {
-						const parsed = JSON.parse(line);
+						const parsed = JSON.parse(line)
 						if (parsed.type === "error") {
-							toast.error(`An error occurred: ${parsed.message}`);
-							continue;
+							toast.error(`An error occurred: ${parsed.message}`)
+							continue
 						}
 
 						if (parsed.type === "agent_step") {
 							setMessages((prev) => [
 								...prev,
 								{ ...parsed, isUser: false }
-							]);
+							])
 						} else if (parsed.type === "gmail_search") {
 							setMessages((prev) => [
 								...prev,
 								{ ...parsed, isUser: false }
-							]);
+							])
 						} else if (parsed.type === "assistantStream") {
-							const token = parsed.token || parsed.message || "";
-							assistantMessageId = parsed.messageId;
+							const token = parsed.token || parsed.message || ""
+							assistantMessageId = parsed.messageId
 
 							setMessages((prev) => {
 								const existingMsgIndex = prev.findIndex(
 									(msg) => msg.id === assistantMessageId
-								);
+								)
 								if (existingMsgIndex !== -1) {
 									return prev.map((msg, index) =>
 										index === existingMsgIndex
@@ -325,7 +336,7 @@ const Chat = () => {
 													message: msg.message + token
 												}
 											: msg
-									);
+									)
 								} else {
 									return [
 										...prev,
@@ -341,9 +352,9 @@ const Chat = () => {
 											internetUsed:
 												parsed.internetUsed || false
 										}
-									];
+									]
 								}
-							});
+							})
 						}
 					} catch (e) {
 						console.error(
@@ -351,55 +362,55 @@ const Chat = () => {
 							e,
 							"Line:",
 							line
-						);
+						)
 					}
 				}
 			}
 		} catch (error) {
 			if (error.name === "AbortError") {
-				console.log("Fetch aborted by user.");
+				console.log("Fetch aborted by user.")
 			} else {
-				toast.error(`Error sending message: ${error.message}`);
+				toast.error(`Error sending message: ${error.message}`)
 			}
 		} finally {
-			setThinking(false);
+			setThinking(false)
 		}
-	};
+	}
 
 	const handleStopStreaming = () => {
 		if (abortControllerRef.current) {
-			abortControllerRef.current.abort();
+			abortControllerRef.current.abort()
 			setMessages((prev) => {
-				const lastMessage = prev[prev.length - 1];
+				const lastMessage = prev[prev.length - 1]
 				if (lastMessage && !lastMessage.isUser) {
-					lastMessage.message += "\n\n[STREAM STOPPED BY USER]";
+					lastMessage.message += "\n\n[STREAM STOPPED BY USER]"
 				}
-				return [...prev];
-			});
+				return [...prev]
+			})
 		}
-	};
+	}
 
 	const clearChatHistory = async () => {
 		try {
-			const response = await fetch("/api/chat/clear", { method: "POST" });
+			const response = await fetch("/api/chat/clear", { method: "POST" })
 			if (response.ok) {
-				setMessages([]);
-				if (chatMode === "text") setInput("");
-				toast.success("Chat history cleared.");
+				setMessages([])
+				if (chatMode === "text") setInput("")
+				toast.success("Chat history cleared.")
 			} else {
-				const errorData = await response.json();
+				const errorData = await response.json()
 				toast.error(
 					`Failed to clear chat history: ${errorData.message}`
-				);
+				)
 			}
 		} catch (error) {
-			toast.error("Error clearing chat history.");
+			toast.error("Error clearing chat history.")
 		}
-	};
+	}
 
 	useEffect(() => {
-		fetchUserDetails();
-		fetchConnectedIntegrations();
+		fetchUserDetails()
+		fetchConnectedIntegrations()
 
 		const getDevices = async () => {
 			try {
@@ -407,69 +418,70 @@ const Chat = () => {
 					!navigator.mediaDevices ||
 					!navigator.mediaDevices.enumerateDevices
 				) {
-					console.warn("enumerateDevices() not supported.");
-					return;
+					console.warn("enumerateDevices() not supported.")
+					return
 				}
 				await navigator.mediaDevices.getUserMedia({
 					audio: true,
 					video: false
-				});
-				const devices = await navigator.mediaDevices.enumerateDevices();
+				})
+				const devices = await navigator.mediaDevices.enumerateDevices()
 				const audioInputDevices = devices.filter(
 					(device) => device.kind === "audioinput"
-				);
+				)
 				if (audioInputDevices.length > 0) {
 					setAudioInputDevices(
 						audioInputDevices.map((d, index) => ({
 							deviceId: d.deviceId,
 							label: d.label || `Microphone ${index + 1}`
 						}))
-					);
+					)
 					if (!selectedAudioInputDevice) {
 						setSelectedAudioInputDevice(
 							audioInputDevices[0].deviceId
-						);
+						)
 					}
 				}
 			} catch (error) {
 				toast.error(
 					"Could not get microphone list. Please grant permission."
-				);
+				)
 			}
-		};
-		getDevices();
+		}
+		getDevices()
 
 		if (chatMode === "text") {
-			fetchChatHistory();
+			fetchChatHistory()
 		} else {
-			setIsLoading(false);
+			setIsLoading(false)
 		}
 
 		return () => {
 			if (abortControllerRef.current) {
-				abortControllerRef.current.abort();
+				abortControllerRef.current.abort()
 			}
 			if (
 				backgroundCircleProviderRef.current &&
 				connectionStatus !== "disconnected"
 			) {
-				backgroundCircleProviderRef.current.disconnect();
+				backgroundCircleProviderRef.current.disconnect()
 			}
-		};
+		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, []);
+	}, [])
 
 	useEffect(() => {
 		if (chatEndRef.current) {
-			chatEndRef.current.scrollIntoView({ behavior: "smooth" });
+			chatEndRef.current.scrollIntoView({ behavior: "smooth" })
 		}
-	}, [messages]);
+	}, [messages])
 
 	useEffect(() => {
 		if (chatMode === "text" && textareaRef.current) {
-			handleInputChange({ target: textareaRef.current });
+			handleInputChange({ target: textareaRef.current })
 		}
-	}, [chatMode, input]);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [chatMode, input])
 
 	return (
 		<div className="h-screen bg-matteblack relative overflow-hidden dark">
@@ -534,16 +546,13 @@ const Chat = () => {
 													) : msg.type ===
 													  "gmail_search" ? (
 														<GmailSearchResults
-															task={msg.task}
-															result={msg.message}
-															memoryUsed={
-																msg.memoryUsed
+															emails={
+																msg.message
+																	.email_data
 															}
-															agentsUsed={
-																msg.agentsUsed
-															}
-															internetUsed={
-																msg.internetUsed
+															gmailSearchUrl={
+																msg.message
+																	.gmail_search_url
 															}
 														/>
 													) : (
@@ -585,7 +594,7 @@ const Chat = () => {
 													{connectedIntegrations.map(
 														(integ) => {
 															const Icon =
-																integ.icon;
+																integ.icon
 															return (
 																Icon && (
 																	<Icon
@@ -600,7 +609,7 @@ const Chat = () => {
 																		}
 																	/>
 																)
-															);
+															)
 														}
 													)}
 												</div>
@@ -628,8 +637,8 @@ const Chat = () => {
 														e.key === "Enter" &&
 														!e.shiftKey
 													) {
-														e.preventDefault();
-														sendMessage();
+														e.preventDefault()
+														sendMessage()
 													}
 												}}
 												className="flex-grow p-2 pr-28 rounded-lg bg-transparent text-base text-white focus:outline-none resize-none no-scrollbar overflow-y-auto"
@@ -782,7 +791,7 @@ const Chat = () => {
 				preload="auto"
 			></audio>
 		</div>
-	);
-};
+	)
+}
 
-export default Chat;
+export default Chat

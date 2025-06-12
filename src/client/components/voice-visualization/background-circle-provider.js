@@ -1,4 +1,4 @@
-"use client";
+"use client"
 
 import {
 	useState,
@@ -7,102 +7,107 @@ import {
 	useCallback,
 	useImperativeHandle,
 	forwardRef
-} from "react";
-import { VoiceBlobs } from "@components/voice-visualization/VoiceBlobs";
-import { WebSocketClient } from "@utils/webSocketAudioClient";
-import React from "react";
+} from "react"
+import { VoiceBlobs } from "@components/voice-visualization/VoiceBlobs"
+import { WebSocketClient } from "@utils/webSocketAudioClient"
+import React from "react"
 
 const BackgroundCircleProviderComponent = (
 	{ onStatusChange, onEvent, connectionStatusProp },
 	ref
 ) => {
-	const [voiceClient, setVoiceClient] = useState(null);
-	const [internalStatus, setInternalStatus] = useState("disconnected");
-	const [audioLevel, setAudioLevel] = useState(0);
+	const [voiceClient, setVoiceClient] = useState(null)
+	const [internalStatus, setInternalStatus] = useState("disconnected")
+	const [audioLevel, setAudioLevel] = useState(0)
 
 	useEffect(() => {
 		if (connectionStatusProp !== internalStatus) {
-			setInternalStatus(connectionStatusProp);
+			setInternalStatus(connectionStatusProp)
 			if (connectionStatusProp === "disconnected") {
-				setAudioLevel(0);
+				setAudioLevel(0)
 			}
 		}
-	}, [connectionStatusProp, internalStatus]);
+	}, [connectionStatusProp, internalStatus])
 
 	const handleConnected = useCallback(() => {
-		setInternalStatus("connected");
-		onStatusChange?.("connected");
-	}, [onStatusChange]);
+		setInternalStatus("connected")
+		onStatusChange?.("connected")
+	}, [onStatusChange])
 
 	const handleDisconnected = useCallback(() => {
-		setInternalStatus("disconnected");
-		setAudioLevel(0);
-		onStatusChange?.("disconnected");
-	}, [onStatusChange]);
+		setInternalStatus("disconnected")
+		setAudioLevel(0)
+		onStatusChange?.("disconnected")
+	}, [onStatusChange])
 
 	const handleConnectError = useCallback(
 		(error) => {
-			console.error("Provider: Connection Error", error);
-			setInternalStatus("disconnected");
-			setAudioLevel(0);
-			onStatusChange?.("disconnected");
+			console.error("Provider: Connection Error", error)
+			setInternalStatus("disconnected")
+			setAudioLevel(0)
+			onStatusChange?.("disconnected")
 		},
 		[onStatusChange]
-	);
+	)
 
 	const handleMessage = useCallback(
 		(message) => {
-			onEvent?.(message);
+			onEvent?.(message)
 		},
 		[onEvent]
-	);
+	)
 
 	const handleAudioLevelUpdate = useCallback((level) => {
-		setAudioLevel((prev) => prev * 0.7 + level * 0.3);
-	}, []);
+		setAudioLevel((prev) => prev * 0.7 + level * 0.3)
+	}, [])
 
 	useImperativeHandle(ref, () => ({
-		connect: async (deviceId) => {
+		connect: async (deviceId, token) => {
 			if (voiceClient) {
-				console.log("[Provider] Disconnecting existing voice client first.");
-				voiceClient.disconnect();
+				console.log(
+					"[Provider] Disconnecting existing voice client first."
+				)
+				voiceClient.disconnect()
 			}
-			console.log("[Provider] Creating new VoiceClient");
+			console.log("[Provider] Creating new VoiceClient")
 			const client = new WebSocketClient({
 				onConnected: handleConnected,
 				onDisconnected: handleDisconnected,
 				onConnectError: handleConnectError,
 				onMessage: handleMessage,
 				onAudioLevel: handleAudioLevelUpdate
-			});
-			setVoiceClient(client);
+			})
+			setVoiceClient(client)
 
 			if (internalStatus === "disconnected") {
-				console.log("[Provider] connect() called via ref");
-				setInternalStatus("connecting");
-				onStatusChange?.("connecting");
+				console.log("[Provider] connect() called via ref")
+				setInternalStatus("connecting")
+				onStatusChange?.("connecting")
 				try {
-					await client.connect(deviceId);
+					await client.connect(deviceId, token) // Pass token to client
 				} catch (error) {
-					console.error("[Provider] Error during connect() call:", error);
-					throw error;
+					console.error(
+						"[Provider] Error during connect() call:",
+						error
+					)
+					throw error
 				}
 			}
 		},
 		disconnect: () => {
 			if (voiceClient && internalStatus !== "disconnected") {
-				console.log("[Provider] disconnect() called via ref");
-				voiceClient.disconnect();
+				console.log("[Provider] disconnect() called via ref")
+				voiceClient.disconnect()
 			}
 		}
-	}));
+	}))
 
 	// Cleanup on unmount
 	useEffect(() => {
 		return () => {
-			voiceClient?.disconnect();
-		};
-	}, [voiceClient]);
+			voiceClient?.disconnect()
+		}
+	}, [voiceClient])
 
 	return (
 		<div className="relative w-full h-full flex items-center justify-center">
@@ -112,13 +117,13 @@ const BackgroundCircleProviderComponent = (
 				isConnecting={internalStatus === "connecting"}
 			/>
 		</div>
-	);
-};
+	)
+}
 
 const ForwardedBackgroundCircleProvider = forwardRef(
 	BackgroundCircleProviderComponent
-);
-ForwardedBackgroundCircleProvider.displayName = "BackgroundCircleProvider";
+)
+ForwardedBackgroundCircleProvider.displayName = "BackgroundCircleProvider"
 
-export default ForwardedBackgroundCircleProvider;
-export { BackgroundCircleProviderComponent as BackgroundCircleProvider };
+export default ForwardedBackgroundCircleProvider
+export { BackgroundCircleProviderComponent as BackgroundCircleProvider }

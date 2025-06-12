@@ -1,21 +1,19 @@
-# src/server/main/voice/routes.py
 import datetime
 import traceback
 import asyncio
-import numpy as np 
+import uuid
+import numpy as np
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, HTTPException, status
 from starlette.websockets import WebSocketState
-import logging 
+import logging
 
 from .models import VoiceOfferRequest, VoiceAnswerResponse
-from ..auth.utils import AuthHelper, PermissionChecker 
+from ..auth.utils import AuthHelper
 from ..websocket import MainWebSocketManager
+from ..dependencies import mongo_manager, auth_helper
+from ..chat.utils import process_voice_command
 
-auth_helper = AuthHelper()
-main_websocket_manager = MainWebSocketManager() # Instance of the corrected import
-
-from .tts import TTSOptionsBase # Base options from .tts.base
-
+from .tts import TTSOptionsBase
 
 router = APIRouter(
     prefix="/voice",
@@ -23,105 +21,93 @@ router = APIRouter(
 )
 logger = logging.getLogger(__name__)
 
-
-@router.post("/webrtc/offer", summary="Handle WebRTC Offer")
+# This endpoint is kept for compatibility but is part of the old WebRTC flow.
+# The new flow uses WebSockets exclusively.
+@router.post("/webrtc/offer", summary="Handle WebRTC Offer (Legacy)")
 async def handle_webrtc_offer(
-    offer_request: VoiceOfferRequest, 
-    user_id: str = Depends(auth_helper.get_current_user_id) 
+    offer_request: VoiceOfferRequest,
+    user_id: str = Depends(auth_helper.get_current_user_id)
 ):
-    print(f"[{datetime.datetime.now()}] [VOICE_OFFER] Received WebRTC offer from {user_id}, type: {offer_request.type}")
+    logger.warning(f"Legacy WebRTC offer endpoint called by {user_id}. This flow is deprecated.")
     return VoiceAnswerResponse(sdp="dummy-answer-sdp-from-server", type="answer")
 
 @router.websocket("/ws/voice")
 async def voice_websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    # --- Local Imports to prevent circular dependency ---
     from ..app import stt_model_instance, tts_model_instance
 
     authenticated_user_id: str | None = None
+    active_chat_id: str | None = None
+
     try:
         authenticated_user_id = await auth_helper.ws_authenticate(websocket)
-        if not authenticated_user_id:
-            return 
+        if not authenticated_user_id: return
+
+        user_profile = await mongo_manager.get_user_profile(authenticated_user_id)
+        username = "User"
+        if user_profile and user_profile.get("userData"):
+            active_chat_id = user_profile["userData"].get("active_chat_id")
+            username = user_profile["userData"].get("personalInfo", {}).get("name", "User")
+        
+        if not active_chat_id:
+            active_chat_id = str(uuid.uuid4())
+            await mongo_manager.create_new_chat_session(authenticated_user_id, active_chat_id)
+            await mongo_manager.update_user_profile(authenticated_user_id, {"userData.active_chat_id": active_chat_id})
 
         await main_websocket_manager.connect_voice(websocket, authenticated_user_id)
-        logger.info(f"[{datetime.datetime.now()}] [VOICE_WS] User {authenticated_user_id} connected to voice WebSocket.")
+        logger.info(f"User {authenticated_user_id} connected to voice WebSocket.")
+        await websocket.send_json({"type": "status", "message": "listening"})
 
         while True:
             audio_bytes = await websocket.receive_bytes()
-            
             if not stt_model_instance:
-                logger.error(f"[{datetime.datetime.now()}] [VOICE_WS] STT service not available for user {authenticated_user_id}.")
                 await websocket.send_json({"type": "error", "message": "STT service not available."})
                 continue
             
-            client_sample_rate = 16000 
-            transcribed_text = await stt_model_instance.transcribe(audio_bytes, sample_rate=client_sample_rate)
+            transcribed_text = await stt_model_instance.transcribe(audio_bytes, sample_rate=16000)
             await websocket.send_json({"type": "stt_result", "text": transcribed_text})
-            logger.info(f"[{datetime.datetime.now()}] [VOICE_WS_STT] User {authenticated_user_id}: '{transcribed_text}'")
+            logger.info(f"STT Result for {authenticated_user_id}: '{transcribed_text}'")
 
-            if not transcribed_text or transcribed_text.strip() == "":
-                 llm_response_text = "I didn't catch that. Could you please repeat?"
-            else:
-                # For voice, you might use a simpler Qwen Agent interaction or a specific prompt.
-                # This is a placeholder for where Qwen Agent could be invoked for voice commands.
-                # from ..qwen_agent_utils import get_qwen_assistant
-                # voice_agent = get_qwen_assistant(system_message="You are a voice assistant.")
-                # qwen_messages = [{"role": "user", "content": transcribed_text}]
-                # async for response_part in voice_agent.run(messages=qwen_messages):
-                #    if response_part and response_part[-1].get('role') == 'assistant':
-                #        llm_response_text = response_part[-1].get('content','')
-                #        break # Taking the first assistant textual response
-                # else:
-                #    llm_response_text = "I processed that with Qwen Agent (voice)."
-                llm_response_text = f"I understood: '{transcribed_text}'. This is a voice dummy response." # Current dummy
-            
-            await websocket.send_json({"type": "llm_response", "text": llm_response_text})
-            logger.info(f"[{datetime.datetime.now()}] [VOICE_WS_LLM] User {authenticated_user_id} -> LLM: '{llm_response_text}'")
+            if not transcribed_text or not transcribed_text.strip(): continue
+
+            await websocket.send_json({"type": "status", "message": "thinking"})
+            llm_response_text, assistant_message_id = await process_voice_command(
+                user_id=authenticated_user_id, active_chat_id=active_chat_id,
+                transcribed_text=transcribed_text, username=username, db_manager=mongo_manager
+            )
+
+            await websocket.send_json({"type": "llm_result", "text": llm_response_text, "messageId": assistant_message_id})
+            logger.info(f"LLM Result for {authenticated_user_id}: '{llm_response_text}'")
             
             if not tts_model_instance:
-                logger.error(f"[{datetime.datetime.now()}] [VOICE_WS] TTS service not available for user {authenticated_user_id}.")
                 await websocket.send_json({"type": "error", "message": "TTS service not available."})
-                await websocket.send_json({"type": "tts_stream_end"}) 
+                await websocket.send_json({"type": "tts_stream_end"})
                 continue
 
+            await websocket.send_json({"type": "status", "message": "speaking"})
             tts_options: TTSOptionsBase = {}
-            if is_dev_env:
-                try:
-                    # Conditionally import OrpheusTTS to check instance type and avoid NameError
-                    from .tts import OrpheusTTS, OrpheusTTSOptions
-                    if isinstance(tts_model_instance, OrpheusTTS):
-                        tts_options = OrpheusTTSOptions(voice_id="tara")
-                except ImportError:
-                    # This is expected in production where OrpheusTTS is not available.
-                    pass
+            logger.info(f"Streaming TTS for {authenticated_user_id}: '{llm_response_text[:30]}...'")
 
-            logger.info(f"[{datetime.datetime.now()}] [VOICE_WS_TTS] Streaming TTS for user {authenticated_user_id}: '{llm_response_text[:30]}...'")
             async for audio_chunk in tts_model_instance.stream_tts(llm_response_text, options=tts_options):
-                if isinstance(audio_chunk, bytes):
+                if isinstance(audio_chunk, tuple) and len(audio_chunk) == 2 and isinstance(audio_chunk[1], np.ndarray):
+                    _, chunk_np_array = audio_chunk
+                    audio_float32 = chunk_np_array.astype(np.float32)
+                    await websocket.send_bytes(audio_float32.tobytes())
+                elif isinstance(audio_chunk, bytes):
                     await websocket.send_bytes(audio_chunk)
-                elif isinstance(audio_chunk, tuple) and len(audio_chunk) == 2 and isinstance(audio_chunk[1], np.ndarray):
-                    _sr, chunk_np_array = audio_chunk
-                    audio_int16 = (chunk_np_array * 32767).astype(np.int16)
-                    await websocket.send_bytes(audio_int16.tobytes())
-                else:
-                    logger.warning(f"[{datetime.datetime.now()}] [VOICE_WS_TTS] TTS for user {authenticated_user_id} yielded unexpected chunk type: {type(audio_chunk)}")
             
             await websocket.send_json({"type": "tts_stream_end"})
-            logger.info(f"[{datetime.datetime.now()}] [VOICE_WS_TTS] Finished TTS stream for user {authenticated_user_id}.")
+            logger.info(f"Finished TTS stream for user {authenticated_user_id}.")
+            await websocket.send_json({"type": "status", "message": "listening"})
 
     except WebSocketDisconnect:
-        logger.info(f"[{datetime.datetime.now()}] [VOICE_WS] Client disconnected (User: {authenticated_user_id or 'unknown'}).")
+        logger.info(f"Client disconnected (User: {authenticated_user_id or 'unknown'}).")
     except Exception as e:
         err_msg = f"An internal server error occurred: {str(e)}"
-        logger.error(f"[{datetime.datetime.now()}] [VOICE_WS_ERROR] Error (User: {authenticated_user_id or 'unknown'}): {e}", exc_info=True)
-        # Check client_state before sending, as per FastAPI documentation
+        logger.error(f"Voice WS Error for User {authenticated_user_id or 'unknown'}: {e}", exc_info=True)
         if websocket.client_state == WebSocketState.CONNECTED:
-            try:
-                await websocket.send_json({"type": "error", "message": err_msg})
-            except Exception as send_err: 
-                logger.error(f"[{datetime.datetime.now()}] [VOICE_WS_ERROR] Failed to send error to client: {send_err}")
+            await websocket.send_json({"type": "error", "message": err_msg})
     finally:
         if authenticated_user_id:
             main_websocket_manager.disconnect_voice(websocket)
-            logger.info(f"[{datetime.datetime.now()}] [VOICE_WS] User {authenticated_user_id} voice WebSocket cleanup complete.")
+            logger.info(f"User {authenticated_user_id} voice WebSocket cleanup complete.")

@@ -1,10 +1,9 @@
-// src/client/app/chat/page.js
-"use client"
-import React, { useState, useEffect, useRef, useCallback } from "react"
-import ChatBubble from "@components/ChatBubble"
-import ToolResultBubble from "@components/ToolResultBubble"
-import Sidebar from "@components/Sidebar"
-import TopControlBar from "@components/TopControlBar"
+"use client";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import ChatBubble from "@components/ChatBubble";
+import ToolResultBubble from "@components/ToolResultBubble";
+import Sidebar from "@components/Sidebar";
+import TopControlBar from "@components/TopControlBar";
 import {
 	IconSend,
 	IconRefresh,
@@ -15,178 +14,215 @@ import {
 	IconCalendarEvent,
 	IconPlayerStopFilled,
 	IconPhone,
-	IconPhoneOff
-} from "@tabler/icons-react"
-import toast from "react-hot-toast" // Corrected import from react-hot-toast
-import GmailSearchResults from "@components/agents/GmailSearchResults"
-import BackgroundCircleProvider from "@components/voice-visualization/background-circle-provider"
+	IconPhoneOff,
+	IconMicrophone
+} from "@tabler/icons-react";
+import toast from "react-hot-toast";
+import GmailSearchResults from "@components/agents/GmailSearchResults";
+import BackgroundCircleProvider from "@components/voice-visualization/background-circle-provider";
+import { cn } from "@utils/cn";
 
 const integrationIcons = {
 	gmail: IconMail,
 	gcalendar: IconCalendarEvent,
 	gdrive: IconBrandGoogleDrive,
 	slack: IconBrandSlack
-}
+};
 
 const Chat = () => {
 	// --- State Variables ---
-	const [messages, setMessages] = useState([])
-	const [input, setInput] = useState("")
-	const [userDetails, setUserDetails] = useState(null)
-	const [thinking, setThinking] = useState(false)
-	const [isSidebarVisible, setSidebarVisible] = useState(false) // State for sidebar visibility
-	const [chatMode, setChatMode] = useState("text")
-	const [isLoading, setIsLoading] = useState(() => chatMode === "text")
-	const [connectionStatus, setConnectionStatus] = useState("disconnected")
-	const [audioInputDevices, setAudioInputDevices] = useState([])
-	const [selectedAudioInputDevice, setSelectedAudioInputDevice] = useState("")
-	const [connectedIntegrations, setConnectedIntegrations] = useState([])
+	const [messages, setMessages] = useState([]);
+	const [input, setInput] = useState("");
+	const [userDetails, setUserDetails] = useState(null);
+	const [thinking, setThinking] = useState(false);
+	const [isSidebarVisible, setSidebarVisible] = useState(false);
+	const [chatMode, setChatMode] = useState("text");
+	const [isLoading, setIsLoading] = useState(() => chatMode === "text");
+	const [connectionStatus, setConnectionStatus] = useState("disconnected");
+	const [audioInputDevices, setAudioInputDevices] = useState([]);
+	const [selectedAudioInputDevice, setSelectedAudioInputDevice] = useState("");
+	const [connectedIntegrations, setConnectedIntegrations] = useState([]);
+	const [voiceStatusText, setVoiceStatusText] = useState("Click to Start");
 
 	// --- Refs ---
-	const textareaRef = useRef(null)
-	const chatEndRef = useRef(null)
-	const backgroundCircleProviderRef = useRef(null)
-	const ringtoneAudioRef = useRef(null)
-	const connectedAudioRef = useRef(null)
-	const abortControllerRef = useRef(null)
+	const textareaRef = useRef(null);
+	const chatEndRef = useRef(null);
+	const backgroundCircleProviderRef = useRef(null);
+	const ringtoneAudioRef = useRef(null);
+	const connectedAudioRef = useRef(null);
+	const abortControllerRef = useRef(null);
 
 	// --- Handlers ---
 	const handleInputChange = (e) => {
-		const value = e.target.value
-		setInput(value)
+		const value = e.target.value;
+		setInput(value);
 		if (textareaRef.current) {
-			textareaRef.current.style.height = "auto"
-			textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`
+			textareaRef.current.style.height = "auto";
+			textareaRef.current.style.height = `${Math.min(
+				textareaRef.current.scrollHeight,
+				200
+			)}px`;
 		}
-	}
+	};
 
 	const handleToggleMode = (targetMode) => {
-		if (targetMode === chatMode) return
-		setChatMode(targetMode)
+		if (targetMode === chatMode) return;
+		setChatMode(targetMode);
 		if (targetMode === "text" && connectionStatus !== "disconnected") {
-			handleStopVoice()
+			handleStopVoice();
 		}
-	}
+	};
 
-	// --- Connection Status and Timer Handling ---
-	const handleStatusChange = useCallback((status) => {
-		console.log("Connection status changed:", status)
-		setConnectionStatus(status)
+	const handleStatusChange = useCallback(
+		(status) => {
+			console.log("Connection status changed:", status);
+			setConnectionStatus(status);
 
-		if (status !== "connecting" && ringtoneAudioRef.current) {
-			ringtoneAudioRef.current.pause()
-			ringtoneAudioRef.current.currentTime = 0
-		}
-
-		if (status === "connected") {
-			if (connectedAudioRef.current) {
-				connectedAudioRef.current.volume = 0.4
-				connectedAudioRef.current
-					.play()
-					.catch((e) =>
-						console.error("Error playing connected sound:", e)
-					)
+			if (status !== "connecting" && ringtoneAudioRef.current) {
+				ringtoneAudioRef.current.pause();
+				ringtoneAudioRef.current.currentTime = 0;
 			}
-		}
-	}, [])
 
-	// --- Voice Control Handlers ---
+			if (status === "connected") {
+				if (connectedAudioRef.current) {
+					connectedAudioRef.current.volume = 0.4;
+					connectedAudioRef.current
+						.play()
+						.catch((e) =>
+							console.error("Error playing connected sound:", e)
+						);
+				}
+				setVoiceStatusText("Listening...");
+			} else if (status === "disconnected") {
+				setVoiceStatusText("Click to Start");
+			} else if (status === "connecting") {
+				setVoiceStatusText("Connecting...");
+			}
+		},
+		[setVoiceStatusText, setConnectionStatus]
+	);
+
+	const handleVoiceEvent = useCallback(
+		(event) => {
+			console.log("Received voice event:", event);
+			if (event.type === "stt_result" && event.text) {
+				const newUserMessage = {
+					id: `user_transcript_${Date.now()}`,
+					message: event.text,
+					isUser: true,
+					type: "text"
+				};
+				setMessages((prev) => [...prev, newUserMessage]);
+			} else if (event.type === "llm_result" && event.text) {
+				const newAssistantMessage = {
+					id: event.messageId || `assistant_${Date.now()}`,
+					message: event.text,
+					isUser: false,
+					type: "text"
+				};
+				setMessages((prev) => [...prev, newAssistantMessage]);
+			} else if (event.type === "status") {
+				if (event.message === "thinking") {
+					setVoiceStatusText("Thinking...");
+				} else if (event.message === "speaking") {
+					setVoiceStatusText("Speaking...");
+				} else if (event.message === "listening") {
+					setVoiceStatusText("Listening...");
+				}
+			} else if (event.type === "error") {
+				toast.error(`Voice Error: ${event.message}`);
+				setVoiceStatusText("Error. Click to retry.");
+			}
+		},
+		[setMessages, setVoiceStatusText]
+	);
+
 	const handleStartVoice = async () => {
 		if (
 			connectionStatus !== "disconnected" ||
 			!backgroundCircleProviderRef.current
 		)
-			return
-		console.log("ChatPage: handleStartVoice called")
-		setConnectionStatus("connecting")
+			return;
+		console.log("ChatPage: handleStartVoice called");
+		setConnectionStatus("connecting");
 		if (ringtoneAudioRef.current) {
-			ringtoneAudioRef.current.volume = 0.3
-			ringtoneAudioRef.current.loop = true
+			ringtoneAudioRef.current.volume = 0.3;
+			ringtoneAudioRef.current.loop = true;
 			ringtoneAudioRef.current
 				.play()
-				.catch((e) => console.error("Error playing ringtone:", e))
+				.catch((e) => console.error("Error playing ringtone:", e));
 		}
 		try {
-			await backgroundCircleProviderRef.current?.connect()
+			await backgroundCircleProviderRef.current?.connect(
+				selectedAudioInputDevice
+			);
 		} catch (error) {
-			console.error("ChatPage: Error starting voice connection:", error)
+			console.error("ChatPage: Error starting voice connection:", error);
 			toast.error(
 				`Failed to connect: ${error.message || "Unknown error"}`
-			)
-			handleStatusChange("disconnected")
+			);
+			handleStatusChange("disconnected");
 		}
-	}
+	};
 
 	const handleStopVoice = () => {
 		if (
 			connectionStatus === "disconnected" ||
 			!backgroundCircleProviderRef.current
 		)
-			return
-		console.log("ChatPage: handleStopVoice called")
-		backgroundCircleProviderRef.current?.disconnect()
-	}
+			return;
+		console.log("ChatPage: handleStopVoice called");
+		backgroundCircleProviderRef.current?.disconnect();
+	};
 
 	const handleDeviceChange = (event) => {
-		const deviceId = event.target.value
-		console.log("ChatPage: Selected audio input device changed:", deviceId)
-		setSelectedAudioInputDevice(deviceId)
-		toast.success(
-			"Microphone selection changed. Please restart the call to use the new device.",
-			{ duration: 4000 }
-		)
-	}
+		const deviceId = event.target.value;
+		setSelectedAudioInputDevice(deviceId);
+		if (connectionStatus !== "disconnected") {
+			toast.success(
+				"Microphone changed. Please restart the call to apply.",
+				{ duration: 4000 }
+			);
+		}
+	};
 
-	// --- Data Fetching and API Calls ---
 	const fetchChatHistory = async () => {
 		try {
-			const response = await fetch("/api/chat/history")
+			const response = await fetch("/api/chat/history");
 			if (response.ok) {
-				const data = await response.json()
-				console.log(
-					"fetchChatHistory: Received history",
-					data.messages?.length
-				)
-				setMessages(data.messages || [])
+				const data = await response.json();
+				setMessages(data.messages || []);
 			} else {
-				const errorData = await response.json()
-				console.error(
-					"fetchChatHistory: Error from API:",
-					errorData.message
-				)
-				toast.error(`Error fetching chat history: ${errorData.message}`)
-				setMessages([])
+				const errorData = await response.json();
+				toast.error(`Error fetching chat history: ${errorData.message}`);
+				setMessages([]);
 			}
 		} catch (error) {
-			console.error("fetchChatHistory: Exception caught:", error)
-			toast.error("Error fetching chat history.")
-			setMessages([])
+			toast.error("Error fetching chat history.");
+			setMessages([]);
 		} finally {
-			console.log(
-				"fetchChatHistory: Setting isLoading to false in finally block."
-			)
-			setIsLoading(false)
+			setIsLoading(false);
 		}
-	}
+	};
 
 	const fetchUserDetails = async () => {
 		try {
-			const response = await fetch("/api/user/profile")
+			const response = await fetch("/api/user/profile");
 			if (!response.ok) {
-				throw new Error("Failed to fetch user details")
+				throw new Error("Failed to fetch user details");
 			}
-			const data = await response.json()
-			setUserDetails(data)
+			const data = await response.json();
+			setUserDetails(data);
 		} catch (error) {
-			toast.error("Error fetching user details.")
+			toast.error("Error fetching user details.");
 		}
-	}
+	};
 
 	const fetchConnectedIntegrations = async () => {
 		try {
-			const response = await fetch("/api/integrations/connected")
+			const response = await fetch("/api/integrations/connected");
 			if (response.ok) {
-				const data = await response.json()
+				const data = await response.json();
 				const connected = (data.integrations || [])
 					.filter(
 						(i) =>
@@ -194,32 +230,32 @@ const Chat = () => {
 							(i.auth_type === "oauth" ||
 								i.auth_type === "manual")
 					)
-					.map((i) => ({ ...i, icon: integrationIcons[i.name] }))
-				setConnectedIntegrations(connected)
+					.map((i) => ({ ...i, icon: integrationIcons[i.name] }));
+				setConnectedIntegrations(connected);
 			}
 		} catch (error) {
-			console.error("Failed to fetch connected integrations", error)
+			console.error("Failed to fetch connected integrations", error);
 		}
-	}
+	};
 
 	const sendMessage = async () => {
-		if (input.trim() === "" || chatMode !== "text") return
+		if (input.trim() === "" || chatMode !== "text") return;
 
 		const newUserMessage = {
 			message: input,
 			isUser: true,
 			id: Date.now(),
 			type: "text"
-		}
-		setMessages((prev) => [...prev, newUserMessage])
-		const currentInput = input
-		setInput("")
+		};
+		setMessages((prev) => [...prev, newUserMessage]);
+		const currentInput = input;
+		setInput("");
 		if (textareaRef.current) {
-			textareaRef.current.style.height = "auto"
+			textareaRef.current.style.height = "auto";
 		}
-		setThinking(true)
+		setThinking(true);
 
-		abortControllerRef.current = new AbortController()
+		abortControllerRef.current = new AbortController();
 		try {
 			const response = await fetch("/api/chat/message", {
 				method: "POST",
@@ -228,62 +264,60 @@ const Chat = () => {
 				},
 				body: JSON.stringify({ input: currentInput }),
 				signal: abortControllerRef.current.signal
-			})
+			});
 
 			if (!response.ok || !response.body) {
 				const errorData = await response
 					.json()
-					.catch(() => ({ message: "An unknown error occurred" }))
+					.catch(() => ({ message: "An unknown error occurred" }));
 				throw new Error(
 					errorData.message || "Failed to get streaming response"
-				)
+				);
 			}
 
-			const reader = response.body.getReader()
-			const decoder = new TextDecoder()
-			let assistantMessageId = null
-			let buffer = ""
+			const reader = response.body.getReader();
+			const decoder = new TextDecoder();
+			let assistantMessageId = null;
+			let buffer = "";
 
-			// eslint-disable-next-line no-constant-condition
 			while (true) {
-				const { value, done } = await reader.read()
-				if (done) break
+				const { value, done } = await reader.read();
+				if (done) break;
 
-				buffer += decoder.decode(value, { stream: true })
-				let newlineIndex
+				buffer += decoder.decode(value, { stream: true });
+				let newlineIndex;
 				while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
-					const line = buffer.slice(0, newlineIndex)
-					buffer = buffer.slice(newlineIndex + 1)
+					const line = buffer.slice(0, newlineIndex);
+					buffer = buffer.slice(newlineIndex + 1);
 
-					if (line.trim() === "") continue
+					if (line.trim() === "") continue;
 
 					try {
-						const parsed = JSON.parse(line)
+						const parsed = JSON.parse(line);
 						if (parsed.type === "error") {
-							toast.error(`An error occurred: ${parsed.message}`)
-							continue
+							toast.error(`An error occurred: ${parsed.message}`);
+							continue;
 						}
 
 						if (parsed.type === "agent_step") {
 							setMessages((prev) => [
 								...prev,
 								{ ...parsed, isUser: false }
-							])
+							]);
 						} else if (parsed.type === "gmail_search") {
 							setMessages((prev) => [
 								...prev,
 								{ ...parsed, isUser: false }
-							])
+							]);
 						} else if (parsed.type === "assistantStream") {
-							const token = parsed.token || parsed.message || ""
-							assistantMessageId = parsed.messageId
+							const token = parsed.token || parsed.message || "";
+							assistantMessageId = parsed.messageId;
 
 							setMessages((prev) => {
 								const existingMsgIndex = prev.findIndex(
 									(msg) => msg.id === assistantMessageId
-								)
+								);
 								if (existingMsgIndex !== -1) {
-									// Append token to existing message
 									return prev.map((msg, index) =>
 										index === existingMsgIndex
 											? {
@@ -291,9 +325,8 @@ const Chat = () => {
 													message: msg.message + token
 												}
 											: msg
-									)
+									);
 								} else {
-									// Create new message for the stream
 									return [
 										...prev,
 										{
@@ -301,7 +334,6 @@ const Chat = () => {
 											message: token,
 											isUser: false,
 											type: "text",
-											// Add default properties for AI messages
 											memoryUsed:
 												parsed.memoryUsed || false,
 											agentsUsed:
@@ -309,9 +341,9 @@ const Chat = () => {
 											internetUsed:
 												parsed.internetUsed || false
 										}
-									]
+									];
 								}
-							})
+							});
 						}
 					} catch (e) {
 						console.error(
@@ -319,57 +351,55 @@ const Chat = () => {
 							e,
 							"Line:",
 							line
-						)
+						);
 					}
 				}
 			}
 		} catch (error) {
 			if (error.name === "AbortError") {
-				console.log("Fetch aborted by user.")
+				console.log("Fetch aborted by user.");
 			} else {
-				// Handle other errors
-				toast.error(`Error sending message: ${error.message}`)
+				toast.error(`Error sending message: ${error.message}`);
 			}
 		} finally {
-			setThinking(false)
+			setThinking(false);
 		}
-	}
+	};
 
 	const handleStopStreaming = () => {
 		if (abortControllerRef.current) {
-			abortControllerRef.current.abort()
+			abortControllerRef.current.abort();
 			setMessages((prev) => {
-				const lastMessage = prev[prev.length - 1]
+				const lastMessage = prev[prev.length - 1];
 				if (lastMessage && !lastMessage.isUser) {
-					lastMessage.message += "\n\n[STREAM STOPPED BY USER]"
+					lastMessage.message += "\n\n[STREAM STOPPED BY USER]";
 				}
-				return [...prev]
-			})
+				return [...prev];
+			});
 		}
-	}
+	};
 
 	const clearChatHistory = async () => {
 		try {
-			const response = await fetch("/api/chat/clear", { method: "POST" })
+			const response = await fetch("/api/chat/clear", { method: "POST" });
 			if (response.ok) {
-				setMessages([])
-				if (chatMode === "text") setInput("")
-				toast.success("Chat history cleared.")
+				setMessages([]);
+				if (chatMode === "text") setInput("");
+				toast.success("Chat history cleared.");
 			} else {
-				const errorData = await response.json()
+				const errorData = await response.json();
 				toast.error(
 					`Failed to clear chat history: ${errorData.message}`
-				)
+				);
 			}
 		} catch (error) {
-			toast.error("Error clearing chat history.")
+			toast.error("Error clearing chat history.");
 		}
-	}
+	};
 
-	// --- Effects ---
 	useEffect(() => {
-		fetchUserDetails()
-		fetchConnectedIntegrations()
+		fetchUserDetails();
+		fetchConnectedIntegrations();
 
 		const getDevices = async () => {
 			try {
@@ -377,74 +407,70 @@ const Chat = () => {
 					!navigator.mediaDevices ||
 					!navigator.mediaDevices.enumerateDevices
 				) {
-					console.warn("enumerateDevices() not supported.")
-					return
+					console.warn("enumerateDevices() not supported.");
+					return;
 				}
 				await navigator.mediaDevices.getUserMedia({
 					audio: true,
 					video: false
-				})
-				const devices = await navigator.mediaDevices.enumerateDevices()
+				});
+				const devices = await navigator.mediaDevices.enumerateDevices();
 				const audioInputDevices = devices.filter(
 					(device) => device.kind === "audioinput"
-				)
+				);
 				if (audioInputDevices.length > 0) {
 					setAudioInputDevices(
-						audioInputDevices.map((d) => ({
+						audioInputDevices.map((d, index) => ({
 							deviceId: d.deviceId,
-							label:
-								d.label ||
-								`Microphone ${audioInputDevices.indexOf(d) + 1}`
+							label: d.label || `Microphone ${index + 1}`
 						}))
-					)
+					);
 					if (!selectedAudioInputDevice) {
 						setSelectedAudioInputDevice(
 							audioInputDevices[0].deviceId
-						)
+						);
 					}
 				}
 			} catch (error) {
 				toast.error(
 					"Could not get microphone list. Please grant permission."
-				)
+				);
 			}
-		}
-		getDevices()
+		};
+		getDevices();
 
 		if (chatMode === "text") {
-			fetchChatHistory()
+			fetchChatHistory();
 		} else {
-			setIsLoading(false)
+			setIsLoading(false);
 		}
 
 		return () => {
 			if (abortControllerRef.current) {
-				abortControllerRef.current.abort()
+				abortControllerRef.current.abort();
 			}
 			if (
 				backgroundCircleProviderRef.current &&
 				connectionStatus !== "disconnected"
 			) {
-				backgroundCircleProviderRef.current.disconnect()
+				backgroundCircleProviderRef.current.disconnect();
 			}
-		}
+		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [])
+	}, []);
 
 	useEffect(() => {
-		if (chatMode === "text" && chatEndRef.current) {
-			chatEndRef.current.scrollIntoView({ behavior: "smooth" })
+		if (chatEndRef.current) {
+			chatEndRef.current.scrollIntoView({ behavior: "smooth" });
 		}
-	}, [messages, chatMode])
+	}, [messages]);
 
 	useEffect(() => {
 		if (chatMode === "text" && textareaRef.current) {
-			handleInputChange({ target: textareaRef.current })
+			handleInputChange({ target: textareaRef.current });
 		}
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [chatMode, input])
+	}, [chatMode, input]);
 
-	// --- JSX ---
 	return (
 		<div className="h-screen bg-matteblack relative overflow-hidden dark">
 			<Sidebar
@@ -462,203 +488,272 @@ const Chat = () => {
 						<div className="flex justify-center items-center h-full w-full">
 							<IconLoader className="w-10 h-10 text-white animate-spin" />
 						</div>
-					) : chatMode === "text" ? (
-						<div className="w-full max-w-4xl h-full flex flex-col">
-							<div className="grow overflow-y-auto p-4 rounded-xl no-scrollbar mb-4 flex flex-col gap-4">
-								{messages.length === 0 && !thinking ? (
-									<div className="font-Poppins h-full flex flex-col justify-center items-center text-gray-400">
-										<p className="text-3xl text-white mb-4">
-											Send a message to start
-										</p>
-									</div>
-								) : (
-									messages.map((msg) => (
-										<div
-											key={msg.id}
-											className={`flex ${msg.isUser ? "justify-end" : "justify-start"} w-full`}
-										>
-											{msg.type === "agent_step" ? (
-												<ToolResultBubble
-													task={msg.task}
-													result={msg.message}
-													memoryUsed={msg.memoryUsed}
-													agentsUsed={msg.agentsUsed}
-													internetUsed={
-														msg.internetUsed
-													}
-												/>
-											) : msg.type === "gmail_search" ? (
-												<GmailSearchResults
-													task={msg.task}
-													result={msg.message}
-													memoryUsed={msg.memoryUsed}
-													agentsUsed={msg.agentsUsed}
-													internetUsed={
-														msg.internetUsed
-													}
-												/>
-											) : (
-												<ChatBubble
-													message={msg.message}
-													isUser={msg.isUser}
-													memoryUsed={msg.memoryUsed}
-													agentsUsed={msg.agentsUsed}
-													internetUsed={
-														msg.internetUsed
-													}
-												/>
-											)}
-										</div>
-									))
-								)}
-								{thinking && (
-									<div className="flex justify-start w-full mt-2">
-										<div className="flex items-center gap-2 p-3 bg-gray-700 rounded-lg">
-											<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-75"></div>
-											<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-150"></div>
-											<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-300"></div>
-										</div>
-									</div>
-								)}
-								<div ref={chatEndRef} />
-							</div>
-							<div className="w-full flex flex-col items-center">
-								{connectedIntegrations.length > 0 && (
-									<div className="flex items-center gap-2 mb-2 text-xs text-gray-500">
-										<span>Tools connected:</span>
-										<div className="flex items-center gap-1.5">
-											{connectedIntegrations.map(
-												(integ) => {
-													const Icon = integ.icon
-													return (
-														Icon && (
-															<Icon
-																key={integ.name}
-																size={16}
-																title={
-																	integ.display_name
-																}
-															/>
-														)
-													)
-												}
-											)}
-										</div>
-									</div>
-								)}
-								<p className="text-gray-400 font-Poppins text-xs mb-2">
-									Check out our{" "}
-									<a
-										href="https://sentient-2.gitbook.io/docs"
-										target="_blank"
-										rel="noopener noreferrer"
-										className="text-lightblue hover:text-lightblue/80"
-									>
-										docs
-									</a>{" "}
-									to see what Sentient can do.
-								</p>
-								<div className="relative w-full flex flex-row gap-4 items-end px-4 py-2 bg-matteblack border-[1px] border-gray-600 rounded-lg z-10">
-									<textarea
-										ref={textareaRef}
-										value={input}
-										onChange={handleInputChange}
-										onKeyDown={(e) => {
-											if (
-												e.key === "Enter" &&
-												!e.shiftKey
-											) {
-												e.preventDefault()
-												sendMessage()
-											}
-										}}
-										className="flex-grow p-2 pr-28 rounded-lg bg-transparent text-base text-white focus:outline-none resize-none no-scrollbar overflow-y-auto"
-										placeholder="Type your message..."
-										style={{
-											maxHeight: "150px",
-											minHeight: "24px"
-										}}
-										rows={1}
-									/>
-									<div className="absolute right-4 bottom-3 flex flex-row items-center gap-2">
-										{thinking ? (
-											<button
-												onClick={handleStopStreaming}
-												className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-white bg-red-600 hover:bg-red-500"
-												title="Stop Generation"
-											>
-												<IconPlayerStopFilled className="w-4 h-4 text-white" />
-											</button>
-										) : (
-											<button
-												onClick={sendMessage}
-												disabled={input.trim() === ""}
-												className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-white disabled:opacity-50 disabled:cursor-not-allowed"
-												title="Send Message"
-											>
-												<IconSend className="w-4 h-4 text-white" />
-											</button>
-										)}
-
-										<button
-											onClick={clearChatHistory}
-											className="p-2 rounded-full hover-button scale-100 cursor-pointer hover:scale-110 text-white"
-											title="Clear Chat History"
-										>
-											<IconRefresh className="w-4 h-4 text-white" />
-										</button>
-									</div>
-								</div>
-							</div>
-						</div>
 					) : (
-						<div className="flex flex-col items-center justify-center h-full w-full relative">
-							<BackgroundCircleProvider
-								ref={backgroundCircleProviderRef}
-								onStatusChange={handleStatusChange}
-								connectionStatusProp={connectionStatus}
-							/>
-							<div className="absolute inset-0 flex flex-col items-center justify-center z-20 pointer-events-none">
-								<div className="flex flex-col items-center pointer-events-auto">
-									{connectionStatus === "disconnected" && (
-										<button
-											onClick={handleStartVoice}
-											className="p-4 bg-green-600 hover:bg-green-500 rounded-full text-white transition-colors duration-200 shadow-lg"
-											title="Start Call"
-										>
-											<IconPhone size={32} />
-										</button>
-									)}
-									{connectionStatus === "connecting" && (
-										<div className="p-4 text-yellow-400">
-											<IconLoader
-												size={40}
-												className="animate-spin"
+						<div
+							className={cn(
+								"w-full h-full flex flex-col",
+								chatMode === "text"
+									? "max-w-4xl"
+									: "items-center justify-center"
+							)}
+						>
+							{chatMode === "text" ? (
+								<>
+									<div className="grow overflow-y-auto p-4 rounded-xl no-scrollbar mb-4 flex flex-col gap-4">
+										{messages.length === 0 && !thinking ? (
+											<div className="font-Poppins h-full flex flex-col justify-center items-center text-gray-400">
+												<p className="text-3xl text-white mb-4">
+													Send a message to start
+												</p>
+											</div>
+										) : (
+											messages.map((msg) => (
+												<div
+													key={msg.id}
+													className={`flex ${
+														msg.isUser
+															? "justify-end"
+															: "justify-start"
+													} w-full`}
+												>
+													{msg.type ===
+													"agent_step" ? (
+														<ToolResultBubble
+															task={msg.task}
+															result={msg.message}
+															memoryUsed={
+																msg.memoryUsed
+															}
+															agentsUsed={
+																msg.agentsUsed
+															}
+															internetUsed={
+																msg.internetUsed
+															}
+														/>
+													) : msg.type ===
+													  "gmail_search" ? (
+														<GmailSearchResults
+															task={msg.task}
+															result={msg.message}
+															memoryUsed={
+																msg.memoryUsed
+															}
+															agentsUsed={
+																msg.agentsUsed
+															}
+															internetUsed={
+																msg.internetUsed
+															}
+														/>
+													) : (
+														<ChatBubble
+															message={
+																msg.message
+															}
+															isUser={msg.isUser}
+															memoryUsed={
+																msg.memoryUsed
+															}
+															agentsUsed={
+																msg.agentsUsed
+															}
+															internetUsed={
+																msg.internetUsed
+															}
+														/>
+													)}
+												</div>
+											))
+										)}
+										{thinking && (
+											<div className="flex justify-start w-full mt-2">
+												<div className="flex items-center gap-2 p-3 bg-gray-700 rounded-lg">
+													<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-75"></div>
+													<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-150"></div>
+													<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-300"></div>
+												</div>
+											</div>
+										)}
+										<div ref={chatEndRef} />
+									</div>
+									<div className="w-full flex flex-col items-center">
+										{connectedIntegrations.length > 0 && (
+											<div className="flex items-center gap-2 mb-2 text-xs text-gray-500">
+												<span>Tools connected:</span>
+												<div className="flex items-center gap-1.5">
+													{connectedIntegrations.map(
+														(integ) => {
+															const Icon =
+																integ.icon;
+															return (
+																Icon && (
+																	<Icon
+																		key={
+																			integ.name
+																		}
+																		size={
+																			16
+																		}
+																		title={
+																			integ.display_name
+																		}
+																	/>
+																)
+															);
+														}
+													)}
+												</div>
+											</div>
+										)}
+										<p className="text-gray-400 font-Poppins text-xs mb-2">
+											Check out our{" "}
+											<a
+												href="https://sentient-2.gitbook.io/docs"
+												target="_blank"
+												rel="noopener noreferrer"
+												className="text-lightblue hover:text-lightblue/80"
+											>
+												docs
+											</a>{" "}
+											to see what Sentient can do.
+										</p>
+										<div className="relative w-full flex flex-row gap-4 items-end px-4 py-2 bg-matteblack border-[1px] border-gray-600 rounded-lg z-10">
+											<textarea
+												ref={textareaRef}
+												value={input}
+												onChange={handleInputChange}
+												onKeyDown={(e) => {
+													if (
+														e.key === "Enter" &&
+														!e.shiftKey
+													) {
+														e.preventDefault();
+														sendMessage();
+													}
+												}}
+												className="flex-grow p-2 pr-28 rounded-lg bg-transparent text-base text-white focus:outline-none resize-none no-scrollbar overflow-y-auto"
+												placeholder="Type your message..."
+												style={{
+													maxHeight: "150px",
+													minHeight: "24px"
+												}}
+												rows={1}
 											/>
+											<div className="absolute right-4 bottom-3 flex flex-row items-center gap-2">
+												{thinking ? (
+													<button
+														onClick={
+															handleStopStreaming
+														}
+														className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-white bg-red-600 hover:bg-red-500"
+														title="Stop Generation"
+													>
+														<IconPlayerStopFilled className="w-4 h-4 text-white" />
+													</button>
+												) : (
+													<button
+														onClick={sendMessage}
+														disabled={
+															input.trim() === ""
+														}
+														className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-white disabled:opacity-50 disabled:cursor-not-allowed"
+														title="Send Message"
+													>
+														<IconSend className="w-4 h-4 text-white" />
+													</button>
+												)}
+												<button
+													onClick={clearChatHistory}
+													className="p-2 rounded-full hover-button scale-100 cursor-pointer hover:scale-110 text-white"
+													title="Clear Chat History"
+												>
+													<IconRefresh className="w-4 h-4 text-white" />
+												</button>
+											</div>
 										</div>
-									)}
-									{connectionStatus === "connected" && (
-										<button
-											onClick={handleStopVoice}
-											className="p-4 bg-red-600 hover:bg-red-500 rounded-full text-white transition-colors duration-200 shadow-lg"
-											title="Hang Up"
-										>
-											<IconPhoneOff size={32} />
-										</button>
-									)}
+									</div>
+								</>
+							) : (
+								<div className="relative flex h-full w-full flex-col items-center justify-center">
+									<BackgroundCircleProvider
+										ref={backgroundCircleProviderRef}
+										onStatusChange={handleStatusChange}
+										onEvent={handleVoiceEvent}
+										connectionStatusProp={connectionStatus}
+									/>
+									<div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-none">
+										<div className="pointer-events-auto flex flex-col items-center gap-4">
+											{connectionStatus ===
+											"disconnected" ? (
+												<button
+													onClick={handleStartVoice}
+													className="flex h-32 w-32 items-center justify-center rounded-full bg-green-600 text-white shadow-lg transition-colors duration-200 hover:bg-green-500"
+													title="Start Call"
+												>
+													<IconPhone size={48} />
+												</button>
+											) : connectionStatus ===
+											  "connecting" ? (
+												<div className="flex h-32 w-32 items-center justify-center rounded-full bg-yellow-600 text-white shadow-lg">
+													<IconLoader
+														size={48}
+														className="animate-spin"
+													/>
+												</div>
+											) : (
+												<button
+													onClick={handleStopVoice}
+													className="flex h-32 w-32 items-center justify-center rounded-full bg-red-600 text-white shadow-lg transition-colors duration-200 hover:bg-red-500"
+													title="Hang Up"
+												>
+													<IconPhoneOff size={48} />
+												</button>
+											)}
+											<p className="mt-4 text-center text-lg font-medium text-gray-300">
+												{voiceStatusText}
+											</p>
+										</div>
+									</div>
+									<div className="absolute bottom-[25%] max-w-2xl text-center">
+										{messages
+											.filter((m) => !m.isUser)
+											.slice(-1)
+											.map((msg) => (
+												<p
+													key={msg.id}
+													className="text-gray-400"
+												>
+													{msg.message}
+												</p>
+											))}
+										{messages
+											.filter((m) => m.isUser)
+											.slice(-1)
+											.map((msg) => (
+												<p
+													key={msg.id}
+													className="text-2xl font-semibold text-white"
+												>
+													{msg.message}
+												</p>
+											))}
+									</div>
 								</div>
-							</div>
+							)}
 						</div>
 					)}
 				</div>
 			</div>
 			{!isLoading && (
-				<div className="absolute bottom-6 right-6 z-30">
+				<div className="absolute bottom-6 right-6 z-30 flex items-center gap-2">
+					<IconMicrophone className="text-neutral-400" size={18} />
 					<select
 						value={selectedAudioInputDevice}
 						onChange={handleDeviceChange}
-						className="bg-neutral-700/80 backdrop-blur-sm border border-neutral-600 text-white text-xs rounded px-3 py-2 focus:outline-none focus:border-lightblue appearance-none max-w-[200px] truncate shadow-lg"
-						title="Select Microphone (Restart call to apply)"
+						className="bg-neutral-700/80 backdrop-blur-sm border border-neutral-600 text-white text-xs rounded-lg px-3 py-2 focus:outline-none focus:border-lightblue appearance-none max-w-[200px] truncate shadow-lg"
+						title="Select Microphone"
+						disabled={connectionStatus !== "disconnected"}
 					>
 						{audioInputDevices.length === 0 ? (
 							<option value="">No mics found</option>
@@ -687,7 +782,7 @@ const Chat = () => {
 				preload="auto"
 			></audio>
 		</div>
-	)
-}
+	);
+};
 
-export default Chat
+export default Chat;

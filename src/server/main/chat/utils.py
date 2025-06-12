@@ -92,7 +92,11 @@ async def generate_chat_llm_stream(
     try:
         def worker():
             try:
-                system_prompt = f"You are a helpful AI assistant. The user's name is {username}. The current date is {datetime.datetime.now().strftime('%Y-%m-%d')}."
+                system_prompt = (
+                    f"You are a helpful AI assistant named Sentient. The user's name is {username}. The current date is {datetime.datetime.now().strftime('%Y-%m-%d')}.\n\n"
+                    "You have access to certain tools that you can call. Do not use tools unless explicitly required to answer the user's query. "
+                    "Do not overuse tools, first check if any relevant context is available in the conversation history.\n\n"
+                )
                 qwen_assistant = get_qwen_assistant(system_message=system_prompt, function_list=tools)
                 for new_history_step in qwen_assistant.run(messages=qwen_formatted_history):
                     loop.call_soon_threadsafe(queue.put_nowait, new_history_step)
@@ -188,7 +192,11 @@ async def process_voice_command(user_id: str, active_chat_id: str, transcribed_t
                 active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
         tools = [{"mcpServers": active_mcp_servers}]
 
-        system_prompt = f"You are a helpful AI assistant. The user's name is {username}. The current date is {datetime.datetime.now().strftime('%Y-%m-%d')}."
+        system_prompt = (
+            f"You are a helpful AI assistant named Sentient. The user's name is {username}. The current date is {datetime.datetime.now().strftime('%Y-%m-%d')}.\n\n"
+            "You have access to certain tools that you can call. Do not use tools unless explicitly required to answer the user's query. "
+            "Do not overuse tools, first check if any relevant context is available in the conversation history.\n\n"
+        )
         qwen_assistant = get_qwen_assistant(system_message=system_prompt, function_list=tools)
         
         final_run_response = None

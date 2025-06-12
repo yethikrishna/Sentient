@@ -19,7 +19,6 @@ load_dotenv()
 mcp = FastMCP(
     name="GDriveServer",
     instructions="This server provides tools to search for and read files from Google Drive.",
-    tags={"gsuite", "storage", "drive"},
 )
 
 # --- Prompt Registration ---

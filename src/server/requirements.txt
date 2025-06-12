@@ -41,10 +41,9 @@ redis
 
 # llama-cpp-python
 # snac
-# torch
 # pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/<cuda-version>
-# librosa
-# faster-whisper
-# snac
-# torch
+librosa
+faster-whisper
+snac
+torch
 # pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126

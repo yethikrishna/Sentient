@@ -21,7 +21,6 @@ load_dotenv()
 mcp = FastMCP(
     name="GCalServer",
     instructions="This server provides tools to interact with the Google Calendar API for managing calendar events.",
-    tags={"gsuite", "calendar", "gcal"},
 )
 
 # --- Prompt Registration ---

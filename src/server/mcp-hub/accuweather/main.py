@@ -15,7 +15,6 @@ load_dotenv()
 mcp = FastMCP(
     name="AccuWeatherServer",
     instructions="A server for getting weather information from AccuWeather.",
-    tags={"weather", "forecast", "accuweather"},
 )
 
 # --- Prompt Registration ---

@@ -14,7 +14,6 @@ load_dotenv()
 mcp = FastMCP(
     name="SlackServer",
     instructions="A server for interacting with a Slack workspace using a user token.",
-    tags={"slack", "chat", "collaboration"},
 )
 
 # --- Prompt Registration ---

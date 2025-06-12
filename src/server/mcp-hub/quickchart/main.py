@@ -14,7 +14,6 @@ load_dotenv()
 mcp = FastMCP(
     name="QuickChartServer",
     instructions="A server for generating data visualizations using QuickChart.io.",
-    tags={"chart", "visualization", "data"},
 )
 
 # --- Prompt Registration ---

@@ -21,7 +21,7 @@ Your output MUST be a single, valid JSON object that follows this exact schema:
 4.  For each step, choose the most appropriate tool from the provided list.
 5.  Write a clear `description` for each step, telling the executor exactly what to do.
 6.  If an action item doesn't require a tool (e.g., "Think about the marketing report"), do not create a plan for it. Only create plans for actionable items.
-7.  Do not include any text, explanations, or markdown outside of the JSON object. Your response must begin with `{` and end with `}`.
+7.  Do not include any text, explanations, or markdown outside of the JSON object. Your response must begin with `{{` and end with `}}`.
 
 **Example:**
 Action Item: "Schedule a meeting with David for next week to discuss the project report."

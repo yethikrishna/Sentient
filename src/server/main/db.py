@@ -217,8 +217,16 @@ class MongoManager:
     # --- Notification Methods ---
     async def get_notifications(self, user_id: str) -> List[Dict]:
         if not user_id: return []
-        user_doc = await self.notifications_collection.find_one({"user_id": user_id})
-        return user_doc.get("notifications", []) if user_doc else []
+        user_doc = await self.notifications_collection.find_one(
+            {"user_id": user_id}, {"notifications": 1}
+        )
+        notifications_list = user_doc.get("notifications", []) if user_doc else []
+
+        # Serialize datetime objects before returning, as they are not JSON-serializable by default.
+        for notification in notifications_list:
+            if isinstance(notification.get("timestamp"), datetime.datetime):
+                notification["timestamp"] = notification["timestamp"].isoformat()
+        return notifications_list
 
     async def add_notification(self, user_id: str, notification_data: Dict) -> Optional[Dict]:
         if not user_id or not notification_data: return None
@@ -233,7 +241,7 @@ class MongoManager:
                     "$slice": -50
                 }
             },
-             "$setOnInsert": {"user_id": user_id, "created_at": datetime.datetime.now(datetime.timezone.utc), "notifications": []}},
+             "$setOnInsert": {"user_id": user_id, "created_at": datetime.datetime.now(datetime.timezone.utc)}},
             upsert=True
         )
         if result.matched_count > 0 or result.upserted_id is not None:

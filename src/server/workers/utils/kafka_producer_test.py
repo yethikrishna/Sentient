@@ -24,22 +24,6 @@ USER_ID_TO_TEST = "google-oauth2|100870952531954264970" # Use a valid user_id fr
 # Each dictionary in this list will be sent as a separate event inside a single Kafka message batch.
 SAMPLE_EMAIL_EVENTS = [
     {
-        "subject": "Project Phoenix - Weekly Sync",
-        "body": """
-Hi Team,
-
-Just a reminder that our weekly sync for Project Phoenix is scheduled for tomorrow at 10:00 AM.
-Please come prepared to discuss your progress on the Q3 roadmap deliverables.
-
-Also, can someone please follow up with the marketing team about the new campaign assets?
-
-David, I've reviewed your latest proposal and it looks great. Let's touch base after the meeting.
-
-Thanks,
-Sarah
-""",
-    },
-    {
         "subject": "Your flight confirmation to SFO",
         "body": """
 Dear Kabeer,
@@ -52,22 +36,6 @@ Best,
 United Airlines
 """,
     },
-    {
-        "subject": "Re: Dinner Plans",
-        "body": """
-Hey, sounds good! Let's meet at The Italian Place on Saturday at 7 PM. My number is 555-123-4567 in case you need it.
-
-P.S. My partner, Alex, will be joining us.
-""",
-    },
-    {
-        "subject": "Action Required: Your invoice #INV-003 is due",
-        "body": """
-Your invoice for the cloud hosting services is due next week. The total amount is $45.50.
-
-Please ensure payment is made by the 20th to avoid any service interruptions.
-""",
-    }
 ]
 
 

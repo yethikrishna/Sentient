@@ -119,7 +119,7 @@ INTEGRATIONS_CONFIG = {
     },
     "internet_search": { # Built-in
         "display_name": "Internet Search",
-        "description": "Allows the agent to search the web using Brave Search.",
+        "description": "Allows the agent to search the web using Google Search.",
         "auth_type": "builtin",
         "icon": "IconWorldSearch",
         "mcp_server_config": {

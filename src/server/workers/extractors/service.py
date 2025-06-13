@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import json
+import re
 import traceback
 
 from .kafka_clients import KafkaManager
@@ -55,15 +56,24 @@ class ExtractorService:
                 messages = [{'role': 'user', 'content': llm_input_content}]
 
                 logger.info(f"Invoking LLM for event {event_id}...")
-                # Run the Qwen agent to get the structured JSON output
-                llm_response_str = ""
-                for chunk in self.agent.run(messages=messages):
-                    # The response for a non-streaming JSON output agent is typically the last message
-                    if isinstance(chunk, list) and chunk:
-                        last_message = chunk[-1]
-                        if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
-                            llm_response_str = last_message["content"]
+                # Run the blocking LLM call in a thread pool to avoid blocking the event loop
+                loop = asyncio.get_running_loop()
+                def run_agent_sync():
+                    response_str = ""
+                    for chunk in self.agent.run(messages=messages):
+                        if isinstance(chunk, list) and chunk:
+                            last_message = chunk[-1]
+                            if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
+                                content = last_message["content"]
+                                # Clean up markdown fences that LLMs sometimes add
+                                if "```json" in content:
+                                    match = re.search(r'```json\n(.*?)\n```', content, re.DOTALL)
+                                    if match:
+                                        content = match.group(1)
+                                response_str = content
+                    return response_str
 
+                llm_response_str = await loop.run_in_executor(None, run_agent_sync)
                 if not llm_response_str:
                     logger.error(f"LLM did not return a response for event {event_id}.")
                     continue

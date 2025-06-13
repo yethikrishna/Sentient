@@ -86,18 +86,10 @@ async def notifications_websocket_endpoint(websocket: WebSocket):
                 await websocket.send_json({"type": "pong"})
     except WebSocketDisconnect:
         print(f"[{datetime.datetime.now()}] [NOTIF_WS] Client disconnected (User: {authenticated_user_id or 'unknown'}).")
-    except Exception as e:
-        print(f"[{datetime.datetime.now()}] [NOTIF_WS_ERROR] Error (User: {authenticated_user_id or 'unknown'}): {e}")
     finally:
         if authenticated_user_id: 
             main_websocket_manager.disconnect_notifications(websocket)
             print(f"[{datetime.datetime.now()}] [NOTIF_WS] User {authenticated_user_id} notification WebSocket cleanup complete.")
-
-
-@router.post("/notifications/get", summary="Get User Notifications")
-async def get_notifications_endpoint(user_id: str = Depends(PermissionChecker(required_permissions=["read:notifications"]))):
-    notifications = await mongo_manager.get_notifications(user_id)
-    return JSONResponse(content={"notifications": notifications, "status": 200})
 
 # === Utility Endpoints (Token introspection, etc.) ===
 @router.post("/utils/get-role", summary="Get User Role from Token Claims")

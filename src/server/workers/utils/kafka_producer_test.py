@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 # --- Configuration ---
 # Load .env file from the main server directory to get Kafka settings
 try:
-    dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+    dotenv_path = "server/.env"
     load_dotenv(dotenv_path=dotenv_path)
 except Exception as e:
     print(f"Warning: Could not load .env file. Using default values. Error: {e}")

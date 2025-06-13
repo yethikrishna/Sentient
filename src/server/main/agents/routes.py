@@ -3,6 +3,7 @@ import uuid
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from .models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest
+from ..config import INTEGRATIONS_CONFIG
 from ..db import MongoManager
 from ..dependencies import mongo_manager
 from ..auth.utils import PermissionChecker
@@ -96,9 +97,30 @@ async def approve_task(
     user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"]))
 ):
     # Ensure the task exists and is pending approval before proceeding
-    task = await mongo_manager.task_collection.find_one({"task_id": request.taskId, "user_id": user_id, "status": "approval_pending"})
+    task = await mongo_manager.task_collection.find_one(
+        {"task_id": request.taskId, "user_id": user_id, "status": "approval_pending"}
+    )
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found or not pending approval.")
+
+    # --- NEW: Check if all required tools are connected ---
+    user_profile = await mongo_manager.get_user_profile(user_id)
+    user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
+
+    required_tools = {step['tool'] for step in task.get('plan', [])}
+    missing_tools = []
+
+    for tool_name in required_tools:
+        tool_config = INTEGRATIONS_CONFIG.get(tool_name, {})
+        is_builtin = tool_config.get("auth_type") == "builtin"
+        is_connected = user_integrations.get(tool_name, {}).get("connected", False)
+
+        if not (is_builtin or is_connected):
+            missing_tools.append(tool_config.get("display_name", tool_name))
+
+    if missing_tools:
+        error_detail = f"Cannot approve task. Please connect the following tools first: {', '.join(missing_tools)}."
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=error_detail)
 
     # Enqueue the task for execution by the celery worker
     execute_task_plan.delay(request.taskId, user_id)

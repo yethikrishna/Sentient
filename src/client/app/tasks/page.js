@@ -14,6 +14,7 @@ import {
 	IconPlayerPlay,
 	IconCircleCheck,
 	IconMailQuestion,
+	IconAlertTriangle,
 	IconAlertCircle,
 	IconFilter,
 	IconChevronUp,
@@ -103,6 +104,8 @@ const Tasks = () => {
 		{ tool: "", description: "" }
 	])
 	const [availableTools, setAvailableTools] = useState([])
+	const [integrations, setIntegrations] = useState([])
+	const [loadingIntegrations, setLoadingIntegrations] = useState(true)
 
 	// --- Fetching Data ---
 	const fetchTasksData = useCallback(async () => {
@@ -172,6 +175,22 @@ const Tasks = () => {
 		}
 	}
 
+	const fetchIntegrations = async () => {
+		setLoadingIntegrations(true)
+		try {
+			const response = await fetch("/api/settings/integrations")
+			if (!response.ok)
+				throw new Error("Failed to fetch integrations status")
+			const data = await response.json()
+			setIntegrations(data.integrations || [])
+		} catch (error) {
+			toast.error(error.message)
+			setIntegrations([])
+		} finally {
+			setLoadingIntegrations(false)
+		}
+	}
+
 	const fetchAvailableTools = async () => {
 		try {
 			const response = await fetch("/api/settings/integrations")
@@ -197,6 +216,7 @@ const Tasks = () => {
 	useEffect(() => {
 		fetchUserDetails()
 		fetchTasksData()
+		fetchIntegrations()
 		fetchAvailableTools()
 		const intervalId = setInterval(fetchTasksData, 60000)
 		return () => clearInterval(intervalId)
@@ -345,7 +365,7 @@ const Tasks = () => {
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ taskId })
 			})
-			const data = await response.json()
+
 			if (!response.ok) {
 				throw new Error(data.error || "Failed to delete task")
 			}
@@ -379,7 +399,19 @@ const Tasks = () => {
 			})
 			const data = await response.json()
 			if (!response.ok) {
-				throw new Error(data.error || "Approval failed")
+				const errorData = await response.json()
+				// Handle the new specific error for missing integrations
+				if (response.status === 409) {
+					toast.error(errorData.detail, {
+						duration: 6000,
+						icon: <IconAlertTriangle className="text-yellow-400" />
+					})
+				} else {
+					throw new Error(errorData.error || "Approval failed")
+				}
+				// Revert optimistic UI update because approval failed
+				fetchTasksData()
+				return // Stop execution
 			}
 			toast.success("Plan approved! Task has been queued for execution.")
 			setEditingTask(null) // Close any open modals
@@ -540,7 +572,11 @@ const Tasks = () => {
 				{/* --- Task List Container --- */}
 				<div className="flex-grow w-full max-w-4xl mx-auto px-0 pt-24 pb-28 flex flex-col overflow-hidden">
 					<div className="flex-grow overflow-y-auto space-y-6 pr-2 custom-scrollbar">
-						{filteredTasks.length === 0 && !loading ? (
+						{loading || loadingIntegrations ? (
+							<div className="flex justify-center items-center h-full">
+								<IconLoader className="w-10 h-10 animate-spin text-white" />
+							</div>
+						) : filteredTasks.length === 0 ? (
 							<p className="text-gray-500 text-center py-16">
 								No tasks found matching your criteria.
 							</p>
@@ -557,6 +593,7 @@ const Tasks = () => {
 									onEditTask={handleEditTask}
 									onDeleteTask={handleDeleteTask}
 									onApproveTask={handleApproveTask}
+									integrations={integrations}
 								/>
 								<CollapsibleSection
 									title="Processing"
@@ -700,6 +737,7 @@ const Tasks = () => {
 						task={viewingTask}
 						onClose={() => setViewingTask(null)}
 						onApprove={handleApproveTask}
+						integrations={integrations}
 					/>
 				)}
 
@@ -846,6 +884,7 @@ const CollapsibleSection = ({
 	tasks,
 	isOpen,
 	toggleOpen,
+	integrations,
 	...handlers
 }) => (
 	<div>
@@ -876,6 +915,7 @@ const CollapsibleSection = ({
 							<TaskCard
 								key={task.task_id}
 								task={task}
+								integrations={integrations}
 								{...handlers}
 							/>
 						))
@@ -892,6 +932,7 @@ const CollapsibleSection = ({
 
 const TaskCard = ({
 	task,
+	integrations,
 	onViewDetails,
 	onEditTask,
 	onDeleteTask,
@@ -901,15 +942,32 @@ const TaskCard = ({
 	const statusInfo = statusMap[task.status] || statusMap.default
 	const priorityInfo = priorityMap[task.priority] || priorityMap.default
 
+	// --- NEW: Check for missing tools ---
+	let missingTools = []
+	if (task.status === "approval_pending" && integrations) {
+		const requiredTools = new Set(task.plan?.map((step) => step.tool) || [])
+		requiredTools.forEach((toolName) => {
+			const integration = integrations.find((i) => i.name === toolName)
+			if (integration) {
+				const isConnected = integration.connected
+				const isBuiltIn = integration.auth_type === "builtin"
+				if (!isConnected && !isBuiltIn) {
+					missingTools.push(integration.display_name || toolName)
+				}
+			}
+		})
+	}
+
 	return (
 		<div
 			key={task.task_id}
 			className={cn(
-				"flex items-center gap-4 bg-neutral-800 p-4 rounded-lg shadow hover:bg-neutral-700/60 transition-colors duration-150 cursor-pointer",
+				"flex items-center gap-4 bg-neutral-800 p-4 rounded-lg shadow hover:bg-neutral-700/60 transition-colors duration-150",
 				"border-l-4",
-				statusInfo.borderColor
+				statusInfo.borderColor,
+				!missingTools.length && "cursor-pointer"
 			)}
-			onClick={() => onViewDetails(task)}
+			onClick={() => !missingTools.length && onViewDetails(task)}
 		>
 			{/* Status Icon & Priority */}
 			<div className="flex flex-col items-center w-20 flex-shrink-0">
@@ -932,10 +990,25 @@ const TaskCard = ({
 				>
 					{task.description}
 				</p>
-				<p className="text-sm text-gray-400 mt-1">
-					ID: {task.task_id} | Added:{" "}
-					{new Date(task.created_at).toLocaleString()}
-				</p>
+				{missingTools.length > 0 ? (
+					<div
+						className="flex items-center gap-2 mt-2 text-yellow-400 text-xs"
+						data-tooltip-id={`missing-tools-tooltip-${task.task_id}`}
+					>
+						<IconAlertTriangle size={14} />
+						<span>Requires: {missingTools.join(", ")}</span>
+						<Tooltip
+							id={`missing-tools-tooltip-${task.task_id}`}
+							content="Please connect these tools in Settings to approve this task."
+							place="bottom"
+						/>
+					</div>
+				) : (
+					<p className="text-sm text-gray-400 mt-1">
+						ID: {task.task_id} | Added:{" "}
+						{new Date(task.created_at).toLocaleString()}
+					</p>
+				)}
 				{(task.result || task.error) && (
 					<p
 						className="text-xs text-gray-500 mt-1 truncate"
@@ -958,8 +1031,13 @@ const TaskCard = ({
 					<>
 						<button
 							onClick={() => onApproveTask(task.task_id)}
-							className="p-2 rounded-md text-green-400 hover:bg-neutral-700"
-							title="Approve Plan"
+							className="p-2 rounded-md text-green-400 hover:bg-neutral-700 disabled:text-gray-600 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+							title={
+								missingTools.length
+									? `Connect: ${missingTools.join(", ")}`
+									: "Approve Plan"
+							}
+							disabled={missingTools.length > 0}
 						>
 							<IconCircleCheck className="h-5 w-5" />
 						</button>
@@ -1002,9 +1080,25 @@ const TaskCard = ({
 	)
 }
 
-const TaskDetailsModal = ({ task, onClose, onApprove }) => {
+const TaskDetailsModal = ({ task, onClose, onApprove, integrations }) => {
 	const statusInfo = statusMap[task.status] || statusMap.default
 	const priorityInfo = priorityMap[task.priority] || priorityMap.default
+
+	// --- RE-ADD THE CHECK HERE FOR THE MODAL ---
+	let missingTools = []
+	if (task.status === "approval_pending" && integrations) {
+		const requiredTools = new Set(task.plan?.map((step) => step.tool) || [])
+		requiredTools.forEach((toolName) => {
+			const integration = integrations.find((i) => i.name === toolName)
+			if (integration) {
+				const isConnected = integration.connected
+				const isBuiltIn = integration.auth_type === "builtin"
+				if (!isConnected && !isBuiltIn) {
+					missingTools.push(integration.display_name || toolName)
+				}
+			}
+		})
+	}
 
 	const parseResult = (resultText) => {
 		if (typeof resultText !== "string" || !resultText) {
@@ -1227,7 +1321,8 @@ const TaskDetailsModal = ({ task, onClose, onApprove }) => {
 					{task.status === "approval_pending" && (
 						<button
 							onClick={() => onApprove(task.task_id)}
-							className="py-2.5 px-6 rounded bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors flex items-center gap-2"
+							className="py-2.5 px-6 rounded bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+							disabled={missingTools.length > 0}
 						>
 							<IconCircleCheck className="w-5 h-5" />
 							Approve Plan

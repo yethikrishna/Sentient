@@ -130,11 +130,18 @@ try {
     }
 
 
-    # --- 3. Initialize Kafka Topics ---
-    Write-Host "`n--- 3. Initializing Kafka Topics ---" -ForegroundColor Cyan
-    $kafkaInitCommand = "& '$venvActivatePath'; python -m server.workers.utils.kafka_topic_initializer"
-    # This command runs and closes the window on completion
-    Start-NewTerminal -WindowTitle "WORKER - Kafka Topic Initializer" -Command $kafkaInitCommand -WorkDir $srcPath -NoExit:$false
+    # --- 3. Resetting Queues & State (for clean development starts) ---
+    Write-Host "`n--- 3. Resetting Queues & State ---" -ForegroundColor Cyan
+
+    # Clear Redis (Celery queue)
+    Write-Host "🚀 Flushing Redis database (Celery Queue)..." -ForegroundColor Yellow
+    $redisFlushCommand = "wsl -d $wslDistroName -e redis-cli FLUSHALL"
+    Start-NewTerminal -WindowTitle "RESET - Redis Flush" -Command $redisFlushCommand -WorkDir $srcPath -NoExit:$false
+
+    # Initialize Kafka Topics (if they don't exist)
+    Write-Host "🚀 Initializing Kafka topics..." -ForegroundColor Yellow
+    $kafkaInitCommand = "& '$venvActivatePath'; python -m server.workers.utils.kafka_topic_initializer" # This command runs and closes the window on completion
+    Start-NewTerminal -WindowTitle "SETUP - Kafka Topics" -Command $kafkaInitCommand -WorkDir $srcPath -NoExit:$false
     Start-Sleep -Seconds 3
 
 

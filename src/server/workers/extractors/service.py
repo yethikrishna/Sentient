@@ -41,6 +41,11 @@ class ExtractorService:
                     logger.warning(f"Skipping message in batch due to missing user_id or event_id: {event_data}")
                     continue
 
+                # IDEMPOTENCY CHECK: See if we've already processed this event.
+                if await self.db_manager.is_event_processed(user_id, event_id):
+                    logger.info(f"Skipping already processed event {event_id} for user {user_id}.")
+                    continue
+
                 email_content = event_data.get("data", {})
                 subject = email_content.get("subject", "")
                 body = email_content.get("body", "")

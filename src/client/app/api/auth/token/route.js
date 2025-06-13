@@ -7,14 +7,14 @@ import { auth0 } from "@lib/auth0"
  */
 export async function GET() {
 	try {
-		const accessToken = await auth0.getAccessToken()
-		if (!accessToken) {
+		const tokenResult = await auth0.getAccessToken()
+		if (!tokenResult?.accessToken) {
 			return NextResponse.json(
 				{ message: "Not authenticated or access token is missing" },
 				{ status: 401 }
 			)
 		}
-		return NextResponse.json({ accessToken: accessToken })
+		return NextResponse.json({ accessToken: tokenResult.accessToken })
 	} catch (error) {
 		console.error("Error getting access token from session:", error)
 		return NextResponse.json(

@@ -1,6 +1,6 @@
 # src/server/workers/extractor/db.py
 import motor.motor_asyncio
-from pymongo import IndexModel, DESCENDING
+from pymongo import IndexModel, DESCENDING, ASCENDING
 import datetime
 import logging
 
@@ -26,9 +26,11 @@ class ExtractorMongoManager:
     async def initialize_db(self):
         """Ensures necessary indexes exist."""
         try:
-            await self.processed_log_collection.create_indexes([
+            indexes_to_ensure = [
+                IndexModel([("user_id", ASCENDING), ("original_event_id", ASCENDING)], name="processed_event_unique_idx", unique=True),
                 IndexModel([("processed_at", DESCENDING)], expireAfterSeconds=2592000) # 30 days TTL
-            ])
+            ]
+            await self.processed_log_collection.create_indexes(indexes_to_ensure)
             logger.info("Extractor MongoDB indexes ensured.")
         except Exception as e:
             logger.error(f"Error ensuring extractor MongoDB indexes: {e}")
@@ -45,6 +47,13 @@ class ExtractorMongoManager:
             })
         except Exception as e:
             logger.error(f"Failed to log extraction result for event {original_event_id}: {e}")
+
+    async def is_event_processed(self, user_id: str, event_id: str) -> bool:
+        """Checks if an event has already been processed and logged."""
+        count = await self.processed_log_collection.count_documents({
+            "user_id": user_id, "original_event_id": event_id
+        })
+        return count > 0
 
     async def close(self):
         if self.client:

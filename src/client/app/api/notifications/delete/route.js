@@ -1,9 +1,7 @@
-// src/client/app/api/notifications/route.js
 import { NextResponse } from "next/server"
-import { auth0 } from "@lib/auth0"
-import { getBackendAuthHeader } from "@lib/auth0"
+import { auth0, getBackendAuthHeader } from "@lib/auth0"
 
-export async function GET() {
+export async function POST(request) {
 	const session = await auth0.getSession()
 	if (!session?.user?.sub) {
 		return NextResponse.json(
@@ -21,21 +19,30 @@ export async function GET() {
 	}
 
 	try {
+		const { notification_id } = await request.json()
+		if (!notification_id) {
+			return NextResponse.json(
+				{ error: "Notification ID is required" },
+				{ status: 400 }
+			)
+		}
+
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/notifications`,
+			`${process.env.APP_SERVER_URL}/notifications/delete`,
 			{
-				method: "GET",
-				headers: { "Content-Type": "application/json", ...authHeader }
+				method: "POST",
+				headers: { "Content-Type": "application/json", ...authHeader },
+				body: JSON.stringify({ notification_id })
 			}
 		)
 
 		const data = await response.json()
 		if (!response.ok) {
-			throw new Error(data.error || "Failed to fetch notifications")
+			throw new Error(data.detail || "Failed to delete notification")
 		}
 		return NextResponse.json(data)
 	} catch (error) {
-		console.error("API Error in /notifications:", error)
+		console.error("API Error in /notifications/delete:", error)
 		return NextResponse.json({ error: error.message }, { status: 500 })
 	}
 }

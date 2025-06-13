@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from typing import Optional
 
 # Load from main server .env, which is two levels up from the 'gdrive' folder
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'server', '.env')
+dotenv_path = "server/.env"
 load_dotenv(dotenv_path=dotenv_path)
 
 MONGO_URI = os.getenv("MONGO_URI")

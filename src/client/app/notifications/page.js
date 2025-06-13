@@ -1,10 +1,17 @@
 // src/client/app/notifications/page.js
 "use client"
 import React, { useState, useEffect, useCallback } from "react"
-import { IconLoader, IconBell, IconAlertCircle } from "@tabler/icons-react"
+import {
+	IconLoader,
+	IconBell,
+	IconAlertCircle,
+	IconArrowRight,
+	IconX
+} from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import Sidebar from "@components/Sidebar"
 import { cn } from "@utils/cn"
+import { useRouter } from "next/navigation"
 
 const Notifications = () => {
 	const [notifications, setNotifications] = useState([])
@@ -12,6 +19,7 @@ const Notifications = () => {
 	const [userDetails, setUserDetails] = useState({}) // Initialize to empty object
 	const [isSidebarVisible, setSidebarVisible] = useState(false)
 	const [error, setError] = useState(null) // State for storing fetch errors
+	const router = useRouter()
 
 	const fetchNotifications = useCallback(async () => {
 		console.log("Fetching notifications...")
@@ -99,6 +107,34 @@ const Notifications = () => {
 		}
 	}
 
+	const handleDelete = async (e, notificationId) => {
+		e.stopPropagation() // Prevent card's onClick from firing
+
+		const originalNotifications = [...notifications]
+		// Optimistically update UI
+		setNotifications(notifications.filter((n) => n.id !== notificationId))
+
+		try {
+			const response = await fetch("/api/notifications/delete", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ notification_id: notificationId })
+			})
+
+			if (!response.ok) {
+				const errorData = await response.json()
+				throw new Error(
+					errorData.error || "Failed to delete notification"
+				)
+			}
+			toast.success("Notification dismissed.")
+		} catch (error) {
+			toast.error(`Error dismissing notification: ${error.message}`)
+			// Revert UI on failure
+			setNotifications(originalNotifications)
+		}
+	}
+
 	// --- Render Logic ---
 	return (
 		<div className="h-screen bg-matteblack flex relative overflow-hidden dark">
@@ -151,9 +187,10 @@ const Notifications = () => {
 						// Display notification list
 						<div className="flex-grow overflow-y-auto space-y-3 pr-2 custom-scrollbar">
 							{notifications.map((notif) => (
-								<div
+								<div // eslint-disable-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
 									key={notif.id ?? Math.random()}
-									className="flex items-start gap-4 bg-neutral-800 p-4 rounded-lg border border-neutral-700/50 shadow-sm"
+									onClick={() => router.push("/tasks")}
+									className="flex items-center gap-4 bg-neutral-800 p-4 rounded-lg border border-neutral-700/50 shadow-sm cursor-pointer hover:bg-neutral-700/70 transition-colors group"
 								>
 									<div className="flex-shrink-0 pt-1">
 										<IconBell className="w-5 h-5 text-lightblue" />
@@ -166,6 +203,18 @@ const Notifications = () => {
 										<p className="text-gray-500 text-xs">
 											{formatTimestamp(notif.timestamp)}
 										</p>
+									</div>
+									<div className="flex items-center gap-2 flex-shrink-0">
+										<button
+											onClick={(e) =>
+												handleDelete(e, notif.id)
+											}
+											className="p-1.5 text-gray-500 rounded-full opacity-0 group-hover:opacity-100 hover:bg-neutral-600 hover:text-red-400 transition-all duration-200"
+											title="Dismiss notification"
+										>
+											<IconX size={16} />
+										</button>
+										<IconArrowRight className="w-5 h-5 text-gray-500 transition-transform duration-300 group-hover:translate-x-1 group-hover:text-white" />
 									</div>
 								</div>
 							))}

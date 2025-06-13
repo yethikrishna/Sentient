@@ -8,6 +8,7 @@ from typing import Dict, Any, List
 
 from qwen_agent.agents import Assistant
 from server.celery_app import celery_app
+from server.workers.utils.api_client import notify_user
 
 # Load environment variables for the worker
 from server.main.config import (
@@ -32,17 +33,29 @@ def get_db_client():
 
 async def update_task_status(db, task_id: str, status: str, user_id: str, details: Dict = None):
     update_doc = {"status": status, "updated_at": datetime.datetime.now(datetime.timezone.utc)}
+    task_description = ""
     if details:
         if "result" in details:
             update_doc["result"] = details["result"]
         if "error" in details:
             update_doc["error"] = details["error"]
     
+    # Fetch task description for notification message
+    task_doc = await db.tasks.find_one({"task_id": task_id}, {"description": 1})
+    if task_doc:
+        task_description = task_doc.get("description", "Unnamed Task")
+
     logger.info(f"Updating task {task_id} status to '{status}' with details: {details}")
+    # This might fail if the task document was deleted, but that's an edge case.
     await db.tasks.update_one(
         {"task_id": task_id, "user_id": user_id},
         {"$set": update_doc}
     )
+
+    if status in ["completed", "error"]:
+        final_message = "Task finished successfully." if status == "completed" else "Task failed."
+        notification_message = f"Task '{task_description}' has finished with status: {status}."
+        await notify_user(user_id, notification_message, task_id)
 
 async def add_progress_update(db, task_id: str, user_id: str, message: str):
     logger.info(f"Adding progress update to task {task_id}: '{message}'")
@@ -110,11 +123,11 @@ async def async_execute_task_plan(task_id: str, user_id: str):
 
     full_plan_prompt = (
         f"You are executing a task with ID: '{task_id}'. "
+        f"Use this ID *exactly* as the 'task_id' parameter when you call the 'update_progress' tool. "
         f"The original context that triggered this plan is:\n---BEGIN CONTEXT---\n{original_context_str}\n---END CONTEXT---\n\n"
         f"Your main goal is: '{plan_description}'.\n"
-        f"Use this ID *exactly* as the 'task_id' parameter when you call the 'update_progress' tool. "
-        f"The plan is titled '{plan_description}' and has the following steps:\n{plan_steps_str}\n\n"
-        "Review the original context if needed to successfully complete the steps. Remember to call the 'update_progress' tool to report your status after each major step. Do not call it with the plan title, use the provided task ID."
+        f"The plan has the following steps:\n{plan_steps_str}\n\n"
+        "Review the original context if needed to successfully complete the steps. You don't have to follow the plan exactly as it is. Feel free to change any of the steps on the fly, as new information becomes apparent. Feel free to retry any failed steps, but only once. Remember to call the 'update_progress' tool to report your status to the user after each major step. Do not call it with the plan title, use the provided task ID."
     )
     # 3. Initialize and run the executor agent
     try:

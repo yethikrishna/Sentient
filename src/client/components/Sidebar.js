@@ -1,7 +1,7 @@
 // src/client/components/Sidebar.js
 "use client"
 import { useRouter } from "next/navigation"
-import { useEffect, useState, React } from "react"
+import { useEffect, useState, useRef, React } from "react"
 import {
 	IconChevronRight,
 	IconUser,
@@ -10,13 +10,16 @@ import {
 	IconMessage,
 	IconChecklist,
 	IconBrain,
-	IconNotification
+	IconNotification,
+	IconBell,
+	IconX
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 
 const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 	const router = useRouter()
 	const [pricing, setPricing] = useState("free")
+	const wsRef = useRef(null)
 
 	const fetchPricingPlan = async () => {
 		try {
@@ -35,7 +38,116 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 
 	useEffect(() => {
 		fetchPricingPlan()
-	}, [])
+
+		const connectWebSocket = async () => {
+			if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+				return
+			}
+
+			try {
+				const tokenResponse = await fetch("/api/auth/token")
+				if (!tokenResponse.ok) {
+					console.error(
+						"Sidebar WS: Could not get auth token for WebSocket."
+					)
+					return
+				}
+				const { accessToken } = await tokenResponse.json()
+
+				const wsProtocol =
+					window.location.protocol === "https:" ? "wss" : "ws"
+				const serverUrlHttp =
+					process.env.NEXT_PUBLIC_APP_SERVER_URL ||
+					"http://localhost:5000"
+				const serverUrlWs = serverUrlHttp.replace(/^http/, "ws")
+				const wsUrl = `${serverUrlWs}/api/ws/notifications`
+
+				const ws = new WebSocket(wsUrl)
+				wsRef.current = ws
+
+				ws.onopen = () => {
+					console.log("Sidebar: Notification WebSocket connected.")
+					ws.send(
+						JSON.stringify({ type: "auth", token: accessToken })
+					)
+				}
+
+				ws.onmessage = (event) => {
+					const data = JSON.parse(event.data)
+					if (data.type === "new_notification" && data.notification) {
+						toast.custom(
+							(t) => (
+								<div
+									className={`${
+										t.visible
+											? "animate-enter"
+											: "animate-leave"
+									} max-w-md w-full bg-neutral-800 shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5 border border-neutral-700`}
+								>
+									<div className="flex-1 w-0 p-4">
+										<div className="flex items-start">
+											<div className="flex-shrink-0 pt-0.5">
+												<IconBell className="h-6 w-6 text-lightblue" />
+											</div>
+											<div className="ml-3 flex-1">
+												<p className="text-sm font-medium text-white">
+													New Notification
+												</p>
+												<p className="mt-1 text-sm text-gray-400">
+													{data.notification.message}
+												</p>
+											</div>
+										</div>
+									</div>
+									<div className="flex border-l border-neutral-700">
+										<button
+											onClick={() => {
+												router.push("/tasks")
+												toast.dismiss(t.id)
+											}}
+											className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-sm font-medium text-lightblue hover:text-blue-400 focus:outline-none focus:ring-2 focus:ring-lightblue"
+										>
+											View
+										</button>
+									</div>
+								</div>
+							),
+							{ duration: 10000 }
+						)
+					}
+				}
+
+				ws.onclose = () => {
+					console.log(
+						"Sidebar: Notification WebSocket disconnected. Will try to reconnect..."
+					)
+					setTimeout(connectWebSocket, 5000) // Reconnect after 5 seconds
+				}
+
+				ws.onerror = (error) => {
+					console.error(
+						"Sidebar: Notification WebSocket error:",
+						error
+					)
+					ws.close()
+				}
+			} catch (error) {
+				console.error(
+					"Sidebar WS: Failed to initiate connection:",
+					error
+				)
+				setTimeout(connectWebSocket, 5000)
+			}
+		}
+
+		connectWebSocket()
+
+		return () => {
+			if (wsRef.current) {
+				wsRef.current.close()
+			}
+		}
+	}, [router])
 
 	return (
 		<>

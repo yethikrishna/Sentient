@@ -181,14 +181,27 @@ class MongoShortTermMemory:
         return float(dot_product / (norm_vec1 * norm_vec2))
 
     def add_memory(self, user_id, content, ttl_seconds, category):
-        embedding = get_embedding(content)
+        # Check for existing memory to prevent duplicates
+        existing_memory = self.collection.find_one({"user_id": user_id, "content": content})
         now = datetime.now(timezone.utc)
+
+        if existing_memory:
+            # If it exists, just update its expiration to "refresh" it
+            logger.info(f"Memory content already exists for user {user_id}. Refreshing TTL.")
+            self.collection.update_one(
+                {"_id": existing_memory["_id"]},
+                {"$set": {"expire_at": now + timedelta(seconds=ttl_seconds), "last_accessed_at": now}}
+            )
+            return self._serialize_mongo_doc(self.collection.find_one({"_id": existing_memory["_id"]}))
+
+        embedding = get_embedding(content)
         doc = {
             "user_id": user_id, "content": content, "content_embedding": embedding,
             "category": category, "expire_at": now + timedelta(seconds=ttl_seconds),
             "created_at": now, "last_accessed_at": now
         }
         self.collection.insert_one(doc)
+        logger.info(f"Added new memory for user {user_id}.")
         return self._serialize_mongo_doc(doc)
 
     def search_memories(self, user_id, query_text, categories=None, limit=5):

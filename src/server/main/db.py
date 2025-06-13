@@ -220,20 +220,36 @@ class MongoManager:
         user_doc = await self.notifications_collection.find_one({"user_id": user_id})
         return user_doc.get("notifications", []) if user_doc else []
 
-    async def add_notification(self, user_id: str, notification_data: Dict) -> bool:
-        if not user_id or not notification_data: return False
+    async def add_notification(self, user_id: str, notification_data: Dict) -> Optional[Dict]:
+        if not user_id or not notification_data: return None
         notification_data["timestamp"] = datetime.datetime.now(datetime.timezone.utc)
         notification_data["id"] = str(uuid.uuid4())
         result = await self.notifications_collection.update_one(
             {"user_id": user_id},
-            {"$push": {"notifications": {"$each": [notification_data], "$slice": -50}}, 
+            {"$push": {
+                "notifications": {
+                    "$each": [notification_data],
+                    "$position": 0, # Add to the beginning of the array
+                    "$slice": -50
+                }
+            },
              "$setOnInsert": {"user_id": user_id, "created_at": datetime.datetime.now(datetime.timezone.utc), "notifications": []}},
             upsert=True
         )
-        return result.matched_count > 0 or result.upserted_id is not None
+        if result.matched_count > 0 or result.upserted_id is not None:
+            return notification_data
+        return None
+
+    async def delete_notification(self, user_id: str, notification_id: str) -> bool:
+        if not user_id or not notification_id: return False
+        result = await self.notifications_collection.update_one(
+            {"user_id": user_id},
+            {"$pull": {"notifications": {"id": notification_id}}}
+        )
+        return result.modified_count > 0
 
     # --- Polling State Store Methods ---
-    async def get_polling_state(self, user_id: str, service_name: str) -> Optional[Dict[str, Any]]: 
+    async def get_polling_state(self, user_id: str, service_name: str) -> Optional[Dict[str, Any]]:
         if not user_id or not service_name: return None
         return await self.polling_state_collection.find_one(
             {"user_id": user_id, "service_name": service_name}

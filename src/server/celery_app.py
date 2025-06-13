@@ -3,7 +3,7 @@ from celery import Celery
 from dotenv import load_dotenv
 
 # Load environment variables
-dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
+dotenv_path = "server/.env"
 load_dotenv(dotenv_path=dotenv_path)
 
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')

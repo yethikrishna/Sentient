@@ -24,6 +24,7 @@ from .voice.stt import BaseSTT, FasterWhisperSTT, ElevenLabsSTT
 from .voice.tts import BaseTTS, ElevenLabsTTS as ElevenLabsTTSImpl
 from .auth.routes import router as auth_router
 from .chat.routes import router as chat_router
+from .notifications.routes import router as notifications_router
 from .voice.routes import router as voice_router
 from .memory.routes import router as memory_router
 from .integrations.routes import router as integrations_router
@@ -107,6 +108,7 @@ app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(voice_router)
 app.include_router(memory_router)
+app.include_router(notifications_router)
 app.include_router(integrations_router)
 app.include_router(misc_router)
 app.include_router(agents_router)

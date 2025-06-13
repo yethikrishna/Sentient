@@ -32,8 +32,7 @@ const integrationIcons = {
 	accuweather: IconCloud,
 	quickchart: IconChartPie,
 	memory: IconBrain,
-	google_search: IconWorldSearch,
-	brave: IconWorldSearch
+	google_search: IconWorldSearch
 }
 
 // Hardcoded configuration for manual integrations

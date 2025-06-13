@@ -11,7 +11,7 @@ if os.path.exists(dotenv_path):
 else:
     # Fallback to loading from the main server .env if the local one doesn't exist
     # This helps in environments where all configs are centralized
-    server_dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+    server_dotenv_path = "server/.env"
     if os.path.exists(server_dotenv_path):
         load_dotenv(dotenv_path=server_dotenv_path)
         logging.info(f"Loaded .env config from {server_dotenv_path}")

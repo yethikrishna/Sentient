@@ -21,6 +21,10 @@ AUTH0_MANAGEMENT_CLIENT_SECRET = os.getenv("AUTH0_MANAGEMENT_CLIENT_SECRET")
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 
+# GitHub OAuth Configuration
+GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
+GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
+
 
 # MongoDB Configuration
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
@@ -64,6 +68,16 @@ SUPPORTED_POLLING_SERVICES = ["gmail", "gcalendar"]
 
 # Note: For "oauth" type, the client ID will be added dynamically in the /sources endpoint
 INTEGRATIONS_CONFIG = {
+    "github": {
+        "display_name": "GitHub",
+        "description": "Connect to manage repositories, issues, and more.",
+        "auth_type": "oauth",
+        "icon": "IconBrandGithub",
+        "mcp_server_config": {
+            "name": "github_server",
+            "url": os.getenv("GITHUB_MCP_SERVER_URL", "http://localhost:9010/sse")
+        }
+    },
     "gdrive": { # User-configurable OAuth
         "display_name": "Google Drive",
         "description": "Access and manage files in your Google Drive.",

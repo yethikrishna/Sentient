@@ -17,7 +17,8 @@ import {
 	IconPlugOff,
 	IconCloud,
 	IconChartPie,
-	IconBrain
+	IconBrain,
+	IconBrandGithub
 } from "@tabler/icons-react"
 import { useState, useEffect, useCallback } from "react"
 import Sidebar from "@components/Sidebar"
@@ -33,7 +34,8 @@ const integrationIcons = {
 	accuweather: IconCloud,
 	quickchart: IconChartPie,
 	memory: IconBrain,
-	google_search: IconWorldSearch
+	google_search: IconWorldSearch,
+	github: IconBrandGithub
 }
 
 // Hardcoded configuration for manual integrations
@@ -262,21 +264,33 @@ const Settings = () => {
 			}
 
 			const redirectUri = `${window.location.origin}/api/settings/integrations/connect/oauth/callback`
-			const scopes = {
-				gdrive: "https://www.googleapis.com/auth/drive.readonly",
-				gcalendar: "https://www.googleapis.com/auth/calendar",
-				gmail: "https://mail.google.com/"
-			}
-			const scope =
-				scopes[serviceName] ||
-				"https://www.googleapis.com/auth/userinfo.email"
-
 			const state = serviceName
+			let authUrl = ""
 
-			const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=consent&state=${state}`
-			window.location.href = authUrl
+			if (serviceName.startsWith("g")) {
+				// Google services
+				const scopes = {
+					gdrive: "https://www.googleapis.com/auth/drive.readonly",
+					gcalendar: "https://www.googleapis.com/auth/calendar",
+					gmail: "https://mail.google.com/"
+				}
+				const scope =
+					scopes[serviceName] ||
+					"https://www.googleapis.com/auth/userinfo.email"
+				authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=consent&state=${state}`
+			} else if (serviceName === "github") {
+				const scope = "repo user" // Request repo and user access
+				authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${state}`
+			}
+
+			if (authUrl) {
+				window.location.href = authUrl
+			} else {
+				toast.error(
+					`OAuth flow for ${integration.display_name} is not implemented.`
+				)
+			}
 		} else if (integration.auth_type === "manual") {
-			// Use the hardcoded config for the modal
 			if (MANUAL_INTEGRATION_CONFIGS[integration.name]) {
 				setActiveManualIntegration(integration)
 			} else {

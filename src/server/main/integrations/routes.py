@@ -1,4 +1,3 @@
-# src/server/main/integrations/routes.py
 import datetime
 import json
 import httpx
@@ -8,7 +7,11 @@ from fastapi.responses import JSONResponse
 from .models import ManualConnectRequest, OAuthConnectRequest, DisconnectRequest
 from ..dependencies import mongo_manager, auth_helper
 from ..auth.utils import aes_encrypt
-from ..config import INTEGRATIONS_CONFIG, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+from ..config import (
+    INTEGRATIONS_CONFIG, 
+    GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
+    GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
+)
 
 router = APIRouter(
     prefix="/integrations",
@@ -29,7 +32,10 @@ async def get_integration_sources(user_id: str = Depends(auth_helper.get_current
         
         # Add public config needed by the client for OAuth flow
         if source_info["auth_type"] == "oauth":
-             source_info["client_id"] = GOOGLE_CLIENT_ID
+            if name.startswith('g'): # Google
+                 source_info["client_id"] = GOOGLE_CLIENT_ID
+            elif name == 'github':
+                 source_info["client_id"] = GITHUB_CLIENT_ID
 
         all_sources.append(source_info)
 
@@ -53,17 +59,6 @@ async def connect_manual_integration(request: ManualConnectRequest, user_id: str
         if not success:
             raise HTTPException(status_code=500, detail="Failed to save integration credentials.")
 
-        # Create the polling state document to enable the poller for this service
-        await mongo_manager.update_polling_state(
-            user_id,
-            service_name,
-            {
-                "is_enabled": True,
-                "is_currently_polling": False,
-                "next_scheduled_poll_time": datetime.datetime.now(datetime.timezone.utc), # Poll immediately
-                "last_successful_poll_timestamp_unix": None,
-            }
-        )
         return JSONResponse(content={"message": f"{service_name} connected successfully."})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -75,31 +70,51 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
     if service_name not in INTEGRATIONS_CONFIG or INTEGRATIONS_CONFIG[service_name]["auth_type"] != "oauth":
         raise HTTPException(status_code=400, detail="Invalid service name or auth type is not OAuth.")
 
-    token_url = "https://oauth2.googleapis.com/token"
-    token_payload = {
-        "client_id": GOOGLE_CLIENT_ID,
-        "client_secret": GOOGLE_CLIENT_SECRET,
-        "code": request.code,
-        "grant_type": "authorization_code",
-        "redirect_uri": request.redirect_uri,
-    }
+    token_url = ""
+    token_payload = {}
+    request_headers = {}
+    creds_to_save = {}
+
+    if service_name.startswith('g'): # Google Services
+        token_url = "https://oauth2.googleapis.com/token"
+        token_payload = {
+            "client_id": GOOGLE_CLIENT_ID,
+            "client_secret": GOOGLE_CLIENT_SECRET,
+            "code": request.code,
+            "grant_type": "authorization_code",
+            "redirect_uri": request.redirect_uri,
+        }
+    elif service_name == 'github':
+        token_url = "https://github.com/login/oauth/access_token"
+        token_payload = {
+            "client_id": GITHUB_CLIENT_ID,
+            "client_secret": GITHUB_CLIENT_SECRET,
+            "code": request.code,
+            "redirect_uri": request.redirect_uri,
+        }
+        request_headers = {"Accept": "application/json"}
+    else:
+        raise HTTPException(status_code=400, detail=f"OAuth flow not implemented for {service_name}")
 
     try:
         async with httpx.AsyncClient() as client:
-            token_response = await client.post(token_url, data=token_payload)
+            token_response = await client.post(token_url, data=token_payload, headers=request_headers)
             token_response.raise_for_status()
             token_data = token_response.json()
-
-        # We need to save the full token data, including the refresh token,
-        # for the MCP server to use later.
-        creds_to_save = {
-            "token": token_data["access_token"],
-            "refresh_token": token_data.get("refresh_token"),
-            "token_uri": token_url,
-            "client_id": GOOGLE_CLIENT_ID,
-            "client_secret": GOOGLE_CLIENT_SECRET,
-            "scopes": token_data.get("scope", "").split(" "),
-        }
+        
+        if service_name.startswith('g'):
+            creds_to_save = {
+                "token": token_data["access_token"],
+                "refresh_token": token_data.get("refresh_token"),
+                "token_uri": token_url,
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "scopes": token_data.get("scope", "").split(" "),
+            }
+        elif service_name == 'github':
+             if "access_token" not in token_data:
+                raise HTTPException(status_code=400, detail=f"GitHub OAuth error: {token_data.get('error_description', 'No access token in response.')}")
+             creds_to_save = {"access_token": token_data["access_token"]}
 
         encrypted_creds = aes_encrypt(json.dumps(creds_to_save))
 
@@ -112,22 +127,10 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
         if not success:
             raise HTTPException(status_code=500, detail="Failed to save integration credentials.")
 
-        # Create the polling state document to enable the poller for this service
-        await mongo_manager.update_polling_state(
-            user_id,
-            service_name,
-            {
-                "is_enabled": True,
-                "is_currently_polling": False,
-                "next_scheduled_poll_time": datetime.datetime.now(datetime.timezone.utc), # Poll immediately
-                "last_successful_poll_timestamp_unix": None,
-            }
-        )
-
         return JSONResponse(content={"message": f"{service_name} connected successfully."})
 
     except httpx.HTTPStatusError as e:
-        error_detail = e.response.json().get("error_description", "Failed to exchange token with Google.")
+        error_detail = e.response.json().get("error_description", f"Failed to exchange token with {service_name}.")
         raise HTTPException(status_code=e.response.status_code, detail=error_detail)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -154,4 +157,3 @@ async def disconnect_integration(request: DisconnectRequest, user_id: str = Depe
         return JSONResponse(content={"message": f"{service_name} disconnected successfully."})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-

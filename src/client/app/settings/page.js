@@ -1,4 +1,3 @@
-// src/client/app/settings/page.js
 "use client"
 
 import toast from "react-hot-toast"
@@ -13,6 +12,7 @@ import {
 	IconSettingsCog,
 	IconBrandGoogleDrive,
 	IconBrandSlack,
+	IconBrandNotion,
 	IconPlugConnected,
 	IconPlugOff,
 	IconCloud,
@@ -29,6 +29,7 @@ const integrationIcons = {
 	internet_search: IconWorldSearch,
 	gdrive: IconBrandGoogleDrive,
 	slack: IconBrandSlack,
+	notion: IconBrandNotion,
 	accuweather: IconCloud,
 	quickchart: IconChartPie,
 	memory: IconBrain,
@@ -48,8 +49,23 @@ const MANUAL_INTEGRATION_CONFIGS = {
 			{ id: "token", label: "User OAuth Token", type: "password" },
 			{ id: "team_id", label: "Team ID", type: "text" }
 		]
+	},
+	notion: {
+		instructions: [
+			"1. Go to notion.so/my-integrations to create a new integration.",
+			"2. Give it a name and associate it with a workspace.",
+			"3. On the next screen, copy the 'Internal Integration Token'.",
+			"4. Go to the Notion pages or databases you want Sentient to access.",
+			"5. Click the '...' menu, find 'Add connections', and select your new integration."
+		],
+		fields: [
+			{
+				id: "token",
+				label: "Internal Integration Token",
+				type: "password"
+			}
+		]
 	}
-	// Add other manual integrations here, e.g., 'notion': { ... }
 }
 
 const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {

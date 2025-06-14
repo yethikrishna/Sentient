@@ -1,0 +1,16 @@
+# Kafka Python client
+kafka-python
+
+# For loading .env files
+python-dotenv
+
+# For async MongoDB
+motor
+
+# Google API Client
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+
+# For decrypting tokens
+cryptography

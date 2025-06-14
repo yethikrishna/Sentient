@@ -60,7 +60,7 @@ os.makedirs(GOOGLE_TOKEN_STORAGE_DIR, exist_ok=True)
 POLLING_INTERVALS = {
     "ACTIVE_USER_SECONDS": int(os.getenv("POLL_GMAIL_ACTIVE_USER_SECONDS", 5 * 60)),
 }
-SUPPORTED_POLLING_SERVICES = ["gmail"] 
+SUPPORTED_POLLING_SERVICES = ["gmail", "gcalendar"] 
 
 # Note: For "oauth" type, the client ID will be added dynamically in the /sources endpoint
 INTEGRATIONS_CONFIG = {
@@ -114,6 +114,27 @@ INTEGRATIONS_CONFIG = {
         "mcp_server_config": {
             "name": "slack_server",
             "url": os.getenv("SLACK_MCP_SERVER_URL", "http://localhost:9006/sse")
+        }
+    },
+    "notion": {
+        "display_name": "Notion",
+        "description": "Connect to your Notion workspace to search, create, and manage pages.",
+        "auth_type": "manual",
+        "icon": "IconBrandNotion",
+        "manual_auth_info": {
+            "instructions": [
+                "1. Go to notion.so/my-integrations to create a new integration.",
+                "2. Give it a name and associate it with a workspace.",
+                "3. On the next screen, copy the 'Internal Integration Token'.",
+                "4. Share the specific pages or databases you want Sentient to access with your new integration."
+            ],
+            "fields": [
+                {"id": "token", "label": "Internal Integration Token", "type": "password"}
+            ]
+        },
+        "mcp_server_config": {
+            "name": "notion_server",
+            "url": os.getenv("NOTION_MCP_SERVER_URL", "http://localhost:9009/sse")
         }
     },
     "internet_search": { # Built-in

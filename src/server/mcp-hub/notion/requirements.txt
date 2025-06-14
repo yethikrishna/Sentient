@@ -1,0 +1,15 @@
+# Core framework
+fastmcp
+
+# Notion SDK
+notion-client
+
+# Database
+motor         # Async MongoDB driver
+python-dotenv # For loading .env files
+
+# HTTP and async
+httpx
+
+# For token decryption
+cryptography

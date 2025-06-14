@@ -11,6 +11,7 @@ import {
 	IconMail,
 	IconBrandGoogleDrive,
 	IconBrandSlack,
+	IconBrandNotion,
 	IconCalendarEvent,
 	IconPlayerStopFilled,
 	IconPhone,
@@ -26,7 +27,8 @@ const integrationIcons = {
 	gmail: IconMail,
 	gcalendar: IconCalendarEvent,
 	gdrive: IconBrandGoogleDrive,
-	slack: IconBrandSlack
+	slack: IconBrandSlack,
+	notion: IconBrandNotion
 }
 
 const Chat = () => {

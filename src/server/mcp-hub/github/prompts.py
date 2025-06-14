@@ -8,3 +8,14 @@ INSTRUCTIONS:
 - When creating content like issues or comments, be clear and concise.
 - Your entire response for a tool call MUST be a single, valid JSON object.
 """
+
+github_agent_user_prompt = """
+User Query:
+{query}
+
+Username:
+{username}
+
+Previous Tool Response:
+{previous_tool_response}
+"""

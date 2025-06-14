@@ -25,6 +25,8 @@ GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
 
+# News API Configuration
+NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 
 # MongoDB Configuration
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
@@ -149,6 +151,16 @@ INTEGRATIONS_CONFIG = {
         "mcp_server_config": {
             "name": "notion_server",
             "url": os.getenv("NOTION_MCP_SERVER_URL", "http://localhost:9009/sse")
+        }
+    },
+    "news": { # Built-in
+        "display_name": "News",
+        "description": "Fetches top headlines and news articles from around the world.",
+        "auth_type": "builtin",
+        "icon": "IconNews",
+        "mcp_server_config": {
+            "name": "news_server",
+            "url": os.getenv("NEWS_MCP_SERVER_URL", "http://localhost:9012/sse")
         }
     },
     "internet_search": { # Built-in

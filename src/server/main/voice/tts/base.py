@@ -1,4 +1,3 @@
-# src/server/main/voice/tts/base.py
 from abc import ABC, abstractmethod
 from typing import AsyncGenerator, Dict, Any, Tuple, Union 
 import numpy as np
@@ -16,4 +15,4 @@ class BaseTTS(ABC):
         The voice WebSocket route will need to handle these types.
         """
         if False: 
-            yield b"" 
+            yield b""

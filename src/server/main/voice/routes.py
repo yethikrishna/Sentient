@@ -18,14 +18,6 @@ router = APIRouter(
 )
 logger = logging.getLogger(__name__)
 
-@router.post("/webrtc/offer", summary="Handle WebRTC Offer (Legacy)")
-async def handle_webrtc_offer(
-    offer_request: VoiceOfferRequest,
-    user_id: str = Depends(auth_helper.get_current_user_id)
-):
-    logger.warning(f"Legacy WebRTC offer endpoint called by {user_id}. This flow is deprecated.")
-    return VoiceAnswerResponse(sdp="dummy-answer-sdp-from-server", type="answer")
-
 @router.websocket("/ws/voice")
 async def voice_websocket_endpoint(websocket: WebSocket):
     await websocket.accept()

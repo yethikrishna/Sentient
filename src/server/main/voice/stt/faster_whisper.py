@@ -1,11 +1,10 @@
-# src/server/main/voice/stt/faster_whisper.py
 import numpy as np
 from faster_whisper import WhisperModel
 import librosa
 import logging
 import asyncio 
 
-from .base import BaseSTT # Corrected import from base.py
+from .base import BaseSTT
 
 logger = logging.getLogger(__name__)
 

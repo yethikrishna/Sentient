@@ -16,3 +16,14 @@ To add a heading and a paragraph, the JSON string would be:
 - Always be precise with IDs. Use the output from previous tool calls to get the correct IDs.
 - Your entire response for a tool call MUST be a single, valid JSON object.
 """
+
+notion_agent_user_prompt = """
+User Query:
+{query}
+
+Username:
+{username}
+
+Previous Tool Response:
+{previous_tool_response}
+"""

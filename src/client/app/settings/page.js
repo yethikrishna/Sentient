@@ -18,7 +18,8 @@ import {
 	IconCloud,
 	IconChartPie,
 	IconBrain,
-	IconBrandGithub
+	IconBrandGithub,
+	IconNews
 } from "@tabler/icons-react"
 import { useState, useEffect, useCallback } from "react"
 import Sidebar from "@components/Sidebar"
@@ -35,7 +36,8 @@ const integrationIcons = {
 	quickchart: IconChartPie,
 	memory: IconBrain,
 	google_search: IconWorldSearch,
-	github: IconBrandGithub
+	github: IconBrandGithub,
+	news: IconNews
 }
 
 // Hardcoded configuration for manual integrations

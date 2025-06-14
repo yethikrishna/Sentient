@@ -212,7 +212,17 @@ INTEGRATIONS_CONFIG = {
             "name": "progress_updater_server",
             "url": os.getenv("PROGRESS_UPDATER_MCP_SERVER_URL", "http://localhost:9011/sse")
         }
-    }
+    },
+    "chat_tools": { # Built-in, for chat agent
+        "display_name": "Chat Agent Tools",
+        "description": "Tools for the main conversational agent, like task handoff.",
+        "auth_type": "builtin",
+        "icon": "IconMessage", # Frontend can map this
+        "mcp_server_config": {
+            "name": "chat_tools_server",
+            "url": os.getenv("CHAT_TOOLS_MCP_SERVER_URL", "http://localhost:9013/sse")
+        }
+    },
 }
 
 # --- Service Provider Configuration ---
@@ -242,6 +252,7 @@ OPENROUTER_MODEL_NAME = os.getenv("OPENROUTER_MODEL_NAME", "qwen/qwen3-8b:free")
 # MCP Server URLs
 MEMORY_MCP_SERVER_URL = os.getenv("MEMORY_MCP_SERVER_URL", "http://localhost:8001/sse")
 PROGRESS_UPDATER_MCP_SERVER_URL=os.getenv("PROGRESS_UPDATER_MCP_SERVER_URL", "http://localhost:9011/sse")
+CHAT_TOOLS_MCP_SERVER_URL=os.getenv("CHAT_TOOLS_MCP_SERVER_URL", "http://localhost:9013/sse")
 
 MONGO_URI= os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 MONGO_DB_NAME= os.getenv("MONGO_DB_NAME", "sentient_agent_db")

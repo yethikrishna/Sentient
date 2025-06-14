@@ -44,7 +44,8 @@ class MongoManager:
             ],
             self.chat_history_collection: [
                 IndexModel([("user_id", ASCENDING), ("chat_id", ASCENDING)], name="user_chat_id_idx"),
-                IndexModel([("user_id", ASCENDING), ("last_updated", DESCENDING)], name="chat_last_updated_idx"),
+                IndexModel([("messages.message", "text")], name="message_text_idx"),
+                IndexModel([("user_id", ASCENDING), ("last_updated", DESCENDING)], name="chat_last_updated_idx"), # Kept for sorting chats
                 IndexModel([("user_id", ASCENDING), ("messages.timestamp", DESCENDING)], name="message_timestamp_idx", sparse=True)
             ],
             self.notifications_collection: [

@@ -12,6 +12,9 @@ import {
 	IconBrandGoogleDrive,
 	IconBrandSlack,
 	IconBrandNotion,
+	IconNews,
+	IconCloud,
+	IconWorldSearch,
 	IconCalendarEvent,
 	IconPlayerStopFilled,
 	IconPhone,
@@ -45,6 +48,9 @@ const Chat = () => {
 	const [selectedAudioInputDevice, setSelectedAudioInputDevice] = useState("")
 	const [connectedIntegrations, setConnectedIntegrations] = useState([])
 	const [voiceStatusText, setVoiceStatusText] = useState("Click to Start")
+	const [isInternetEnabled, setInternetEnabled] = useState(false)
+	const [isWeatherEnabled, setWeatherEnabled] = useState(false)
+	const [isNewsEnabled, setNewsEnabled] = useState(false)
 
 	// --- Refs ---
 	const textareaRef = useRef(null)
@@ -275,7 +281,12 @@ const Chat = () => {
 				headers: {
 					"Content-Type": "application/json"
 				},
-				body: JSON.stringify({ input: currentInput }),
+				body: JSON.stringify({
+					input: currentInput,
+					enable_internet: isInternetEnabled,
+					enable_weather: isWeatherEnabled,
+					enable_news: isNewsEnabled
+				}),
 				signal: abortControllerRef.current.signal
 			})
 
@@ -589,6 +600,111 @@ const Chat = () => {
 										<div ref={chatEndRef} />
 									</div>
 									<div className="w-full flex flex-col items-center">
+										<div className="flex items-center gap-4 mb-3 text-xs text-gray-400">
+											<label
+												htmlFor="internet-toggle"
+												className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
+											>
+												<IconWorldSearch
+													size={16}
+													className={
+														isInternetEnabled
+															? "text-lightblue"
+															: ""
+													}
+												/>
+												<span>Internet</span>
+												<Switch
+													checked={isInternetEnabled}
+													onCheckedChange={
+														setInternetEnabled
+													}
+												/>
+											</label>
+											<label
+												htmlFor="weather-toggle"
+												className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
+											>
+												<IconCloud
+													size={16}
+													className={
+														isWeatherEnabled
+															? "text-lightblue"
+															: ""
+													}
+												/>
+												<span>Weather</span>
+												<Switch
+													checked={isWeatherEnabled}
+													onCheckedChange={
+														setWeatherEnabled
+													}
+												/>
+											</label>
+										</div>
+										<div className="flex items-center gap-4 mb-3 text-xs text-gray-400">
+											<label
+												htmlFor="internet-toggle"
+												className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
+											>
+												<IconWorldSearch
+													size={16}
+													className={
+														isInternetEnabled
+															? "text-lightblue"
+															: ""
+													}
+												/>
+												<span>Internet</span>
+												<Switch
+													checked={isInternetEnabled}
+													onCheckedChange={
+														setInternetEnabled
+													}
+												/>
+											</label>
+											<label
+												htmlFor="weather-toggle"
+												className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
+											>
+												<IconCloud
+													size={16}
+													className={
+														isWeatherEnabled
+															? "text-lightblue"
+															: ""
+													}
+												/>
+												<span>Weather</span>
+												<Switch
+													checked={isWeatherEnabled}
+													onCheckedChange={
+														setWeatherEnabled
+													}
+												/>
+											</label>
+											<label
+												htmlFor="news-toggle"
+												className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
+											>
+												<IconNews
+													size={16}
+													className={
+														isNewsEnabled
+															? "text-lightblue"
+															: ""
+													}
+												/>
+												<span>News</span>
+												<Switch
+													checked={isNewsEnabled}
+													onCheckedChange={
+														setNewsEnabled
+													}
+												/>
+											</label>
+										</div>
+
 										{connectedIntegrations.length > 0 && (
 											<div className="flex items-center gap-2 mb-2 text-xs text-gray-500">
 												<span>Tools connected:</span>
@@ -793,6 +909,29 @@ const Chat = () => {
 				preload="auto"
 			></audio>
 		</div>
+	)
+}
+
+const Switch = ({ checked, onCheckedChange }) => {
+	return (
+		<button
+			type="button"
+			role="switch"
+			aria-checked={checked}
+			onClick={() => onCheckedChange(!checked)}
+			className={cn(
+				"relative inline-flex h-[18px] w-[34px] flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-lightblue focus:ring-offset-2 focus:ring-offset-matteblack",
+				checked ? "bg-lightblue" : "bg-neutral-600"
+			)}
+		>
+			<span
+				aria-hidden="true"
+				className={cn(
+					"pointer-events-none inline-block h-[14px] w-[14px] transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+					checked ? "translate-x-[16px]" : "translate-x-0"
+				)}
+			/>
+		</button>
 	)
 }
 

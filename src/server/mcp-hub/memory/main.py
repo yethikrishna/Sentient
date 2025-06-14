@@ -160,17 +160,21 @@ class Neo4jKnowledgeGraph:
             return result.consume().counters.nodes_deleted
 
 # --- MongoDB Short-Term Memory Manager ---
-class MongoShortTermMemory:
+class MongoMemory:
     def __init__(self, client):
         self.db = client[Cfg.MONGO_DB_NAME]
-        self.collection = self.db["short_term_memories"]
+        self.stm_collection = self.db["short_term_memories"]
+        self.chat_history_collection = self.db["chat_history"]
         self._setup_database()
 
     def _setup_database(self):
-        if "expire_at_ttl" not in self.collection.index_information():
-            self.collection.create_index("expire_at", name="expire_at_ttl", expireAfterSeconds=0)
-        if "user_category_idx" not in self.collection.index_information():
-            self.collection.create_index([("user_id", 1), ("category", 1)], name="user_category_idx")
+        if "expire_at_ttl" not in self.stm_collection.index_information():
+            self.stm_collection.create_index("expire_at", name="expire_at_ttl", expireAfterSeconds=0)
+        if "user_category_idx" not in self.stm_collection.index_information():
+            self.stm_collection.create_index([("user_id", 1), ("category", 1)], name="user_category_idx")
+        chat_indexes = self.chat_history_collection.index_information()
+        if "message_text_idx" not in chat_indexes:
+            self.chat_history_collection.create_index([("messages.message", "text")], name="message_text_idx")
 
     def _cosine_similarity(self, vec1, vec2):
         vec1_np, vec2_np = np.array(vec1), np.array(vec2)
@@ -182,17 +186,17 @@ class MongoShortTermMemory:
 
     def add_memory(self, user_id, content, ttl_seconds, category):
         # Check for existing memory to prevent duplicates
-        existing_memory = self.collection.find_one({"user_id": user_id, "content": content})
+        existing_memory = self.stm_collection.find_one({"user_id": user_id, "content": content})
         now = datetime.now(timezone.utc)
 
         if existing_memory:
             # If it exists, just update its expiration to "refresh" it
             logger.info(f"Memory content already exists for user {user_id}. Refreshing TTL.")
-            self.collection.update_one(
+            self.stm_collection.update_one(
                 {"_id": existing_memory["_id"]},
                 {"$set": {"expire_at": now + timedelta(seconds=ttl_seconds), "last_accessed_at": now}}
             )
-            return self._serialize_mongo_doc(self.collection.find_one({"_id": existing_memory["_id"]}))
+            return self._serialize_mongo_doc(self.stm_collection.find_one({"_id": existing_memory["_id"]}))
 
         embedding = get_embedding(content)
         doc = {
@@ -200,20 +204,20 @@ class MongoShortTermMemory:
             "category": category, "expire_at": now + timedelta(seconds=ttl_seconds),
             "created_at": now, "last_accessed_at": now
         }
-        self.collection.insert_one(doc)
+        self.stm_collection.insert_one(doc)
         logger.info(f"Added new memory for user {user_id}.")
         return self._serialize_mongo_doc(doc)
 
     def search_memories(self, user_id, query_text, categories=None, limit=5):
         query_embedding = get_embedding(query_text)
         mongo_filter = {"user_id": user_id}
-        if categories: mongo_filter["category"] = {"$in": categories}
+        if categories: mongo_filter["category"] = {"$in": [c.capitalize() for c in categories]}
         
-        candidate_docs = list(self.collection.find(mongo_filter))
+        candidate_docs = list(self.stm_collection.find(mongo_filter))
         if not candidate_docs: return []
 
         scored_docs = [
-            {'similarity': self._cosine_similarity(query_embedding, doc['content_embedding']), 'doc': doc}
+            {'similarity': self._cosine_similarity(query_embedding, doc['content_embedding']), 'doc': self._serialize_mongo_doc(doc)}
             for doc in candidate_docs if 'content_embedding' in doc and doc['content_embedding']
         ]
         
@@ -222,13 +226,13 @@ class MongoShortTermMemory:
         
         final_docs_to_return = []
         if top_results:
-            doc_ids_to_update = [item['doc']['_id'] for item in top_results]
-            self.collection.update_many(
+            doc_ids_to_update = [ObjectId(item['doc']['_id']) for item in top_results]
+            self.stm_collection.update_many(
                 {"_id": {"$in": doc_ids_to_update}},
                 {"$set": {"last_accessed_at": datetime.now(timezone.utc)}}
             )
             for item in top_results:
-                doc = self._serialize_mongo_doc(item['doc'])
+                doc = item['doc']
                 final_docs_to_return.append({
                     **doc, "similarity": round(item['similarity'], 2)
                 })
@@ -245,16 +249,30 @@ class MongoShortTermMemory:
                 "last_accessed_at": now
             }
         }
-        result = self.collection.update_one({"_id": ObjectId(memory_id)}, update_doc)
+        result = self.stm_collection.update_one({"_id": ObjectId(memory_id)}, update_doc)
         return result.modified_count > 0
 
     def delete_memory(self, memory_id: str):
-        result = self.collection.delete_one({"_id": ObjectId(memory_id)})
+        result = self.stm_collection.delete_one({"_id": ObjectId(memory_id)})
         return result.deleted_count > 0
 
     def clear_all_short_term_memories(self, user_id: str):
-        result = self.collection.delete_many({"user_id": user_id})
+        result = self.stm_collection.delete_many({"user_id": user_id})
         return result.deleted_count
+
+    def search_chat_history(self, user_id: str, query_text: str, limit: int = 10):
+        # Using a text index for search. Ensure index exists on `messages.message`.
+        pipeline = [
+            {"$match": {"user_id": user_id}},
+            {"$unwind": "$messages"},
+            {"$match": {"messages.message": {"$regex": query_text, "$options": "i"}}},
+            {"$sort": {"messages.timestamp": -1}},
+            {"$limit": limit},
+            {"$project": {"_id": 0, "message": "$messages"}}
+        ]
+        results_cursor = self.chat_history_collection.aggregate(pipeline)
+        results = list(results_cursor)
+        return [self._serialize_mongo_doc(r['message']) for r in results]
 
     def _serialize_mongo_doc(self, doc):
         if not doc: return None
@@ -267,7 +285,7 @@ class MongoShortTermMemory:
 # --- Initialize Managers and MCP Server ---
 kg_manager = Neo4jKnowledgeGraph(Cfg.NEO4J_URI, Cfg.NEO4J_USER, Cfg.NEO4J_PASSWORD)
 mongo_client = MongoClient(Cfg.MONGO_URI)
-stm_manager = MongoShortTermMemory(mongo_client)
+memory_manager = MongoMemory(mongo_client)
 
 mcp = FastMCP(
     name="SentientMemoryCompanionServer",
@@ -301,7 +319,7 @@ def add_short_term_memory(ctx: Context, content: str, ttl_seconds: int, category
     """
     user_id = auth.get_user_id_from_context(ctx)
     if category not in Cfg.CATEGORIES: raise ValueError(f"Invalid category '{category}'. Must be one of {Cfg.CATEGORIES}")
-    return stm_manager.add_memory(user_id, content, ttl_seconds, category)
+    return memory_manager.add_memory(user_id, content, ttl_seconds, category)
 
 @mcp.tool()
 def search_memories(ctx: Context, query_text: str, categories: Optional[List[str]] = None) -> Dict[str, List[Dict]]:
@@ -313,7 +331,7 @@ def search_memories(ctx: Context, query_text: str, categories: Optional[List[str
     """
     user_id = auth.get_user_id_from_context(ctx)
     ltm_results = kg_manager.semantic_search(user_id, query_text, categories)
-    stm_results = stm_manager.search_memories(user_id, query_text, categories)
+    stm_results = memory_manager.search_memories(user_id, query_text, categories)
     return {"long_term_facts": ltm_results, "short_term_reminders": stm_results}
 
 @mcp.tool()
@@ -337,7 +355,7 @@ def clear_all_short_term_memories(ctx: Context) -> Dict[str, Any]:
     Deletes all short-term memories for the user. This is a permanent action.
     """
     user_id = auth.get_user_id_from_context(ctx)
-    deleted_count = stm_manager.clear_all_short_term_memories(user_id)
+    deleted_count = memory_manager.clear_all_short_term_memories(user_id)
     return {"status": "success", "message": f"Successfully deleted {deleted_count} short-term memories."}
 
 @mcp.tool()
@@ -350,7 +368,7 @@ def update_short_term_memory(ctx: Context, memory_id: str, new_content: str, new
     :param new_ttl_seconds: The new time-to-live in seconds from now.
     """
     auth.get_user_id_from_context(ctx) # Just for auth check
-    success = stm_manager.update_memory(memory_id, new_content, new_ttl_seconds)
+    success = memory_manager.update_memory(memory_id, new_content, new_ttl_seconds)
     if success:
         return {"status": "success", "message": "Memory updated."}
     return {"status": "error", "message": "Memory not found or not updated."}
@@ -359,10 +377,22 @@ def update_short_term_memory(ctx: Context, memory_id: str, new_content: str, new
 def delete_short_term_memory(ctx: Context, memory_id: str) -> Dict[str, Any]:
     """Deletes a single short-term memory by its ID."""
     auth.get_user_id_from_context(ctx) # Just for auth check
-    success = stm_manager.delete_memory(memory_id)
+    success = memory_manager.delete_memory(memory_id)
     if success:
         return {"status": "success", "message": "Memory deleted."}
     return {"status": "error", "message": "Memory not found."}
+
+@mcp.tool()
+def search_conversation_history(ctx: Context, query_text: str, limit: int = 10) -> List[Dict]:
+    """
+    Searches the user's entire past conversation history for specific keywords or topics.
+    Use this as a last resort if `search_memories` does not return relevant information.
+    
+    :param query_text: The keywords or topic to search for in the conversation history.
+    :param limit: The maximum number of messages to return. Defaults to 10.
+    """
+    user_id = auth.get_user_id_from_context(ctx)
+    return memory_manager.search_chat_history(user_id, query_text, limit)
 
 if __name__ == "__main__":
     host = os.getenv("MCP_SERVER_HOST", "0.0.0.0")

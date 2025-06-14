@@ -19,25 +19,25 @@ async def get_chat_history_util(user_id: str, db_manager: MongoManager, chat_id_
         user_profile = await db_manager.get_user_profile(user_id)
         active_chat_id_from_profile = user_profile.get("userData", {}).get("active_chat_id") if user_profile else None
         
-        if active_chat_id_from_profile:
+        if active_chat_id_from_profile: # type: ignore
             effective_chat_id = active_chat_id_from_profile
         else:
             all_chat_ids = await db_manager.get_all_chat_ids_for_user(user_id)
             if all_chat_ids:
                 effective_chat_id = all_chat_ids[0] 
-                if user_profile: 
+                if user_profile: # type: ignore
                     await db_manager.update_user_profile(user_id, {"userData.active_chat_id": effective_chat_id})
             else: 
                 new_chat_id = str(uuid.uuid4())
                 await db_manager.create_new_chat_session(user_id, new_chat_id)
                 await db_manager.update_user_profile(user_id, {"userData.active_chat_id": new_chat_id})
                 effective_chat_id = new_chat_id
-    
+    # type: ignore
     messages_from_db = await db_manager.get_chat_history(user_id, effective_chat_id)
     
     serialized_messages = []
     for m in messages_from_db:
-        if isinstance(m, dict) and 'timestamp' in m and isinstance(m['timestamp'], datetime.datetime):
+        if isinstance(m, dict) and 'timestamp' in m and isinstance(m['timestamp'], datetime.datetime): # type: ignore
             m['timestamp'] = m['timestamp'].isoformat()
         serialized_messages.append(m)
         
@@ -50,23 +50,47 @@ async def generate_chat_llm_stream(
     user_input: str, 
     username: str,
     db_manager: MongoManager,
-    assistant_message_id_override: Optional[str] = None
+    assistant_message_id_override: Optional[str] = None,
+    enable_internet: bool = False,
+    enable_weather: bool = False,
+    enable_news: bool = False
     ) -> AsyncGenerator[Dict[str, Any], None]:
     assistant_message_id = assistant_message_id_override or str(uuid.uuid4())
 
     try:
         from ..config import INTEGRATIONS_CONFIG
-        user_profile_for_tools = await db_manager.get_user_profile(user_id)
-        user_connected_integrations = user_profile_for_tools.get("userData", {}).get("integrations", {}) if user_profile_for_tools else {}
+
         active_mcp_servers = {}
-        for service_name, config in INTEGRATIONS_CONFIG.items():
-            if "mcp_server_config" not in config: continue
-            mcp_config = config["mcp_server_config"]
-            if mcp_config.get("url"):
-                if config.get("auth_type") == "builtin" or user_connected_integrations.get(service_name, {}).get("connected"):
-                    active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
+
+        # Always connect memory and chat tools
+        for service_name in ["memory", "chat_tools"]:
+            config = INTEGRATIONS_CONFIG.get(service_name)
+            if config and "mcp_server_config" in config:
+                mcp_config = config["mcp_server_config"]
+                active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
+
+        # Conditionally connect internet search
+        if enable_internet:
+            config = INTEGRATIONS_CONFIG.get("internet_search")
+            if config and "mcp_server_config" in config:
+                mcp_config = config["mcp_server_config"]
+                active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
+
+        # Conditionally connect weather
+        if enable_weather:
+            config = INTEGRATIONS_CONFIG.get("accuweather")
+            if config and "mcp_server_config" in config:
+                mcp_config = config["mcp_server_config"]
+                active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
+
+        if enable_news:
+            config = INTEGRATIONS_CONFIG.get("news")
+            if config and "mcp_server_config" in config:
+                mcp_config = config["mcp_server_config"]
+                active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
+
         tools = [{"mcpServers": active_mcp_servers}]
-        
+
         user_message_payload = {"id": str(uuid.uuid4()), "message": user_input, "isUser": True, "type": "text", "isVisible": True}
         assistant_placeholder_payload = {"id": assistant_message_id, "message": "", "isUser": False, "type": "text", "isVisible": True, "agentsUsed": True}
         
@@ -94,8 +118,14 @@ async def generate_chat_llm_stream(
             try:
                 system_prompt = (
                     f"You are a helpful AI assistant named Sentient. The user's name is {username}. The current date is {datetime.datetime.now().strftime('%Y-%m-%d')}.\n\n"
-                    "You have access to certain tools that you can call. Do not use tools unless explicitly required to answer the user's query. "
-                    "Do not overuse tools, first check if any relevant context is available in the conversation history.\n\n"
+                    "You have access to a few tools:\n"
+                    "- Use memory tools (`search_memories`, `save_long_term_fact`, etc.) to remember and recall information about the user.\n"
+                    "- If the user asks you to perform an action (e.g., 'send an email', 'create a presentation'), use the `create_task_from_description` tool to hand it off to the planning system. Do not try to execute it yourself.\n"
+                    "- You can check the status of a task with `get_task_status`.\n"
+                    f"- Internet search is currently {'ENABLED' if enable_internet else 'DISABLED'}. You can use it to find real-time information if enabled.\n"
+                    f"- Weather information is currently {'ENABLED' if enable_weather else 'DISABLED'}.\n"
+                    f"- News headlines and articles are currently {'ENABLED' if enable_news else 'DISABLED'}.\n\n"
+                    "Be conversational and helpful."
                 )
                 qwen_assistant = get_qwen_assistant(system_message=system_prompt, function_list=tools)
                 for new_history_step in qwen_assistant.run(messages=qwen_formatted_history):

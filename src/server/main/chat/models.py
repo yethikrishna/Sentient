@@ -7,3 +7,6 @@ class ChatMessageInput(BaseModel):
     input: str
     pricing: Optional[str] = "free" 
     credits: Optional[int] = 0
+    enable_internet: Optional[bool] = False
+    enable_weather: Optional[bool] = False
+    enable_news: Optional[bool] = False

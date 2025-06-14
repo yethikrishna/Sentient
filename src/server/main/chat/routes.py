@@ -54,7 +54,16 @@ async def chat_endpoint(
 
     async def event_stream_generator():
         try:
-            async for event in generate_chat_llm_stream(user_id, active_chat_id, request_body.input, username, mongo_manager):
+            async for event in generate_chat_llm_stream(
+                user_id,
+                active_chat_id,
+                request_body.input,
+                username, 
+                mongo_manager,
+                enable_internet=request_body.enable_internet,
+                enable_weather=request_body.enable_weather,
+                enable_news=request_body.enable_news
+            ):
                 if not event: continue # Skip empty events
                 yield json.dumps(event) + "\n"
         except asyncio.CancelledError:

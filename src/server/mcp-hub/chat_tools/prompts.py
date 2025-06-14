@@ -1,0 +1,1 @@
+# No prompts needed, this server is called by another agent

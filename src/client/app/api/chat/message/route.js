@@ -13,7 +13,8 @@ export async function POST(request) {
 	}
 
 	try {
-		const { input } = await request.json()
+		const { input, enable_internet, enable_weather, enable_news } =
+			await request.json()
 		const authHeader = await getBackendAuthHeader()
 
 		// Fetch user pricing/credits to pass to the backend
@@ -33,7 +34,14 @@ export async function POST(request) {
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },
-				body: JSON.stringify({ input, pricing, credits }),
+				body: JSON.stringify({
+					input,
+					pricing,
+					credits,
+					enable_internet,
+					enable_weather,
+					enable_news
+				}),
 				// IMPORTANT: duplex must be set to 'half' to stream response body in Next.js Edge/Node runtime
 				duplex: "half"
 			}

@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import (
-    STT_PROVIDER, TTS_PROVIDER, ELEVENLABS_API_KEY, ORPHEUS_MODEL_PATH, ORPHEUS_N_GPU_LAYERS,
+    STT_PROVIDER, TTS_PROVIDER, ELEVENLABS_API_KEY,
     FASTER_WHISPER_MODEL_SIZE, FASTER_WHISPER_DEVICE, FASTER_WHISPER_COMPUTE_TYPE,
     APP_SERVER_PORT
 )
@@ -64,10 +64,9 @@ def initialize_tts():
     if TTS_PROVIDER == "ORPHEUS":
         try:
             from .voice.tts import OrpheusTTS
-            if not os.path.exists(ORPHEUS_MODEL_PATH):
-                logger.error(f"Orpheus model path not found: {ORPHEUS_MODEL_PATH}")
-            else:
-                tts_model_instance = OrpheusTTS()
+            tts_model_instance = OrpheusTTS()
+        except ImportError:
+             logger.error("OrpheusTTS could not be imported. Check dependencies or TTS_PROVIDER setting.")
         except Exception as e:
             logger.error(f"Failed to initialize OrpheusTTS: {e}", exc_info=True)
     elif TTS_PROVIDER == "ELEVENLABS":

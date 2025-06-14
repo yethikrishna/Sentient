@@ -1,4 +1,3 @@
-# src/server/main/config.py
 import os
 from dotenv import load_dotenv
 import datetime
@@ -173,7 +172,7 @@ INTEGRATIONS_CONFIG = {
 # These variables allow for flexible switching between different service providers.
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "OLLAMA")  # Options: "OLLAMA", "OPENROUTER"
 STT_PROVIDER = os.getenv("STT_PROVIDER", "FASTER_WHISPER") # Options: "FASTER_WHISPER", "ELEVENLABS"
-TTS_PROVIDER = os.getenv("TTS_PROVIDER", "ORPHEUS") # Options: "ORPHEUS", "ELEVENLABS", "GCP"
+TTS_PROVIDER = os.getenv("TTS_PROVIDER", "ORPHEUS") # Options: "ORPHEUS", "ELEVENLABS"
 
 # --- Service-Specific API Keys and Paths ---
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY") # Used for both STT and TTS from ElevenLabs

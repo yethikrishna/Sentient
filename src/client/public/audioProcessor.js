@@ -6,7 +6,7 @@ class AudioProcessor extends AudioWorkletProcessor {
 
 	constructor() {
 		super()
-		console.log("[AudioProcessor] Worklet created.")
+		// console.log("[AudioProcessor] Worklet created.")
 	}
 
 	process(inputs, outputs, parameters) {
@@ -19,28 +19,24 @@ class AudioProcessor extends AudioWorkletProcessor {
 		}
 
 		// Append new data to buffer
-		const dataToCopy = Math.min(
-			this._bufferSize - this._bytesWritten,
-			inputChannelData.length
-		)
-		this._buffer.set(
-			inputChannelData.subarray(0, dataToCopy),
-			this._bytesWritten
-		)
-		this._bytesWritten += dataToCopy
+		let dataToCopy = inputChannelData
+		let spaceLeft = this._bufferSize - this._bytesWritten
 
-		// If buffer is full, send it to the main thread
-		if (this._bytesWritten >= this._bufferSize) {
-			// Send a *copy* of the buffer
-			this.port.postMessage(this._buffer.slice(0))
+		while (dataToCopy.length > 0) {
+			const toCopyNow = dataToCopy.subarray(
+				0,
+				Math.min(dataToCopy.length, spaceLeft)
+			)
+			this._buffer.set(toCopyNow, this._bytesWritten)
+			this._bytesWritten += toCopyNow.length
 
-			// Reset buffer and handle leftover data
-			const leftoverData = inputChannelData.subarray(dataToCopy)
-			this._buffer.fill(0) // Clear buffer
-			this._bytesWritten = leftoverData.length
-			if (this._bytesWritten > 0) {
-				this._buffer.set(leftoverData)
+			if (this._bytesWritten >= this._bufferSize) {
+				this.port.postMessage(this._buffer.slice(0))
+				this._bytesWritten = 0
 			}
+
+			dataToCopy = dataToCopy.subarray(toCopyNow.length)
+			spaceLeft = this._bufferSize - this._bytesWritten
 		}
 
 		// Return true to keep the processor alive
@@ -48,4 +44,4 @@ class AudioProcessor extends AudioWorkletProcessor {
 	}
 }
 
-registerProcessor("audioProcessor", AudioProcessor)
+registerProcessor("audio-processor", AudioProcessor)

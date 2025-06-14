@@ -1,11 +1,10 @@
-# src/server/main/voice/tts/elevenlabs.py
 import os
 from elevenlabs.client import ElevenLabs
 from elevenlabs import Voice, VoiceSettings
 import logging
 from typing import AsyncGenerator, Optional
 
-from .base import BaseTTS, TTSOptionsBase # Corrected import from base.py
+from .base import BaseTTS, TTSOptionsBase
 from ...config import ELEVENLABS_API_KEY 
 
 logger = logging.getLogger(__name__)

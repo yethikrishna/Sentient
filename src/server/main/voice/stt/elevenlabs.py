@@ -1,9 +1,8 @@
-# src/server/main/voice/stt/elevenlabs.py
 import logging
 import httpx
 import wave
 import io
-from .base import BaseSTT # Corrected import from base.py
+from .base import BaseSTT
 from ...config import ELEVENLABS_API_KEY
 
 logger = logging.getLogger(__name__)
@@ -24,7 +23,7 @@ class ElevenLabsSTT(BaseSTT):
             raise ValueError("ELEVENLABS_API_KEY is required for ElevenLabsSTT.")
         
         self.client = httpx.AsyncClient()
-        self.stt_api_url = "https://api.elevenlabs.io/v1/speech-to-text" # Replace if different or official STT service is used
+        self.stt_api_url = "https://api.elevenlabs.io/v1/speech-to-text"
         logger.info(f"ElevenLabsSTT initialized (targetting endpoint: {self.stt_api_url}).")
 
 
@@ -34,14 +33,6 @@ class ElevenLabsSTT(BaseSTT):
             files = {'audio': ('audio.wav', wav_data, 'audio/wav')}
             headers = {"xi-api-key": ELEVENLABS_API_KEY}
             
-            # This is a hypothetical endpoint for ElevenLabs STT.
-            # Replace with the actual one if available.
-            # If no public STT endpoint from ElevenLabs, this will fail or needs a mock.
-            if self.stt_api_url == "https://api.elevenlabs.io/v1/speech-to-text":
-                 logger.warning("Using a placeholder/hypothetical ElevenLabs STT URL. Please verify the correct API endpoint.")
-                 # To prevent actual calls to a non-existent or wrong endpoint during testing:
-                 # return "Placeholder STT response: ElevenLabs STT endpoint not confirmed."
-
             response = await self.client.post(
                 self.stt_api_url,
                 files=files,

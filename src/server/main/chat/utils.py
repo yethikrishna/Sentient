@@ -196,6 +196,7 @@ async def process_voice_command(user_id: str, active_chat_id: str, transcribed_t
             f"You are a helpful AI assistant named Sentient. The user's name is {username}. The current date is {datetime.datetime.now().strftime('%Y-%m-%d')}.\n\n"
             "You have access to certain tools that you can call. Do not use tools unless explicitly required to answer the user's query. "
             "Do not overuse tools, first check if any relevant context is available in the conversation history.\n\n"
+            "For voice conversations, keep your responses concise and natural."
         )
         qwen_assistant = get_qwen_assistant(system_message=system_prompt, function_list=tools)
         

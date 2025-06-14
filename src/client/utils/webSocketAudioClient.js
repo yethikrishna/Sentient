@@ -29,9 +29,11 @@ export class WebSocketClient {
 		this.token = token // Store token
 
 		try {
-			this.audioPlayer = new AudioPlayer()
+			this.audioPlayer = new AudioPlayer(16000) // ElevenLabs and others often use 16kHz
 			const constraints = {
-				audio: deviceId ? { deviceId: { exact: deviceId } } : true,
+				audio: deviceId
+					? { deviceId: { exact: deviceId }, sampleRate: 16000 }
+					: { sampleRate: 16000 },
 				video: false
 			}
 			this.mediaStream =
@@ -48,13 +50,19 @@ export class WebSocketClient {
 	}
 
 	async setupAudioProcessing() {
+		if (!this.mediaStream) {
+			console.error("[VoiceClient] No media stream to process.")
+			return
+		}
+
 		this.audioContext = new (window.AudioContext ||
 			window.webkitAudioContext)({ sampleRate: 16000 })
 
 		try {
 			await this.audioContext.audioWorklet.addModule(
-				"/audio-processor.js"
+				"/audioProcessor.js" // Correct path to the worklet
 			)
+			console.log("[VoiceClient] AudioWorklet module loaded.")
 		} catch (e) {
 			console.error("[VoiceClient] Failed to load AudioWorklet:", e)
 			throw new Error("Could not load audio processor.")
@@ -65,12 +73,13 @@ export class WebSocketClient {
 		)
 		this.workletNode = new AudioWorkletNode(
 			this.audioContext,
-			"audio-processor"
+			"audioProcessor" // The name registered in the worklet
 		)
 
 		this.workletNode.port.onmessage = (event) => {
 			if (this.ws?.readyState === WebSocket.OPEN) {
-				const pcmData = event.data
+				const pcmData = event.data // This is a Float32Array
+				// Convert Float32Array to Int16Array
 				const int16Data = new Int16Array(pcmData.length)
 				for (let i = 0; i < pcmData.length; i++) {
 					int16Data[i] = Math.max(-1, Math.min(1, pcmData[i])) * 32767
@@ -79,11 +88,15 @@ export class WebSocketClient {
 			}
 		}
 
-		this.analyser = this.audioContext.createAnalyser()
-		this.analyser.fftSize = 256
-		this.sourceNode.connect(this.analyser)
-		this.analyser.connect(this.workletNode)
+		// Connect the source to the worklet
+		this.sourceNode.connect(this.workletNode)
+		// Connect the worklet to the destination to allow it to process audio
+		this.workletNode.connect(this.audioContext.destination)
 
+		// Audio level analysis setup
+		this.analyser = this.audioContext.createAnalyser()
+		this.analyser.fftSize = 512
+		this.sourceNode.connect(this.analyser)
 		this.options.onAudioLevel?.(0)
 		this.startAnalysisLoop()
 	}
@@ -99,7 +112,9 @@ export class WebSocketClient {
 				sum += amplitude * amplitude
 			}
 			const rms = Math.sqrt(sum / dataArray.length)
-			this.options.onAudioLevel?.(rms / 128)
+			// Normalize and amplify slightly for better visualization
+			const normalizedLevel = (rms / 128) * 1.5
+			this.options.onAudioLevel?.(Math.min(normalizedLevel, 1.0))
 			requestAnimationFrame(analyze)
 		}
 		analyze()
@@ -135,6 +150,7 @@ export class WebSocketClient {
 					if (message.type === "auth_success") {
 						this.options.onConnected?.()
 					} else {
+						// Pass all other messages to the onMessage handler
 						this.options.onMessage?.(message)
 					}
 				} catch (e) {
@@ -148,10 +164,13 @@ export class WebSocketClient {
 			this.options.onConnectError?.(
 				new Error("WebSocket connection error.")
 			)
+			this.disconnect()
 		}
 
 		this.ws.onclose = (event) => {
-			console.log(`[VoiceClient] WebSocket closed: Code=${event.code}`)
+			console.log(
+				`[VoiceClient] WebSocket closed: Code=${event.code}, Reason: ${event.reason}`
+			)
 			this.options.onDisconnected?.()
 			this.cleanup()
 		}
@@ -160,27 +179,30 @@ export class WebSocketClient {
 	disconnect() {
 		if (this.ws) {
 			this.ws.close(1000, "Client initiated disconnect")
+		} else {
+			// If WS doesn't exist, ensure cleanup still happens
+			this.cleanup()
 		}
-		this.cleanup()
 	}
 
 	cleanup() {
 		this.audioPlayer?.stop()
 		this.audioPlayer = null
-		this.analyser = null
 
 		if (this.mediaStream) {
 			this.mediaStream.getTracks().forEach((track) => track.stop())
+			this.mediaStream = null
 		}
 		if (this.workletNode) this.workletNode.disconnect()
 		if (this.sourceNode) this.sourceNode.disconnect()
+		if (this.analyser) this.analyser.disconnect()
 		if (this.audioContext?.state !== "closed") this.audioContext?.close()
 
 		this.ws = null
-		this.mediaStream = null
 		this.audioContext = null
 		this.workletNode = null
 		this.sourceNode = null
+		this.analyser = null
 		this.token = null
 	}
 }

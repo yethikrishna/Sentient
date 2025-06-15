@@ -1,18 +1,9 @@
-// src/client/app/api/chat/history/route.js
 import { NextResponse } from "next/server"
 import { auth0 } from "@lib/auth0"
 import { getBackendAuthHeader } from "@lib/auth0"
 
-export async function POST(request) {
+export async function GET() {
 	const session = await auth0.getSession()
-	const { chatId } = await request.json()
-	if (!chatId) {
-		return NextResponse.json(
-			{ message: "Chat ID is required" },
-			{ status: 400 }
-		)
-	}
-
 	if (!session?.user?.sub) {
 		return NextResponse.json(
 			{ message: "Not authenticated" },
@@ -30,24 +21,21 @@ export async function POST(request) {
 
 	try {
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/get-history`,
+			`${process.env.APP_SERVER_URL}/list-chats`,
 			{
-				method: "POST",
-				headers: { "Content-Type": "application/json", ...authHeader },
-				body: JSON.stringify({ chatId })
+				method: "GET",
+				headers: { "Content-Type": "application/json", ...authHeader }
 			}
 		)
 
 		const data = await response.json()
 		if (!response.ok) {
-			throw new Error(
-				data.message || "Failed to fetch chat history from backend"
-			)
+			throw new Error(data.message || "Failed to fetch chat list")
 		}
 
 		return NextResponse.json(data)
 	} catch (error) {
-		console.error("API Error in /chat/history:", error)
+		console.error("API Error in /chat/list-chats:", error)
 		return NextResponse.json(
 			{ message: "Internal Server Error", error: error.message },
 			{ status: 500 }

@@ -166,13 +166,13 @@ class MongoManager:
         )
         return chat_doc.get("messages", []) if chat_doc else []
 
-    async def get_all_chat_ids_for_user(self, user_id: str) -> List[str]:
+    async def get_all_chats_for_user(self, user_id: str) -> List[Dict]:
         if not user_id: return []
         cursor = self.chat_history_collection.find(
-            {"user_id": user_id}, {"chat_id": 1, "last_updated":1, "_id": 0}
+            {"user_id": user_id},
+            {"chat_id": 1, "title": 1, "last_updated": 1, "_id": 0}
         ).sort("last_updated", DESCENDING)
-        chat_docs = await cursor.to_list(length=None)
-        return [doc["chat_id"] for doc in chat_docs]
+        return await cursor.to_list(length=None)
 
     async def delete_chat_history(self, user_id: str, chat_id: str) -> bool:
         if not user_id or not chat_id: return False
@@ -195,7 +195,7 @@ class MongoManager:
             return False
         return result.modified_count > 0
 
-    async def create_new_chat_session(self, user_id: str, chat_id: str) -> bool:
+    async def create_new_chat_session(self, user_id: str, chat_id: str, title: Optional[str] = "New Chat") -> bool:
         if not user_id or not chat_id: return False
         now_utc = datetime.datetime.now(datetime.timezone.utc)
         # Use update_one with upsert to avoid race conditions and ensure idempotency.
@@ -206,6 +206,7 @@ class MongoManager:
                 "$setOnInsert": {
                     "user_id": user_id,
                     "chat_id": chat_id,
+                    "title": title,
                     "messages": [],
                     "created_at": now_utc,
                     "last_updated": now_utc
@@ -214,6 +215,15 @@ class MongoManager:
             upsert=True
         )
         return result.upserted_id is not None
+
+    async def rename_chat(self, user_id: str, chat_id: str, new_title: str) -> bool:
+        if not all([user_id, chat_id, new_title]):
+            return False
+        result = await self.chat_history_collection.update_one(
+            {"user_id": user_id, "chat_id": chat_id},
+            {"$set": {"title": new_title, "last_updated": datetime.datetime.now(datetime.timezone.utc)}}
+        )
+        return result.modified_count > 0
 
     # --- Notification Methods ---
     async def get_notifications(self, user_id: str) -> List[Dict]:

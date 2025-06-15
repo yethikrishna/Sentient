@@ -1,6 +1,3 @@
-import datetime
-import traceback
-import asyncio
 import uuid
 import numpy as np
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, HTTPException, status
@@ -8,6 +5,7 @@ from starlette.websockets import WebSocketState
 import logging
 
 from .models import VoiceOfferRequest, VoiceAnswerResponse
+from typing import Optional
 from ..dependencies import mongo_manager, auth_helper, websocket_manager as main_websocket_manager
 from ..chat.utils import process_voice_command
 from .tts import TTSOptionsBase
@@ -25,21 +23,31 @@ async def voice_websocket_endpoint(websocket: WebSocket):
 
     authenticated_user_id: str | None = None
     active_chat_id: str | None = None
+    is_new_chat = False
 
     try:
-        authenticated_user_id = await auth_helper.ws_authenticate(websocket)
-        if not authenticated_user_id: return
+        # The auth message now includes a chatId
+        auth_data = await auth_helper.ws_authenticate_with_data(websocket)
+        if not auth_data: return
+
+        authenticated_user_id = auth_data["user_id"]
+
+        # Robustly handle chatId which may be a string, a list, or None
+        chat_id_from_req = auth_data.get("chatId")
+        active_chat_id: Optional[str] = None
+        if isinstance(chat_id_from_req, str) and chat_id_from_req:
+            active_chat_id = chat_id_from_req
+        elif isinstance(chat_id_from_req, list) and chat_id_from_req:
+            active_chat_id = str(chat_id_from_req[0])
 
         user_profile = await mongo_manager.get_user_profile(authenticated_user_id)
         username = "User"
         if user_profile and user_profile.get("userData"):
-            active_chat_id = user_profile["userData"].get("active_chat_id")
             username = user_profile["userData"].get("personalInfo", {}).get("name", "User")
         
         if not active_chat_id:
+            is_new_chat = True
             active_chat_id = str(uuid.uuid4())
-            await mongo_manager.create_new_chat_session(authenticated_user_id, active_chat_id)
-            await mongo_manager.update_user_profile(authenticated_user_id, {"userData.active_chat_id": active_chat_id})
 
         await main_websocket_manager.connect_voice(websocket, authenticated_user_id)
         logger.info(f"User {authenticated_user_id} connected to voice WebSocket.")
@@ -57,9 +65,16 @@ async def voice_websocket_endpoint(websocket: WebSocket):
 
             if not transcribed_text or not transcribed_text.strip(): continue
 
+            if is_new_chat:
+                # Create the chat in DB only on the first transcribed message
+                title = ' '.join(transcribed_text.split()[:3])
+                await mongo_manager.create_new_chat_session(authenticated_user_id, active_chat_id, title)
+                await websocket.send_json({"type": "chat_created", "chatId": active_chat_id, "title": title})
+                is_new_chat = False # It's no longer a new chat
+
             await websocket.send_json({"type": "status", "message": "thinking"})
             llm_response_text, assistant_message_id = await process_voice_command(
-                user_id=authenticated_user_id, active_chat_id=active_chat_id,
+                user_id=authenticated_user_id, chat_id=active_chat_id,
                 transcribed_text=transcribed_text, username=username, db_manager=mongo_manager
             )
 

@@ -16,17 +16,19 @@ export class WebSocketClient {
 		this.sourceNode = null
 		this.audioPlayer = null
 		this.analyser = null
-		this.token = null // To store the auth token
+		this.token = null
+		this.chatId = null
 
 		console.log(`[VoiceClient] Initialized. Server URL: ${this.serverUrl}`)
 	}
 
-	async connect(deviceId, token) {
+	async connect(deviceId, token, chatId) {
 		if (this.ws) {
 			console.warn("[VoiceClient] Already connected or connecting.")
 			return
 		}
-		this.token = token // Store token
+		this.token = token
+		this.chatId = chatId // Store chatId
 
 		try {
 			this.audioPlayer = new AudioPlayer(16000) // ElevenLabs and others often use 16kHz
@@ -128,7 +130,11 @@ export class WebSocketClient {
 			// Send authentication message
 			if (this.token) {
 				this.ws.send(
-					JSON.stringify({ type: "auth", token: this.token })
+					JSON.stringify({
+						type: "auth",
+						token: this.token,
+						chatId: this.chatId
+					})
 				)
 			} else {
 				console.error(
@@ -204,5 +210,6 @@ export class WebSocketClient {
 		this.sourceNode = null
 		this.analyser = null
 		this.token = null
+		this.chatId = null
 	}
 }

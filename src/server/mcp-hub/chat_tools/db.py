@@ -16,6 +16,6 @@ class TaskDBManager:
             {"user_id": user_id, "$text": {"$search": query}},
             {"_id": 0, "task_id": 1, "description": 1, "status": 1, "result": 1, "error": 1, "created_at": 1}
         )
-    
+
     async def close(self):
         self.client.close()

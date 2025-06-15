@@ -19,7 +19,10 @@ import {
 	IconPlayerStopFilled,
 	IconPhone,
 	IconPhoneOff,
-	IconMicrophone
+	IconMicrophone,
+	IconFileText,
+	IconPresentation,
+	IconTable
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import GmailSearchResults from "@components/agents/GmailSearchResults"
@@ -30,6 +33,9 @@ const integrationIcons = {
 	gmail: IconMail,
 	gcalendar: IconCalendarEvent,
 	gdrive: IconBrandGoogleDrive,
+	gdocs: IconFileText,
+	gslides: IconPresentation,
+	gsheets: IconTable,
 	slack: IconBrandSlack,
 	notion: IconBrandNotion
 }

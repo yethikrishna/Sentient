@@ -1,37 +1,36 @@
-# src/server/main/misc/routes.py
 import datetime
 import uuid
 import json
 import traceback
+import asyncio
 from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, Depends, HTTPException, status, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
+import logging
 
-# Assuming models like OnboardingRequest are in the main models.py or a shared location
-from ..models import OnboardingRequest
-# UserProfile might not be directly used as request/response here but good for context.
-
-from ..auth.utils import PermissionChecker 
-from ..config import (
-    AUTH0_AUDIENCE, SUPPORTED_POLLING_SERVICES, POLLING_INTERVALS
-)
+from ..models import OnboardingRequest, GoogleAuthSettings
+from ..auth.utils import PermissionChecker, AuthHelper, aes_encrypt
+from ..config import AUTH0_AUDIENCE
 from ..dependencies import mongo_manager, auth_helper, websocket_manager as main_websocket_manager
-from ..db import MongoManager
 
-# Router instance for miscellaneous routes
+# Google API libraries for validation
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter(
-    prefix="/api", # Using /api prefix as it seems common for such routes
+    prefix="/api",
     tags=["Miscellaneous API"]
 )
 
-
-# === Onboarding Routes ===
 @router.post("/onboarding", status_code=status.HTTP_200_OK, summary="Save Onboarding Data")
 async def save_onboarding_data_endpoint(
     request_body: OnboardingRequest, 
     user_id: str = Depends(PermissionChecker(required_permissions=["write:profile"]))
 ):
-    print(f"[{datetime.datetime.now()}] [ONBOARDING] User {user_id}, Data keys: {list(request_body.data.keys())}")
+    logger.info(f"[{datetime.datetime.now()}] [ONBOARDING] User {user_id}, Data keys: {list(request_body.data.keys())}")
     try:
         user_data_to_set = {
             "onboardingAnswers": request_body.data,
@@ -46,7 +45,7 @@ async def save_onboarding_data_endpoint(
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to save onboarding data.")
         return JSONResponse(content={"message": "Onboarding data saved successfully.", "status": 200})
     except Exception as e:
-        print(f"[{datetime.datetime.now()}] [ONBOARDING_ERROR] User {user_id}: {e}")
+        logger.error(f"[{datetime.datetime.now()}] [ONBOARDING_ERROR] User {user_id}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to save onboarding data: {str(e)}")
 
 @router.post("/check-user-profile", status_code=status.HTTP_200_OK, summary="Check User Profile and Onboarding Status")
@@ -60,15 +59,97 @@ async def check_user_profile_endpoint(user_id: str = Depends(PermissionChecker(r
 
 # === User Profile Routes ===
 @router.post("/get-user-data", summary="Get User Profile's userData field")
-async def get_user_data_endpoint(user_id: str = Depends(auth_helper.get_current_user_id)):
+async def get_user_data_endpoint(payload: dict = Depends(auth_helper.get_decoded_payload_with_claims)):
+    user_id = payload.get("sub")
     profile_doc = await mongo_manager.get_user_profile(user_id)
+    
+    user_email_from_token = payload.get("email")
+    stored_email = profile_doc.get("userData", {}).get("personalInfo", {}).get("email") if profile_doc else None
+
+    if user_email_from_token and (not profile_doc or stored_email != user_email_from_token):
+        logger.info(f"Updating stored email for user {user_id}.")
+        await mongo_manager.update_user_profile(user_id, {"userData.personalInfo.email": user_email_from_token})
+        # Re-fetch the profile after update if it was missing before
+        if not profile_doc:
+            profile_doc = await mongo_manager.get_user_profile(user_id)
+
     if profile_doc and "userData" in profile_doc:
         return JSONResponse(content={"data": profile_doc["userData"], "status": 200})
     print(f"[{datetime.datetime.now()}] [GET_USER_DATA] No profile/userData for {user_id}. Creating basic entry.")
     await mongo_manager.update_user_profile(user_id, {"userData": {}}) 
-    return JSONResponse(content={"data": {}, "status": 200}) 
+    return JSONResponse(content={"data": {}, "status": 200})
 
-# === Notifications Routes ===
+async def _validate_gcp_credentials(creds_json_str: str, user_email: str) -> bool:
+    """
+    Attempts to use the provided service account credentials to make a test API call.
+    Returns True if successful, raises an exception otherwise.
+    """
+    try:
+        creds_info = json.loads(creds_json_str)
+        # We need drive scope for the about.get call
+        scopes = ['https://www.googleapis.com/auth/drive.readonly']
+        
+        creds = service_account.Credentials.from_service_account_info(
+            creds_info, scopes=scopes, subject=user_email
+        )
+        
+        # Use asyncio.to_thread to run the synchronous Google API call
+        def run_validation():
+            service = build('drive', 'v3', credentials=creds)
+            # A simple, low-permission call to check if auth works
+            service.about().get(fields='user').execute()
+        
+        await asyncio.to_thread(run_validation)
+        return True
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="The provided credentials are not valid JSON.")
+    except HttpError as e:
+        error_details = json.loads(e.content).get('error', {})
+        error_reason = error_details.get('errors', [{}])[0].get('reason', 'unknown')
+        logger.error(f"Google API validation failed for {user_email}: {error_reason}", exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Google API Error: {error_details.get('message', 'Validation failed.')} Reason: {error_reason}. Please check your Service Account permissions and Domain-Wide Delegation setup.")
+    except Exception as e:
+        logger.error(f"Unexpected error during GCP credential validation for {user_email}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred during validation: {str(e)}")
+
+
+@router.post("/settings/google-auth", summary="Set user's Google authentication mode and credentials")
+async def set_google_auth_settings(
+    request_body: GoogleAuthSettings,
+    user_id: str = Depends(PermissionChecker(required_permissions=["write:config"]))
+):
+    update_payload = {"userData.googleAuth.mode": request_body.mode}
+    
+    if request_body.mode == "custom":
+        if not request_body.credentialsJson:
+            raise HTTPException(status_code=400, detail="credentialsJson is required for custom mode.")
+        
+        user_profile = await mongo_manager.get_user_profile(user_id)
+        user_email = user_profile.get("userData", {}).get("personalInfo", {}).get("email") if user_profile else None
+        if not user_email:
+            raise HTTPException(status_code=400, detail="User email is required for custom credentials but was not found.")
+
+        # Validate credentials before saving
+        await _validate_gcp_credentials(request_body.credentialsJson, user_email)
+        
+        try:
+            encrypted_creds = aes_encrypt(request_body.credentialsJson)
+            update_payload["userData.googleAuth.encryptedCredentials"] = encrypted_creds
+        except Exception as e:
+            logger.error(f"Error encrypting Google credentials for user {user_id}: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Could not save credentials due to encryption error.")
+    else: # mode is 'default'
+        # Unset the credentials when switching back to default
+        unset_payload = {"userData.googleAuth.encryptedCredentials": ""}
+        await mongo_manager.user_profiles_collection.update_one({"user_id": user_id}, {"$unset": unset_payload})
+
+    success = await mongo_manager.update_user_profile(user_id, update_payload)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update Google auth settings in database.")
+        
+    return JSONResponse(content={"message": "Google API settings saved and validated successfully."})
+
+
 @router.websocket("/ws/notifications")
 async def notifications_websocket_endpoint(websocket: WebSocket):
     await websocket.accept()

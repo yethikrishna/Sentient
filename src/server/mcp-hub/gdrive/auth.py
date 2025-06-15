@@ -77,7 +77,7 @@ async def get_google_creds(user_id: str) -> Credentials:
             decrypted_creds_json = aes_decrypt(encrypted_creds)
             service_account_info = json.loads(decrypted_creds_json)
             # Define the scopes required by this specific MCP
-            scopes = ["https://www.googleapis.com/auth/drive.readonly"]
+            scopes = ["https://www.googleapis.com/auth/drive"]
             
             creds = service_account.Credentials.from_service_account_info(
                 service_account_info, scopes=scopes, subject=user_email

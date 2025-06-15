@@ -103,19 +103,24 @@ async def approve_task(
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found or not pending approval.")
 
-    # --- NEW: Check if all required tools are connected ---
+    # Check if all required tools are available for the user
     user_profile = await mongo_manager.get_user_profile(user_id)
     user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
+    google_auth_mode = user_profile.get("userData", {}).get("googleAuth", {}).get("mode", "default")
 
     required_tools = {step['tool'] for step in task.get('plan', [])}
     missing_tools = []
 
     for tool_name in required_tools:
         tool_config = INTEGRATIONS_CONFIG.get(tool_name, {})
+        
+        is_google_service = tool_name.startswith('g')
+        is_available_via_custom = is_google_service and google_auth_mode == 'custom'
+        
         is_builtin = tool_config.get("auth_type") == "builtin"
-        is_connected = user_integrations.get(tool_name, {}).get("connected", False)
+        is_connected_via_oauth = user_integrations.get(tool_name, {}).get("connected", False)
 
-        if not (is_builtin or is_connected):
+        if not (is_builtin or is_connected_via_oauth or is_available_via_custom):
             missing_tools.append(tool_config.get("display_name", tool_name))
 
     if missing_tools:

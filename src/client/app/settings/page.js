@@ -301,8 +301,11 @@ const GoogleAuthSettings = ({ mode, onModeChange, onSaveSuccess }) => {
 					Console. You must grant it the following scopes:
 					<ul className="list-disc list-inside mt-1 pl-4 font-mono text-xs text-gray-300">
 						<li>https://www.googleapis.com/auth/calendar</li>
-						<li>https://www.googleapis.com/auth/drive.readonly</li>
+						<li>https://www.googleapis.com/auth/drive</li>
 						<li>https://mail.google.com/</li>
+						<li>https://www.googleapis.com/auth/documents</li>
+						<li>https://www.googleapis.com/auth/presentations</li>
+						<li>https://www.googleapis.com/auth/spreadsheets</li>
 					</ul>
 				</li>
 			</ol>
@@ -463,22 +466,25 @@ const Settings = () => {
 			const state = serviceName
 			let authUrl = ""
 
+			// Define scopes required by our default OAuth app
+			const scopes = {
+				gdrive: "https://www.googleapis.com/auth/drive",
+				gcalendar: "https://www.googleapis.com/auth/calendar",
+				gmail: "https://mail.google.com/",
+				gdocs: "https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive",
+				gslides:
+					"https://www.googleapis.com/auth/presentations https://www.googleapis.com/auth/drive",
+				gsheets: "https://www.googleapis.com/auth/spreadsheets",
+				github: "repo user"
+			}
+
+			const scope =
+				scopes[serviceName] ||
+				"https://www.googleapis.com/auth/userinfo.email"
+
 			if (serviceName.startsWith("g")) {
-				const scopes = {
-					gdrive: "https://www.googleapis.com/auth/drive.readonly",
-					gcalendar: "https://www.googleapis.com/auth/calendar",
-					gmail: "https://mail.google.com/",
-					gdocs: "https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive",
-					gslides:
-						"https://www.googleapis.com/auth/presentations https://www.googleapis.com/auth/drive",
-					gsheets: "https://www.googleapis.com/auth/spreadsheets"
-				}
-				const scope =
-					scopes[serviceName] ||
-					"https://www.googleapis.com/auth/userinfo.email"
 				authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=consent&state=${state}`
 			} else if (serviceName === "github") {
-				const scope = "repo user"
 				authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${state}`
 			}
 
@@ -677,7 +683,10 @@ const Settings = () => {
 							<GoogleAuthSettings
 								mode={googleAuthMode}
 								onModeChange={setGoogleAuthMode}
-								onSaveSuccess={() => fetchIntegrations()} // Refetch integrations on save
+								onSaveSuccess={() => {
+									fetchGoogleAuthMode()
+									fetchIntegrations()
+								}}
 							/>
 						)}
 					</section>

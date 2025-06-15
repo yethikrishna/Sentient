@@ -13,27 +13,13 @@ from ..config import MEMORY_MCP_SERVER_URL
 
 logger = logging.getLogger(__name__)
 
-async def get_chat_history_util(user_id: str, db_manager: MongoManager, chat_id_param: Optional[str] = None) -> Tuple[List[Dict[str, Any]], str]:
-    effective_chat_id = chat_id_param
-    if not effective_chat_id:
-        user_profile = await db_manager.get_user_profile(user_id)
-        active_chat_id_from_profile = user_profile.get("userData", {}).get("active_chat_id") if user_profile else None
-        
-        if active_chat_id_from_profile: # type: ignore
-            effective_chat_id = active_chat_id_from_profile
-        else:
-            all_chat_ids = await db_manager.get_all_chat_ids_for_user(user_id)
-            if all_chat_ids:
-                effective_chat_id = all_chat_ids[0] 
-                if user_profile: # type: ignore
-                    await db_manager.update_user_profile(user_id, {"userData.active_chat_id": effective_chat_id})
-            else: 
-                new_chat_id = str(uuid.uuid4())
-                await db_manager.create_new_chat_session(user_id, new_chat_id)
-                await db_manager.update_user_profile(user_id, {"userData.active_chat_id": new_chat_id})
-                effective_chat_id = new_chat_id
-    # type: ignore
-    messages_from_db = await db_manager.get_chat_history(user_id, effective_chat_id)
+async def get_chat_history_util(user_id: str, db_manager: MongoManager, chat_id: str) -> List[Dict[str, Any]]:
+    """
+    Fetches and serializes chat history for a given user and chat ID.
+    """
+    if not chat_id:
+        return []
+    messages_from_db = await db_manager.get_chat_history(user_id, chat_id)
     
     serialized_messages = []
     for m in messages_from_db:
@@ -41,12 +27,12 @@ async def get_chat_history_util(user_id: str, db_manager: MongoManager, chat_id_
             m['timestamp'] = m['timestamp'].isoformat()
         serialized_messages.append(m)
         
-    return [m for m in serialized_messages if m.get("isVisible", True)], effective_chat_id
+    return [m for m in serialized_messages if m.get("isVisible", True)]
 
 
 async def generate_chat_llm_stream(
     user_id: str,
-    active_chat_id: str,
+    chat_id: str,
     user_input: str, 
     username: str,
     db_manager: MongoManager,
@@ -94,8 +80,8 @@ async def generate_chat_llm_stream(
         user_message_payload = {"id": str(uuid.uuid4()), "message": user_input, "isUser": True, "type": "text", "isVisible": True}
         assistant_placeholder_payload = {"id": assistant_message_id, "message": "", "isUser": False, "type": "text", "isVisible": True, "agentsUsed": True}
         
-        await db_manager.add_chat_message(user_id, active_chat_id, user_message_payload)
-        await db_manager.add_chat_message(user_id, active_chat_id, assistant_placeholder_payload)
+        await db_manager.add_chat_message(user_id, chat_id, user_message_payload)
+        await db_manager.add_chat_message(user_id, chat_id, assistant_placeholder_payload)
     except Exception as e:
         logger.error(f"Failed to save initial messages for user {user_id}: {e}", exc_info=True)
         yield {"type": "error", "message": "Failed to save message."}
@@ -103,7 +89,7 @@ async def generate_chat_llm_stream(
 
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue[Optional[Any]] = asyncio.Queue()
-    history_from_db, _ = await get_chat_history_util(user_id, db_manager, active_chat_id)
+    history_from_db = await get_chat_history_util(user_id, db_manager, chat_id)
     qwen_formatted_history = []
     for msg in history_from_db:
         if msg.get("id") == assistant_message_id: continue
@@ -166,7 +152,7 @@ async def generate_chat_llm_stream(
             final_text_content += "\n\n[STREAM STOPPED BY USER]"
         
         update_payload = {"message": final_text_content, "structured_history": assistant_turn_messages, "agentsUsed": True}
-        if final_text_content.strip(): await db_manager.update_chat_message(user_id, active_chat_id, assistant_message_id, update_payload)
+        if final_text_content.strip(): await db_manager.update_chat_message(user_id, chat_id, assistant_message_id, update_payload)
         
         yield {"type": "assistantStream", "token": "", "done": True, "messageId": assistant_message_id}
         await asyncio.to_thread(thread.join)
@@ -186,20 +172,20 @@ def msg_to_str(msg: Dict[str, Any]) -> str:
         return msg.get('content', '')
     return ''
 
-async def process_voice_command(user_id: str, active_chat_id: str, transcribed_text: str, username: str, db_manager: MongoManager) -> Tuple[str, str]:
+async def process_voice_command(user_id: str, chat_id: str, transcribed_text: str, username: str, db_manager: MongoManager) -> Tuple[str, str]:
     assistant_message_id = str(uuid.uuid4())
     logger.info(f"Processing voice command for user {user_id}: '{transcribed_text}'")
 
     try:
         user_message_payload = {"id": str(uuid.uuid4()), "message": transcribed_text, "isUser": True, "type": "text", "isVisible": True}
         assistant_placeholder_payload = {"id": assistant_message_id, "message": "[Thinking...]", "isUser": False, "type": "text", "isVisible": True}
-        await db_manager.add_chat_message(user_id, active_chat_id, user_message_payload)
-        await db_manager.add_chat_message(user_id, active_chat_id, assistant_placeholder_payload)
+        await db_manager.add_chat_message(user_id, chat_id, user_message_payload)
+        await db_manager.add_chat_message(user_id, chat_id, assistant_placeholder_payload)
     except Exception as e:
         logger.error(f"DB Error before voice command processing for {user_id}: {e}", exc_info=True)
         return "I had trouble saving our conversation.", assistant_message_id
 
-    history_from_db, _ = await get_chat_history_util(user_id, db_manager, active_chat_id)
+    history_from_db = await get_chat_history_util(user_id, db_manager, chat_id)
     qwen_formatted_history = []
     for msg in history_from_db:
         if msg.get("id") == assistant_message_id: continue
@@ -250,6 +236,6 @@ async def process_voice_command(user_id: str, active_chat_id: str, transcribed_t
         final_text_response = "I encountered an error while thinking about your request."
 
     update_payload = {"message": final_text_response, "structured_history": final_structured_history, "agentsUsed": True}
-    await db_manager.update_chat_message(user_id, active_chat_id, assistant_message_id, update_payload)
+    await db_manager.update_chat_message(user_id, chat_id, assistant_message_id, update_payload)
 
     return final_text_response, assistant_message_id

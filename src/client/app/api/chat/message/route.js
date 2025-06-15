@@ -13,7 +13,7 @@ export async function POST(request) {
 	}
 
 	try {
-		const { input, enable_internet, enable_weather, enable_news } =
+		const { input, chatId, enable_internet, enable_weather, enable_news } =
 			await request.json()
 		const authHeader = await getBackendAuthHeader()
 
@@ -36,6 +36,7 @@ export async function POST(request) {
 				headers: { "Content-Type": "application/json", ...authHeader },
 				body: JSON.stringify({
 					input,
+					chatId,
 					pricing,
 					credits,
 					enable_internet,

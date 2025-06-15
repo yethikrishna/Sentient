@@ -105,7 +105,7 @@ class AuthHelper:
         payload["user_id"] = user_id 
         return payload
 
-    async def ws_authenticate(self, websocket: WebSocket) -> Optional[str]:
+    async def ws_authenticate_with_data(self, websocket: WebSocket) -> Optional[Dict]:
         try:
             auth_message_str = await websocket.receive_text()
             auth_message = json.loads(auth_message_str)
@@ -124,8 +124,14 @@ class AuthHelper:
                 await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
                 return None
             
+            # Add other data from the auth message to the return dict
+            auth_data = {
+                "user_id": user_id,
+                **{k: v for k, v in auth_message.items() if k not in ["type", "token"]}
+            }
+
             await websocket.send_json({"type": "auth_success", "user_id": user_id})
-            return user_id
+            return auth_data
         except WebSocketDisconnect:
             print(f"[{datetime.datetime.now()}] [WS_AUTH] WebSocket disconnected during auth.")
             return None
@@ -144,6 +150,10 @@ class AuthHelper:
                 await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
             except: pass
             return None
+
+    async def ws_authenticate(self, websocket: WebSocket) -> Optional[str]:
+        auth_data = await self.ws_authenticate_with_data(websocket)
+        return auth_data.get("user_id") if auth_data else None
 
 class PermissionChecker:
     def __init__(self, required_permissions: List[str]):

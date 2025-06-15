@@ -110,6 +110,36 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("GMAIL_MCP_SERVER_URL", "http://localhost:9001/sse")
         }
     },
+    "gdocs": {
+        "display_name": "Google Docs",
+        "description": "Create and manage documents in your Google Docs.",
+        "auth_type": "oauth",
+        "icon": "IconFileText",
+        "mcp_server_config": {
+            "name": "gdocs_server",
+            "url": os.getenv("GDOCS_MCP_SERVER_URL", "http://localhost:9004/sse")
+        }
+    },
+    "gslides": {
+        "display_name": "Google Slides",
+        "description": "Create and manage presentations in Google Slides.",
+        "auth_type": "oauth",
+        "icon": "IconPresentation",
+        "mcp_server_config": {
+            "name": "gslides_server",
+            "url": os.getenv("GSLIDES_MCP_SERVER_URL", "http://localhost:9014/sse")
+        }
+    },
+    "gsheets": {
+        "display_name": "Google Sheets",
+        "description": "Create and manage spreadsheets in Google Sheets.",
+        "auth_type": "oauth",
+        "icon": "IconTable",
+        "mcp_server_config": {
+            "name": "gsheets_server",
+            "url": os.getenv("GSHEETS_MCP_SERVER_URL", "http://localhost:9015/sse")
+        }
+    },
     "slack": { # User-configurable Manual
         "display_name": "Slack",
         "description": "Connect to your Slack workspace to send messages and more.",

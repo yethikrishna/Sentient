@@ -1,5 +1,3 @@
-# server/mcp-hub/gmail/auth.py
-
 import os
 import json
 import base64
@@ -8,14 +6,14 @@ from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.backends import default_backend
 import motor.motor_asyncio
 from google.oauth2.credentials import Credentials
+from google.oauth2 import service_account
 from googleapiclient.discovery import build, Resource
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
 from dotenv import load_dotenv
 from typing import Optional
 
-# Load from main server .env, which is two levels up
-dotenv_path = "server/.env"
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
 load_dotenv(dotenv_path=dotenv_path)
 
 MONGO_URI = os.getenv("MONGO_URI")
@@ -28,7 +26,7 @@ AES_IV: Optional[bytes] = bytes.fromhex(AES_IV_HEX) if AES_IV_HEX and len(AES_IV
 
 def aes_decrypt(encrypted_data: str) -> str:
     if not AES_SECRET_KEY or not AES_IV:
-        raise ValueError("AES encryption keys are not configured in the environment.")
+        raise ValueError("AES encryption keys are not configured.")
     backend = default_backend()
     cipher = Cipher(algorithms.AES(AES_SECRET_KEY), modes.CBC(AES_IV), backend=backend)
     decryptor = cipher.decryptor()
@@ -38,11 +36,9 @@ def aes_decrypt(encrypted_data: str) -> str:
     unpadded_data = unpadder.update(decrypted) + unpadder.finalize()
     return unpadded_data.decode()
 
-# Establish a single, reusable connection to MongoDB
 client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI)
 db = client[MONGO_DB_NAME]
 users_collection = db["user_profiles"]
-
 
 def get_user_id_from_context(ctx: Context) -> str:
     """Extracts the User ID from the 'X-User-ID' header in the HTTP request."""
@@ -54,32 +50,49 @@ def get_user_id_from_context(ctx: Context) -> str:
         raise ToolError("Authentication failed: 'X-User-ID' header is missing.")
     return user_id
 
-
 async def get_google_creds(user_id: str) -> Credentials:
     """Fetches Google OAuth token from MongoDB for a given user_id."""
     user_doc = await users_collection.find_one({"user_id": user_id})
-
     if not user_doc or not user_doc.get("userData"):
         raise ToolError(f"User profile or userData not found for user_id: {user_id}.")
+    
+    user_data = user_doc["userData"]
+    google_auth_config = user_data.get("googleAuth", {})
+    auth_mode = google_auth_config.get("mode", "default")
 
-    gmail_data = user_doc["userData"].get("integrations", {}).get("gmail")
+    if auth_mode == "custom":
+        user_email = user_data.get("personalInfo", {}).get("email")
+        if not user_email:
+            raise ToolError("User email is not available for service account impersonation.")
+        
+        encrypted_creds = google_auth_config.get("encryptedCredentials")
+        if not encrypted_creds:
+            raise ToolError("Custom Google auth mode is selected, but no credentials are provided.")
+        
+        try:
+            decrypted_creds_json = aes_decrypt(encrypted_creds)
+            service_account_info = json.loads(decrypted_creds_json)
+            # Define the scopes required by this specific MCP
+            scopes = ["https://mail.google.com/"]
+            
+            creds = service_account.Credentials.from_service_account_info(
+                service_account_info, scopes=scopes, subject=user_email
+            )
+            return creds
+        except Exception as e:
+            raise ToolError(f"Failed to use custom Google credentials: {e}")
 
-    if not gmail_data or not gmail_data.get("connected") or "credentials" not in gmail_data:
-        raise ToolError(f"Gmail integration not connected or credentials missing for {user_id}.")
+    else: # Default OAuth Flow
+        gmail_data = user_data.get("integrations", {}).get("gmail")
+        if not gmail_data or not gmail_data.get("connected") or "credentials" not in gmail_data:
+            raise ToolError(f"Gmail integration not connected. Please use the default connect flow.")
 
-    try:
-        decrypted_creds_str = aes_decrypt(gmail_data["credentials"])
-        token_info = json.loads(decrypted_creds_str)
-    except Exception as e:
-        raise ToolError(f"Failed to decrypt or parse token for Gmail: {e}")
-
-    if not all(k in token_info for k in ["token", "refresh_token", "client_id", "client_secret", "scopes"]):
-        raise ToolError("Invalid token data in database. Re-authentication is required.")
-
-    return Credentials.from_authorized_user_info(token_info)
-
+        try:
+            decrypted_creds_str = aes_decrypt(gmail_data["credentials"])
+            token_info = json.loads(decrypted_creds_str)
+            return Credentials.from_authorized_user_info(token_info)
+        except Exception as e:
+            raise ToolError(f"Failed to decrypt or parse default OAuth token for Gmail: {e}")
 
 def authenticate_gmail(creds: Credentials) -> Resource:
-    """
-    """
     return build("gmail", "v1", credentials=creds)

@@ -41,9 +41,6 @@ db = client[MONGO_DB_NAME]
 users_collection = db["user_profiles"]
 
 def get_user_id_from_context(ctx: Context) -> str:
-    """
-    Extracts the User ID from the 'X-User-ID' header in the HTTP request.
-    """
     http_request = ctx.get_http_request()
     if not http_request:
         raise ToolError("HTTP request context is not available.")
@@ -53,9 +50,6 @@ def get_user_id_from_context(ctx: Context) -> str:
     return user_id
 
 async def get_google_creds(user_id: str) -> Credentials:
-    """
-    Fetches Google OAuth token from MongoDB for a given user_id.
-    """
     user_doc = await users_collection.find_one({"user_id": user_id})
     if not user_doc or not user_doc.get("userData"):
         raise ToolError(f"User profile or userData not found for user_id: {user_id}.")
@@ -71,13 +65,12 @@ async def get_google_creds(user_id: str) -> Credentials:
         
         encrypted_creds = google_auth_config.get("encryptedCredentials")
         if not encrypted_creds:
-            raise ToolError("Custom Google auth mode is selected, but no credentials are provided.")
+            raise ToolError("Custom Google auth mode is selected, but no credentials are provided for Google Sheets.")
         
         try:
             decrypted_creds_json = aes_decrypt(encrypted_creds)
             service_account_info = json.loads(decrypted_creds_json)
-            # Define the scopes required by this specific MCP
-            scopes = ["https://www.googleapis.com/auth/drive.readonly"]
+            scopes = ["https://www.googleapis.com/auth/spreadsheets"]
             
             creds = service_account.Credentials.from_service_account_info(
                 service_account_info, scopes=scopes, subject=user_email
@@ -86,20 +79,17 @@ async def get_google_creds(user_id: str) -> Credentials:
         except Exception as e:
             raise ToolError(f"Failed to use custom Google credentials: {e}")
 
-    else:  # Default OAuth Flow
-        gdrive_data = user_data.get("integrations", {}).get("gdrive")
-        if not gdrive_data or not gdrive_data.get("connected") or "credentials" not in gdrive_data:
-            raise ToolError(f"Google Drive integration not connected. Please use the default connect flow.")
+    else:
+        gsheets_data = user_data.get("integrations", {}).get("gsheets")
+        if not gsheets_data or not gsheets_data.get("connected") or "credentials" not in gsheets_data:
+            raise ToolError(f"Google Sheets integration not connected. Please use the default connect flow.")
         
         try:
-            decrypted_creds_str = aes_decrypt(gdrive_data["credentials"])
+            decrypted_creds_str = aes_decrypt(gsheets_data["credentials"])
             token_info = json.loads(decrypted_creds_str)
             return Credentials.from_authorized_user_info(token_info)
         except Exception as e:
-            raise ToolError(f"Failed to decrypt or parse default OAuth token for Google Drive: {e}")
+            raise ToolError(f"Failed to decrypt or parse default OAuth token for Google Sheets: {e}")
 
-def authenticate_gdrive(creds: Credentials) -> Resource:
-    """
-    Authenticates and returns the Google Drive API service using provided credentials.
-    """
-    return build("drive", "v3", credentials=creds)
+def authenticate_gsheets(creds: Credentials) -> Resource:
+    return build("sheets", "v4", credentials=creds)

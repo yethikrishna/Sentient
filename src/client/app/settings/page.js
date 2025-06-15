@@ -19,17 +19,28 @@ import {
 	IconChartPie,
 	IconBrain,
 	IconBrandGithub,
-	IconNews
+	IconNews,
+	IconBrandGoogle,
+	IconUser,
+	IconFileText,
+	IconLock,
+	IconLockOpen,
+	IconPresentation,
+	IconTable
 } from "@tabler/icons-react"
 import { useState, useEffect, useCallback } from "react"
 import Sidebar from "@components/Sidebar"
 import React from "react"
+import { cn } from "@utils/cn"
 
 const integrationIcons = {
 	gmail: IconMail,
 	gcalendar: IconCalendarEvent,
 	internet_search: IconWorldSearch,
 	gdrive: IconBrandGoogleDrive,
+	gdocs: IconFileText,
+	gslides: IconPresentation,
+	gsheets: IconTable,
 	slack: IconBrandSlack,
 	notion: IconBrandNotion,
 	accuweather: IconCloud,
@@ -76,20 +87,14 @@ const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {
 	const [credentials, setCredentials] = useState({})
 	const [isSubmitting, setIsSubmitting] = useState(false)
 
-	// This component should only attempt to render if an integration is passed.
 	if (!integration) {
 		return null
 	}
 
-	// Use the hardcoded config based on the integration name
 	const config = MANUAL_INTEGRATION_CONFIGS[integration?.name]
-
-	// Defensively get the fields and instructions.
-	// This ensures they are ALWAYS arrays, preventing crashes if one is missing.
 	const instructions = config?.instructions || []
 	const fields = config?.fields || []
 
-	// If there are no fields to render, there's no point showing the modal.
 	if (fields.length === 0) {
 		console.error(
 			`No fields configured for manual integration: ${integration?.name}`
@@ -106,7 +111,6 @@ const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {
 
 	const handleSubmit = async () => {
 		for (const field of fields) {
-			// Now safe to iterate
 			if (!credentials[field.id]?.trim()) {
 				toast.error(`Please provide the ${field.label}.`)
 				return
@@ -136,7 +140,7 @@ const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {
 			}
 
 			toast.success(`${integration.display_name} connected successfully!`)
-			onSuccess() // This will refetch integrations
+			onSuccess()
 			onClose()
 		} catch (error) {
 			console.error(
@@ -156,40 +160,31 @@ const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {
 					Instructions:
 				</h4>
 				<ol className="list-decimal list-inside space-y-1 text-sm text-gray-400">
-					{instructions.map(
-						(
-							step,
-							index // Safe to map
-						) => (
-							<li key={index}>{step}</li>
-						)
-					)}
+					{instructions.map((step, index) => (
+						<li key={index}>{step}</li>
+					))}
 				</ol>
 			</div>
 			<div className="space-y-3">
-				{fields.map(
-					(
-						field // Safe to map
-					) => (
-						<div key={field.id}>
-							<label
-								htmlFor={field.id}
-								className="block text-sm font-medium text-gray-300 mb-1"
-							>
-								{field.label}
-							</label>
-							<input
-								type={field.type}
-								name={field.id}
-								id={field.id}
-								onChange={handleChange}
-								value={credentials[field.id] || ""}
-								className="w-full bg-neutral-700 border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-lightblue"
-								autoComplete="off"
-							/>
-						</div>
-					)
-				)}
+				{fields.map((field) => (
+					<div key={field.id}>
+						<label
+							htmlFor={field.id}
+							className="block text-sm font-medium text-gray-300 mb-1"
+						>
+							{field.label}
+						</label>
+						<input
+							type={field.type}
+							name={field.id}
+							id={field.id}
+							onChange={handleChange}
+							value={credentials[field.id] || ""}
+							className="w-full bg-neutral-700 border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-lightblue"
+							autoComplete="off"
+						/>
+					</div>
+				))}
 			</div>
 		</div>
 	)
@@ -207,6 +202,192 @@ const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {
 	)
 }
 
+const GoogleAuthSettings = ({ mode, onModeChange, onSaveSuccess }) => {
+	const [credentials, setCredentials] = useState("")
+	const [isSaving, setIsSaving] = useState(false)
+
+	const handleSave = async () => {
+		if (mode === "custom") {
+			try {
+				JSON.parse(credentials)
+			} catch (e) {
+				toast.error(
+					"Invalid JSON. Please paste the entire content of your Service Account key file."
+				)
+				return
+			}
+		}
+
+		setIsSaving(true)
+		try {
+			const res = await fetch("/api/settings/google-auth", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					mode: mode,
+					credentialsJson: mode === "custom" ? credentials : undefined
+				})
+			})
+
+			const data = await res.json()
+			if (!res.ok) {
+				throw new Error(
+					data.detail || "Failed to save Google settings."
+				)
+			}
+			toast.success(
+				data.message || "Google API settings saved successfully!"
+			)
+			setCredentials("") // Clear credentials after successful save
+			onSaveSuccess(mode) // Notify parent of the successful change
+		} catch (error) {
+			toast.error(`Error: ${error.message}`)
+		} finally {
+			setIsSaving(false)
+		}
+	}
+
+	const renderInstructions = () => (
+		<div className="mt-4 text-sm text-gray-400 space-y-3 p-4 bg-neutral-900/50 rounded-lg border border-neutral-700">
+			<h4 className="font-semibold text-gray-200">
+				How to get your Service Account Key:
+			</h4>
+			<ol className="list-decimal list-inside space-y-2">
+				<li>
+					Go to the{" "}
+					<a
+						href="https://console.cloud.google.com/"
+						target="_blank"
+						rel="noopener noreferrer"
+						className="text-lightblue hover:underline"
+					>
+						Google Cloud Console
+					</a>{" "}
+					and create a new project.
+				</li>
+				<li>
+					Enable the APIs you want to use (e.g., Gmail API, Google
+					Drive API, Google Calendar API) in the "APIs & Services"
+					dashboard.
+				</li>
+				<li>
+					Go to "Credentials", click "Create Credentials", and select
+					"Service account".
+				</li>
+				<li>
+					Give the service account a name, grant it appropriate roles
+					(e.g., "Project Viewer"), and click "Done".
+				</li>
+				<li>
+					Find your new service account, go to the "Keys" tab, click
+					"Add Key", choose "Create new key", select "JSON", and
+					download the file.
+				</li>
+				<li>
+					Open the downloaded JSON file and paste its entire content
+					into the text box above.
+				</li>
+				<li className="font-bold text-yellow-400">
+					Important: You must enable{" "}
+					<a
+						href="https://developers.google.com/workspace/guides/configure-domain-wide-delegation"
+						target="_blank"
+						rel="noopener noreferrer"
+						className="text-lightblue hover:underline"
+					>
+						Domain-Wide Delegation
+					</a>{" "}
+					for your service account in your Google Workspace Admin
+					Console. You must grant it the following scopes:
+					<ul className="list-disc list-inside mt-1 pl-4 font-mono text-xs text-gray-300">
+						<li>https://www.googleapis.com/auth/calendar</li>
+						<li>https://www.googleapis.com/auth/drive.readonly</li>
+						<li>https://mail.google.com/</li>
+					</ul>
+				</li>
+			</ol>
+		</div>
+	)
+
+	return (
+		<div className="bg-neutral-800/50 p-4 md:p-6 rounded-lg border border-neutral-700">
+			<div className="flex items-center gap-4">
+				<IconBrandGoogle className="w-8 h-8 text-white" />
+				<div>
+					<h3 className="font-semibold text-white text-lg">
+						Google Project Configuration
+					</h3>
+					<p className="text-gray-400 text-sm">
+						Choose how to authenticate with Google services.
+					</p>
+				</div>
+			</div>
+
+			<div className="mt-6 flex items-center space-x-4">
+				<button
+					onClick={() => onModeChange("default")}
+					className={cn(
+						"flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2",
+						mode === "default"
+							? "bg-lightblue text-white"
+							: "bg-neutral-700 hover:bg-neutral-600"
+					)}
+				>
+					<IconRocket size={16} />
+					Use Our Default Project
+				</button>
+				<button
+					onClick={() => onModeChange("custom")}
+					className={cn(
+						"flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2",
+						mode === "custom"
+							? "bg-green-600 text-white"
+							: "bg-neutral-700 hover:bg-neutral-600"
+					)}
+				>
+					<IconUser size={16} />
+					Use My Own Project
+				</button>
+			</div>
+
+			{mode === "custom" && (
+				<div className="mt-6">
+					<label
+						htmlFor="gcp-credentials"
+						className="block text-sm font-medium text-gray-300 mb-2"
+					>
+						Service Account JSON Key
+					</label>
+					<textarea
+						id="gcp-credentials"
+						rows={8}
+						className="w-full bg-neutral-900 border border-neutral-600 rounded-md p-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 font-mono text-xs"
+						placeholder="Paste the content of your service account JSON file here..."
+						value={credentials}
+						onChange={(e) => setCredentials(e.target.value)}
+					/>
+					{renderInstructions()}
+				</div>
+			)}
+
+			<div className="mt-6 flex justify-end">
+				<button
+					onClick={handleSave}
+					disabled={isSaving}
+					className="flex items-center justify-center gap-2 py-2 px-5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors disabled:opacity-50"
+				>
+					{isSaving ? (
+						<IconLoader className="animate-spin" size={18} />
+					) : (
+						<IconFileText size={18} />
+					)}
+					<span>{isSaving ? "Saving..." : "Save Settings"}</span>
+				</button>
+			</div>
+		</div>
+	)
+}
+
 const Settings = () => {
 	const [userDetails, setUserDetails] = useState({})
 	const [isSidebarVisible, setSidebarVisible] = useState(false)
@@ -219,10 +400,26 @@ const Settings = () => {
 	const [loadingIntegrations, setLoadingIntegrations] = useState(true)
 	const [activeManualIntegration, setActiveManualIntegration] = useState(null)
 	const [processingIntegration, setProcessingIntegration] = useState(null)
+	const [googleAuthMode, setGoogleAuthMode] = useState("default")
+	const [loadingGoogleAuthMode, setLoadingGoogleAuthMode] = useState(true)
+
+	const fetchGoogleAuthMode = useCallback(async () => {
+		setLoadingGoogleAuthMode(true)
+		try {
+			const res = await fetch("/api/settings/google-auth")
+			if (!res.ok)
+				throw new Error("Failed to fetch Google auth settings.")
+			const data = await res.json()
+			setGoogleAuthMode(data.mode || "default")
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setLoadingGoogleAuthMode(false)
+		}
+	}, [])
 
 	const fetchIntegrations = useCallback(async () => {
 		setLoadingIntegrations(true)
-		console.log("Fetching integrations...")
 		try {
 			const response = await fetch("/api/settings/integrations")
 			const data = await response.json()
@@ -236,7 +433,6 @@ const Settings = () => {
 				icon: integrationIcons[ds.name] || IconSettingsCog
 			}))
 
-			// Split integrations into user-configurable and default tools
 			const userConnectable = integrationsWithIcons.filter(
 				(i) => i.auth_type === "oauth" || i.auth_type === "manual"
 			)
@@ -248,8 +444,6 @@ const Settings = () => {
 		} catch (error) {
 			console.error("Error fetching integrations:", error)
 			toast.error(`Error fetching integrations: ${error.message}`)
-			setUserIntegrations([])
-			setDefaultTools([])
 		} finally {
 			setLoadingIntegrations(false)
 		}
@@ -270,18 +464,21 @@ const Settings = () => {
 			let authUrl = ""
 
 			if (serviceName.startsWith("g")) {
-				// Google services
 				const scopes = {
 					gdrive: "https://www.googleapis.com/auth/drive.readonly",
 					gcalendar: "https://www.googleapis.com/auth/calendar",
-					gmail: "https://mail.google.com/"
+					gmail: "https://mail.google.com/",
+					gdocs: "https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive",
+					gslides:
+						"https://www.googleapis.com/auth/presentations https://www.googleapis.com/auth/drive",
+					gsheets: "https://www.googleapis.com/auth/spreadsheets"
 				}
 				const scope =
 					scopes[serviceName] ||
 					"https://www.googleapis.com/auth/userinfo.email"
 				authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=consent&state=${state}`
 			} else if (serviceName === "github") {
-				const scope = "repo user" // Request repo and user access
+				const scope = "repo user"
 				authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${state}`
 			}
 
@@ -349,7 +546,6 @@ const Settings = () => {
 			setUserDetails(data || {})
 		} catch (error) {
 			toast.error(`Error fetching user details: ${error.message}`)
-			console.error("Error fetching user details:", error)
 		}
 	}, [])
 
@@ -361,7 +557,6 @@ const Settings = () => {
 			setPricing(data.pricing || "free")
 		} catch (error) {
 			toast.error(`Error fetching pricing plan: ${error.message}`)
-			console.error("Error fetching pricing plan:", error)
 		}
 	}, [])
 
@@ -375,7 +570,6 @@ const Settings = () => {
 			setReferrerStatus(data.referrerStatus || false)
 		} catch (error) {
 			toast.error(`Error fetching referral details: ${error.message}`)
-			console.error("Error fetching referral details:", error)
 		}
 	}, [])
 
@@ -394,27 +588,24 @@ const Settings = () => {
 				console.log("User data fetched successfully.")
 			}
 		} catch (error) {
-			console.error("Error fetching user data:", error)
 			toast.error(`Failed to fetch user data: ${error.message}`)
 		}
 	}, [])
 
 	useEffect(() => {
-		console.log("Initial useEffect running...")
 		fetchData()
 		fetchUserDetails()
 		fetchPricingPlan()
 		fetchReferralDetails()
 		fetchIntegrations()
+		fetchGoogleAuthMode()
 
-		// Check for OAuth callback results in URL
 		const urlParams = new URLSearchParams(window.location.search)
 		const success = urlParams.get("integration_success")
 		const error = urlParams.get("integration_error")
 
 		if (success) {
 			toast.success(`Successfully connected to ${success}!`)
-			// Clean the URL
 			window.history.replaceState({}, document.title, "/settings")
 		} else if (error) {
 			toast.error(`Connection failed: ${error}`)
@@ -425,7 +616,8 @@ const Settings = () => {
 		fetchUserDetails,
 		fetchPricingPlan,
 		fetchReferralDetails,
-		fetchIntegrations
+		fetchIntegrations,
+		fetchGoogleAuthMode
 	])
 
 	return (
@@ -470,10 +662,26 @@ const Settings = () => {
 							<IconGift size={18} />
 							<span>Refer Sentient</span>
 						</button>
-						{/* "Check for Updates" button removed as it's an Electron-specific feature */}
 					</div>
 				</div>
 				<div className="w-full max-w-5xl mx-auto space-y-10 flex-grow">
+					<section>
+						<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-neutral-700 pb-2">
+							API & Service Configuration
+						</h2>
+						{loadingGoogleAuthMode ? (
+							<div className="flex justify-center items-center py-10">
+								<IconLoader className="w-8 h-8 animate-spin text-lightblue" />
+							</div>
+						) : (
+							<GoogleAuthSettings
+								mode={googleAuthMode}
+								onModeChange={setGoogleAuthMode}
+								onSaveSuccess={() => fetchIntegrations()} // Refetch integrations on save
+							/>
+						)}
+					</section>
+
 					<section>
 						<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-neutral-700 pb-2">
 							Connected Apps & Integrations
@@ -491,6 +699,10 @@ const Settings = () => {
 										const isProcessing =
 											processingIntegration ===
 											integration.name
+										const isGoogleServiceInCustomMode =
+											integration.name.startsWith("g") &&
+											googleAuthMode === "custom"
+
 										return (
 											<div
 												key={integration.name}
@@ -511,28 +723,35 @@ const Settings = () => {
 														</p>
 													</div>
 												</div>
-												<div className="w-36 text-right">
-													{isProcessing ? (
+												<div className="w-40 text-right">
+													{isGoogleServiceInCustomMode ? (
+														<div className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-green-600/20 text-green-400 text-xs font-medium cursor-default">
+															<IconLockOpen
+																size={14}
+															/>
+															<span>
+																Managed by
+																Custom Project
+															</span>
+														</div>
+													) : isProcessing ? (
 														<IconLoader className="w-6 h-6 animate-spin text-lightblue ml-auto" />
 													) : integration.connected ? (
-														integration.auth_type !==
-															"builtin" && (
-															<button
-																onClick={() =>
-																	handleDisconnect(
-																		integration.name
-																	)
-																}
-																className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-red-600/20 hover:bg-red-600/40 text-red-400 text-sm font-medium transition-colors"
-															>
-																<IconPlugOff
-																	size={16}
-																/>
-																<span>
-																	Disconnect
-																</span>
-															</button>
-														)
+														<button
+															onClick={() =>
+																handleDisconnect(
+																	integration.name
+																)
+															}
+															className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-red-600/20 hover:bg-red-600/40 text-red-400 text-sm font-medium transition-colors"
+														>
+															<IconPlugOff
+																size={16}
+															/>
+															<span>
+																Disconnect
+															</span>
+														</button>
 													) : (
 														<button
 															onClick={() =>

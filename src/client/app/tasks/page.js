@@ -197,15 +197,23 @@ const Tasks = () => {
 			if (!response.ok) throw new Error("Failed to fetch available tools")
 			const data = await response.json()
 			const integrations = data.integrations || []
-			const connectable = integrations.filter(
-				(i) =>
-					(i.auth_type === "oauth" || i.auth_type === "manual") &&
-					i.connected
-			)
-			const builtins = integrations.filter(
-				(i) => i.auth_type === "builtin"
-			)
-			setAvailableTools([...connectable, ...builtins])
+
+			// This logic should ideally match the backend's logic for determining availability
+			const googleAuthResponse = await fetch("/api/settings/google-auth")
+			const googleAuthData = await googleAuthResponse.json()
+			const googleAuthMode = googleAuthData.mode || "default"
+
+			const tools = integrations
+				.filter((i) => {
+					const isGoogleTool = i.name.startsWith("g")
+					if (isGoogleTool) {
+						return googleAuthMode === "custom" || i.connected
+					}
+					return i.auth_type === "builtin" || i.connected
+				})
+				.map((i) => ({ name: i.name, display_name: i.display_name }))
+
+			setAvailableTools(tools)
 		} catch (err) {
 			toast.error(err.message)
 			setAvailableTools([])
@@ -367,7 +375,8 @@ const Tasks = () => {
 			})
 
 			if (!response.ok) {
-				throw new Error(data.error || "Failed to delete task")
+				const errorData = await response.json()
+				throw new Error(errorData.error || "Failed to delete task")
 			}
 			toast.success("Task deleted successfully!")
 			setViewingTask(null) // Close modal if deleted task was being viewed
@@ -397,7 +406,6 @@ const Tasks = () => {
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ taskId })
 			})
-			const data = await response.json()
 			if (!response.ok) {
 				const errorData = await response.json()
 				// Handle the new specific error for missing integrations

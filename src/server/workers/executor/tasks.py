@@ -96,6 +96,7 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     # 1. Determine available tools for the user
     user_profile = await db.user_profiles.find_one({"user_id": user_id})
     user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
+    google_auth_mode = user_profile.get("userData", {}).get("googleAuth", {}).get("mode", "default")
     
     active_mcp_servers = {}
     for service_name, config in INTEGRATIONS_CONFIG.items():
@@ -106,12 +107,16 @@ async def async_execute_task_plan(task_id: str, user_id: str):
         if service_name == "progress_updater":
              active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
              continue
-             
-        if config["auth_type"] == "builtin":
+        
+        is_google_service = service_name.startswith('g')
+        is_available_via_custom = is_google_service and google_auth_mode == 'custom'
+        
+        is_builtin = config.get("auth_type") == "builtin"
+        is_connected_via_oauth = user_integrations.get(service_name, {}).get("connected", False)
+
+        if is_builtin or is_connected_via_oauth or is_available_via_custom:
             active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
-        elif config["auth_type"] in ["oauth", "manual"] and user_integrations.get(service_name, {}).get("connected"):
-            active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
-    
+
     tools_config = [{"mcpServers": active_mcp_servers}]
     logger.info(f"Task {task_id}: Executor configured with tools: {list(active_mcp_servers.keys())}")
 

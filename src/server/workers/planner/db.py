@@ -18,21 +18,39 @@ class PlannerMongoManager:
         logger.info("PlannerMongoManager initialized.")
 
     async def get_available_tools(self, user_id: str) -> List[str]:
-        """Fetches the names of tools the user has connected."""
+        """
+        Fetches the names of tools the user can actually use, based on their
+        connected integrations and Google Auth mode.
+        """
         user_profile = await self.user_profiles_collection.find_one({"user_id": user_id})
         if not user_profile:
             return []
         
-        user_integrations = user_profile.get("userData", {}).get("integrations", {})
+        user_data = user_profile.get("userData", {})
+        user_integrations = user_data.get("integrations", {})
+        google_auth_mode = user_data.get("googleAuth", {}).get("mode", "default")
+        
         available_tools = []
         
         for name, config in INTEGRATIONS_CONFIG.items():
-            is_connected = user_integrations.get(name, {}).get("connected", False)
-            is_builtin = config.get("auth_type") == "builtin"
-            if is_connected or is_builtin:
+            is_google_service = name.startswith('g')
+            
+            # If custom Google project is used, all Google tools are considered available
+            if is_google_service and google_auth_mode == 'custom':
                 available_tools.append(name)
-        
-        return available_tools
+                continue
+
+            # If it's a built-in tool, it's always available
+            if config.get("auth_type") == "builtin":
+                available_tools.append(name)
+                continue
+
+            # For default OAuth/manual, check if it's connected
+            if user_integrations.get(name, {}).get("connected", False):
+                available_tools.append(name)
+                
+        # Return a unique list of tools
+        return list(set(available_tools))
 
     async def save_plan_as_task(self, user_id: str, description: str, plan: list, original_context: dict, source_event_id: str):
         """Saves a generated plan to the tasks collection for user approval."""

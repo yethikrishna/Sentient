@@ -140,6 +140,16 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("GSHEETS_MCP_SERVER_URL", "http://localhost:9015/sse")
         }
     },
+    "gmaps": {
+        "display_name": "Google Maps",
+        "description": "Search for places and get directions.",
+        "auth_type": "oauth",
+        "icon": "IconMapPin",
+        "mcp_server_config": {
+            "name": "gmaps_server",
+            "url": os.getenv("GMAPS_MCP_SERVER_URL", "http://localhost:9016/sse")
+        }
+    },
     "slack": { # User-configurable Manual
         "display_name": "Slack",
         "description": "Connect to your Slack workspace to send messages and more.",

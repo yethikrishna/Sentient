@@ -1,4 +1,3 @@
-// src/client/app/chat/[[...chatId]]/page.js
 "use client"
 import React, { useState, useEffect, useRef, useCallback, use } from "react"
 import { useRouter } from "next/navigation"
@@ -23,7 +22,8 @@ import {
 	IconFileText,
 	IconPresentation,
 	IconTable,
-	IconMessageOff
+	IconMessageOff,
+	IconMap
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import GmailSearchResults from "@components/agents/GmailSearchResults"
@@ -65,6 +65,7 @@ const Chat = ({ params }) => {
 	const [isInternetEnabled, setInternetEnabled] = useState(false)
 	const [isWeatherEnabled, setWeatherEnabled] = useState(false)
 	const [isNewsEnabled, setNewsEnabled] = useState(false)
+	const [isMapsEnabled, setMapsEnabled] = useState(false)
 
 	// --- Refs ---
 	const textareaRef = useRef(null)
@@ -270,7 +271,8 @@ const Chat = ({ params }) => {
 					chatId: currentChatId,
 					enable_internet: isInternetEnabled,
 					enable_weather: isWeatherEnabled,
-					enable_news: isNewsEnabled
+					enable_news: isNewsEnabled,
+					enable_maps: isMapsEnabled
 				}),
 				signal: abortControllerRef.current.signal
 			})
@@ -695,6 +697,26 @@ const Chat = ({ params }) => {
 														checked={isNewsEnabled}
 														onCheckedChange={
 															setNewsEnabled
+														}
+													/>
+												</label>
+												<label
+													htmlFor="maps-toggle"
+													className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
+												>
+													<IconMap
+														size={16}
+														className={
+															isMapsEnabled
+																? "text-lightblue"
+																: ""
+														}
+													/>
+													<span>Maps</span>
+													<Switch
+														checked={isMapsEnabled}
+														onCheckedChange={
+															setMapsEnabled
 														}
 													/>
 												</label>

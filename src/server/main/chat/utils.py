@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Tuple, AsyncGenerator, Optional
 
 from ..db import MongoManager
 from ..llm import get_qwen_assistant
-from ..config import MEMORY_MCP_SERVER_URL
+from ..config import MEMORY_MCP_SERVER_URL, INTEGRATIONS_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -39,13 +39,12 @@ async def generate_chat_llm_stream(
     assistant_message_id_override: Optional[str] = None,
     enable_internet: bool = False,
     enable_weather: bool = False,
-    enable_news: bool = False
+    enable_news: bool = False,
+    enable_maps: bool = False
     ) -> AsyncGenerator[Dict[str, Any], None]:
     assistant_message_id = assistant_message_id_override or str(uuid.uuid4())
 
     try:
-        from ..config import INTEGRATIONS_CONFIG
-
         active_mcp_servers = {}
 
         # Always connect memory and chat tools
@@ -55,25 +54,20 @@ async def generate_chat_llm_stream(
                 mcp_config = config["mcp_server_config"]
                 active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
 
-        # Conditionally connect internet search
-        if enable_internet:
-            config = INTEGRATIONS_CONFIG.get("internet_search")
-            if config and "mcp_server_config" in config:
-                mcp_config = config["mcp_server_config"]
-                active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
+        # Conditionally connect tools based on toggles
+        tool_flags = {
+            "internet_search": enable_internet,
+            "accuweather": enable_weather,
+            "news": enable_news,
+            "gmaps": enable_maps
+        }
 
-        # Conditionally connect weather
-        if enable_weather:
-            config = INTEGRATIONS_CONFIG.get("accuweather")
-            if config and "mcp_server_config" in config:
-                mcp_config = config["mcp_server_config"]
-                active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
-
-        if enable_news:
-            config = INTEGRATIONS_CONFIG.get("news")
-            if config and "mcp_server_config" in config:
-                mcp_config = config["mcp_server_config"]
-                active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
+        for service_name, is_enabled in tool_flags.items():
+            if is_enabled:
+                config = INTEGRATIONS_CONFIG.get(service_name)
+                if config and "mcp_server_config" in config:
+                    mcp_config = config["mcp_server_config"]
+                    active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
 
         tools = [{"mcpServers": active_mcp_servers}]
 
@@ -106,11 +100,12 @@ async def generate_chat_llm_stream(
                     f"You are a helpful AI assistant named Sentient. The user's name is {username}. The current date is {datetime.datetime.now().strftime('%Y-%m-%d')}.\n\n"
                     "You have access to a few tools:\n"
                     "- Use memory tools (`search_memories`, `save_long_term_fact`, etc.) to remember and recall information about the user.\n"
-                    "- If the user asks you to perform an action (e.g., 'send an email', 'create a presentation'), use the `create_task_from_description` tool to hand it off to the planning system. Do not try to execute it yourself.\n"
+                    "- If the user asks for an action to be performed (e.g., 'send an email', 'create a presentation'), use the `create_task_from_description` tool to hand it off to the planning system. Do not try to execute it yourself.\n"
                     "- You can check the status of a task with `get_task_status`.\n"
                     f"- Internet search is currently {'ENABLED' if enable_internet else 'DISABLED'}. You can use it to find real-time information if enabled.\n"
                     f"- Weather information is currently {'ENABLED' if enable_weather else 'DISABLED'}.\n"
-                    f"- News headlines and articles are currently {'ENABLED' if enable_news else 'DISABLED'}.\n\n"
+                    f"- News headlines and articles are currently {'ENABLED' if enable_news else 'DISABLED'}.\n"
+                    f"- Google Maps for places and directions is currently {'ENABLED' if enable_maps else 'DISABLED'}.\n\n"
                     "Be conversational and helpful."
                 )
                 qwen_assistant = get_qwen_assistant(system_message=system_prompt, function_list=tools)

@@ -1,19 +1,18 @@
 // src/client/utils/webRTCClient.js
-// src/client/utils/webRTCClient.js
 export class WebRTCClient {
 	peerConnection = null
 	mediaStream = null
 	dataChannel = null
 	options
+	webrtcId = null
 	audioContext = null
 	analyser = null
 	dataArray = null
 	animationFrameId = null
-	selectedAudioInputDeviceId = null // Store the selected device ID
 
 	signalingServerUrl =
 		(process.env.NEXT_PUBLIC_APP_SERVER_URL || "http://localhost:5000") +
-		"/voice/offer"
+		"/webrtc/offer"
 
 	constructor(options = {}) {
 		this.options = options
@@ -22,8 +21,7 @@ export class WebRTCClient {
 		)
 	}
 
-	async connect(deviceId = null) {
-		// Accept deviceId
+	async connect(deviceId = null, token, chatId) {
 		try {
 			if (
 				this.peerConnection &&
@@ -33,9 +31,11 @@ export class WebRTCClient {
 				console.warn("[WebRTCClient] Already connected or connecting.")
 				return
 			}
-			this.selectedAudioInputDeviceId = deviceId // Store for potential use
+
+			this.webrtcId =
+				"client_" + Math.random().toString(36).substring(2, 9)
 			console.log(
-				`[WebRTCClient] Attempting to connect using deviceId: ${deviceId || "default"}`
+				`[WebRTCClient] Attempting to connect with webrtcId: ${this.webrtcId}, deviceId: ${deviceId || "default"}`
 			)
 
 			this.peerConnection = new RTCPeerConnection({
@@ -45,18 +45,12 @@ export class WebRTCClient {
 			try {
 				// Use the selected deviceId if provided
 				const constraints = {
-					audio: deviceId
-						? {
-								deviceId: { exact: deviceId },
-								sampleRate: 16000,
-								echoCancellation: true,
-								noiseSuppression: true
-							}
-						: {
-								sampleRate: 16000,
-								echoCancellation: true,
-								noiseSuppression: true
-							},
+					audio: {
+						...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+						sampleRate: 16000,
+						echoCancellation: true,
+						noiseSuppression: true
+					},
 					video: false
 				}
 				this.mediaStream =
@@ -78,7 +72,7 @@ export class WebRTCClient {
 					mediaError.name === "NotFoundError" ||
 					mediaError.name === "DevicesNotFoundError"
 				) {
-					throw new Error(
+					throw new Error( // eslint-disable-line
 						"Selected microphone not found or no microphone detected. Please check your microphone settings and try again."
 					)
 				} else if (mediaError.name === "OverconstrainedError") {
@@ -192,14 +186,15 @@ export class WebRTCClient {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
-					Accept: "application/json"
+					Accept: "application/json",
+					Authorization: `Bearer ${token}` // Add auth token to header
 				},
 				mode: "cors",
 				body: JSON.stringify({
 					sdp: offer.sdp,
 					type: offer.type,
-					webrtc_id:
-						"client_" + Math.random().toString(36).substring(2, 9)
+					webrtc_id: this.webrtcId,
+					metadata: { chatId: chatId } // Pass chatId in metadata
 				})
 			})
 

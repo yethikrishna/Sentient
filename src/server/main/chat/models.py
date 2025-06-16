@@ -10,6 +10,7 @@ class ChatMessageInput(BaseModel):
     enable_weather: Optional[bool] = False
     enable_news: Optional[bool] = False
     enable_maps: Optional[bool] = False
+    enable_shopping: Optional[bool] = False
 
 class ChatHistoryRequest(BaseModel):
     chatId: Any

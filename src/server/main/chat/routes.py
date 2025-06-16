@@ -107,11 +107,13 @@ async def chat_endpoint(
                 user_id,
                 chat_id, # type: ignore
                 request_body.input,
-                username, 
+                username,
                 mongo_manager,
                 enable_internet=request_body.enable_internet,
                 enable_weather=request_body.enable_weather,
-                enable_news=request_body.enable_news
+                enable_news=request_body.enable_news,
+                enable_maps=request_body.enable_maps,
+                enable_shopping=request_body.enable_shopping
             ):
                 if not event: continue # Skip empty events
                 yield json.dumps(event) + "\n"

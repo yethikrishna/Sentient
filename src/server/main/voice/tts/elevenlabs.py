@@ -14,11 +14,11 @@ class ElevenLabsTTS(BaseTTS):
         if not ELEVENLABS_API_KEY:
             logger.error("ELEVENLABS_API_KEY environment variable not set.")
             raise ValueError("ELEVENLABS_API_KEY environment variable not set for ElevenLabsTTS.")
-        
-        self.client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
+
+        self.client = ElevenLabs(api_key=ELEVENLABS_API_KEY, timeout=30.0)
         # Default voice "Rachel" ID: JBFqnCBsd6RMkjVDRZzb
         self.voice_id = voice_id or "JBFqnCBsd6RMkjVDRZzb" 
-        self.model_id = model_id or "eleven_multilingual_v2" 
+        self.model_id = model_id or "eleven_multilingual_v2"
         logger.info(f"ElevenLabs TTS initialized with voice_id: {self.voice_id}, model_id: {self.model_id}")
 
     async def stream_tts(self, text: str, options: TTSOptionsBase = None) -> AsyncGenerator[bytes, None]:

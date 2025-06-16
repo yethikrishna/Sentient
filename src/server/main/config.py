@@ -283,6 +283,7 @@ TTS_PROVIDER = os.getenv("TTS_PROVIDER", "ORPHEUS") # Options: "ORPHEUS", "ELEVE
 
 # --- Service-Specific API Keys and Paths ---
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY") # Used for both STT and TTS from ElevenLabs
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb") # Default to Rachel
 
 # For Orpheus (Dev TTS)
 ORPHEUS_MODEL_PATH = os.getenv("ORPHEUS_MODEL_PATH", os.path.join(os.path.dirname(__file__), "..", "legacy", "voice", "models", "orpheus-3b-0.1-ft-q4_k_m.gguf"))

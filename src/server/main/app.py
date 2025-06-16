@@ -13,11 +13,11 @@ import httpx
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastrtc.stream import Body as FastRTCBody
 
 from .config import (
-    STT_PROVIDER, TTS_PROVIDER, ELEVENLABS_API_KEY,
-    FASTER_WHISPER_MODEL_SIZE, FASTER_WHISPER_DEVICE, FASTER_WHISPER_COMPUTE_TYPE,
-    APP_SERVER_PORT
+    STT_PROVIDER, TTS_PROVIDER, ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID,
+    FASTER_WHISPER_MODEL_SIZE, FASTER_WHISPER_DEVICE, FASTER_WHISPER_COMPUTE_TYPE, APP_SERVER_PORT
 )
 from .dependencies import mongo_manager
 from .voice.stt import BaseSTT, FasterWhisperSTT, ElevenLabsSTT
@@ -29,6 +29,8 @@ from .voice.routes import router as voice_router
 from .memory.routes import router as memory_router
 from .integrations.routes import router as integrations_router
 from .misc.routes import router as misc_router
+from .voice.stream_handler import stream as voice_stream, user_context_cache
+from .auth.utils import PermissionChecker
 from .agents.routes import router as agents_router
 from .memory.dependencies import initialize_memory_managers, close_memory_managers
 
@@ -73,7 +75,7 @@ def initialize_tts():
         if not ELEVENLABS_API_KEY:
             logger.error("ELEVENLABS_API_KEY not set for TTS.")
         else:
-            tts_model_instance = ElevenLabsTTSImpl()
+            tts_model_instance = ElevenLabsTTSImpl(voice_id=ELEVENLABS_VOICE_ID)
     else:
         logger.warning(f"Invalid TTS_PROVIDER: '{TTS_PROVIDER}'. No TTS model loaded.")
 
@@ -111,6 +113,19 @@ app.include_router(notifications_router)
 app.include_router(integrations_router)
 app.include_router(misc_router)
 app.include_router(agents_router)
+
+# --- WebRTC Endpoint ---
+# This endpoint is authenticated using FastAPI's dependency injection.
+# It acts as a wrapper around the fastRTC handler to inject user context.
+@app.post("/webrtc/offer", include_in_schema=False)
+async def webrtc_offer_endpoint(
+    body: FastRTCBody,
+    user_id: str = Depends(PermissionChecker(required_permissions=["read:chat", "write:chat"]))
+):
+    webrtc_id = body.webrtc_id
+    chat_id = body.metadata.get("chatId") if body.metadata else None
+    user_context_cache[webrtc_id] = {"user_id": user_id, "chat_id": chat_id}
+    return await voice_stream.handle_offer(body, voice_stream.set_additional_outputs(webrtc_id))
 
 @app.get("/", tags=["General"])
 async def root():

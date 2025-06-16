@@ -1,4 +1,3 @@
-# src/server/main/chat/models.py
 from pydantic import BaseModel, Field
 from typing import Optional, Any
 
@@ -10,6 +9,7 @@ class ChatMessageInput(BaseModel):
     enable_internet: Optional[bool] = False
     enable_weather: Optional[bool] = False
     enable_news: Optional[bool] = False
+    enable_maps: Optional[bool] = False
 
 class ChatHistoryRequest(BaseModel):
     chatId: Any

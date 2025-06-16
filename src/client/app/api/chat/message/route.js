@@ -1,4 +1,3 @@
-// src/client/app/api/chat/message/route.js
 import { NextResponse } from "next/server"
 import { auth0 } from "@lib/auth0"
 import { getBackendAuthHeader } from "@lib/auth0"
@@ -13,8 +12,14 @@ export async function POST(request) {
 	}
 
 	try {
-		const { input, chatId, enable_internet, enable_weather, enable_news } =
-			await request.json()
+		const {
+			input,
+			chatId,
+			enable_internet,
+			enable_weather,
+			enable_news,
+			enable_maps
+		} = await request.json()
 		const authHeader = await getBackendAuthHeader()
 
 		// Fetch user pricing/credits to pass to the backend
@@ -41,7 +46,8 @@ export async function POST(request) {
 					credits,
 					enable_internet,
 					enable_weather,
-					enable_news
+					enable_news,
+					enable_maps
 				}),
 				// IMPORTANT: duplex must be set to 'half' to stream response body in Next.js Edge/Node runtime
 				duplex: "half"

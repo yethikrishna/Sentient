@@ -75,6 +75,7 @@ const Chat = ({ params }) => {
 	const backgroundCircleProviderRef = useRef(null)
 	const ringtoneAudioRef = useRef(null)
 	const connectedAudioRef = useRef(null)
+	const remoteAudioRef = useRef(null) // To play the AI's voice
 	const abortControllerRef = useRef(null)
 
 	// --- Handlers ---
@@ -143,6 +144,17 @@ const Chat = ({ params }) => {
 		}
 	}, [])
 
+	// This new handler will be passed to the WebRTC client to attach the remote audio stream
+	const handleRemoteAudioStream = useCallback((stream) => {
+		if (remoteAudioRef.current) {
+			console.log("Attaching remote audio stream to audio element.")
+			remoteAudioRef.current.srcObject = stream
+			remoteAudioRef.current
+				.play()
+				.catch((e) => console.error("Error playing remote audio:", e))
+		}
+	}, [])
+
 	const handleStartVoice = async () => {
 		if (
 			connectionStatus !== "disconnected" ||
@@ -164,7 +176,8 @@ const Chat = ({ params }) => {
 			await backgroundCircleProviderRef.current?.connect(
 				selectedAudioInputDevice,
 				accessToken,
-				currentChatId
+				currentChatId,
+				handleRemoteAudioStream // Pass the stream handler
 			)
 		} catch (error) {
 			toast.error(
@@ -488,6 +501,7 @@ const Chat = ({ params }) => {
 										onStatusChange={handleStatusChange}
 										onEvent={handleVoiceEvent}
 										connectionStatusProp={connectionStatus}
+										onAudioStream={handleRemoteAudioStream}
 									/>
 									<div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-none">
 										<div className="pointer-events-auto flex flex-col items-center gap-4">
@@ -893,6 +907,8 @@ const Chat = ({ params }) => {
 				src="/audio/connected.mp3"
 				preload="auto"
 			></audio>
+			{/* This audio element will play the remote stream from the server (the AI's voice) */}
+			<audio ref={remoteAudioRef} autoPlay></audio>
 		</div>
 	)
 }

@@ -10,6 +10,9 @@ python-dotenv
 # Authentication & Security
 python-jose[cryptography]
 cryptography
+aiortc
+aioice>=0.10.1
+av
 
 # HTTP & Async Networking
 httpx
@@ -41,7 +44,8 @@ kafka-python
 celery
 redis
 
-
+# Voice Mode
+fastrtc
 # llama-cpp-python
 # snac
 # pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/<cuda-version>

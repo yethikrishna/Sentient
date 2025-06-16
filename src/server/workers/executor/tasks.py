@@ -12,7 +12,7 @@ from server.workers.utils.api_client import notify_user
 
 # Load environment variables for the worker
 from server.main.config import (
-    MONGO_URI, MONGO_DB_NAME, INTEGRATIONS_CONFIG,
+    MONGO_URI, MONGO_DB_NAME, INTEGRATIONS_CONFIG, LLM_PROVIDER,
     OLLAMA_BASE_URL, OLLAMA_MODEL_NAME
 )
 
@@ -20,11 +20,18 @@ from server.main.config import (
 logger = logging.getLogger(__name__)
 
 # --- LLM Config for Executor ---
-llm_cfg = {
-    'model': OLLAMA_MODEL_NAME,
-    'model_server': f"{OLLAMA_BASE_URL.rstrip('/')}/v1/",
-    'api_key': 'ollama', # Ollama doesn't require a key
-}
+if LLM_PROVIDER == "OLLAMA":
+    llm_cfg = {
+        'model': OLLAMA_MODEL_NAME,
+        'model_server': f"{OLLAMA_BASE_URL.rstrip('/')}/v1/",
+        'api_key': 'ollama', # Ollama doesn't require a key
+    }
+elif LLM_PROVIDER == "OPENROUTER":
+    from server.main.config import OPENROUTER_API_KEY, OPENROUTER_MODEL_NAME
+    llm_cfg = {
+        "model": OPENROUTER_MODEL_NAME, "api_key": OPENROUTER_API_KEY
+    }
+
 
 # --- Database Connection within Celery Task ---
 # Celery tasks run in a separate process, so they need their own DB connection.

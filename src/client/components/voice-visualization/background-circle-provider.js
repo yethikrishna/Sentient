@@ -9,11 +9,11 @@ import {
 	forwardRef
 } from "react"
 import { VoiceBlobs } from "@components/voice-visualization/VoiceBlobs"
-import { WebSocketClient } from "@utils/webSocketAudioClient"
+import { WebRTCClient } from "@utils/webRTCClient" // Use WebRTCClient instead
 import React from "react"
 
 const BackgroundCircleProviderComponent = (
-	{ onStatusChange, onEvent, connectionStatusProp },
+	{ onStatusChange, onEvent, connectionStatusProp, onAudioStream },
 	ref
 ) => {
 	const [voiceClient, setVoiceClient] = useState(null)
@@ -46,8 +46,12 @@ const BackgroundCircleProviderComponent = (
 			setInternalStatus("disconnected")
 			setAudioLevel(0)
 			onStatusChange?.("disconnected")
+			onEvent?.({
+				type: "error",
+				message: error.message || "Connection failed"
+			}) // Pass error to UI
 		},
-		[onStatusChange]
+		[onStatusChange, onEvent]
 	)
 
 	const handleMessage = useCallback(
@@ -62,20 +66,22 @@ const BackgroundCircleProviderComponent = (
 	}, [])
 
 	useImperativeHandle(ref, () => ({
-		connect: async (deviceId, token) => {
+		connect: async (deviceId, token, chatId) => {
+			// Accept chatId
 			if (voiceClient) {
 				console.log(
 					"[Provider] Disconnecting existing voice client first."
 				)
-				voiceClient.disconnect()
+				await voiceClient.disconnect()
 			}
-			console.log("[Provider] Creating new VoiceClient")
-			const client = new WebSocketClient({
+			console.log("[Provider] Creating new WebRTCClient")
+			const client = new WebRTCClient({
 				onConnected: handleConnected,
 				onDisconnected: handleDisconnected,
 				onConnectError: handleConnectError,
 				onMessage: handleMessage,
-				onAudioLevel: handleAudioLevelUpdate
+				onAudioLevel: handleAudioLevelUpdate,
+				onAudioStream: onAudioStream // Pass the remote stream handler
 			})
 			setVoiceClient(client)
 
@@ -84,7 +90,8 @@ const BackgroundCircleProviderComponent = (
 				setInternalStatus("connecting")
 				onStatusChange?.("connecting")
 				try {
-					await client.connect(deviceId, token) // Pass token to client
+					// Pass token and chatId to the WebRTC client's connect method
+					await client.connect(deviceId, token, chatId)
 				} catch (error) {
 					console.error(
 						"[Provider] Error during connect() call:",

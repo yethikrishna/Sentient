@@ -1,0 +1,11 @@
+# Core framework
+fastmcp
+
+# For loading .env files
+python-dotenv
+
+# HTTP and async client for making API requests
+httpx
+
+# For connecting to MongoDB
+motor

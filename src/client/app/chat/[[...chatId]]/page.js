@@ -23,7 +23,8 @@ import {
 	IconPresentation,
 	IconTable,
 	IconMessageOff,
-	IconMap
+	IconMap,
+	IconShoppingCart
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import GmailSearchResults from "@components/agents/GmailSearchResults"
@@ -66,6 +67,7 @@ const Chat = ({ params }) => {
 	const [isWeatherEnabled, setWeatherEnabled] = useState(false)
 	const [isNewsEnabled, setNewsEnabled] = useState(false)
 	const [isMapsEnabled, setMapsEnabled] = useState(false)
+	const [isShoppingEnabled, setShoppingEnabled] = useState(false)
 
 	// --- Refs ---
 	const textareaRef = useRef(null)
@@ -272,7 +274,8 @@ const Chat = ({ params }) => {
 					enable_internet: isInternetEnabled,
 					enable_weather: isWeatherEnabled,
 					enable_news: isNewsEnabled,
-					enable_maps: isMapsEnabled
+					enable_maps: isMapsEnabled,
+					enable_shopping: isShoppingEnabled
 				}),
 				signal: abortControllerRef.current.signal
 			})
@@ -635,7 +638,7 @@ const Chat = ({ params }) => {
 									>
 										{/* Tool Toggles & Info */}
 										<div className="flex flex-col items-center">
-											<div className="flex items-center gap-4 mb-3 text-xs text-gray-400">
+											<div className="flex items-center flex-wrap justify-center gap-4 mb-3 text-xs text-gray-400">
 												<label
 													htmlFor="internet-toggle"
 													className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
@@ -717,6 +720,28 @@ const Chat = ({ params }) => {
 														checked={isMapsEnabled}
 														onCheckedChange={
 															setMapsEnabled
+														}
+													/>
+												</label>
+												<label
+													htmlFor="shopping-toggle"
+													className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
+												>
+													<IconShoppingCart
+														size={16}
+														className={
+															isShoppingEnabled
+																? "text-lightblue"
+																: ""
+														}
+													/>
+													<span>Shopping</span>
+													<Switch
+														checked={
+															isShoppingEnabled
+														}
+														onCheckedChange={
+															setShoppingEnabled
 														}
 													/>
 												</label>

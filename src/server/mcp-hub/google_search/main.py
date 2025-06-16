@@ -41,8 +41,8 @@ async def google_search(ctx: Context, query: str) -> Dict[str, Any]:
     Searches the web for information on a given query using the Google Search API.
     """
     try:
-        auth.get_user_id_from_context(ctx)
-        keys = auth.get_google_api_keys()
+        user_id = auth.get_user_id_from_context(ctx)
+        keys = auth.get_google_api_keys(user_id)
         
         search_results = await utils.perform_google_search(
             keys["api_key"], keys["cse_id"], query

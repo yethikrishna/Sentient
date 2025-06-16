@@ -60,26 +60,5 @@ async def get_google_api_keys(user_id: str) -> Dict[str, str]:
     user_doc = await users_collection.find_one({"user_id": user_id})
     if not user_doc or not user_doc.get("userData"):
         raise ToolError(f"User profile or userData not found for user_id: {user_id}.")
-
-    user_data = user_doc["userData"]
-    google_auth_config = user_data.get("googleAuth", {})
-    auth_mode = google_auth_config.get("mode", "default")
-
-    if auth_mode == "custom":
-        encrypted_creds = google_auth_config.get("encryptedCredentials")
-        if not encrypted_creds:
-            raise ToolError("Custom Google auth mode is selected, but no credentials are provided for search.")
-        
-        try:
-            decrypted_creds_json = aes_decrypt(encrypted_creds)
-            creds_info = json.loads(decrypted_creds_json)
-            if "api_key" not in creds_info or "cse_id" not in creds_info:
-                raise ToolError("Custom credentials for Google Search must contain 'api_key' and 'cse_id'.")
-            return creds_info
-        except Exception as e:
-            raise ToolError(f"Failed to use custom Google Search credentials: {e}")
-    else:
-        # Default flow: Use keys from environment variables
-        if not DEFAULT_GOOGLE_API_KEY or not DEFAULT_GOOGLE_CSE_ID:
-            raise ToolError("Default Google Search API keys are not configured on the server.")
-        return {"api_key": DEFAULT_GOOGLE_API_KEY, "cse_id": DEFAULT_GOOGLE_CSE_ID}
+   
+    return {"api_key": DEFAULT_GOOGLE_API_KEY, "cse_id": DEFAULT_GOOGLE_CSE_ID}

@@ -27,7 +27,8 @@ import {
 	IconLockOpen,
 	IconPresentation,
 	IconTable,
-	IconMapPin
+	IconMapPin,
+	IconShoppingCart
 } from "@tabler/icons-react"
 import { useState, useEffect, useCallback } from "react"
 import Sidebar from "@components/Sidebar"
@@ -43,6 +44,7 @@ const integrationIcons = {
 	gslides: IconPresentation,
 	gsheets: IconTable,
 	gmaps: IconMapPin,
+	gshopping: IconShoppingCart,
 	slack: IconBrandSlack,
 	notion: IconBrandNotion,
 	accuweather: IconCloud,
@@ -269,8 +271,9 @@ const GoogleAuthSettings = ({ mode, onModeChange, onSaveSuccess }) => {
 				</li>
 				<li>
 					Enable the APIs you want to use (e.g., Gmail API, Google
-					Drive API, Google Calendar API, Google Maps Platform APIs)
-					in the "APIs & Services" dashboard.
+					Drive API, Google Calendar API, Google Maps Platform APIs,
+					Google Shopping Content API) in the "APIs & Services"
+					dashboard.
 				</li>
 				<li>
 					Go to "Credentials", click "Create Credentials", and select
@@ -309,6 +312,7 @@ const GoogleAuthSettings = ({ mode, onModeChange, onSaveSuccess }) => {
 						<li>https://www.googleapis.com/auth/presentations</li>
 						<li>https://www.googleapis.com/auth/spreadsheets</li>
 						<li>https://www.googleapis.com/auth/cloud-platform</li>
+						<li>https://www.googleapis.com/auth/content</li>
 					</ul>
 				</li>
 			</ol>
@@ -479,6 +483,7 @@ const Settings = () => {
 					"https://www.googleapis.com/auth/presentations https://www.googleapis.com/auth/drive",
 				gsheets: "https://www.googleapis.com/auth/spreadsheets",
 				gmaps: "https://www.googleapis.com/auth/cloud-platform",
+				gshopping: "https://www.googleapis.com/auth/content",
 				github: "repo user"
 			}
 

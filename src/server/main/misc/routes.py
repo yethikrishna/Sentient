@@ -89,7 +89,8 @@ async def _validate_gcp_credentials(creds_json_str: str, user_email: str) -> boo
         # We need drive scope for the about.get call and cloud-platform for maps
         scopes = [
             'https://www.googleapis.com/auth/drive.readonly',
-            'https://www.googleapis.com/auth/cloud-platform'
+            'https://www.googleapis.com/auth/cloud-platform',
+            'https://www.googleapis.com/auth/content'
         ]
         
         creds = service_account.Credentials.from_service_account_info(

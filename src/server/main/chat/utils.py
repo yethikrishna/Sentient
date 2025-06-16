@@ -40,7 +40,8 @@ async def generate_chat_llm_stream(
     enable_internet: bool = False,
     enable_weather: bool = False,
     enable_news: bool = False,
-    enable_maps: bool = False
+    enable_maps: bool = False,
+    enable_shopping: bool = False
     ) -> AsyncGenerator[Dict[str, Any], None]:
     assistant_message_id = assistant_message_id_override or str(uuid.uuid4())
 
@@ -59,7 +60,8 @@ async def generate_chat_llm_stream(
             "internet_search": enable_internet,
             "accuweather": enable_weather,
             "news": enable_news,
-            "gmaps": enable_maps
+            "gmaps": enable_maps,
+            "gshopping": enable_shopping
         }
 
         for service_name, is_enabled in tool_flags.items():
@@ -105,7 +107,8 @@ async def generate_chat_llm_stream(
                     f"- Internet search is currently {'ENABLED' if enable_internet else 'DISABLED'}. You can use it to find real-time information if enabled.\n"
                     f"- Weather information is currently {'ENABLED' if enable_weather else 'DISABLED'}.\n"
                     f"- News headlines and articles are currently {'ENABLED' if enable_news else 'DISABLED'}.\n"
-                    f"- Google Maps for places and directions is currently {'ENABLED' if enable_maps else 'DISABLED'}.\n\n"
+                    f"- Google Maps for places and directions is currently {'ENABLED' if enable_maps else 'DISABLED'}.\n"
+                    f"- Google Shopping for product searches is currently {'ENABLED' if enable_shopping else 'DISABLED'}.\n\n"
                     "Be conversational and helpful."
                 )
                 qwen_assistant = get_qwen_assistant(system_message=system_prompt, function_list=tools)

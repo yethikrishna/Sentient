@@ -150,6 +150,16 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("GMAPS_MCP_SERVER_URL", "http://localhost:9016/sse")
         }
     },
+    "gshopping": {
+        "display_name": "Google Shopping",
+        "description": "Search for products online.",
+        "auth_type": "oauth",
+        "icon": "IconShoppingCart",
+        "mcp_server_config": {
+            "name": "gshopping_server",
+            "url": os.getenv("GSHOPPING_MCP_SERVER_URL", "http://localhost:9017/sse")
+        }
+    },
     "slack": { # User-configurable Manual
         "display_name": "Slack",
         "description": "Connect to your Slack workspace to send messages and more.",

@@ -18,7 +18,8 @@ export async function POST(request) {
 			enable_internet,
 			enable_weather,
 			enable_news,
-			enable_maps
+			enable_maps,
+			enable_shopping
 		} = await request.json()
 		const authHeader = await getBackendAuthHeader()
 
@@ -47,7 +48,8 @@ export async function POST(request) {
 					enable_internet,
 					enable_weather,
 					enable_news,
-					enable_maps
+					enable_maps,
+					enable_shopping
 				}),
 				// IMPORTANT: duplex must be set to 'half' to stream response body in Next.js Edge/Node runtime
 				duplex: "half"

@@ -168,7 +168,7 @@ const Chat = ({ params }) => {
 			const { accessToken } = await tokenResponse.json()
 			if (ringtoneAudioRef.current) {
 				ringtoneAudioRef.current.volume = 0.3
-				ringtoneAudioRef.current.loop = true
+				ringtoneAudioRef.current.loop = true // Keep ringing
 				ringtoneAudioRef.current
 					.play()
 					.catch((e) => console.error("Error playing ringtone:", e))
@@ -176,12 +176,12 @@ const Chat = ({ params }) => {
 			await backgroundCircleProviderRef.current?.connect(
 				selectedAudioInputDevice,
 				accessToken,
-				currentChatId,
-				handleRemoteAudioStream // Pass the stream handler
+				currentChatId
 			)
 		} catch (error) {
+			console.error("Error during voice connection process:", error)
 			toast.error(
-				`Failed to connect: ${error.message || "Unknown error"}`
+				`Connection failed: ${error.message || "Please check console for details."}`
 			)
 			handleStatusChange("disconnected")
 		}

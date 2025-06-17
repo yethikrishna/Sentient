@@ -10,10 +10,11 @@ from contextlib import asynccontextmanager
 from typing import Optional
 import logging
 import httpx 
+from fastapi import Depends
+
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastrtc.stream import Body as FastRTCBody
 
 from .config import (
     STT_PROVIDER, TTS_PROVIDER, ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID,
@@ -29,7 +30,8 @@ from .voice.routes import router as voice_router
 from .memory.routes import router as memory_router
 from .integrations.routes import router as integrations_router
 from .misc.routes import router as misc_router
-from .voice.stream_handler import stream as voice_stream, user_context_cache
+from .voice.stream_handler import stream as voice_stream, user_context_cache, set_dependencies
+from fastrtc.stream import Body as FastRTCBody
 from .auth.utils import PermissionChecker
 from .agents.routes import router as agents_router
 from .memory.dependencies import initialize_memory_managers, close_memory_managers
@@ -85,6 +87,7 @@ async def lifespan(app_instance: FastAPI):
     await mongo_manager.initialize_db()
     initialize_stt()
     initialize_tts()
+    set_dependencies(stt_model_instance, tts_model_instance, mongo_manager)
     initialize_memory_managers()
     print(f"[{datetime.datetime.now(timezone.utc).isoformat()}] [LIFESPAN] App startup complete.")
     yield 
@@ -113,19 +116,6 @@ app.include_router(notifications_router)
 app.include_router(integrations_router)
 app.include_router(misc_router)
 app.include_router(agents_router)
-
-# --- WebRTC Endpoint ---
-# This endpoint is authenticated using FastAPI's dependency injection.
-# It acts as a wrapper around the fastRTC handler to inject user context.
-@app.post("/webrtc/offer", include_in_schema=False)
-async def webrtc_offer_endpoint(
-    body: FastRTCBody,
-    user_id: str = Depends(PermissionChecker(required_permissions=["read:chat", "write:chat"]))
-):
-    webrtc_id = body.webrtc_id
-    chat_id = body.metadata.get("chatId") if body.metadata else None
-    user_context_cache[webrtc_id] = {"user_id": user_id, "chat_id": chat_id}
-    return await voice_stream.handle_offer(body, voice_stream.set_additional_outputs(webrtc_id))
 
 @app.get("/", tags=["General"])
 async def root():

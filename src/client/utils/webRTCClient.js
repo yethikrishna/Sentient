@@ -11,8 +11,8 @@ export class WebRTCClient {
 	animationFrameId = null
 
 	signalingServerUrl =
-		(process.env.NEXT_PUBLIC_APP_SERVER_URL || "http://localhost:5000") +
-		"/webrtc/offer"
+		(process.env.NEXT_PUBLIC_APP_SERVER_URL || "http://localhost:5000") + // Ensure this points to your Python server
+		"/voice/webrtc/offer"
 
 	constructor(options = {}) {
 		this.options = options
@@ -143,10 +143,22 @@ export class WebRTCClient {
 			}
 
 			this.peerConnection.onicecandidate = async (event) => {
+				// This is the critical part that was missing.
+				// Send ICE candidates to the server as they are gathered.
 				if (event.candidate) {
-					// console.log('[WebRTCClient] New ICE candidate:', event.candidate);
-				} else {
-					// console.log('[WebRTCClient] All ICE candidates have been gathered.');
+					// console.log("[WebRTCClient] New ICE candidate:", event.candidate)
+					await fetch(this.signalingServerUrl, {
+						method: "POST",
+						headers: {
+							"Content-Type": "application/json",
+							Authorization: `Bearer ${token}`
+						},
+						body: JSON.stringify({
+							candidate: event.candidate.toJSON(),
+							webrtc_id: this.webrtcId,
+							type: "ice-candidate"
+						})
+					})
 				}
 			}
 

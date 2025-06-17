@@ -19,7 +19,8 @@ export const auth0 = new Auth0Client({
 
 export async function getBackendAuthHeader() {
 	try {
-		const { token: accessToken } = await auth0.getAccessToken()
+		const tokenResult = await auth0.getAccessToken()
+		const accessToken = tokenResult?.accessToken || tokenResult?.token
 
 		if (!accessToken) {
 			console.error(

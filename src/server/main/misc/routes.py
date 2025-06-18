@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 import logging
 
 from ..models import OnboardingRequest, GoogleAuthSettings, SupermemorySettings
-from ..auth.utils import PermissionChecker, AuthHelper, aes_encrypt
+from ..auth.utils import PermissionChecker, AuthHelper, aes_encrypt, aes_decrypt
 from ..config import AUTH0_AUDIENCE
 from ..dependencies import mongo_manager, auth_helper, websocket_manager as main_websocket_manager
 
@@ -155,22 +155,25 @@ async def set_google_auth_settings(
 
 
 # --- NEW Supermemory MCP Settings Routes ---
-@router.get("/settings/supermemory", status_code=status.HTTP_200_OK, summary="Get Supermemory MCP URL")
+@router.get("/settings/supermemory", status_code=status.HTTP_200_OK, summary="Get Supermemory User ID")
 async def get_supermemory_settings(user_id: str = Depends(PermissionChecker(required_permissions=["read:config"]))):
     profile = await mongo_manager.get_user_profile(user_id)
-    mcp_url = profile.get("userData", {}).get("supermemory_mcp_url", "") if profile else ""
-    return JSONResponse(content={"mcp_url": mcp_url})
+    supermemory_user_id = profile.get("userData", {}).get("supermemory_user_id", "") if profile else ""
+    return JSONResponse(content={"supermemory_user_id": supermemory_user_id})
 
-@router.post("/settings/supermemory", status_code=status.HTTP_200_OK, summary="Save Supermemory MCP URL")
+@router.post("/settings/supermemory", status_code=status.HTTP_200_OK, summary="Save Supermemory User ID")
 async def save_supermemory_settings(
     settings: SupermemorySettings,
     user_id: str = Depends(PermissionChecker(required_permissions=["write:config"]))
 ):
-    # Basic validation for the URL structure
-    if settings.mcp_url and not settings.mcp_url.startswith("https://mcp.supermemory.ai/"):
-        raise HTTPException(status_code=400, detail="Invalid Supermemory MCP URL format.")
-    
-    update_payload = {"userData.supermemory_mcp_url": settings.mcp_url}
+    # The frontend will pass the full MCP URL, but we should store just the user ID part
+    # and reconstruct the full URL when needed using base URL from config.
+    # For now, to match the client's `SupermemorySettings` which expects `mcp_url`,
+    # we'll store the full URL. This can be refactored later if desired.
+    # If `settings.mcp_url` is an empty string or None, it means the user is clearing the setting.
+    mcp_url_to_save = settings.mcp_url if settings.mcp_url else "" # Store empty string if cleared
+
+    update_payload = {"userData.supermemory_mcp_url": mcp_url_to_save}
     success = await mongo_manager.update_user_profile(user_id, update_payload)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to save Supermemory MCP settings.")
@@ -197,7 +200,7 @@ async def notifications_websocket_endpoint(websocket: WebSocket):
         print(f"[{datetime.datetime.now()}] [NOTIF_WS] Client disconnected (User: {authenticated_user_id or 'unknown'}).")
     finally:
         if authenticated_user_id: 
-            main_websocket_manager.disconnect_notifications(websocket)
+            await main_websocket_manager.disconnect_notifications(websocket)
             print(f"[{datetime.datetime.now()}] [NOTIF_WS] User {authenticated_user_id} notification WebSocket cleanup complete.")
 
 # === Utility Endpoints (Token introspection, etc.) ===

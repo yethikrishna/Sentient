@@ -18,7 +18,6 @@ const BackgroundCircleProviderComponent = (
 ) => {
 	const [voiceClient, setVoiceClient] = useState(null)
 	const [internalStatus, setInternalStatus] = useState("disconnected")
-	const eventSourceRef = useRef(null) // Ref for EventSource
 	const [audioLevel, setAudioLevel] = useState(0)
 
 	useEffect(() => {
@@ -55,13 +54,12 @@ const BackgroundCircleProviderComponent = (
 		[onStatusChange, onEvent]
 	)
 
-	// handleMessage is no longer needed as SSE will handle messages
-	// const handleMessage = useCallback(
-	// 	(message) => {
-	// 		onEvent?.(message)
-	// 	},
-	// 	[onEvent]
-	// )
+	const handleMessage = useCallback(
+		(message) => {
+			onEvent?.(message)
+		},
+		[onEvent]
+	)
 
 	const handleAudioLevelUpdate = useCallback((level) => {
 		setAudioLevel((prev) => prev * 0.7 + level * 0.3)
@@ -75,96 +73,45 @@ const BackgroundCircleProviderComponent = (
 				)
 				voiceClient.disconnect()
 			}
-			// Close any existing EventSource before creating a new WebRTC client
-			if (eventSourceRef.current) {
-				eventSourceRef.current.close()
-				eventSourceRef.current = null
-				console.log(
-					"[Provider] Existing EventSource connection closed."
-				)
-			}
 
-			console.log("[Provider] Creating new WebRTCClient")
-			// We define onConnected here to set up the EventSource after WebRTC connects.
-			const client = new WebRTCClient({
-				onConnected: () => {
-					handleConnected() // Call the original handler
-					// After successful WebRTC connection, open EventSource for updates
-					const webrtcId = client.webrtcId // Assuming WebRTCClient exposes this ID
-					if (!webrtcId) {
-						console.error(
-							"WebRTC ID not available after connection."
-						)
-						handleConnectError(new Error("Missing WebRTC ID."))
-						return
-					}
-					const eventSourceUrl = `/api/voice/updates?webrtc_id=${webrtcId}`
-					console.log(
-						`[Provider] Connecting to SSE endpoint: ${eventSourceUrl}`
-					)
-					eventSourceRef.current = new EventSource(eventSourceUrl)
+			// Set status to connecting here, as this method is the entry point for connection.
+			console.log(
+				"[Provider] connect() called. Setting status to connecting."
+			) // Debug log for connection attempt
+			setInternalStatus("connecting")
+			onStatusChange?.("connecting")
 
-					eventSourceRef.current.onmessage = (event) => {
-						try {
-							const data = JSON.parse(event.data)
-							onEvent?.(data)
-						} catch (e) {
-							console.error(
-								"[Provider] Error parsing SSE message:",
-								e
-							)
-						}
-					}
-					eventSourceRef.current.onerror = (err) => {
-						console.error("[Provider] EventSource error:", err)
-						// Only call handleConnectError if it's a real error, not just a close
-						if (
-							eventSourceRef.current?.readyState ===
-							EventSource.CLOSED
-						) {
-							console.log(
-								"[Provider] EventSource closed normally."
-							)
-						} else {
-							handleConnectError(
-								new Error("EventSource connection failed.")
-							)
-						}
-						eventSourceRef.current?.close()
-					}
-				},
+			// Initialize WebRTCClient if not already done or if it was cleaned up
+			const newClient = new WebRTCClient({
+				onConnected: handleConnected,
 				onDisconnected: handleDisconnected,
 				onConnectError: handleConnectError,
-				// onMessage is no longer needed as we use SSE
+				onMessage: handleMessage,
 				onAudioLevel: handleAudioLevelUpdate,
-				onAudioStream: onAudioStream // Pass the remote stream handler
+				onAudioStream: onAudioStream
 			})
-			setVoiceClient(client)
+			setVoiceClient(newClient) // Store the client instance
 
-			if (internalStatus === "disconnected") {
-				console.log("[Provider] connect() called via ref")
-				setInternalStatus("connecting")
-				onStatusChange?.("connecting")
-				try {
-					await client.connect(deviceId, token, chatId)
-				} catch (error) {
-					console.error(
-						"[Provider] Error during connect() call:",
-						error
-					)
-					throw error
-				}
+			// The parent component (Chat.js) already ensures this 'connect' is called
+			// only when appropriate (i.e., when currently disconnected).
+			// So, we proceed to connect the WebRTCClient directly.
+			try {
+				console.log("[Provider] Attempting to connect WebRTCClient...")
+				await newClient.connect(deviceId, token, chatId)
+			} catch (error) {
+				// Catch any error during the connection attempt
+				console.error(
+					"[Provider] Error during client.connect() call:",
+					error
+				)
+				handleConnectError(error) // Use the provider's error handler
+				throw error // Re-throw to allow Chat.js to also catch it if needed.
 			}
 		},
 		disconnect: () => {
 			console.log("[Provider] disconnect() called via ref")
 			if (voiceClient) {
 				voiceClient.disconnect()
-			}
-			if (eventSourceRef.current) {
-				eventSourceRef.current.close()
-				eventSourceRef.current = null
-				console.log("[Provider] EventSource connection closed.")
 			}
 			handleDisconnected() // Explicitly set status to disconnected
 		}
@@ -174,7 +121,6 @@ const BackgroundCircleProviderComponent = (
 	useEffect(() => {
 		return () => {
 			voiceClient?.disconnect()
-			if (eventSourceRef.current) eventSourceRef.current.close()
 		}
 	}, [voiceClient])
 

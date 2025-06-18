@@ -45,7 +45,8 @@ const integrationIcons = {
 const Chat = ({ params }) => {
 	const router = useRouter()
 	// The chatId is the first element of the catch-all route segment
-	const chatIdFromParams = use(params)
+	const routeParams = use(params)
+	const initialChatId = routeParams?.chatId?.[0] || undefined
 
 	// --- State Variables ---
 	const [messages, setMessages] = useState([])
@@ -53,9 +54,9 @@ const Chat = ({ params }) => {
 	const [userDetails, setUserDetails] = useState(null)
 	const [thinking, setThinking] = useState(false)
 	const [isSidebarVisible, setSidebarVisible] = useState(false)
-	const [currentChatId, setCurrentChatId] = useState(chatIdFromParams)
-	const [isNewChat, setIsNewChat] = useState(!chatIdFromParams)
-	const [isLoading, setIsLoading] = useState(!!chatIdFromParams) // Only load if it's an existing chat
+	const [currentChatId, setCurrentChatId] = useState(initialChatId)
+	const [isNewChat, setIsNewChat] = useState(!initialChatId)
+	const [isLoading, setIsLoading] = useState(!!initialChatId)
 	const [isVoiceMode, setIsVoiceMode] = useState(false)
 
 	const [connectionStatus, setConnectionStatus] = useState("disconnected")
@@ -168,7 +169,7 @@ const Chat = ({ params }) => {
 			const { accessToken } = await tokenResponse.json()
 			if (ringtoneAudioRef.current) {
 				ringtoneAudioRef.current.volume = 0.3
-				ringtoneAudioRef.current.loop = true // Keep ringing
+				ringtoneAudioRef.current.loop = true
 				ringtoneAudioRef.current
 					.play()
 					.catch((e) => console.error("Error playing ringtone:", e))

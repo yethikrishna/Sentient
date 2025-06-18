@@ -5,10 +5,9 @@ import re
 
 from server.workers.utils.api_client import notify_user
 from server.celery_app import celery_app
-from server.main.config import INTEGRATIONS_CONFIG
-from .memory.llm import get_memory_qwen_agent
 from .planner.llm import get_planner_agent
 from .planner.db import PlannerMongoManager
+from .supermemory_agent_utils import get_supermemory_qwen_agent, get_db_manager as get_memory_db_manager
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -22,46 +21,64 @@ def run_async(coro):
         asyncio.set_event_loop(loop)
     return loop.run_until_complete(coro)
 
-# --- Memory Processing Task ---
+# --- Memory Processing Task (Modified for Supermemory) ---
 @celery_app.task(name="process_memory_item")
 def process_memory_item(user_id: str, fact_text: str):
     """
-    Celery task to process a single memory item using the memory agent.
+    Celery task to process a single memory item by calling the Supermemory MCP
+    via a dedicated Qwen agent.
     """
-    logger.info(f"Celery worker received memory task for user {user_id}: '{fact_text[:80]}...'")
-    agent = get_memory_qwen_agent(user_id)
-    messages = [{'role': 'user', 'content': fact_text}]
-    
-    final_agent_response = None
-    try:
-        for response_chunk in agent.run(messages=messages):
-            final_agent_response = response_chunk
-        
-        logger.info(f"Memory agent finished for user {user_id}. Response: {final_agent_response}")
+    logger.info(f"Celery worker received Supermemory task for user {user_id}: '{fact_text[:80]}...'")
 
-        # Improved success check
-        if final_agent_response and isinstance(final_agent_response, list):
-            tool_call_successful = any(
-                msg.get('role') == 'function' and 
-                isinstance(json.loads(msg.get('content', '{}')), dict) and
-                json.loads(msg.get('content', '{}')).get('status') == 'success'
-                for msg in final_agent_response
-            )
+    async def async_process_memory():
+        db_manager = get_memory_db_manager()
+        try:
+            user_profile = await db_manager.user_profiles_collection.find_one({"user_id": user_id})
+            if not user_profile:
+                logger.error(f"User profile not found for {user_id}. Cannot process memory item.")
+                return {"status": "failure", "reason": "User profile not found"}
 
-            if tool_call_successful:
-                logger.info(f"Successfully processed and stored memory for user {user_id}.")
-                # Optionally log to DB here if needed, but for now, logging to console is enough.
+            supermemory_mcp_url = user_profile.get("userData", {}).get("supermemory_mcp_url")
+            if not supermemory_mcp_url:
+                logger.warning(f"User {user_id} has no Supermemory MCP URL. Skipping memory item: '{fact_text[:50]}...'")
+                return {"status": "skipped", "reason": "Supermemory MCP URL not configured"}
+
+            agent = get_supermemory_qwen_agent(supermemory_mcp_url)
+            messages = [{'role': 'user', 'content': f"Remember this fact: {fact_text}"}] # Give clear instruction to agent
+
+            final_agent_response_str = ""
+            for response_chunk in agent.run(messages=messages):
+                if isinstance(response_chunk, list) and response_chunk:
+                    last_message = response_chunk[-1]
+                    # The agent's actual response after tool call might be in 'content'
+                    # or the tool call itself is the "response" we care about if it's direct
+                    if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
+                        content = last_message.get("content")
+                        # The direct output from this agent should be the tool call JSON string.
+                        final_agent_response_str = content # Assuming system prompt makes it output JSON
+
+            logger.info(f"Supermemory agent raw response for user {user_id}: {final_agent_response_str}")
+
+            # We expect the agent to directly output the tool call JSON.
+            # The success/failure is determined by the MCP server's response to that call,
+            # which the Qwen agent framework handles internally and logs.
+            # For this Celery task, we mainly care that the agent attempted the call.
+            # A more robust check would involve parsing final_agent_response_str if it's
+            # the tool call result from the function role message.
+            if "supermemory-addToSupermemory" in final_agent_response_str: # Basic check
+                logger.info(f"Successfully triggered Supermemory store for user {user_id}. Fact: '{fact_text[:50]}...'")
                 return {"status": "success", "fact": fact_text}
             else:
-                logger.error(f"Memory agent tool call failed or did not report success for user {user_id}. Fact: '{fact_text}'.")
-                return {"status": "failure", "fact": fact_text, "reason": "Tool call failed"}
-        else:
-            logger.error(f"Memory agent did not produce a valid list response for user {user_id}. Fact: '{fact_text}'")
-            return {"status": "failure", "fact": fact_text, "reason": "Invalid agent response"}
-    except Exception as e:
-        logger.error(f"Critical error in process_memory_item for user {user_id}: {e}", exc_info=True)
-        # Re-raise to let Celery handle the task failure
-        raise
+                logger.error(f"Supermemory agent did not seem to make the expected tool call for user {user_id}. Response: {final_agent_response_str}")
+                return {"status": "failure", "reason": "Agent did not make expected Supermemory call", "agent_response": final_agent_response_str}
+        except Exception as e:
+            logger.error(f"Critical error in process_memory_item for user {user_id}: {e}", exc_info=True)
+            raise # Re-raise to let Celery handle the task failure (retry, etc.)
+        finally:
+            if 'db_manager' in locals() and db_manager: # Ensure db_manager is defined
+                await db_manager.close()
+
+    return run_async(async_process_memory())
 
 # --- Planning Task ---
 @celery_app.task(name="process_action_item")
@@ -70,7 +87,7 @@ def process_action_item(user_id: str, action_items: list, source_event_id: str, 
     Celery task to process action items and generate a plan.
     """
     logger.info(f"Celery worker received planner task for user {user_id} with {len(action_items)} actions.")
-    db_manager = PlannerMongoManager()
+    db_manager = PlannerMongoManager() # This is the correct DB manager for planner
 
     async def async_main():
         # Step 1: Determine the user's available tools

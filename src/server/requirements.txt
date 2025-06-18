@@ -17,6 +17,7 @@ av
 # HTTP & Async Networking
 httpx
 nest_asyncio
+json5
 requests
 
 # Database

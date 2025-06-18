@@ -72,7 +72,9 @@ SUPPORTED_POLLING_SERVICES = ["gmail", "gcalendar"]
 INTEGRATIONS_CONFIG = {
     "github": {
         "display_name": "GitHub",
-        "description": "Connect to manage repositories, issues, and more.",
+        "description": (
+            "Connect to manage repositories, issues, and more. "
+            "Enables the agent to interact with your GitHub account."),
         "auth_type": "oauth",
         "icon": "IconBrandGithub",
         "mcp_server_config": {
@@ -82,7 +84,9 @@ INTEGRATIONS_CONFIG = {
     },
     "gdrive": { # User-configurable OAuth
         "display_name": "Google Drive",
-        "description": "Access and manage files in your Google Drive.",
+        "description": (
+            "Access and manage files in your Google Drive. "
+            "Allows the agent to search and read your documents."),
         "auth_type": "oauth",
         "icon": "IconBrandGoogleDrive",
         "mcp_server_config": {
@@ -92,7 +96,9 @@ INTEGRATIONS_CONFIG = {
     },
     "gcalendar": { # User-configurable OAuth
         "display_name": "Google Calendar",
-        "description": "Read and manage events on your Google Calendar.",
+        "description": (
+            "Read and manage events on your Google Calendar. "
+            "Enables the agent to check your schedule and create events."),
         "auth_type": "oauth",
         "icon": "IconCalendarEvent",
         "mcp_server_config": {
@@ -102,7 +108,9 @@ INTEGRATIONS_CONFIG = {
     },
     "gmail": { # User-configurable OAuth
         "display_name": "Gmail",
-        "description": "Read, send, and manage emails.",
+        "description": (
+            "Read, send, and manage emails. "
+            "Lets the agent interact with your Gmail inbox."),
         "auth_type": "oauth",
         "icon": "IconMail",
         "mcp_server_config": {
@@ -112,7 +120,9 @@ INTEGRATIONS_CONFIG = {
     },
     "gdocs": {
         "display_name": "Google Docs",
-        "description": "Create and manage documents in your Google Docs.",
+        "description": (
+            "Create and manage documents in your Google Docs. "
+            "Allows the agent to generate new documents for you."),
         "auth_type": "oauth",
         "icon": "IconFileText",
         "mcp_server_config": {
@@ -122,7 +132,9 @@ INTEGRATIONS_CONFIG = {
     },
     "gslides": {
         "display_name": "Google Slides",
-        "description": "Create and manage presentations in Google Slides.",
+        "description": (
+            "Create and manage presentations in Google Slides. "
+            "The agent can build slide decks based on your requests."),
         "auth_type": "oauth",
         "icon": "IconPresentation",
         "mcp_server_config": {
@@ -132,7 +144,9 @@ INTEGRATIONS_CONFIG = {
     },
     "gsheets": {
         "display_name": "Google Sheets",
-        "description": "Create and manage spreadsheets in Google Sheets.",
+        "description": (
+            "Create and manage spreadsheets in Google Sheets. "
+            "The agent can help organize data into tables."),
         "auth_type": "oauth",
         "icon": "IconTable",
         "mcp_server_config": {
@@ -142,7 +156,9 @@ INTEGRATIONS_CONFIG = {
     },
     "gmaps": {
         "display_name": "Google Maps",
-        "description": "Search for places and get directions.",
+        "description": (
+            "Search for places and get directions. "
+            "The agent can look up locations and routes for you."),
         "auth_type": "builtin",
         "icon": "IconMapPin",
         "mcp_server_config": {
@@ -152,7 +168,9 @@ INTEGRATIONS_CONFIG = {
     },
     "gshopping": {
         "display_name": "Google Shopping",
-        "description": "Search for products online.",
+        "description": (
+            "Search for products online. "
+            "The agent can help you find items to purchase."),
         "auth_type": "builtin",
         "icon": "IconShoppingCart",
         "mcp_server_config": {
@@ -162,7 +180,9 @@ INTEGRATIONS_CONFIG = {
     },
     "slack": { # User-configurable Manual
         "display_name": "Slack",
-        "description": "Connect to your Slack workspace to send messages and more.",
+        "description": (
+            "Connect to your Slack workspace to send messages and more. "
+            "Allows the agent to communicate in your Slack channels."),
         "auth_type": "manual",
         "icon": "IconBrandSlack",
         "manual_auth_info": {
@@ -184,7 +204,9 @@ INTEGRATIONS_CONFIG = {
     },
     "notion": {
         "display_name": "Notion",
-        "description": "Connect to your Notion workspace to search, create, and manage pages.",
+        "description": (
+            "Connect to your Notion workspace to search, create, and manage pages. "
+            "Lets the agent organize information in your Notion."),
         "auth_type": "manual",
         "icon": "IconBrandNotion",
         "manual_auth_info": {
@@ -269,7 +291,7 @@ INTEGRATIONS_CONFIG = {
 # These variables allow for flexible switching between different service providers.
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "OLLAMA")  # Options: "OLLAMA", "OPENROUTER"
 STT_PROVIDER = os.getenv("STT_PROVIDER", "FASTER_WHISPER") # Options: "FASTER_WHISPER", "ELEVENLABS"
-TTS_PROVIDER = os.getenv("TTS_PROVIDER", "ORPHEUS") # Options: "ORPHEUS", "ELEVENLABS"
+TTS_PROVIDER = os.getenv("TTS_PROVIDER", "ORPHEUS") # Options: "ORPHEUS", "ELEVENLABS", "GCP"
 
 # --- Service-Specific API Keys and Paths ---
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY") # Used for both STT and TTS from ElevenLabs
@@ -292,13 +314,9 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_MODEL_NAME = os.getenv("OPENROUTER_MODEL_NAME", "qwen/qwen3-8b:free") 
 # MCP Server URLs
 PROGRESS_UPDATER_MCP_SERVER_URL=os.getenv("PROGRESS_UPDATER_MCP_SERVER_URL", "http://localhost:9011/sse")
-CHAT_TOOLS_MCP_SERVER_URL=os.getenv("CHAT_TOOLS_MCP_SERVER_URL", "http://localhost:9013/sse")
-
-MONGO_URI= os.getenv("MONGO_URI", "mongodb://localhost:27017/")
-MONGO_DB_NAME= os.getenv("MONGO_DB_NAME", "sentient_agent_db")
-NEO4J_URI= os.getenv("NEO4J_URI", "bolt://localhost:7687")
-NEO4J_USER= os.getenv("NEO4J_USER", "neo4j")
-NEO4J_PASSWORD= os.getenv("NEO4J_PASSWORD", "password")
+CHAT_TOOLS_MCP_SERVER_URL=os.getenv("CHAT_TOOLS_MCP_SERVER_URL", "http://localhost:9013/sse") # For agent action handoff
+SUPERMEMORY_MCP_BASE_URL = os.getenv("SUPERMEMORY_MCP_BASE_URL", "https://mcp.supermemory.ai/")
+SUPERMEMORY_MCP_ENDPOINT_SUFFIX = os.getenv("SUPERMEMORY_MCP_ENDPOINT_SUFFIX", "/sse")
 
 print(f"[{datetime.datetime.now()}] [MainServer_Config] Configuration loaded. AUTH0_DOMAIN: {'SET' if AUTH0_DOMAIN else 'NOT SET'}")
 print(f"[{datetime.datetime.now()}] [MainServer_Config] LLM Provider: {LLM_PROVIDER}")

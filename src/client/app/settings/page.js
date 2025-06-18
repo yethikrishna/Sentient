@@ -407,10 +407,10 @@ const SupermemorySettings = () => {
 	const fetchMcpUrl = useCallback(async () => {
 		setIsLoading(true)
 		try {
-			const res = await fetch("/api/settings/mcp")
-			if (!res.ok) throw new Error("Failed to fetch MCP URL.")
+			const res = await fetch("/api/settings/mcp") // Use the new client API endpoint
+			if (!res.ok) throw new Error("Failed to fetch Supermemory MCP URL.")
 			const data = await res.json()
-			setMcpUrl(data.mcp_url || "")
+			setMcpUrl(data.mcp_url || "") // Backend now sends mcp_url
 		} catch (error) {
 			toast.error(error.message)
 		} finally {
@@ -426,12 +426,16 @@ const SupermemorySettings = () => {
 		setIsSaving(true)
 		try {
 			const res = await fetch("/api/settings/mcp", {
+				// Use the new client API endpoint
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ mcp_url: mcpUrl })
+				body: JSON.stringify({ mcp_url: mcpUrl }) // Send mcp_url
 			})
 			const data = await res.json()
-			if (!res.ok) throw new Error(data.error || "Failed to save URL.")
+			if (!res.ok)
+				throw new Error(
+					data.error || "Failed to save Supermemory MCP URL."
+				)
 			toast.success(data.message || "Supermemory MCP URL saved!")
 		} catch (error) {
 			toast.error(error.message)
@@ -449,8 +453,8 @@ const SupermemorySettings = () => {
 						Supermemory MCP Configuration
 					</h3>
 					<p className="text-gray-400 text-sm">
-						Connect to your universal memory layer. Get your URL
-						from{" "}
+						Connect to your universal memory layer. Get your full
+						MCP URL from{" "}
 						<a
 							href="https://mcp.supermemory.ai"
 							target="_blank"
@@ -463,7 +467,6 @@ const SupermemorySettings = () => {
 					</p>
 				</div>
 			</div>
-
 			<div className="mt-6">
 				<label
 					htmlFor="mcp-url"
@@ -480,14 +483,13 @@ const SupermemorySettings = () => {
 						id="mcp-url"
 						type="url"
 						className="w-full bg-neutral-900 border border-neutral-600 rounded-md py-2 pl-10 pr-4 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-lightblue font-mono text-sm"
-						placeholder="https://mcp.supermemory.ai/..."
+						placeholder="https://mcp.supermemory.ai/your-user-id/sse"
 						value={mcpUrl}
 						onChange={(e) => setMcpUrl(e.target.value)}
 						disabled={isLoading}
 					/>
 				</div>
 			</div>
-
 			<div className="mt-6 flex justify-end">
 				<button
 					onClick={handleSave}

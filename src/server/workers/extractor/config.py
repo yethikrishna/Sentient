@@ -25,7 +25,6 @@ OPENROUTER_MODEL_NAME = os.getenv("OPENROUTER_MODEL_NAME", "qwen/qwen-7b-chat")
 # Kafka Configuration
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092").split(',')
 CONTEXT_EVENTS_TOPIC = os.getenv("CONTEXT_EVENTS_TOPIC", "gmail_polling_results,gcalendar_polling_results").split(',')
-MEMORY_OPERATIONS_TOPIC = os.getenv("MEMORY_OPERATIONS_TOPIC", "memory_operations")
 ACTION_ITEMS_TOPIC = os.getenv("ACTION_ITEMS_TOPIC", "action_items")
 KAFKA_CONSUMER_GROUP_ID = os.getenv("KAFKA_CONSUMER_GROUP_ID", "extractor_worker_group")
 

@@ -15,7 +15,7 @@ const Memories = () => {
 	const [userDetails, setUserDetails] = useState(null)
 	const [isSidebarVisible, setSidebarVisible] = useState(false)
 	const [mcpUrl, setMcpUrl] = useState("")
-	const [isLoading, setIsLoading] = useState(true)
+	const [isLoading, setIsLoading] = useState(true) // Initialize as true
 	const router = useRouter()
 
 	const fetchUserDetails = useCallback(async () => {
@@ -32,7 +32,8 @@ const Memories = () => {
 		setIsLoading(true)
 		try {
 			const res = await fetch("/api/settings/mcp")
-			if (!res.ok) throw new Error("Failed to fetch Supermemory MCP URL.")
+			if (!res.ok)
+				throw new Error("Failed to fetch Supermemory settings.")
 			const data = await res.json()
 			setMcpUrl(data.mcp_url || "")
 		} catch (error) {
@@ -57,11 +58,12 @@ const Memories = () => {
 			/>
 			<div className="flex-grow flex flex-col h-full bg-matteblack text-white relative overflow-hidden p-6 gap-4 items-center justify-center">
 				<div className="text-center p-8 bg-neutral-900/50 rounded-lg border border-neutral-700 shadow-xl max-w-2xl">
-					<IconBrain className="w-16 h-16 text-lightblue mx-auto mb-6" />
+					<IconBrain className="w-16 h-16 text-lightblue mx-auto mb-6" />{" "}
+					{/* Adjusted Icon */}
 					<h1 className="font-Poppins text-white text-4xl font-light mb-4">
 						Universal Memory
-					</h1>
-
+					</h1>{" "}
+					{/* Adjusted Title */}
 					{isLoading ? (
 						<div className="flex justify-center items-center h-24">
 							<IconLoader className="w-8 h-8 animate-spin text-lightblue" />
@@ -70,7 +72,7 @@ const Memories = () => {
 						<div>
 							<p className="text-gray-300 mb-2">
 								Your memory is connected and managed by
-								Supermemory MCP.
+								Supermemory.
 							</p>
 							<p className="text-gray-400 text-sm mb-6">
 								All your conversations are now part of a
@@ -80,7 +82,8 @@ const Memories = () => {
 							<div className="inline-flex items-center gap-2 bg-green-900/50 text-green-300 text-sm py-2 px-4 rounded-full border border-green-700">
 								<IconLink size={16} />
 								<span>Connected</span>
-							</div>
+							</div>{" "}
+							{/* Adjusted Icon */}
 						</div>
 					) : (
 						<div>
@@ -98,13 +101,15 @@ const Memories = () => {
 							>
 								<IconSettings className="w-5 h-5" />
 								Go to Settings
-							</button>
+							</button>{" "}
+							{/* Adjusted Icon */}
 						</div>
 					)}
 				</div>
 				<p className="text-gray-600 text-xs mt-8">
-					The previous Knowledge Graph and Short-Term Memory list have
-					been replaced by the Supermemory MCP integration.
+					Legacy Knowledge Graph and Short-Term Memory systems have
+					been deprecated in favor of the unified Supermemory
+					integration.
 				</p>
 			</div>
 		</div>

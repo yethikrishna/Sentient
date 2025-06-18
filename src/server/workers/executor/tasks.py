@@ -13,7 +13,7 @@ from server.workers.utils.api_client import notify_user
 # Load environment variables for the worker
 from server.main.config import (
     MONGO_URI, MONGO_DB_NAME, INTEGRATIONS_CONFIG, LLM_PROVIDER,
-    OLLAMA_BASE_URL, OLLAMA_MODEL_NAME
+    OLLAMA_BASE_URL, OLLAMA_MODEL_NAME, SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX
 )
 
 # Setup logger for this module
@@ -104,6 +104,7 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     user_profile = await db.user_profiles.find_one({"user_id": user_id})
     user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
     google_auth_mode = user_profile.get("userData", {}).get("googleAuth", {}).get("mode", "default")
+    supermemory_user_id_from_db = user_profile.get("userData", {}).get("supermemory_user_id") if user_profile else None
     
     active_mcp_servers = {}
     for service_name, config in INTEGRATIONS_CONFIG.items():
@@ -123,6 +124,13 @@ async def async_execute_task_plan(task_id: str, user_id: str):
 
         if is_builtin or is_connected_via_oauth or is_available_via_custom:
             active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
+
+    if supermemory_user_id_from_db:
+        full_supermemory_mcp_url = f"{SUPERMEMORY_MCP_BASE_URL.rstrip('/')}/{supermemory_user_id_from_db}{SUPERMEMORY_MCP_ENDPOINT_SUFFIX}"
+        active_mcp_servers["supermemory"] = {
+            "transport": "sse",
+            "url": full_supermemory_mcp_url
+        }
 
     tools_config = [{"mcpServers": active_mcp_servers}]
     logger.info(f"Task {task_id}: Executor configured with tools: {list(active_mcp_servers.keys())}")

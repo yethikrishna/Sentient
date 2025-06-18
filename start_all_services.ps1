@@ -27,16 +27,16 @@
 # Please review and update these paths to match your local setup.
 
 # Path to the 'bin' directory of your Neo4j installation.
-# $neo4jBinPath = "D:\Software\neo4j-community-5.25.1\bin"
-$neo4jBinPath = "C:\Users\Existence\Documents\neo4j-community-2025.05.0\bin"
+$neo4jBinPath = "D:\Software\neo4j-community-5.25.1\bin"
+# $neo4jBinPath = "C:\Users\Existence\Documents\neo4j-community-2025.05.0\bin"
 
 # The name of your WSL distribution where Kafka and Redis are installed.
 $wslDistroName = "Ubuntu"
 
 # The base path to your Kafka installation inside your WSL distribution.
 # Example: "/home/your_wsl_username/kafka_2.13-3.7.0"
-# $kafkaBasePathInWsl = "/home/kabeer2004/kafka_2.13-3.9.1" # <-- IMPORTANT: UPDATE THIS PATH
-$kafkaBasePathInWsl = "/home/existence/kafka_2.13-3.9.1" # <-- IMPORTANT: UPDATE THIS PATH
+$kafkaBasePathInWsl = "/home/kabeer2004/kafka_2.13-3.9.1" # <-- IMPORTANT: UPDATE THIS PATH
+# $kafkaBasePathInWsl = "/home/existence/kafka_2.13-3.9.1" # <-- IMPORTANT: UPDATE THIS PATH
 
 # --- Script Body ---
 try {

@@ -6,7 +6,6 @@ import datetime
 class GoogleAuthSettings(BaseModel):
     mode: str
     credentialsJson: Optional[str] = None
-
 # ADDED: Model for Supermemory MCP settings
 class SupermemorySettings(BaseModel):
     mcp_url: Optional[str] = None
@@ -29,7 +28,7 @@ class UserProfileData(BaseModel):
     integrations: Optional[Dict[str, IntegrationData]] = Field(default_factory=dict)
     googleAuth: Optional[GoogleAuthData] = Field(default_factory=GoogleAuthData)
     encrypted_refresh_token: Optional[str] = None
-    # ADDED: Field for Supermemory MCP URL
+    # Field for Supermemory MCP URL, will store the full URL.
     supermemory_mcp_url: Optional[str] = None
 
 class UserProfile(BaseModel):

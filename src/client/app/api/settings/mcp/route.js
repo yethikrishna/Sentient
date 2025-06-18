@@ -23,6 +23,7 @@ export async function GET() {
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL}/api/settings/supermemory`,
 			{
+				// Ensure GET is used for fetching data
 				method: "GET",
 				headers: { "Content-Type": "application/json", ...authHeader }
 			}
@@ -31,7 +32,9 @@ export async function GET() {
 		const data = await response.json()
 		if (!response.ok) {
 			throw new Error(
-				data.detail || "Failed to fetch Supermemory settings"
+				data.detail ||
+					data.error ||
+					"Failed to fetch Supermemory settings"
 			)
 		}
 		return NextResponse.json(data)
@@ -61,7 +64,8 @@ export async function POST(request) {
 
 	try {
 		const body = await request.json() // { mcp_url: "..." }
-		const response = await fetch(
+		const backendResponse = await fetch(
+			// Renamed to avoid conflict with API response
 			`${process.env.APP_SERVER_URL}/api/settings/supermemory`,
 			{
 				method: "POST",
@@ -70,13 +74,15 @@ export async function POST(request) {
 			}
 		)
 
-		const data = await response.json()
-		if (!response.ok) {
+		const data = await backendResponse.json()
+		if (!backendResponse.ok) {
 			throw new Error(
-				data.detail || "Failed to save Supermemory settings"
+				data.detail ||
+					data.error ||
+					"Failed to save Supermemory settings"
 			)
 		}
-		return NextResponse.json(data)
+		return NextResponse.json(data) // Return the backend's response directly
 	} catch (error) {
 		console.error("API Error in /settings/mcp (POST):", error)
 		return NextResponse.json({ error: error.message }, { status: 500 })

@@ -7,6 +7,10 @@ class GoogleAuthSettings(BaseModel):
     mode: str
     credentialsJson: Optional[str] = None
 
+# ADDED: Model for Supermemory MCP settings
+class SupermemorySettings(BaseModel):
+    mcp_url: Optional[str] = None
+
 class IntegrationData(BaseModel):
     encrypted_token: str
     connected_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc))
@@ -25,6 +29,8 @@ class UserProfileData(BaseModel):
     integrations: Optional[Dict[str, IntegrationData]] = Field(default_factory=dict)
     googleAuth: Optional[GoogleAuthData] = Field(default_factory=GoogleAuthData)
     encrypted_refresh_token: Optional[str] = None
+    # ADDED: Field for Supermemory MCP URL
+    supermemory_mcp_url: Optional[str] = None
 
 class UserProfile(BaseModel):
     user_id: str = Field(..., description="The Auth0 user ID (sub claim)")

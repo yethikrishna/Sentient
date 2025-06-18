@@ -27,14 +27,12 @@ from .auth.routes import router as auth_router
 from .chat.routes import router as chat_router
 from .notifications.routes import router as notifications_router
 from .voice.routes import router as voice_router
-from .memory.routes import router as memory_router
 from .integrations.routes import router as integrations_router
 from .misc.routes import router as misc_router
 from .voice.stream_handler import stream as voice_stream, user_context_cache, set_dependencies
 from fastrtc.stream import Body as FastRTCBody
 from .auth.utils import PermissionChecker
 from .agents.routes import router as agents_router
-from .memory.dependencies import initialize_memory_managers, close_memory_managers
 
 http_client: httpx.AsyncClient = httpx.AsyncClient()
 stt_model_instance: Optional[BaseSTT] = None
@@ -88,13 +86,11 @@ async def lifespan(app_instance: FastAPI):
     initialize_stt()
     initialize_tts()
     set_dependencies(stt_model_instance, tts_model_instance, mongo_manager)
-    initialize_memory_managers()
     print(f"[{datetime.datetime.now(timezone.utc).isoformat()}] [LIFESPAN] App startup complete.")
     yield 
     print(f"[{datetime.datetime.now(timezone.utc).isoformat()}] [LIFESPAN] App shutdown sequence initiated...")
     await http_client.aclose()
     if mongo_manager and mongo_manager.client:
-        close_memory_managers()
         mongo_manager.client.close()
     print(f"[{datetime.datetime.now(timezone.utc).isoformat()}] [LIFESPAN] App shutdown complete.")
 
@@ -111,7 +107,6 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(voice_router)
-app.include_router(memory_router)
 app.include_router(notifications_router)
 app.include_router(integrations_router)
 app.include_router(misc_router)

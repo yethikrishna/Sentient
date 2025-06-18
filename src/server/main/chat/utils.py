@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Tuple, AsyncGenerator, Optional
 
 from ..db import MongoManager
 from ..llm import get_qwen_assistant
-from ..config import MEMORY_MCP_SERVER_URL, INTEGRATIONS_CONFIG
+from ..config import INTEGRATIONS_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -46,16 +46,24 @@ async def generate_chat_llm_stream(
     assistant_message_id = assistant_message_id_override or str(uuid.uuid4())
 
     try:
+        user_profile = await db_manager.get_user_profile(user_id)
+        supermemory_mcp_url = user_profile.get("userData", {}).get("supermemory_mcp_url") if user_profile else None
+        
         active_mcp_servers = {}
 
-        # Always connect memory and chat tools
-        for service_name in ["memory", "chat_tools"]:
-            config = INTEGRATIONS_CONFIG.get(service_name)
-            if config and "mcp_server_config" in config:
-                mcp_config = config["mcp_server_config"]
-                active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
+        # Connect to Supermemory MCP if URL is configured
+        if supermemory_mcp_url:
+            active_mcp_servers["supermemory"] = {
+                "transport": "sse",
+                "url": supermemory_mcp_url
+            }
+            logger.info(f"User {user_id} is connected to Supermemory MCP.")
+        else:
+            logger.warning(f"User {user_id} has no Supermemory MCP URL configured. Memory tools will be unavailable.")
 
-        # Conditionally connect tools based on toggles
+        # Conditionally connect other tools based on toggles
+        active_mcp_servers["chat_tools"] = {"url": INTEGRATIONS_CONFIG["chat_tools"]["mcp_server_config"]["url"], "headers": {"X-User-ID": user_id}}
+        
         tool_flags = {
             "internet_search": enable_internet,
             "accuweather": enable_weather,
@@ -74,7 +82,15 @@ async def generate_chat_llm_stream(
         tools = [{"mcpServers": active_mcp_servers}]
 
         user_message_payload = {"id": str(uuid.uuid4()), "message": user_input, "isUser": True, "type": "text", "isVisible": True}
-        assistant_placeholder_payload = {"id": assistant_message_id, "message": "", "isUser": False, "type": "text", "isVisible": True, "agentsUsed": True}
+        assistant_placeholder_payload = {
+            "id": assistant_message_id, 
+            "message": "", 
+            "isUser": False, 
+            "type": "text", 
+            "isVisible": True, 
+            "agentsUsed": True,
+            "memoryUsed": bool(supermemory_mcp_url) # Set memoryUsed flag
+        }
         
         await db_manager.add_chat_message(user_id, chat_id, user_message_payload)
         await db_manager.add_chat_message(user_id, chat_id, assistant_placeholder_payload)
@@ -101,10 +117,10 @@ async def generate_chat_llm_stream(
                 system_prompt = (
                     f"You are a helpful AI assistant named Sentient. The user's name is {username}. The current date is {datetime.datetime.now().strftime('%Y-%m-%d')}.\n\n"
                     "You have access to a few tools:\n"
-                    "- Use memory tools (`search_memories`, `save_long_term_fact`, etc.) to remember and recall information about the user.\n"
+                    "- Use the `searchSupermemory` tool to recall information the user has told you before. Use this proactively.\n"
+                    "- Use the `addToSupermemory` tool to remember new facts the user tells you. Use this when the user explicitly says 'remember this' or provides a key piece of personal information.\n"
                     "- If the user asks for an action to be performed (e.g., 'send an email', 'create a presentation'), use the `create_task_from_description` tool to hand it off to the planning system. Do not try to execute it yourself.\n"
-                    "- You can check the status of a task with `get_task_status`.\n"
-                    f"- Internet search is currently {'ENABLED' if enable_internet else 'DISABLED'}. You can use it to find real-time information if enabled.\n"
+                    f"- Internet search is currently {'ENABLED' if enable_internet else 'DISABLED'}.\n"
                     f"- Weather information is currently {'ENABLED' if enable_weather else 'DISABLED'}.\n"
                     f"- News headlines and articles are currently {'ENABLED' if enable_news else 'DISABLED'}.\n"
                     f"- Google Maps for places and directions is currently {'ENABLED' if enable_maps else 'DISABLED'}.\n"
@@ -149,7 +165,7 @@ async def generate_chat_llm_stream(
         if stream_interrupted and not final_text_content.endswith("[STREAM STOPPED BY USER]"):
             final_text_content += "\n\n[STREAM STOPPED BY USER]"
         
-        update_payload = {"message": final_text_content, "structured_history": assistant_turn_messages, "agentsUsed": True}
+        update_payload = {"message": final_text_content, "structured_history": assistant_turn_messages, "agentsUsed": True, "memoryUsed": bool(supermemory_mcp_url)}
         if final_text_content.strip(): await db_manager.update_chat_message(user_id, chat_id, assistant_message_id, update_payload)
         
         yield {"type": "assistantStream", "token": "", "done": True, "messageId": assistant_message_id}

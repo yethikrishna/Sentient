@@ -28,7 +28,8 @@ import {
 	IconPresentation,
 	IconTable,
 	IconMapPin,
-	IconShoppingCart
+	IconShoppingCart,
+	IconLink
 } from "@tabler/icons-react"
 import { useState, useEffect, useCallback } from "react"
 import Sidebar from "@components/Sidebar"
@@ -398,6 +399,113 @@ const GoogleAuthSettings = ({ mode, onModeChange, onSaveSuccess }) => {
 	)
 }
 
+const SupermemorySettings = () => {
+	const [mcpUrl, setMcpUrl] = useState("")
+	const [isLoading, setIsLoading] = useState(true)
+	const [isSaving, setIsSaving] = useState(false)
+
+	const fetchMcpUrl = useCallback(async () => {
+		setIsLoading(true)
+		try {
+			const res = await fetch("/api/settings/mcp")
+			if (!res.ok) throw new Error("Failed to fetch MCP URL.")
+			const data = await res.json()
+			setMcpUrl(data.mcp_url || "")
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsLoading(false)
+		}
+	}, [])
+
+	useEffect(() => {
+		fetchMcpUrl()
+	}, [fetchMcpUrl])
+
+	const handleSave = async () => {
+		setIsSaving(true)
+		try {
+			const res = await fetch("/api/settings/mcp", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ mcp_url: mcpUrl })
+			})
+			const data = await res.json()
+			if (!res.ok) throw new Error(data.error || "Failed to save URL.")
+			toast.success(data.message || "Supermemory MCP URL saved!")
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsSaving(false)
+		}
+	}
+
+	return (
+		<div className="bg-neutral-800/50 p-4 md:p-6 rounded-lg border border-neutral-700">
+			<div className="flex items-center gap-4">
+				<IconBrain className="w-8 h-8 text-white" />
+				<div>
+					<h3 className="font-semibold text-white text-lg">
+						Supermemory MCP Configuration
+					</h3>
+					<p className="text-gray-400 text-sm">
+						Connect to your universal memory layer. Get your URL
+						from{" "}
+						<a
+							href="https://mcp.supermemory.ai"
+							target="_blank"
+							rel="noopener noreferrer"
+							className="text-lightblue hover:underline"
+						>
+							mcp.supermemory.ai
+						</a>
+						.
+					</p>
+				</div>
+			</div>
+
+			<div className="mt-6">
+				<label
+					htmlFor="mcp-url"
+					className="block text-sm font-medium text-gray-300 mb-2"
+				>
+					Supermemory MCP URL
+				</label>
+				<div className="relative">
+					<IconLink
+						className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+						size={18}
+					/>
+					<input
+						id="mcp-url"
+						type="url"
+						className="w-full bg-neutral-900 border border-neutral-600 rounded-md py-2 pl-10 pr-4 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-lightblue font-mono text-sm"
+						placeholder="https://mcp.supermemory.ai/..."
+						value={mcpUrl}
+						onChange={(e) => setMcpUrl(e.target.value)}
+						disabled={isLoading}
+					/>
+				</div>
+			</div>
+
+			<div className="mt-6 flex justify-end">
+				<button
+					onClick={handleSave}
+					disabled={isSaving || isLoading}
+					className="flex items-center justify-center gap-2 py-2 px-5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors disabled:opacity-50"
+				>
+					{isSaving ? (
+						<IconLoader className="animate-spin" size={18} />
+					) : (
+						<IconFileText size={18} />
+					)}
+					<span>{isSaving ? "Saving..." : "Save MCP URL"}</span>
+				</button>
+			</div>
+		</div>
+	)
+}
+
 const Settings = () => {
 	const [userDetails, setUserDetails] = useState({})
 	const [isSidebarVisible, setSidebarVisible] = useState(false)
@@ -690,6 +798,12 @@ const Settings = () => {
 					</div>
 				</div>
 				<div className="w-full max-w-5xl mx-auto space-y-10 flex-grow">
+					<section>
+						<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-neutral-700 pb-2">
+							Memory Configuration
+						</h2>
+						<SupermemorySettings />
+					</section>
 					<section>
 						<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-neutral-700 pb-2">
 							API & Service Configuration

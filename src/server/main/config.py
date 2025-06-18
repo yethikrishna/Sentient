@@ -243,16 +243,6 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("QUICKCHART_MCP_SERVER_URL", "http://localhost:9008/sse")
         }
     },
-    "memory": { # Built-in
-        "display_name": "Long & Short-Term Memory",
-        "description": "Allows the agent to remember facts and context.",
-        "auth_type": "builtin",
-        "icon": "IconBrain", # Frontend needs to map this
-         "mcp_server_config": {
-             "name": "memory_server",
-             "url": os.getenv("MEMORY_MCP_SERVER_URL", "http://localhost:8001/sse")
-         }
-    },
     "progress_updater": { # Built-in tool for executor
         "display_name": "Progress Updater",
         "description": "Allows an executor agent to update task progress.",
@@ -301,7 +291,6 @@ OLLAMA_MODEL_NAME = os.getenv("OLLAMA_MODEL_NAME", "qwen3:4b")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY") 
 OPENROUTER_MODEL_NAME = os.getenv("OPENROUTER_MODEL_NAME", "qwen/qwen3-8b:free") 
 # MCP Server URLs
-MEMORY_MCP_SERVER_URL = os.getenv("MEMORY_MCP_SERVER_URL", "http://localhost:8001/sse")
 PROGRESS_UPDATER_MCP_SERVER_URL=os.getenv("PROGRESS_UPDATER_MCP_SERVER_URL", "http://localhost:9011/sse")
 CHAT_TOOLS_MCP_SERVER_URL=os.getenv("CHAT_TOOLS_MCP_SERVER_URL", "http://localhost:9013/sse")
 

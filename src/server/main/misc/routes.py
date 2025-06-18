@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request, WebSocke
 from fastapi.responses import JSONResponse
 import logging
 
-from ..models import OnboardingRequest, GoogleAuthSettings
+from ..models import OnboardingRequest, GoogleAuthSettings, SupermemorySettings
 from ..auth.utils import PermissionChecker, AuthHelper, aes_encrypt
 from ..config import AUTH0_AUDIENCE
 from ..dependencies import mongo_manager, auth_helper, websocket_manager as main_websocket_manager
@@ -152,6 +152,30 @@ async def set_google_auth_settings(
         raise HTTPException(status_code=500, detail="Failed to update Google auth settings in database.")
         
     return JSONResponse(content={"message": "Google API settings saved and validated successfully."})
+
+
+# --- NEW Supermemory MCP Settings Routes ---
+@router.get("/settings/supermemory", status_code=status.HTTP_200_OK, summary="Get Supermemory MCP URL")
+async def get_supermemory_settings(user_id: str = Depends(PermissionChecker(required_permissions=["read:config"]))):
+    profile = await mongo_manager.get_user_profile(user_id)
+    mcp_url = profile.get("userData", {}).get("supermemory_mcp_url", "") if profile else ""
+    return JSONResponse(content={"mcp_url": mcp_url})
+
+@router.post("/settings/supermemory", status_code=status.HTTP_200_OK, summary="Save Supermemory MCP URL")
+async def save_supermemory_settings(
+    settings: SupermemorySettings,
+    user_id: str = Depends(PermissionChecker(required_permissions=["write:config"]))
+):
+    # Basic validation for the URL structure
+    if settings.mcp_url and not settings.mcp_url.startswith("https://mcp.supermemory.ai/"):
+        raise HTTPException(status_code=400, detail="Invalid Supermemory MCP URL format.")
+    
+    update_payload = {"userData.supermemory_mcp_url": settings.mcp_url}
+    success = await mongo_manager.update_user_profile(user_id, update_payload)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to save Supermemory MCP settings.")
+    
+    return JSONResponse(content={"message": "Supermemory MCP URL saved successfully."})
 
 
 @router.websocket("/ws/notifications")

@@ -443,11 +443,21 @@ const Settings = () => {
 				icon: integrationIcons[ds.name] || IconSettingsCog
 			}))
 
+			const hiddenTools = [
+				"internet_search",
+				"google_search",
+				"gmaps",
+				"gshopping"
+			]
+
 			const userConnectable = integrationsWithIcons.filter(
-				(i) => i.auth_type === "oauth" || i.auth_type === "manual"
+				(i) =>
+					(i.auth_type === "oauth" || i.auth_type === "manual") &&
+					!hiddenTools.includes(i.name)
 			)
 			const builtIn = integrationsWithIcons.filter(
-				(i) => i.auth_type === "builtin"
+				(i) =>
+					i.auth_type === "builtin" && !hiddenTools.includes(i.name)
 			)
 			setUserIntegrations(userConnectable)
 			setDefaultTools(builtIn)

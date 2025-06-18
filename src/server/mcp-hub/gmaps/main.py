@@ -1,6 +1,5 @@
 import os
 import asyncio
-import json
 from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 
@@ -27,18 +26,15 @@ def build_gmaps_user_prompt(query: str, username: str, previous_tool_response: s
     )
     return Message(role="user", content=content)
 
-async def _execute_tool(ctx: Context, func, *args, **kwargs) -> Dict[str, Any]:
+async def _execute_tool(ctx: Context, func, **kwargs) -> Dict[str, Any]:
     """Helper to handle auth and execution for all tools."""
     try:
         user_id = auth.get_user_id_from_context(ctx)
-        creds = await auth.get_google_creds(user_id)
+        api_key = await auth.get_google_api_key(user_id)
         
-        if not creds.token:
-             # Refresh the token if it's missing (can happen with service accounts initially)
-            from google.auth.transport.requests import Request
-            await asyncio.to_thread(creds.refresh, Request())
-
-        result = await func(creds, *args, **kwargs)
+        # Pass api_key to the utility function
+        result = await func(api_key=api_key, **kwargs)
+        
         return {"status": "success", "result": result}
     except Exception as e:
         return {"status": "failure", "error": str(e)}

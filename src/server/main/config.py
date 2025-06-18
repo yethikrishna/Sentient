@@ -143,7 +143,7 @@ INTEGRATIONS_CONFIG = {
     "gmaps": {
         "display_name": "Google Maps",
         "description": "Search for places and get directions.",
-        "auth_type": "oauth",
+        "auth_type": "builtin",
         "icon": "IconMapPin",
         "mcp_server_config": {
             "name": "gmaps_server",
@@ -153,7 +153,7 @@ INTEGRATIONS_CONFIG = {
     "gshopping": {
         "display_name": "Google Shopping",
         "description": "Search for products online.",
-        "auth_type": "oauth",
+        "auth_type": "builtin",
         "icon": "IconShoppingCart",
         "mcp_server_config": {
             "name": "gshopping_server",

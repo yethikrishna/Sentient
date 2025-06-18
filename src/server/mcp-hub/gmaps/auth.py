@@ -1,54 +1,23 @@
 import os
-import json
-import base64
-from typing import Optional
-
-import motor.motor_asyncio
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import padding
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from dotenv import load_dotenv
+from typing import Dict
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
-from google.oauth2 import service_account
-from google.oauth2.credentials import Credentials
+from dotenv import load_dotenv
+import motor.motor_asyncio
 
-# Load from main server .env, which is two levels up
+# Load from main server .env
 dotenv_path = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
 load_dotenv(dotenv_path=dotenv_path)
 
+# Configs
 MONGO_URI = os.getenv("MONGO_URI")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
-AES_SECRET_KEY_HEX = os.getenv("AES_SECRET_KEY")
-AES_IV_HEX = os.getenv("AES_IV")
+DEFAULT_GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-AES_SECRET_KEY: Optional[bytes] = (
-    bytes.fromhex(AES_SECRET_KEY_HEX)
-    if AES_SECRET_KEY_HEX and len(AES_SECRET_KEY_HEX) == 64
-    else None
-)
-AES_IV: Optional[bytes] = (
-    bytes.fromhex(AES_IV_HEX) if AES_IV_HEX and len(AES_IV_HEX) == 32 else None
-)
-
-
-def aes_decrypt(encrypted_data: str) -> str:
-    if not AES_SECRET_KEY or not AES_IV:
-        raise ValueError("AES encryption keys are not configured in the environment.")
-    backend = default_backend()
-    cipher = Cipher(algorithms.AES(AES_SECRET_KEY), modes.CBC(AES_IV), backend=backend)
-    decryptor = cipher.decryptor()
-    encrypted_bytes = base64.b64decode(encrypted_data)
-    decrypted = decryptor.update(encrypted_bytes) + decryptor.finalize()
-    unpadder = padding.PKCS7(algorithms.AES.block_size).unpadder()
-    unpadded_data = unpadder.update(decrypted) + unpadder.finalize()
-    return unpadded_data.decode()
-
-
+# DB client
 client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI)
 db = client[MONGO_DB_NAME]
 users_collection = db["user_profiles"]
-
 
 def get_user_id_from_context(ctx: Context) -> str:
     http_request = ctx.get_http_request()
@@ -59,53 +28,15 @@ def get_user_id_from_context(ctx: Context) -> str:
         raise ToolError("Authentication failed: 'X-User-ID' header is missing.")
     return user_id
 
-
-async def get_google_creds(user_id: str) -> Credentials:
+async def get_google_api_key(user_id: str) -> str:
+    """
+    Validates user existence and returns the global Google API key for Maps.
+    """
     user_doc = await users_collection.find_one({"user_id": user_id})
-    if not user_doc or not user_doc.get("userData"):
-        raise ToolError(f"User profile or userData not found for user_id: {user_id}.")
+    if not user_doc:
+        raise ToolError(f"User profile not found for user_id: {user_id}.")
 
-    user_data = user_doc["userData"]
-    google_auth_config = user_data.get("googleAuth", {})
-    auth_mode = google_auth_config.get("mode", "default")
-    # Define scopes needed by this MCP
-    scopes = [
-        "https://www.googleapis.com/auth/cloud-platform",
-    ]
+    if not DEFAULT_GOOGLE_API_KEY:
+        raise ToolError("Google API Key for Maps is not configured on the server.")
 
-    if auth_mode == "custom":
-        user_email = user_data.get("personalInfo", {}).get("email")
-        if not user_email:
-            raise ToolError(
-                "User email is not available for service account impersonation."
-            )
-
-        encrypted_creds = google_auth_config.get("encryptedCredentials")
-        if not encrypted_creds:
-            raise ToolError(
-                "Custom Google auth mode is selected, but no credentials are provided."
-            )
-
-        try:
-            decrypted_creds_json = aes_decrypt(encrypted_creds)
-            service_account_info = json.loads(decrypted_creds_json)
-            creds = service_account.Credentials.from_service_account_info(
-                service_account_info, scopes=scopes, subject=user_email
-            )
-            return creds
-        except Exception as e:
-            raise ToolError(f"Failed to use custom Google credentials: {e}")
-
-    else:  # Default OAuth Flow
-        # Maps doesn't require a dedicated connection like Gmail/Drive, it uses the platform scope.
-        # We check if *any* Google OAuth service is connected to get a token.
-        gdrive_data = user_data.get("integrations", {}).get("gdrive")
-        if not gdrive_data or not gdrive_data.get("connected"):
-             raise ToolError(f"No active Google integration found to use for Maps. Please connect Google Drive first.")
-        
-        try:
-            decrypted_creds_str = aes_decrypt(gdrive_data["credentials"])
-            token_info = json.loads(decrypted_creds_str)
-            return Credentials.from_authorized_user_info(token_info)
-        except Exception as e:
-            raise ToolError(f"Failed to decrypt or parse default OAuth token: {e}")
+    return DEFAULT_GOOGLE_API_KEY

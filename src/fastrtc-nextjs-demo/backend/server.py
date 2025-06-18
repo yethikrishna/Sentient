@@ -13,7 +13,7 @@ from qwen_agent.agents import Assistant
 from qwen_agent.tools.base import BaseTool, register_tool
 import json5
 
-ELEVENLABS_API_KEY = "sk_b3c325885aa991fb121a2e9f10b6936b6ec8ff2dc0456f8b"  # Replace with your ElevenLabs API key
+ELEVENLABS_API_KEY = "REMOVED"  # Replace with your ElevenLabs API key
 if ELEVENLABS_API_KEY == "YOUR_ELEVENLABS_API_KEY":
     print("WARNING: Replace YOUR_ELEVENLABS_API_KEY with your actual ElevenLabs API key.")
 

@@ -7,8 +7,6 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.backends import default_backend
 import motor.motor_asyncio
-from google.oauth2.credentials import Credentials
-from google.oauth2 import service_account
 
 from fastmcp import Context
 from fastmcp.exceptions import ToolError

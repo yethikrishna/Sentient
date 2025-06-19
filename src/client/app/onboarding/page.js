@@ -1,10 +1,10 @@
-// src/client/app/onboarding/page.js
 "use client"
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/utils/cn"
 import toast from "react-hot-toast"
 import { useRouter } from "next/navigation"
+import { IconLoader } from "@tabler/icons-react"
 
 const CheckIcon = ({ className }) => (
 	<svg
@@ -37,6 +37,26 @@ const CheckFilled = ({ className }) => (
 const questions = [
 	{ id: "user-name", question: "What is your name?", type: "text-input" },
 	{
+		id: "timezone",
+		question: "What is your timezone?",
+		type: "select",
+		options: [
+			{ value: "America/New_York", label: "Eastern Time (US & Canada)" },
+			{ value: "America/Chicago", label: "Central Time (US & Canada)" },
+			{ value: "America/Denver", label: "Mountain Time (US & Canada)" },
+			{
+				value: "America/Los_Angeles",
+				label: "Pacific Time (US & Canada)"
+			},
+			{ value: "Europe/London", label: "London, Dublin (GMT/BST)" },
+			{ value: "Europe/Paris", label: "Paris, Berlin (CET)" },
+			{ value: "Asia/Tokyo", label: "Tokyo (JST)" },
+			{ value: "Asia/Kolkata", label: "India (IST)" },
+			{ value: "Australia/Sydney", label: "Sydney (AEST)" },
+			{ value: "UTC", label: "Coordinated Universal Time (UTC)" }
+		]
+	},
+	{
 		id: "personal-interests",
 		question: "What are your primary personal interests?",
 		type: "multiple-choice",
@@ -64,21 +84,6 @@ const questions = [
 			"Leadership",
 			"Social Impact",
 			"Financial Growth"
-		]
-	},
-	{
-		id: "political-views",
-		question: "Which political ideology do you most align with?",
-		type: "multiple-choice",
-		options: [
-			"Liberal",
-			"Conservative",
-			"Centrist",
-			"Socialist",
-			"Libertarian",
-			"Anarchist",
-			"Green",
-			"Other / Prefer not to say"
 		]
 	},
 	{
@@ -179,58 +184,71 @@ const questions = [
 ]
 
 const OnboardingForm = () => {
-	const [currentStep, setCurrentStep] = useState(0)
 	const [answers, setAnswers] = useState({})
 	const [isSubmitting, setIsSubmitting] = useState(false)
 	const [submissionComplete, setSubmissionComplete] = useState(false)
-	const [customOptionInput, setCustomOptionInput] = useState("")
-	const [showCustomInput, setShowCustomInput] = useState(false)
 	const router = useRouter()
+	const [isLoading, setIsLoading] = useState(true) // Check onboarding status on load
+	const [customInputs, setCustomInputs] = useState({})
+	const [showCustomInputs, setShowCustomInputs] = useState({})
 
-	const handleAnswer = (questionId, answer) => {
-		setAnswers((prev) => {
-			if (currentQuestion.type === "text-input") {
-				return { ...prev, [questionId]: answer }
-			} else {
-				const currentAnswers = prev[questionId] || []
-				if (currentAnswers.includes(answer)) {
-					return {
-						...prev,
-						[questionId]: currentAnswers.filter(
-							(item) => item !== answer
-						)
-					}
-				} else {
-					return {
-						...prev,
-						[questionId]: [...currentAnswers, answer]
-					}
+	useEffect(() => {
+		const checkOnboardingStatus = async () => {
+			try {
+				const response = await fetch("/api/user/data")
+				if (!response.ok) {
+					throw new Error("Could not fetch user data.")
 				}
+				const result = await response.json()
+				if (result?.data?.onboardingComplete) {
+					router.push("/chat") // User already onboarded, redirect
+				} else {
+					setIsLoading(false) // Not onboarded, show the form
+				}
+			} catch (error) {
+				toast.error(error.message)
+				setIsLoading(false) // On error, allow user to proceed
 			}
+		}
+		checkOnboardingStatus()
+	}, [router])
+
+	const handleAnswer = (questionId, answer, isTextInput = false) => {
+		setAnswers((prev) => {
+			if (isTextInput) {
+				return { ...prev, [questionId]: answer }
+			}
+			// For multiple choice
+			const currentAnswers = prev[questionId] || []
+			const newAnswers = currentAnswers.includes(answer)
+				? currentAnswers.filter((item) => item !== answer) // Deselect
+				: [...currentAnswers, answer] // Select
+			return { ...prev, [questionId]: newAnswers }
 		})
 	}
 
-	const handleNext = () => {
-		setCustomOptionInput("")
-		setShowCustomInput(false)
+	const handleCustomInputChange = (questionId, value) => {
+		setCustomInputs((prev) => ({ ...prev, [questionId]: value }))
+	}
 
-		if (currentStep < questions.length - 1) {
-			setCurrentStep((prev) => prev + 1)
-		} else {
-			handleSubmit()
+	const toggleCustomInput = (questionId) => {
+		setShowCustomInputs((prev) => ({
+			...prev,
+			[questionId]: !prev[questionId]
+		}))
+	}
+
+	const handleAddCustomOption = (questionId) => {
+		const newOption = customInputs[questionId]?.trim()
+		if (newOption) {
+			handleAnswer(questionId, newOption, false)
+			handleCustomInputChange(questionId, "") // Clear input
+			toggleCustomInput(questionId) // Hide input
 		}
 	}
 
-	const handlePrevious = () => {
-		setCustomOptionInput("")
-		setShowCustomInput(false)
-
-		if (currentStep > 0) {
-			setCurrentStep((prev) => prev - 1)
-		}
-	}
-
-	const handleSubmit = async () => {
+	const handleSubmit = async (e) => {
+		e.preventDefault() // Prevent form from reloading the page
 		setIsSubmitting(true)
 		try {
 			const response = await fetch("/api/onboarding", {
@@ -258,24 +276,16 @@ const OnboardingForm = () => {
 		}
 	}
 
-	const currentQuestion = questions[currentStep]
-
-	const handleAddCustomOption = () => {
-		const newOption = customOptionInput.trim()
-		if (newOption) {
-			const currentOptions = currentQuestion.options
-			if (!currentOptions.includes(newOption)) {
-				currentQuestion.options.push(newOption)
-			}
-			handleAnswer(currentQuestion.id, newOption)
-			setCustomOptionInput("")
-			setShowCustomInput(false)
-		}
+	if (isLoading) {
+		return (
+			<div className="flex flex-col items-center justify-center min-h-screen bg-matteblack text-white">
+				<IconLoader className="w-10 h-10 animate-spin text-lightblue" />
+			</div>
+		)
 	}
-
 	if (submissionComplete) {
 		return (
-			<div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-gray-900 to-black text-white p-4">
+			<div className="flex flex-col items-center justify-center min-h-screen bg-matteblack text-white p-4">
 				<motion.div
 					initial={{ opacity: 0, y: 20 }}
 					animate={{ opacity: 1, y: 0 }}
@@ -283,194 +293,196 @@ const OnboardingForm = () => {
 					className="text-center"
 				>
 					<CheckFilled className="w-24 h-24 text-green-500 mx-auto mb-6" />
-					<h1 className="text-4xl font-bold mb-4">
+					<h1 className="text-4xl font-Poppins font-bold mb-4">
 						Onboarding Complete!
 					</h1>
 					<p className="text-lg text-gray-300">
-						Thank you for providing your information. We're setting
-						things up for you.
+						Thank you. We're setting things up for you.
 					</p>
 					<p className="text-md text-gray-400 mt-2">
-						You will be redirected shortly.
+						Redirecting to your new companion...
 					</p>
-					{/* Button to manually go to dashboard if auto-redirect is delayed or fails */}
-					<button
-						onClick={() => router.push("/chat")}
-						className="mt-8 px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-semibold transition-colors duration-300"
-					>
-						Go to Dashboard
-					</button>
 				</motion.div>
 			</div>
 		)
 	}
 
 	return (
-		<div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-gray-900 to-black text-white p-4">
+		<div className="min-h-screen bg-matteblack text-white p-6 flex items-center justify-center">
 			<motion.div
 				initial={{ opacity: 0, y: 20 }}
 				animate={{ opacity: 1, y: 0 }}
 				transition={{ duration: 0.5 }}
-				className="w-full max-w-2xl bg-gray-800 rounded-lg shadow-xl p-8 relative"
+				className="w-full max-w-4xl"
 			>
-				<div className="absolute top-4 left-8 text-gray-400 text-sm">
-					Step {currentStep + 1} of {questions.length}
+				<div className="text-center mb-12">
+					<h1 className="text-4xl font-Poppins font-bold mb-3 text-white">
+						Welcome to Sentient
+					</h1>
+					<p className="text-lg text-gray-400">
+						Let's personalize your AI companion.
+					</p>
 				</div>
 
-				<h2 className="text-3xl font-bold text-center mb-8 text-lightblue">
-					Tell Us About Yourself
-				</h2>
+				<form onSubmit={handleSubmit} className="space-y-10">
+					{questions.map((q) => {
+						const selectedAnswers = answers[q.id] || []
+						const customAnswers = Array.isArray(selectedAnswers)
+							? selectedAnswers.filter(
+									(ans) => !q.options?.includes(ans)
+								)
+							: []
 
-				<AnimatePresence mode="wait">
-					<motion.div
-						key={currentStep}
-						initial={{ opacity: 0, x: 100 }}
-						animate={{ opacity: 1, x: 0 }}
-						exit={{ opacity: 0, x: -100 }}
-						transition={{ duration: 0.3 }}
-						className="mb-8"
-					>
-						<p className="text-xl font-semibold mb-6 text-gray-200">
-							{currentQuestion.question}
-						</p>
-						{currentQuestion.type === "text-input" ? (
-							<input
-								type="text"
-								value={answers[currentQuestion.id] || ""}
-								onChange={(e) =>
-									handleAnswer(
-										currentQuestion.id,
-										e.target.value
-									)
-								}
-								className="w-full px-6 py-3 rounded-lg text-lg bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-								placeholder="Type your name..."
-							/>
-						) : (
-							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-								{currentQuestion.options.map((option) => {
-									const isSelected = (
-										answers[currentQuestion.id] || []
-									).includes(option)
-									return (
+						return (
+							<div key={q.id}>
+								<label className="block text-xl font-Poppins font-semibold mb-4 text-gray-200">
+									{q.question}
+								</label>
+								{q.type === "text-input" ? (
+									<input
+										type="text"
+										value={answers[q.id] || ""}
+										onChange={(e) =>
+											handleAnswer(
+												q.id,
+												e.target.value,
+												true
+											)
+										}
+										className="w-full px-4 py-3 rounded-lg bg-neutral-800 text-white border border-neutral-700 focus:outline-none focus:ring-2 focus:ring-lightblue placeholder-gray-500"
+										placeholder="Type your answer here..."
+										required={q.id === "user-name"}
+									/>
+								) : q.type === "select" ? (
+									<select
+										value={answers[q.id] || ""}
+										onChange={(e) =>
+											handleAnswer(
+												q.id,
+												e.target.value,
+												true
+											)
+										}
+										className="w-full px-4 py-3 rounded-lg bg-neutral-800 text-white border border-neutral-700 focus:outline-none focus:ring-2 focus:ring-lightblue"
+										required
+									>
+										<option value="" disabled>
+											Select your timezone...
+										</option>
+										{q.options.map((option) => (
+											<option
+												key={option.value}
+												value={option.value}
+											>
+												{option.label}
+											</option>
+										))}
+									</select>
+								) : (
+									<div className="flex flex-wrap gap-3">
+										{q.options.map((option) => {
+											const isSelected =
+												selectedAnswers.includes(option)
+											return (
+												<button
+													key={option}
+													type="button"
+													className={cn(
+														"px-5 py-2.5 rounded-lg text-base font-medium transition-all duration-200",
+														isSelected
+															? "bg-lightblue text-white shadow-md"
+															: "bg-neutral-700 text-gray-300 hover:bg-neutral-600"
+													)}
+													onClick={() =>
+														handleAnswer(
+															q.id,
+															option,
+															false
+														)
+													}
+												>
+													{option}
+												</button>
+											)
+										})}
+										{customAnswers.map((ans) => (
+											<button
+												key={ans}
+												type="button"
+												className="px-5 py-2.5 rounded-lg text-base font-medium transition-all duration-200 bg-lightblue text-white shadow-md"
+												onClick={() =>
+													handleAnswer(
+														q.id,
+														ans,
+														false
+													)
+												}
+											>
+												{ans}
+											</button>
+										))}
 										<button
-											key={option}
+											type="button"
 											className={cn(
-												"px-6 py-3 rounded-lg text-lg transition-all duration-200",
-												isSelected
-													? "bg-blue-600 text-white shadow-lg"
-													: "bg-gray-700 text-gray-200 hover:bg-gray-600"
+												"px-5 py-2.5 rounded-lg text-base font-medium transition-all duration-200 bg-neutral-700 text-gray-300 hover:bg-neutral-600"
 											)}
 											onClick={() =>
-												handleAnswer(
-													currentQuestion.id,
-													option
-												)
+												toggleCustomInput(q.id)
 											}
 										>
-											{option}
+											Other...
 										</button>
-									)
-								})}
-								{showCustomInput ? (
-									<div className="flex items-center gap-2 md:col-span-2">
-										{" "}
-										{/* Span across two columns if needed */}
+									</div>
+								)}
+								{showCustomInputs[q.id] && (
+									<div className="flex items-center gap-2 mt-3">
 										<input
 											type="text"
-											value={customOptionInput}
+											value={customInputs[q.id] || ""}
 											onChange={(e) =>
-												setCustomOptionInput(
+												handleCustomInputChange(
+													q.id,
 													e.target.value
 												)
 											}
 											onKeyPress={(e) => {
-												if (
-													e.key === "Enter" &&
-													customOptionInput.trim() !==
-														""
-												) {
-													handleAddCustomOption()
+												if (e.key === "Enter") {
+													e.preventDefault()
+													handleAddCustomOption(q.id)
 												}
 											}}
-											className="flex-grow px-4 py-2 rounded-lg bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+											className="flex-grow px-4 py-2 rounded-lg bg-neutral-800 text-white border border-neutral-700 focus:outline-none focus:ring-2 focus:ring-lightblue"
 											placeholder="Type your answer..."
 										/>
 										<button
-											onClick={handleAddCustomOption}
+											type="button"
+											onClick={() =>
+												handleAddCustomOption(q.id)
+											}
 											className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-white font-semibold transition-colors duration-300"
 											disabled={
-												customOptionInput.trim() === ""
+												!customInputs[q.id]?.trim()
 											}
 										>
 											Add
 										</button>
 									</div>
-								) : (
-									// Ensure "Other" button aligns with grid
-									<button
-										className={cn(
-											"px-6 py-3 rounded-lg text-lg transition-all duration-200 bg-gray-700 text-gray-200 hover:bg-gray-600",
-											currentQuestion.options.length %
-												2 !==
-												0
-												? "md:col-span-2"
-												: "" // Span if odd number of options
-										)}
-										onClick={() => setShowCustomInput(true)}
-									>
-										Other
-									</button>
 								)}
 							</div>
-						)}
-					</motion.div>
-				</AnimatePresence>
-
-				<div className="flex justify-between mt-10">
-					<button
-						onClick={handlePrevious}
-						disabled={currentStep === 0 || isSubmitting}
-						className={cn(
-							"px-6 py-3 rounded-lg text-lg font-semibold transition-colors duration-300",
-							currentStep === 0 || isSubmitting
-								? "bg-gray-600 text-gray-400 cursor-not-allowed"
-								: "bg-gray-700 hover:bg-gray-600 text-white"
-						)}
-					>
-						Previous
-					</button>
-					<button
-						onClick={handleNext}
-						disabled={
-							(currentQuestion.type === "multiple-choice" &&
-								(!answers[currentQuestion.id] ||
-									answers[currentQuestion.id]?.length ===
-										0) && // Check if undefined or empty
-								!showCustomInput) ||
-							(currentQuestion.type === "text-input" &&
-								!answers[currentQuestion.id]) ||
-							isSubmitting
-						}
-						className={cn(
-							"px-6 py-3 rounded-lg text-lg font-semibold transition-colors duration-300",
-							// Disable if no answer for current question (text or multiple choice)
-							!answers[currentQuestion.id] ||
-								(currentQuestion.type === "multiple-choice" &&
-									answers[currentQuestion.id]?.length === 0 &&
-									!showCustomInput) ||
-								isSubmitting
-								? "bg-blue-800 text-blue-300 cursor-not-allowed"
-								: "bg-blue-600 hover:bg-blue-700 text-white"
-						)}
-					>
-						{isSubmitting
-							? "Submitting..."
-							: currentStep === questions.length - 1
-								? "Finish"
-								: "Next"}
-					</button>
-				</div>
+						)
+					})}
+					<div className="flex justify-end pt-6 border-t border-neutral-700">
+						<button
+							type="submit"
+							disabled={
+								!answers["user-name"]?.trim() || isSubmitting
+							}
+							className="px-8 py-3 rounded-lg text-lg font-semibold transition-colors duration-300 bg-lightblue hover:bg-blue-700 text-white disabled:bg-neutral-600 disabled:text-gray-400 disabled:cursor-not-allowed"
+						>
+							{isSubmitting ? "Saving..." : "Save & Continue"}
+						</button>
+					</div>
+				</form>
 			</motion.div>
 		</div>
 	)

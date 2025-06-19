@@ -14,8 +14,8 @@ import { useRouter } from "next/navigation"
 const Memories = () => {
 	const [userDetails, setUserDetails] = useState(null)
 	const [isSidebarVisible, setSidebarVisible] = useState(false)
-	const [mcpUrl, setMcpUrl] = useState("")
-	const [isLoading, setIsLoading] = useState(true) // Initialize as true
+	const [isMemoryConnected, setIsMemoryConnected] = useState(false)
+	const [isLoading, setIsLoading] = useState(true)
 	const router = useRouter()
 
 	const fetchUserDetails = useCallback(async () => {
@@ -28,17 +28,18 @@ const Memories = () => {
 		}
 	}, [])
 
-	const fetchMcpUrl = useCallback(async () => {
+	const checkMemoryConnection = useCallback(async () => {
 		setIsLoading(true)
 		try {
-			const res = await fetch("/api/settings/mcp")
-			if (!res.ok)
-				throw new Error("Failed to fetch Supermemory settings.")
-			const data = await res.json()
-			setMcpUrl(data.mcp_url || "")
+			const response = await fetch("/api/user/data")
+			if (!response.ok) {
+				throw new Error("Could not fetch user data.")
+			}
+			const result = await response.json()
+			setIsMemoryConnected(!!result?.data?.supermemory_user_id)
 		} catch (error) {
-			toast.error(error.message)
-			setMcpUrl("") // Reset on error
+			toast.error("Could not verify memory connection.")
+			setIsMemoryConnected(false)
 		} finally {
 			setIsLoading(false)
 		}
@@ -46,8 +47,8 @@ const Memories = () => {
 
 	useEffect(() => {
 		fetchUserDetails()
-		fetchMcpUrl()
-	}, [fetchUserDetails, fetchMcpUrl])
+		checkMemoryConnection()
+	}, [fetchUserDetails, checkMemoryConnection])
 
 	return (
 		<div className="h-screen bg-matteblack flex relative overflow-hidden dark">
@@ -68,7 +69,7 @@ const Memories = () => {
 						<div className="flex justify-center items-center h-24">
 							<IconLoader className="w-8 h-8 animate-spin text-lightblue" />
 						</div>
-					) : mcpUrl ? (
+					) : isMemoryConnected ? (
 						<div>
 							<p className="text-gray-300 mb-2">
 								Your memory is connected and managed by
@@ -90,19 +91,11 @@ const Memories = () => {
 							<p className="text-yellow-300 mb-2">
 								Your universal memory is not connected.
 							</p>
-							<p className="text-gray-400 text-sm mb-6">
-								To enable persistent memory across all your
-								chats and platforms, please configure your
-								Supermemory MCP URL in the settings.
+							<p className="text-gray-500 text-sm mb-6">
+								This might be an issue with your account
+								configuration. Please try refreshing the page or
+								contacting support if the problem persists.
 							</p>
-							<button
-								onClick={() => router.push("/settings")}
-								className="flex items-center gap-2 py-2.5 px-6 rounded-full bg-darkblue hover:bg-lightblue text-white text-sm font-medium transition-colors shadow-md"
-							>
-								<IconSettings className="w-5 h-5" />
-								Go to Settings
-							</button>{" "}
-							{/* Adjusted Icon */}
 						</div>
 					)}
 				</div>

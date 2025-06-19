@@ -4,12 +4,8 @@ from datetime import timezone
 START_TIME = time.time()
 print(f"[{datetime.datetime.now()}] [STARTUP] Main Server application script execution started.")
 
-import os
-import asyncio
 from contextlib import asynccontextmanager
-from typing import Optional
 import logging
-from fastapi import Depends
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,8 +16,7 @@ from .auth.routes import router as auth_router
 from .chat.routes import router as chat_router
 from .notifications.routes import router as notifications_router
 from .integrations.routes import router as integrations_router
-from .misc.routes import router as misc_router, OnboardingRequest, GoogleAuthSettings, SupermemorySettings
-from .auth.utils import PermissionChecker
+from .misc.routes import router as misc_router
 from .agents.routes import router as agents_router
 
 logging.basicConfig(level=logging.INFO)

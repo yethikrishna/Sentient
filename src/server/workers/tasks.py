@@ -2,6 +2,7 @@ import asyncio
 import logging
 import json
 import re
+from server.main.config import SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX
 
 from server.workers.utils.api_client import notify_user
 from server.celery_app import celery_app
@@ -38,39 +39,43 @@ def process_memory_item(user_id: str, fact_text: str):
                 logger.error(f"User profile not found for {user_id}. Cannot process memory item.")
                 return {"status": "failure", "reason": "User profile not found"}
 
-            supermemory_mcp_url = user_profile.get("userData", {}).get("supermemory_mcp_url")
-            if not supermemory_mcp_url:
-                logger.warning(f"User {user_id} has no Supermemory MCP URL. Skipping memory item: '{fact_text[:50]}...'")
+            supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id")
+            if not supermemory_user_id:
+                logger.warning(f"User {user_id} has no Supermemory User ID. Skipping memory item: '{fact_text[:50]}...'")
                 return {"status": "skipped", "reason": "Supermemory MCP URL not configured"}
+
+            supermemory_mcp_url = f"{SUPERMEMORY_MCP_BASE_URL.rstrip('/')}/{supermemory_user_id}{SUPERMEMORY_MCP_ENDPOINT_SUFFIX}"
 
             agent = get_supermemory_qwen_agent(supermemory_mcp_url)
             messages = [{'role': 'user', 'content': f"Remember this fact: {fact_text}"}] # Give clear instruction to agent
 
-            final_agent_response_str = ""
-            for response_chunk in agent.run(messages=messages):
-                if isinstance(response_chunk, list) and response_chunk:
-                    last_message = response_chunk[-1]
-                    # The agent's actual response after tool call might be in 'content'
-                    # or the tool call itself is the "response" we care about if it's direct
-                    if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
-                        content = last_message.get("content")
-                        # The direct output from this agent should be the tool call JSON string.
-                        final_agent_response_str = content # Assuming system prompt makes it output JSON
+            # The agent.run is a generator. We must exhaust it to ensure all steps
+            # (including tool calls and their results) are completed.
+            all_responses = list(agent.run(messages=messages))
+            final_history = all_responses[-1] if all_responses else None
+            logger.info(f"Supermemory agent final history for user {user_id}: {json.dumps(final_history, indent=2)}")
 
-            logger.info(f"Supermemory agent raw response for user {user_id}: {final_agent_response_str}")
+            if not final_history:
+                logger.error(f"Supermemory agent produced no output for user {user_id}.")
+                return {"status": "failure", "reason": "Agent produced no output"}
 
-            # We expect the agent to directly output the tool call JSON.
-            # The success/failure is determined by the MCP server's response to that call,
-            # which the Qwen agent framework handles internally and logs.
-            # For this Celery task, we mainly care that the agent attempted the call.
-            # A more robust check would involve parsing final_agent_response_str if it's
-            # the tool call result from the function role message.
-            if "supermemory-addToSupermemory" in final_agent_response_str: # Basic check
-                logger.info(f"Successfully triggered Supermemory store for user {user_id}. Fact: '{fact_text[:50]}...'")
-                return {"status": "success", "fact": fact_text}
+            # Check the final history for a successful function call result.
+            function_call_succeeded = False
+            tool_response_content = "No tool response received."
+
+            for message in reversed(final_history):
+                if message.get("role") == "function" and message.get("name") == "supermemory-addToSupermemory":
+                    tool_response_content = message.get("content", "")
+                    if isinstance(tool_response_content, str) and "success" in tool_response_content.lower():
+                        function_call_succeeded = True
+                    break
+
+            if function_call_succeeded:
+                logger.info(f"Successfully executed Supermemory store for user {user_id}. MCP Response: '{tool_response_content}'. Fact: '{fact_text[:50]}...'")
+                return {"status": "success", "fact": fact_text, "mcp_response": tool_response_content}
             else:
-                logger.error(f"Supermemory agent did not seem to make the expected tool call for user {user_id}. Response: {final_agent_response_str}")
-                return {"status": "failure", "reason": "Agent did not make expected Supermemory call", "agent_response": final_agent_response_str}
+                logger.error(f"Supermemory agent tool call failed or did not return success for user {user_id}. Last Tool Response: {tool_response_content}")
+                return {"status": "failure", "reason": "Supermemory tool call did not succeed", "mcp_response": tool_response_content}
         except Exception as e:
             logger.error(f"Critical error in process_memory_item for user {user_id}: {e}", exc_info=True)
             raise # Re-raise to let Celery handle the task failure (retry, etc.)

@@ -9,7 +9,7 @@
     It launches each service in its own dedicated PowerShell terminal window with a clear title.
 
     The script handles:
-    - Starting databases like MongoDB (as admin) and Neo4j.
+    - Starting databases like MongoDB (as admin).
     - Launching services within the Windows Subsystem for Linux (WSL), such as Kafka and Redis.
     - Dynamically discovering and starting all MCP (Modular Companion Protocol) servers.
     - Activating the Python virtual environment for all backend scripts.
@@ -25,10 +25,6 @@
 
 # --- Configuration ---
 # Please review and update these paths to match your local setup.
-
-# Path to the 'bin' directory of your Neo4j installation.
-$neo4jBinPath = "D:\Software\neo4j-community-5.25.1\bin"
-# $neo4jBinPath = "C:\Users\Existence\Documents\neo4j-community-2025.05.0\bin"
 
 # The name of your WSL distribution where Kafka and Redis are installed.
 $wslDistroName = "Ubuntu"
@@ -55,8 +51,6 @@ try {
     if (-not (Test-Path -Path $clientPath)) { throw "The 'src/client' directory was not found." }
     if (-not (Test-Path -Path $mcpHubPath)) { throw "The 'src/server/mcp-hub' directory was not found." }
     if (-not (Test-Path -Path $venvActivatePath)) { throw "The venv activation script was not found at '$venvActivatePath'." }
-    if (-not (Test-Path -Path $neo4jBinPath)) { throw "The Neo4j bin path '$neo4jBinPath' is invalid. Please update the configuration." }
-    Write-Host "✅ All required local paths verified." -ForegroundColor Green
 
     # Helper function to start a process in a new terminal window
     function Start-NewTerminal {
@@ -87,11 +81,6 @@ try {
     # Start MongoDB Service (requires admin)
     Write-Host "🚀 Launching MongoDB Service (requires admin)..." -ForegroundColor Yellow
     Start-Process powershell.exe -Verb RunAs -ArgumentList "Start-Service -Name 'MongoDB' -ErrorAction SilentlyContinue; if (`$?) { Write-Host 'MongoDB service started successfully.' -ForegroundColor Green } else { Write-Host 'MongoDB service was already running or failed to start.' -ForegroundColor Yellow }; Read-Host 'Press Enter to close this admin window.'"
-    Start-Sleep -Seconds 3
-
-    # Start Neo4j
-    Write-Host "🚀 Launching Neo4j..." -ForegroundColor Yellow
-    Start-NewTerminal -WindowTitle "DATABASE - Neo4j" -Command ".\neo4j.bat console" -WorkDir $neo4jBinPath
     Start-Sleep -Seconds 3
 
     # Start Redis Server (for Celery)

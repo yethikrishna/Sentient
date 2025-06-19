@@ -8,14 +8,7 @@ logger = logging.getLogger(__name__)
 SYSTEM_PROMPT_SUPERMEMORY_CELERY = """
 You are a memory processing agent. Your sole task is to take the given text, which is a fact about the user, and store it using the `supermemory-addToSupermemory` tool.
 The user's identity is managed by the system configuration of the tool. You only need to pass the fact itself as the `thingToRemember` parameter.
-Your entire response MUST be the tool call as a valid JSON object. Do not add any conversational text or explanations.
-Example of a valid tool call response:
-{
-  "tool_name": "supermemory-addToSupermemory",
-  "parameters": {
-    "thingToRemember": "The user's favorite color is blue."
-  }
-}
+Only call the addToSupermemory tool once for each memory. There is no need to create duplicates of a memory.
 """
 
 def get_db_manager() -> PlannerMongoManager:
@@ -36,7 +29,6 @@ def get_supermemory_qwen_agent(supermemory_mcp_url: str):
             'api_key': 'ollama',
             'generate_cfg': {
                 'temperature': 0.1, # Low temperature for deterministic tool use
-                'response_format': {'type': 'json_object'}, # Expect JSON output
             }
         }
     elif LLM_PROVIDER == "OPENROUTER":
@@ -47,7 +39,6 @@ def get_supermemory_qwen_agent(supermemory_mcp_url: str):
             'api_key': OPENROUTER_API_KEY,
             'generate_cfg': {
                 'temperature': 0.1,
-                'response_format': {'type': 'json_object'},
             }
         }
     else:
@@ -72,7 +63,8 @@ def get_supermemory_qwen_agent(supermemory_mcp_url: str):
         agent = Assistant(
             llm=llm_cfg,
             system_message=SYSTEM_PROMPT_SUPERMEMORY_CELERY,
-            function_list=tools_config
+            function_list=tools_config,
+            description="An agent that uses a remote MCP server to manage memories.",
         )
         logger.info(f"Supermemory Qwen Agent initialized successfully for MCP: {supermemory_mcp_url}")
         return agent

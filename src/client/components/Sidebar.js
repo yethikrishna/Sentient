@@ -43,7 +43,7 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 	}, [])
 
 	const logout = () => {
-		router.push("/api/auth/logout")
+		router.push("/auth/logout")
 	}
 
 	const fetchChats = useCallback(async () => {

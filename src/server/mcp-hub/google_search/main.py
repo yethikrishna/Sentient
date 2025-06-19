@@ -1,5 +1,3 @@
-# server/mcp-hub/google_search/main.py
-
 import os
 from typing import Dict, Any
 from dotenv import load_dotenv
@@ -42,7 +40,7 @@ async def google_search(ctx: Context, query: str) -> Dict[str, Any]:
     """
     try:
         user_id = auth.get_user_id_from_context(ctx)
-        keys = auth.get_google_api_keys(user_id)
+        keys = await auth.get_google_api_keys(user_id)
         
         search_results = await utils.perform_google_search(
             keys["api_key"], keys["cse_id"], query

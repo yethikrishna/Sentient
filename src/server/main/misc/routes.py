@@ -2,13 +2,14 @@ import datetime
 import uuid
 import json
 import traceback
+import secrets
 import asyncio
 from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, Depends, HTTPException, status, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 import logging
 
-from ..models import OnboardingRequest, GoogleAuthSettings, SupermemorySettings
+from ..models import OnboardingRequest, GoogleAuthSettings
 from ..auth.utils import PermissionChecker, AuthHelper, aes_encrypt, aes_decrypt
 from ..config import AUTH0_AUDIENCE
 from ..dependencies import mongo_manager, auth_helper, websocket_manager as main_websocket_manager
@@ -17,6 +18,9 @@ from ..dependencies import mongo_manager, auth_helper, websocket_manager as main
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+
+# For dispatching memory tasks
+from ...workers.tasks import process_memory_item
 
 logger = logging.getLogger(__name__)
 
@@ -32,17 +36,63 @@ async def save_onboarding_data_endpoint(
 ):
     logger.info(f"[{datetime.datetime.now()}] [ONBOARDING] User {user_id}, Data keys: {list(request_body.data.keys())}")
     try:
-        user_data_to_set = {
+        # Generate and add supermemory_user_id
+        supermemory_user_id = secrets.token_urlsafe(16)
+
+        user_data_to_set: Dict[str, Any] = {
             "onboardingAnswers": request_body.data,
             "onboardingComplete": True,
+            "supermemory_user_id": supermemory_user_id,
         }
+        personal_info = {}
         if "user-name" in request_body.data and isinstance(request_body.data["user-name"], str):
-            user_data_to_set.setdefault("personalInfo", {})["name"] = request_body.data["user-name"]
+            personal_info["name"] = request_body.data["user-name"]
+        
+        if "timezone" in request_body.data and isinstance(request_body.data["timezone"], str):
+             personal_info["timezone"] = request_body.data["timezone"]
+        
+        if personal_info:
+            user_data_to_set["personalInfo"] = personal_info
+
 
         update_payload = {f"userData.{key}": value for key, value in user_data_to_set.items()}
         success = await mongo_manager.update_user_profile(user_id, update_payload)
         if not success:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to save onboarding data.")
+
+        # After successful save, dispatch facts to Celery worker to be added to Supermemory
+        try:
+            onboarding_facts = []
+            fact_templates = {
+                "user-name": "The user's name is {}.",
+                "timezone": "The user's timezone is {}.",
+                "personal-interests": "The user's personal interests include {}.",
+                "professional-aspirations": "The user's professional aspirations include {}.",
+                "hobbies": "Some of the user's favorite hobbies are {}.",
+                "values": "Values that are most important to the user include {}.",
+                "learning-style": "The user prefers to learn new things in the following way: {}.",
+                "social-preferences": "The user's preferred social setting is {}.",
+                "decision-making": "The user typically makes decisions {}.",
+                "future-outlook": "The user's general outlook on the future is {}.",
+                "communication-style": "The user's communication style is best described as {}."
+            }
+
+            for key, value in request_body.data.items():
+                if not value or key not in fact_templates:
+                    continue
+                
+                answer_text = ", ".join(value) if isinstance(value, list) else str(value)
+                fact = fact_templates[key].format(answer_text)
+                onboarding_facts.append(fact)
+
+            for fact in onboarding_facts:
+                process_memory_item.delay(user_id, fact)
+            
+            logger.info(f"Dispatched {len(onboarding_facts)} onboarding facts to memory queue for user {user_id}")
+        except Exception as celery_e:
+            logger.error(f"Failed to dispatch onboarding facts to Celery for user {user_id}: {celery_e}", exc_info=True)
+            # Don't fail the whole request, just log the error. Onboarding is still complete.
+
         return JSONResponse(content={"message": "Onboarding data saved successfully.", "status": 200})
     except Exception as e:
         logger.error(f"[{datetime.datetime.now()}] [ONBOARDING_ERROR] User {user_id}: {e}", exc_info=True)
@@ -152,33 +202,6 @@ async def set_google_auth_settings(
         raise HTTPException(status_code=500, detail="Failed to update Google auth settings in database.")
         
     return JSONResponse(content={"message": "Google API settings saved and validated successfully."})
-
-
-# --- NEW Supermemory MCP Settings Routes ---
-@router.get("/settings/supermemory", status_code=status.HTTP_200_OK, summary="Get Supermemory User ID")
-async def get_supermemory_settings(user_id: str = Depends(PermissionChecker(required_permissions=["read:config"]))):
-    profile = await mongo_manager.get_user_profile(user_id)
-    supermemory_user_id = profile.get("userData", {}).get("supermemory_user_id", "") if profile else ""
-    return JSONResponse(content={"supermemory_user_id": supermemory_user_id})
-
-@router.post("/settings/supermemory", status_code=status.HTTP_200_OK, summary="Save Supermemory User ID")
-async def save_supermemory_settings(
-    settings: SupermemorySettings,
-    user_id: str = Depends(PermissionChecker(required_permissions=["write:config"]))
-):
-    # The frontend will pass the full MCP URL, but we should store just the user ID part
-    # and reconstruct the full URL when needed using base URL from config.
-    # For now, to match the client's `SupermemorySettings` which expects `mcp_url`,
-    # we'll store the full URL. This can be refactored later if desired.
-    # If `settings.mcp_url` is an empty string or None, it means the user is clearing the setting.
-    mcp_url_to_save = settings.mcp_url if settings.mcp_url else "" # Store empty string if cleared
-
-    update_payload = {"userData.supermemory_mcp_url": mcp_url_to_save}
-    success = await mongo_manager.update_user_profile(user_id, update_payload)
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to save Supermemory MCP settings.")
-    
-    return JSONResponse(content={"message": "Supermemory MCP URL saved successfully."})
 
 
 @router.websocket("/ws/notifications")

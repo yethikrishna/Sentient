@@ -21,7 +21,7 @@ tools = [{
   "mcpServers": {
     "supermemory": {
       "transport": "sse",
-      "url": "https://mcp.supermemory.ai/USER_ID/sse"
+      "url": "https://mcp.supermemory.ai/KmIA8cZ5E_3_oFmqPHUWRA/sse"
     }
   }
 }]

@@ -47,13 +47,13 @@ async def generate_chat_llm_stream(
 
     try:
         user_profile = await db_manager.get_user_profile(user_id)
-        supermemory_user_id_from_db = user_profile.get("userData", {}).get("supermemory_user_id") if user_profile else None
+        supermemory_mcp_url_from_db = user_profile.get("userData", {}).get("supermemory_mcp_url") if user_profile else None
         
         active_mcp_servers = {}
 
         # Connect to Supermemory MCP if URL is configured
-        if supermemory_user_id_from_db:
-            full_supermemory_mcp_url = f"{SUPERMEMORY_MCP_BASE_URL.rstrip('/')}/{supermemory_user_id_from_db}{SUPERMEMORY_MCP_ENDPOINT_SUFFIX}"
+        if supermemory_mcp_url_from_db:
+            full_supermemory_mcp_url = supermemory_mcp_url_from_db
             active_mcp_servers["supermemory"] = {
                 "transport": "sse",
                 "url": full_supermemory_mcp_url
@@ -90,7 +90,7 @@ async def generate_chat_llm_stream(
             "type": "text", 
             "isVisible": True, 
             "agentsUsed": True,
-            "memoryUsed": bool(supermemory_user_id_from_db) # Set memoryUsed flag
+            "memoryUsed": bool(supermemory_mcp_url_from_db) # Set memoryUsed flag
         }
         
         await db_manager.add_chat_message(user_id, chat_id, user_message_payload)
@@ -166,7 +166,7 @@ async def generate_chat_llm_stream(
         if stream_interrupted and not final_text_content.endswith("[STREAM STOPPED BY USER]"):
             final_text_content += "\n\n[STREAM STOPPED BY USER]"
         
-        update_payload = {"message": final_text_content, "structured_history": assistant_turn_messages, "agentsUsed": True, "memoryUsed": bool(supermemory_user_id_from_db)}
+        update_payload = {"message": final_text_content, "structured_history": assistant_turn_messages, "agentsUsed": True, "memoryUsed": bool(supermemory_mcp_url_from_db)}
         if final_text_content.strip(): await db_manager.update_chat_message(user_id, chat_id, assistant_message_id, update_payload)
         
         yield {"type": "assistantStream", "token": "", "done": True, "messageId": assistant_message_id}

@@ -289,22 +289,15 @@ INTEGRATIONS_CONFIG = {
 
 # --- Service Provider Configuration ---
 # These variables allow for flexible switching between different service providers.
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "OLLAMA")  # Options: "OLLAMA", "OPENROUTER"
-STT_PROVIDER = os.getenv("STT_PROVIDER", "FASTER_WHISPER") # Options: "FASTER_WHISPER", "ELEVENLABS"
-TTS_PROVIDER = os.getenv("TTS_PROVIDER", "ORPHEUS") # Options: "ORPHEUS", "ELEVENLABS", "GCP"
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "OLLAMA") # Options: "OLLAMA", "OPENROUTER"
+# STT_PROVIDER = os.getenv("STT_PROVIDER", "FASTER_WHISPER") # Voice removed
+# TTS_PROVIDER = os.getenv("TTS_PROVIDER", "ORPHEUS") # Voice removed
 
 # --- Service-Specific API Keys and Paths ---
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY") # Used for both STT and TTS from ElevenLabs
-ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb") # Default to Rachel
+# ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY") # Voice removed
+# ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb") # Voice removed
 
-# For Orpheus (Dev TTS)
-ORPHEUS_MODEL_PATH = os.getenv("ORPHEUS_MODEL_PATH", os.path.join(os.path.dirname(__file__), "..", "legacy", "voice", "models", "orpheus-3b-0.1-ft-q4_k_m.gguf"))
-ORPHEUS_N_GPU_LAYERS = int(os.getenv("ORPHEUS_N_GPU_LAYERS", 30))
-
-# FasterWhisper STT (Dev STT) - Configs are usually passed at instantiation
-FASTER_WHISPER_MODEL_SIZE = os.getenv("FASTER_WHISPER_MODEL_SIZE", "base")
-FASTER_WHISPER_DEVICE = os.getenv("FASTER_WHISPER_DEVICE", "cpu")
-FASTER_WHISPER_COMPUTE_TYPE = os.getenv("FASTER_WHISPER_COMPUTE_TYPE", "int8")
+# Voice related model paths and settings removed
 
 
 # LLM Endpoint Configuration
@@ -320,5 +313,5 @@ SUPERMEMORY_MCP_ENDPOINT_SUFFIX = os.getenv("SUPERMEMORY_MCP_ENDPOINT_SUFFIX", "
 
 print(f"[{datetime.datetime.now()}] [MainServer_Config] Configuration loaded. AUTH0_DOMAIN: {'SET' if AUTH0_DOMAIN else 'NOT SET'}")
 print(f"[{datetime.datetime.now()}] [MainServer_Config] LLM Provider: {LLM_PROVIDER}")
-print(f"[{datetime.datetime.now()}] [MainServer_Config] STT Provider: {STT_PROVIDER}")
-print(f"[{datetime.datetime.now()}] [MainServer_Config] TTS Provider: {TTS_PROVIDER}")
+# print(f"[{datetime.datetime.now()}] [MainServer_Config] STT Provider: {STT_PROVIDER}") # Voice removed
+# print(f"[{datetime.datetime.now()}] [MainServer_Config] TTS Provider: {TTS_PROVIDER}") # Voice removed

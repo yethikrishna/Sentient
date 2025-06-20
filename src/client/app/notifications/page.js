@@ -6,7 +6,8 @@ import {
 	IconBell,
 	IconAlertCircle,
 	IconArrowRight,
-	IconX
+	IconX,
+	IconMenu2
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import Sidebar from "@components/Sidebar"
@@ -137,19 +138,27 @@ const Notifications = () => {
 
 	// --- Render Logic ---
 	return (
-		<div className="h-screen bg-matteblack flex relative overflow-hidden dark">
+		<div className="flex h-screen bg-matteblack dark">
 			<Sidebar
 				userDetails={userDetails}
 				isSidebarVisible={isSidebarVisible}
 				setSidebarVisible={setSidebarVisible}
 			/>
 
-			<div className="flex-grow flex flex-col h-full bg-matteblack text-white relative overflow-hidden p-6 md:p-8">
-				<h1 className="text-3xl md:text-4xl font-light text-white mb-6 md:mb-8 px-4 text-center md:text-left">
-					Notifications
-				</h1>
+			<div className="flex-1 flex flex-col overflow-hidden">
+				<header className="flex items-center justify-between p-4 bg-matteblack border-b border-neutral-800 md:flex-row md:items-center">
+					<button
+						onClick={() => setSidebarVisible(true)}
+						className="text-white md:hidden"
+					>
+						<IconMenu2 />
+					</button>
+					<h1 className="text-2xl sm:text-3xl font-light text-white flex-grow text-center md:text-left md:flex-grow-0">
+						Notifications
+					</h1>
+				</header>
 
-				<div className="w-full max-w-3xl mx-auto flex-grow overflow-hidden flex flex-col">
+				<main className="flex-1 w-full max-w-3xl mx-auto flex flex-col overflow-hidden p-4 sm:p-6">
 					{isLoading ? ( // Handle loading state first
 						<div className="flex-grow flex flex-col justify-center items-center text-center p-10">
 							<IconLoader className="w-10 h-10 text-lightblue animate-spin" />
@@ -185,7 +194,7 @@ const Notifications = () => {
 						</div>
 					) : (
 						// Display notification list
-						<div className="flex-grow overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+						<div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
 							{notifications.map((notif) => (
 								<div // eslint-disable-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
 									key={notif.id ?? Math.random()}
@@ -220,7 +229,7 @@ const Notifications = () => {
 							))}
 						</div>
 					)}
-				</div>
+				</main>
 			</div>
 		</div>
 	)

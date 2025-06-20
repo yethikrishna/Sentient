@@ -19,6 +19,7 @@ import {
 	IconFilter,
 	IconChevronUp,
 	IconPlus,
+	IconMenu2,
 	IconGripVertical,
 	IconBrain
 } from "@tabler/icons-react"
@@ -92,6 +93,7 @@ const Tasks = () => {
 	const [filterStatus, setFilterStatus] = useState("all")
 	const [searchTerm, setSearchTerm] = useState("")
 	const [viewingTask, setViewingTask] = useState(null) // For viewing task details/approval
+	const [isCreatePlanOpen, setCreatePlanOpen] = useState(true)
 	const [openSections, setOpenSections] = useState({
 		approval_pending: true,
 		processing: true,
@@ -521,9 +523,18 @@ const Tasks = () => {
 				isSidebarVisible={isSidebarVisible}
 				setSidebarVisible={setSidebarVisible}
 			/>
-			<div className="flex-grow flex flex-col h-full bg-matteblack text-white relative overflow-hidden p-6">
+			<div className="flex-1 flex flex-col h-full bg-matteblack text-white relative overflow-hidden">
+				<header className="flex items-center justify-between p-4 bg-matteblack border-b border-neutral-800 md:hidden">
+					<button
+						onClick={() => setSidebarVisible(true)}
+						className="text-white"
+					>
+						<IconMenu2 />
+					</button>
+					<h1 className="text-lg font-semibold text-white">Tasks</h1>
+				</header>
 				{/* --- Top Bar for Search/Filter --- */}
-				<div className="absolute top-6 left-1/2 transform -translate-x-1/2 z-30 w-full max-w-3xl px-4">
+				<div className="md:absolute md:top-6 md:left-1/2 md:transform md:-translate-x-1/2 z-30 w-full max-w-3xl md:px-4 p-4 md:p-0">
 					<div className="flex items-center space-x-3 bg-neutral-800/80 backdrop-blur-sm rounded-full p-3 shadow-lg border border-neutral-700">
 						<IconSearch className="h-6 w-6 text-gray-400 ml-2 flex-shrink-0" />
 						<input
@@ -558,7 +569,7 @@ const Tasks = () => {
 				</div>
 
 				{/* --- Refresh Button (Top Right) --- */}
-				<div className="absolute top-6 right-6 z-30">
+				<div className="absolute top-4 right-4 md:top-6 md:right-6 z-30">
 					<button
 						onClick={fetchTasksData}
 						className="p-2.5 rounded-full hover:bg-neutral-700/60 transition-colors text-gray-300"
@@ -583,8 +594,8 @@ const Tasks = () => {
 				</div>
 
 				{/* --- Task List Container --- */}
-				<div className="flex-grow w-full max-w-4xl mx-auto px-0 pt-24 pb-28 flex flex-col overflow-hidden">
-					<div className="flex-grow overflow-y-auto space-y-6 pr-2 custom-scrollbar">
+				<main className="flex-1 w-full max-w-4xl mx-auto px-4 sm:px-0 md:pt-24 pb-28 flex flex-col overflow-hidden">
+					<div className="flex-grow overflow-y-auto space-y-6 md:pr-2 custom-scrollbar">
 						{loading || loadingIntegrations ? (
 							<div className="flex justify-center items-center h-full">
 								<IconLoader className="w-10 h-10 animate-spin text-white" />
@@ -631,117 +642,183 @@ const Tasks = () => {
 							</>
 						)}
 					</div>
-				</div>
+				</main>
 
 				<div className="absolute bottom-0 left-0 right-0 p-4 bg-matteblack/90 backdrop-blur-sm border-t border-neutral-700">
-					<div className="max-w-4xl mx-auto space-y-4">
-						<h3 className="text-lg font-semibold text-white">
-							Create a New Plan
-						</h3>
-						<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-							<input
-								type="text"
-								placeholder="Describe the overall goal..."
-								value={newTaskDescription}
-								onChange={(e) =>
-									setNewTaskDescription(e.target.value)
-								}
-								className="md:col-span-2 p-3 bg-neutral-700/60 border border-neutral-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-lightblue"
-							/>
-							<select
-								value={newTaskPriority}
-								onChange={(e) =>
-									setNewTaskPriority(Number(e.target.value))
-								}
-								className="p-3 bg-neutral-700/60 border border-neutral-600 rounded-lg text-white focus:outline-none focus:border-lightblue appearance-none"
-							>
-								<option value={0}>High Priority</option>
-								<option value={1}>Medium Priority</option>
-								<option value={2}>Low Priority</option>
-							</select>
-						</div>
-						<div className="space-y-3">
-							<label className="text-sm font-medium text-gray-300">
-								Plan Steps
-							</label>
-							<AnimatePresence>
-								{newTaskPlan.map((step, index) => (
-									<motion.div
-										key={index}
-										initial={{ opacity: 0, y: -10 }}
-										animate={{ opacity: 1, y: 0 }}
-										exit={{ opacity: 0, x: -20 }}
-										className="flex items-center gap-3"
-									>
-										<IconGripVertical className="h-5 w-5 text-gray-500 flex-shrink-0" />
-										<select
-											value={step.tool}
-											onChange={(e) =>
-												handleStepChange(
-													index,
-													"tool",
-													e.target.value
-												)
-											}
-											className="w-1/3 p-2 bg-neutral-700/60 border border-neutral-600 rounded-md text-white focus:outline-none focus:border-lightblue text-sm"
-										>
-											<option value="">
-												Select a tool...
-											</option>
-											{availableTools.map((tool) => (
-												<option
-													key={tool.name}
-													value={tool.name}
-												>
-													{tool.display_name}
-												</option>
-											))}
-										</select>
-										<input
-											type="text"
-											placeholder="Describe what this step should do..."
-											value={step.description}
-											onChange={(e) =>
-												handleStepChange(
-													index,
-													"description",
-													e.target.value
-												)
-											}
-											className="flex-grow p-2 bg-neutral-700/60 border border-neutral-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:border-lightblue text-sm"
-										/>
-										<button
-											onClick={() =>
-												handleRemoveStep(index)
-											}
-											className="p-2 text-red-400 hover:bg-neutral-700 rounded-full transition-colors"
-										>
-											<IconX className="h-4 w-4" />
-										</button>
-									</motion.div>
-								))}
-							</AnimatePresence>
-						</div>
-						<div className="flex justify-between items-center">
-							<button
-								onClick={handleAddStep}
-								className="flex items-center gap-1.5 py-2 px-4 rounded-full bg-neutral-600 hover:bg-neutral-500 text-white text-xs font-medium transition-colors"
-							>
-								<IconPlus className="h-4 w-4" /> Add Step
-							</button>
-							<button
-								onClick={handleAddTask}
-								disabled={isAdding}
-								className="flex items-center gap-2 py-2.5 px-6 rounded-lg bg-lightblue hover:bg-blue-700 text-white text-sm font-semibold transition-colors disabled:opacity-50"
-							>
-								{isAdding ? (
-									<IconLoader className="h-5 w-5 animate-spin" />
-								) : (
-									<IconCircleCheck className="h-5 w-5" />
+					<div className="max-w-4xl mx-auto">
+						<div
+							onClick={() => setCreatePlanOpen(!isCreatePlanOpen)}
+							className="flex justify-between items-center cursor-pointer"
+						>
+							<h3 className="text-lg font-semibold text-white">
+								Create a New Plan
+							</h3>
+							<IconChevronUp
+								className={cn(
+									"transform transition-transform duration-200",
+									!isCreatePlanOpen && "rotate-180"
 								)}
-								{isAdding ? "Saving Plan..." : "Save New Plan"}
-							</button>
+							/>
 						</div>
+						<AnimatePresence>
+							{isCreatePlanOpen && (
+								<motion.div
+									key="create-plan-panel"
+									initial={{ height: 0, opacity: 0 }}
+									animate={{ height: "auto", opacity: 1 }}
+									exit={{ height: 0, opacity: 0 }}
+									className="overflow-hidden"
+								>
+									<div className="space-y-4 pt-4">
+										<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+											<input
+												type="text"
+												placeholder="Describe the overall goal..."
+												value={newTaskDescription}
+												onChange={(e) =>
+													setNewTaskDescription(
+														e.target.value
+													)
+												}
+												className="md:col-span-2 p-3 bg-neutral-700/60 border border-neutral-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-lightblue"
+											/>
+											<select
+												value={newTaskPriority}
+												onChange={(e) =>
+													setNewTaskPriority(
+														Number(e.target.value)
+													)
+												}
+												className="p-3 bg-neutral-700/60 border border-neutral-600 rounded-lg text-white focus:outline-none focus:border-lightblue appearance-none"
+											>
+												<option value={0}>
+													High Priority
+												</option>
+												<option value={1}>
+													Medium Priority
+												</option>
+												<option value={2}>
+													Low Priority
+												</option>
+											</select>
+										</div>
+										<div className="space-y-3">
+											<label className="text-sm font-medium text-gray-300">
+												Plan Steps
+											</label>
+											<AnimatePresence>
+												{newTaskPlan.map(
+													(step, index) => (
+														<motion.div
+															key={index}
+															initial={{
+																opacity: 0,
+																y: -10
+															}}
+															animate={{
+																opacity: 1,
+																y: 0
+															}}
+															exit={{
+																opacity: 0,
+																x: -20
+															}}
+															className="flex items-center gap-3"
+														>
+															<IconGripVertical className="h-5 w-5 text-gray-500 flex-shrink-0" />
+															<select
+																value={
+																	step.tool
+																}
+																onChange={(e) =>
+																	handleStepChange(
+																		index,
+																		"tool",
+																		e.target
+																			.value
+																	)
+																}
+																className="w-1/3 p-2 bg-neutral-700/60 border border-neutral-600 rounded-md text-white focus:outline-none focus:border-lightblue text-sm"
+															>
+																<option value="">
+																	Select a
+																	tool...
+																</option>
+																{availableTools.map(
+																	(tool) => (
+																		<option
+																			key={
+																				tool.name
+																			}
+																			value={
+																				tool.name
+																			}
+																		>
+																			{
+																				tool.display_name
+																			}
+																		</option>
+																	)
+																)}
+															</select>
+															<input
+																type="text"
+																placeholder="Describe what this step should do..."
+																value={
+																	step.description
+																}
+																onChange={(e) =>
+																	handleStepChange(
+																		index,
+																		"description",
+																		e.target
+																			.value
+																	)
+																}
+																className="flex-grow p-2 bg-neutral-700/60 border border-neutral-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:border-lightblue text-sm"
+															/>
+															<button
+																onClick={() =>
+																	handleRemoveStep(
+																		index
+																	)
+																}
+																className="p-2 text-red-400 hover:bg-neutral-700 rounded-full transition-colors"
+															>
+																<IconX className="h-4 w-4" />
+															</button>
+														</motion.div>
+													)
+												)}
+											</AnimatePresence>
+										</div>
+										<div className="flex justify-between items-center">
+											<button
+												onClick={handleAddStep}
+												className="flex items-center gap-1.5 py-2 px-4 rounded-full bg-neutral-600 hover:bg-neutral-500 text-white text-xs font-medium transition-colors"
+											>
+												<IconPlus className="h-4 w-4" />{" "}
+												Add Step
+											</button>
+											<button
+												onClick={handleAddTask}
+												disabled={isAdding}
+												className="flex items-center gap-2 py-2.5 px-6 rounded-lg bg-lightblue hover:bg-blue-700 text-white text-sm font-semibold transition-colors disabled:opacity-50"
+											>
+												{isAdding ? (
+													<IconLoader className="h-5 w-5 animate-spin" />
+												) : (
+													<IconCircleCheck className="h-5 w-5" />
+												)}
+												{isAdding
+													? "Saving Plan..."
+													: "Save New Plan"}
+											</button>
+										</div>
+									</div>
+								</motion.div>
+							)}
+						</AnimatePresence>
 					</div>
 				</div>
 

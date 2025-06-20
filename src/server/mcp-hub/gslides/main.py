@@ -27,7 +27,7 @@ def build_gslides_user_prompt(query: str, username: str, previous_tool_response:
     )
     return Message(role="user", content=content)
 
-@mcp.tool(scopes=["https://www.googleapis.com/auth/presentations", "https://www.googleapis.com/auth/drive"])
+@mcp.tool()
 async def create_google_presentation(ctx: Context, outline_json: str) -> Dict[str, Any]:
     """
     Creates a new Google Slides presentation based on a structured outline.

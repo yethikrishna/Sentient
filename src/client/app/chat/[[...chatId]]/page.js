@@ -18,6 +18,7 @@ import {
 	IconPlayerStopFilled,
 	IconMicrophone,
 	IconFileText,
+	IconMenu2,
 	IconPresentation,
 	IconTable,
 	IconMap,
@@ -311,15 +312,25 @@ const Chat = ({ params }) => {
 	}, [messages])
 
 	return (
-		<div className="h-screen bg-matteblack relative overflow-hidden dark">
+		<div className="flex h-screen bg-matteblack dark">
 			<Sidebar
 				userDetails={userDetails}
 				isSidebarVisible={isSidebarVisible}
 				setSidebarVisible={setSidebarVisible}
 			/>
 
-			<div className="absolute inset-0 flex flex-col justify-center items-center h-full w-full bg-matteblack z-10 pt-4 pb-4">
-				<div className="w-full h-full flex flex-col items-center justify-center p-5 text-white">
+			<div className="flex-1 flex flex-col overflow-hidden">
+				<header className="flex items-center justify-between p-4 bg-matteblack border-b border-neutral-800 md:hidden">
+					<button
+						onClick={() => setSidebarVisible(true)}
+						className="text-white"
+					>
+						<IconMenu2 />
+					</button>
+					<h1 className="text-lg font-semibold text-white">Chat</h1>
+				</header>
+
+				<div className="flex-1 flex flex-col items-center justify-center p-2 sm:p-5 text-white overflow-hidden">
 					{isLoading ? (
 						<div className="flex justify-center items-center h-full w-full">
 							<IconLoader className="w-10 h-10 text-white animate-spin" />
@@ -327,285 +338,255 @@ const Chat = ({ params }) => {
 					) : (
 						<div
 							className={cn(
-								"w-full h-full flex flex-col",
-								isNewChat
-									? "items-center justify-center"
-									: "max-w-4xl"
+								"w-full h-full flex flex-col max-w-4xl",
+								isNewChat && "items-center justify-center"
 							)}
 						>
-							<>
-								<div className="grow overflow-y-auto p-4 rounded-xl no-scrollbar mb-4 flex flex-col gap-4 w-full">
-									{messages.length === 0 && !thinking ? (
-										<div
-											className={cn(
-												"font-Poppins flex flex-col justify-center items-center text-gray-400",
-												isNewChat
-													? "h-full"
-													: "h-auto py-10"
-											)}
+							<div className="flex-grow overflow-y-auto p-2 sm:p-4 rounded-xl no-scrollbar mb-4 flex flex-col gap-4 w-full">
+								{messages.length === 0 && !thinking ? (
+									<div
+										className={cn(
+											"font-Poppins flex flex-col justify-center items-center text-gray-400",
+											isNewChat
+												? "h-full"
+												: "h-auto py-10"
+										)}
+									>
+										<p className="text-3xl text-white mb-4">
+											{isNewChat
+												? "Ask me anything."
+												: "Send a message to start"}
+										</p>
+									</div>
+								) : (
+									messages.map((msg, i) => (
+										<motion.div
+											key={msg.id}
+											initial={{ opacity: 0, y: 10 }}
+											animate={{ opacity: 1, y: 0 }}
+											transition={{
+												delay: i * 0.05,
+												duration: 0.3
+											}}
+											className={`flex ${msg.isUser ? "justify-end" : "justify-start"} w-full`}
 										>
-											<p className="text-3xl text-white mb-4">
-												{isNewChat
-													? "Ask me anything."
-													: "Send a message to start"}
-											</p>
+											{msg.type === "agent_step" ? (
+												<ToolResultBubble
+													task={msg.task}
+													result={msg.message}
+													memoryUsed={msg.memoryUsed}
+													agentsUsed={msg.agentsUsed}
+													internetUsed={
+														msg.internetUsed
+													}
+												/>
+											) : msg.type === "gmail_search" ? (
+												<GmailSearchResults
+													emails={
+														msg.message.email_data
+													}
+													gmailSearchUrl={
+														msg.message
+															.gmail_search_url
+													}
+												/>
+											) : (
+												<ChatBubble
+													message={msg.message}
+													isUser={msg.isUser}
+													memoryUsed={msg.memoryUsed}
+													agentsUsed={msg.agentsUsed}
+													internetUsed={
+														msg.internetUsed
+													}
+												/>
+											)}
+										</motion.div>
+									))
+								)}
+								{thinking && (
+									<div className="flex justify-start w-full mt-2">
+										<div className="flex items-center gap-2 p-3 bg-gray-700 rounded-lg">
+											<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-75"></div>
+											<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-150"></div>
+											<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-300"></div>
 										</div>
-									) : (
-										messages.map((msg, i) => (
-											<motion.div
-												key={msg.id}
-												initial={{ opacity: 0, y: 10 }}
-												animate={{ opacity: 1, y: 0 }}
-												transition={{
-													delay: i * 0.05,
-													duration: 0.3
-												}}
-												className={`flex ${msg.isUser ? "justify-end" : "justify-start"} w-full`}
-											>
-												{msg.type === "agent_step" ? (
-													<ToolResultBubble
-														task={msg.task}
-														result={msg.message}
-														memoryUsed={
-															msg.memoryUsed
-														}
-														agentsUsed={
-															msg.agentsUsed
-														}
-														internetUsed={
-															msg.internetUsed
-														}
-													/>
-												) : msg.type ===
-												  "gmail_search" ? (
-													<GmailSearchResults
-														emails={
-															msg.message
-																.email_data
-														}
-														gmailSearchUrl={
-															msg.message
-																.gmail_search_url
-														}
-													/>
-												) : (
-													<ChatBubble
-														message={msg.message}
-														isUser={msg.isUser}
-														memoryUsed={
-															msg.memoryUsed
-														}
-														agentsUsed={
-															msg.agentsUsed
-														}
-														internetUsed={
-															msg.internetUsed
-														}
-													/>
-												)}
-											</motion.div>
-										))
-									)}
-									{thinking && (
-										<div className="flex justify-start w-full mt-2">
-											<div className="flex items-center gap-2 p-3 bg-gray-700 rounded-lg">
-												<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-75"></div>
-												<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-150"></div>
-												<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-300"></div>
-											</div>
-										</div>
-									)}
-									<div ref={chatEndRef} />
-								</div>
+									</div>
+								)}
+								<div ref={chatEndRef} />
+							</div>
 
-								<div
-									className={cn(
-										"w-full px-4",
-										isNewChat ? "max-w-4xl" : ""
-									)}
-								>
-									{/* Tool Toggles & Info */}
-									<div className="flex flex-col items-center">
-										<div className="flex items-center flex-wrap justify-center gap-4 mb-3 text-xs text-gray-400">
-											<label
-												htmlFor="internet-toggle"
-												className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
-											>
-												<IconWorldSearch
-													size={16}
-													className={
-														isInternetEnabled
-															? "text-lightblue"
-															: ""
-													}
-												/>
-												<span>Internet</span>
-												<Switch
-													checked={isInternetEnabled}
-													onCheckedChange={
-														setInternetEnabled
-													}
-												/>
-											</label>
-											<label
-												htmlFor="weather-toggle"
-												className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
-											>
-												<IconCloud
-													size={16}
-													className={
-														isWeatherEnabled
-															? "text-lightblue"
-															: ""
-													}
-												/>
-												<span>Weather</span>
-												<Switch
-													checked={isWeatherEnabled}
-													onCheckedChange={
-														setWeatherEnabled
-													}
-												/>
-											</label>
-											<label
-												htmlFor="news-toggle"
-												className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
-											>
-												<IconNews
-													size={16}
-													className={
-														isNewsEnabled
-															? "text-lightblue"
-															: ""
-													}
-												/>
-												<span>News</span>
-												<Switch
-													checked={isNewsEnabled}
-													onCheckedChange={
-														setNewsEnabled
-													}
-												/>
-											</label>
-											<label
-												htmlFor="maps-toggle"
-												className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
-											>
-												<IconMap
-													size={16}
-													className={
-														isMapsEnabled
-															? "text-lightblue"
-															: ""
-													}
-												/>
-												<span>Maps</span>
-												<Switch
-													checked={isMapsEnabled}
-													onCheckedChange={
-														setMapsEnabled
-													}
-												/>
-											</label>
-											<label
-												htmlFor="shopping-toggle"
-												className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
-											>
-												<IconShoppingCart
-													size={16}
-													className={
-														isShoppingEnabled
-															? "text-lightblue"
-															: ""
-													}
-												/>
-												<span>Shopping</span>
-												<Switch
-													checked={isShoppingEnabled}
-													onCheckedChange={
-														setShoppingEnabled
-													}
-												/>
-											</label>
-										</div>
-										{connectedIntegrations.length > 0 && (
-											<div className="flex items-center gap-2 mb-2 text-xs text-gray-500">
-												<span>Tools connected:</span>
-												<div className="flex items-center gap-1.5">
-													{connectedIntegrations.map(
-														(integ) => {
-															const Icon =
-																integ.icon
-															return (
-																Icon && (
-																	<Icon
-																		key={
-																			integ.name
-																		}
-																		size={
-																			16
-																		}
-																		title={
-																			integ.display_name
-																		}
-																	/>
-																)
+							<div className="w-full px-2 sm:px-4 pb-4">
+								{/* Tool Toggles & Info */}
+								<div className="flex flex-col items-center mb-2">
+									<div className="flex items-center flex-wrap justify-center gap-4 mb-3 text-xs text-gray-400">
+										<label
+											htmlFor="internet-toggle"
+											className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
+										>
+											<IconWorldSearch
+												size={16}
+												className={
+													isInternetEnabled
+														? "text-lightblue"
+														: ""
+												}
+											/>
+											<span>Internet</span>
+											<Switch
+												checked={isInternetEnabled}
+												onCheckedChange={
+													setInternetEnabled
+												}
+											/>
+										</label>
+										<label
+											htmlFor="weather-toggle"
+											className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
+										>
+											<IconCloud
+												size={16}
+												className={
+													isWeatherEnabled
+														? "text-lightblue"
+														: ""
+												}
+											/>
+											<span>Weather</span>
+											<Switch
+												checked={isWeatherEnabled}
+												onCheckedChange={
+													setWeatherEnabled
+												}
+											/>
+										</label>
+										<label
+											htmlFor="news-toggle"
+											className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
+										>
+											<IconNews
+												size={16}
+												className={
+													isNewsEnabled
+														? "text-lightblue"
+														: ""
+												}
+											/>
+											<span>News</span>
+											<Switch
+												checked={isNewsEnabled}
+												onCheckedChange={setNewsEnabled}
+											/>
+										</label>
+										<label
+											htmlFor="maps-toggle"
+											className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
+										>
+											<IconMap
+												size={16}
+												className={
+													isMapsEnabled
+														? "text-lightblue"
+														: ""
+												}
+											/>
+											<span>Maps</span>
+											<Switch
+												checked={isMapsEnabled}
+												onCheckedChange={setMapsEnabled}
+											/>
+										</label>
+										<label
+											htmlFor="shopping-toggle"
+											className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
+										>
+											<IconShoppingCart
+												size={16}
+												className={
+													isShoppingEnabled
+														? "text-lightblue"
+														: ""
+												}
+											/>
+											<span>Shopping</span>
+											<Switch
+												checked={isShoppingEnabled}
+												onCheckedChange={
+													setShoppingEnabled
+												}
+											/>
+										</label>
+									</div>
+									{connectedIntegrations.length > 0 && (
+										<div className="flex items-center gap-2 mb-2 text-xs text-gray-500">
+											<span>Tools connected:</span>
+											<div className="flex items-center gap-1.5">
+												{connectedIntegrations.map(
+													(integ) => {
+														const Icon = integ.icon
+														return (
+															Icon && (
+																<Icon
+																	key={
+																		integ.name
+																	}
+																	size={16}
+																	title={
+																		integ.display_name
+																	}
+																/>
 															)
-														}
-													)}
-												</div>
+														)
+													}
+												)}
 											</div>
+										</div>
+									)}
+								</div>
+								<div className="relative w-full flex flex-row gap-4 items-end px-4 py-2 bg-matteblack border-[1px] border-gray-600 rounded-lg z-10">
+									<textarea
+										ref={textareaRef}
+										value={input}
+										onChange={handleInputChange}
+										onKeyDown={(e) => {
+											if (
+												e.key === "Enter" &&
+												!e.shiftKey
+											) {
+												e.preventDefault()
+												sendMessage()
+											}
+										}}
+										className="flex-grow p-2 pr-28 rounded-lg bg-transparent text-base text-white focus:outline-none resize-none no-scrollbar overflow-y-auto"
+										placeholder="Type your message..."
+										style={{
+											maxHeight: "150px",
+											minHeight: "24px"
+										}}
+										rows={1}
+									/>
+									<div className="absolute right-4 bottom-3 flex flex-row items-center gap-2">
+										{thinking ? (
+											<button
+												onClick={handleStopStreaming}
+												className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-white bg-red-600 hover:bg-red-500"
+												title="Stop Generation"
+											>
+												<IconPlayerStopFilled className="w-4 h-4 text-white" />
+											</button>
+										) : (
+											<button
+												onClick={sendMessage}
+												disabled={input.trim() === ""}
+												className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-white disabled:opacity-50 disabled:cursor-not-allowed"
+												title="Send Message"
+											>
+												<IconSend className="w-4 h-4 text-white" />
+											</button>
 										)}
 									</div>
-									<div className="relative w-full flex flex-row gap-4 items-end px-4 py-2 bg-matteblack border-[1px] border-gray-600 rounded-lg z-10">
-										<textarea
-											ref={textareaRef}
-											value={input}
-											onChange={handleInputChange}
-											onKeyDown={(e) => {
-												if (
-													e.key === "Enter" &&
-													!e.shiftKey
-												) {
-													e.preventDefault()
-													sendMessage()
-												}
-											}}
-											className="flex-grow p-2 pr-28 rounded-lg bg-transparent text-base text-white focus:outline-none resize-none no-scrollbar overflow-y-auto"
-											placeholder="Type your message..."
-											style={{
-												maxHeight: "150px",
-												minHeight: "24px"
-											}}
-											rows={1}
-										/>
-										<div className="absolute right-4 bottom-3 flex flex-row items-center gap-2">
-											{thinking ? (
-												<button
-													onClick={
-														handleStopStreaming
-													}
-													className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-white bg-red-600 hover:bg-red-500"
-													title="Stop Generation"
-												>
-													<IconPlayerStopFilled className="w-4 h-4 text-white" />
-												</button>
-											) : (
-												<button
-													onClick={sendMessage}
-													disabled={
-														input.trim() === ""
-													}
-													className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-white disabled:opacity-50 disabled:cursor-not-allowed"
-													title="Send Message"
-												>
-													<IconSend className="w-4 h-4 text-white" />
-												</button>
-											)}
-										</div>
-									</div>
 								</div>
-							</>
+							</div>
 						</div>
 					)}
 				</div>

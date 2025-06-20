@@ -27,7 +27,7 @@ def build_gdocs_user_prompt(query: str, username: str, previous_tool_response: s
     )
     return Message(role="user", content=content)
 
-@mcp.tool(scopes=["https://www.googleapis.com/auth/documents", "https://www.googleapis.com/auth/drive"])
+@mcp.tool()
 async def create_google_document(ctx: Context, title: str, sections_json: str) -> Dict[str, Any]:
     """
     Creates a new Google Document with a title and structured content.

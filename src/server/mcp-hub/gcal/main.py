@@ -41,7 +41,7 @@ def build_gcal_user_prompt(query: str, username: str, previous_tool_response: st
 # --- Tool Definitions ---
 # Each tool uses asyncio.to_thread to run synchronous Google API calls without blocking.
 
-@mcp.tool(scopes=["https://www.googleapis.com/auth/calendar.readonly"])
+@mcp.tool()
 async def list_upcoming_events(ctx: Context, max_results: int = 10) -> Dict[str, Any]:
     """Lists the next upcoming events from the user's primary calendar."""
     try:
@@ -69,7 +69,7 @@ async def list_upcoming_events(ctx: Context, max_results: int = 10) -> Dict[str,
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
-@mcp.tool(scopes=["https://www.googleapis.com/auth/calendar.events"])
+@mcp.tool()
 async def add_event(ctx: Context, summary: str, start_time: str, end_time: str, location: Optional[str] = None, description: Optional[str] = None) -> Dict[str, Any]:
     """Adds a new event to the primary calendar."""
     try:
@@ -94,7 +94,7 @@ async def add_event(ctx: Context, summary: str, start_time: str, end_time: str, 
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
-@mcp.tool(scopes=["https://www.googleapis.com/auth/calendar.readonly"])
+@mcp.tool()
 async def search_events(ctx: Context, query: str, time_min: Optional[str] = None, time_max: Optional[str] = None) -> Dict[str, Any]:
     """Searches for events matching a query within an optional time range."""
     try:
@@ -124,7 +124,7 @@ async def search_events(ctx: Context, query: str, time_min: Optional[str] = None
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
-@mcp.tool(scopes=["https://www.googleapis.com/auth/calendar.events"])
+@mcp.tool()
 async def delete_event(ctx: Context, query: str) -> Dict[str, Any]:
     """Finds an event by query and deletes it."""
     try:
@@ -146,7 +146,7 @@ async def delete_event(ctx: Context, query: str) -> Dict[str, Any]:
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
-@mcp.tool(scopes=["https://www.googleapis.com/auth/calendar.events"])
+@mcp.tool()
 async def update_event(ctx: Context, query: str, new_summary: Optional[str] = None, new_start_time: Optional[str] = None, new_end_time: Optional[str] = None, new_location: Optional[str] = None) -> Dict[str, Any]:
     """Finds an event by query and updates its details."""
     try:

@@ -29,7 +29,8 @@ import {
 	IconTable,
 	IconMapPin,
 	IconShoppingCart,
-	IconLink
+	IconLink,
+	IconMenu2
 } from "@tabler/icons-react"
 import { useState, useEffect, useCallback } from "react"
 import Sidebar from "@components/Sidebar"
@@ -446,18 +447,26 @@ const Settings = () => {
 	])
 
 	return (
-		<div className="h-screen bg-matteblack flex relative overflow-hidden dark">
+		<div className="flex h-screen bg-matteblack dark">
 			<Sidebar
 				userDetails={userDetails}
 				isSidebarVisible={isSidebarVisible}
 				setSidebarVisible={setSidebarVisible}
 			/>
-			<div className="flex-grow flex flex-col h-full bg-matteblack text-white relative overflow-y-auto p-6 md:p-10 custom-scrollbar">
-				<div className="flex justify-between items-center mb-8 flex-shrink-0 px-4">
-					<h1 className="font-Poppins text-white text-3xl md:text-4xl font-light">
-						Settings
-					</h1>
-					<div className="flex items-center gap-3">
+			<div className="flex-1 flex flex-col overflow-hidden">
+				<header className="flex flex-col sm:flex-row items-center justify-between p-4 bg-matteblack border-b border-neutral-800 gap-4">
+					<div className="flex items-center gap-4 w-full sm:w-auto">
+						<button
+							onClick={() => setSidebarVisible(true)}
+							className="text-white md:hidden"
+						>
+							<IconMenu2 />
+						</button>
+						<h1 className="font-Poppins text-white text-2xl sm:text-3xl font-light">
+							Settings
+						</h1>
+					</div>
+					<div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-end">
 						<button
 							onClick={() =>
 								window.open(
@@ -465,7 +474,7 @@ const Settings = () => {
 									"_blank"
 								)
 							}
-							className="flex items-center gap-2 py-2 px-4 rounded-full bg-darkblue hover:bg-lightblue text-white text-xs sm:text-sm font-medium transition-colors shadow-md"
+							className="flex-1 sm:flex-none flex items-center justify-center gap-2 py-2 px-4 rounded-full bg-darkblue hover:bg-lightblue text-white text-xs sm:text-sm font-medium transition-colors shadow-md"
 							title={
 								pricing === "free"
 									? "Upgrade for more features"
@@ -481,141 +490,151 @@ const Settings = () => {
 						</button>
 						<button
 							onClick={() => setShowReferralDialog(true)}
-							className="flex items-center gap-2 py-2 px-4 rounded-full bg-neutral-700 hover:bg-neutral-600 text-white text-xs sm:text-sm font-medium transition-colors shadow-md"
+							className="flex-1 sm:flex-none flex items-center justify-center gap-2 py-2 px-4 rounded-full bg-neutral-700 hover:bg-neutral-600 text-white text-xs sm:text-sm font-medium transition-colors shadow-md"
 							title="Refer a friend"
 						>
 							<IconGift size={18} />
 							<span>Refer Sentient</span>
 						</button>
 					</div>
-				</div>
-				<div className="w-full max-w-5xl mx-auto space-y-10 flex-grow">
-					<section>
-						<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-neutral-700 pb-2">
-							Connected Apps & Integrations
-						</h2>
-						<div className="bg-neutral-800/50 p-2 md:p-4 rounded-lg border border-neutral-700">
-							<div className="divide-y divide-neutral-700/50">
-								{loadingIntegrations ? (
-									<div className="flex justify-center items-center py-10">
-										<IconLoader className="w-8 h-8 animate-spin text-lightblue" />
-									</div>
-								) : userIntegrations.length > 0 ? (
-									userIntegrations.map((integration) => {
-										const IntegrationIcon =
-											integration.icon || IconSettingsCog
-										const isProcessing =
-											processingIntegration ===
-											integration.name
+				</header>
 
-										return (
-											<div
-												key={integration.name}
-												className="flex items-center justify-between p-4"
-											>
-												<div className="flex items-center gap-4">
-													<IntegrationIcon className="w-8 h-8 text-lightblue" />
-													<div>
-														<h3 className="font-semibold text-white text-lg">
-															{
-																integration.display_name
-															}
-														</h3>
-														<p className="text-gray-400 text-sm">
-															{
-																integration.description
-															}
-														</p>
+				<main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 custom-scrollbar">
+					<div className="w-full max-w-5xl mx-auto space-y-10">
+						<section>
+							<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-neutral-700 pb-2">
+								Connected Apps & Integrations
+							</h2>
+							<div className="bg-neutral-800/50 p-2 md:p-4 rounded-lg border border-neutral-700">
+								<div className="divide-y divide-neutral-700/50">
+									{loadingIntegrations ? (
+										<div className="flex justify-center items-center py-10">
+											<IconLoader className="w-8 h-8 animate-spin text-lightblue" />
+										</div>
+									) : userIntegrations.length > 0 ? (
+										userIntegrations.map((integration) => {
+											const IntegrationIcon =
+												integration.icon ||
+												IconSettingsCog
+											const isProcessing =
+												processingIntegration ===
+												integration.name
+
+											return (
+												<div
+													key={integration.name}
+													className="flex items-center justify-between p-4"
+												>
+													<div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+														<IntegrationIcon className="w-8 h-8 text-lightblue" />
+														<div className="flex-1 min-w-0">
+															<h3 className="font-semibold text-white text-base sm:text-lg truncate">
+																{
+																	integration.display_name
+																}
+															</h3>
+															<p className="text-gray-400 text-xs sm:text-sm truncate">
+																{
+																	integration.description
+																}
+															</p>
+														</div>
+													</div>
+													<div className="w-32 sm:w-40 text-right flex-shrink-0">
+														{isProcessing ? (
+															<IconLoader className="w-6 h-6 animate-spin text-lightblue ml-auto" />
+														) : integration.connected ? (
+															<button
+																onClick={() =>
+																	handleDisconnect(
+																		integration.name
+																	)
+																}
+																className="flex items-center justify-center gap-1 sm:gap-2 w-full py-2 px-3 rounded-md bg-red-600/20 hover:bg-red-600/40 text-red-400 text-sm font-medium transition-colors"
+															>
+																<IconPlugOff
+																	size={16}
+																/>
+																<span>
+																	Disconnect
+																</span>
+															</button>
+														) : (
+															<button
+																onClick={() =>
+																	handleConnect(
+																		integration
+																	)
+																}
+																className="flex items-center justify-center gap-1 sm:gap-2 w-full py-2 px-3 rounded-md bg-blue-600/50 hover:bg-blue-600/70 text-white text-sm font-medium transition-colors"
+															>
+																<IconPlugConnected
+																	size={16}
+																/>
+																<span>
+																	Connect
+																</span>
+															</button>
+														)}
 													</div>
 												</div>
-												<div className="w-40 text-right">
-													{isProcessing ? (
-														<IconLoader className="w-6 h-6 animate-spin text-lightblue ml-auto" />
-													) : integration.connected ? (
-														<button
-															onClick={() =>
-																handleDisconnect(
-																	integration.name
-																)
-															}
-															className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-red-600/20 hover:bg-red-600/40 text-red-400 text-sm font-medium transition-colors"
-														>
-															<IconPlugOff
-																size={16}
-															/>
-															<span>
-																Disconnect
-															</span>
-														</button>
-													) : (
-														<button
-															onClick={() =>
-																handleConnect(
-																	integration
-																)
-															}
-															className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-blue-600/50 hover:bg-blue-600/70 text-white text-sm font-medium transition-colors"
-														>
-															<IconPlugConnected
-																size={16}
-															/>
-															<span>Connect</span>
-														</button>
-													)}
-												</div>
-											</div>
-										)
-									})
-								) : (
-									<p className="text-gray-400 italic text-center py-8">
-										No integrations available.
-									</p>
-								)}
+											)
+										})
+									) : (
+										<p className="text-gray-400 italic text-center py-8">
+											No integrations available.
+										</p>
+									)}
+								</div>
 							</div>
-						</div>
-					</section>
+						</section>
 
-					<section>
-						<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-neutral-700 pb-2">
-							Default System Tools
-						</h2>
-						<div className="bg-neutral-800/50 p-2 md:p-4 rounded-lg border border-neutral-700">
-							<div className="divide-y divide-neutral-700/50">
-								{loadingIntegrations ? (
-									<div className="flex justify-center items-center py-10">
-										<IconLoader className="w-8 h-8 animate-spin text-lightblue" />
-									</div>
-								) : defaultTools.length > 0 ? (
-									defaultTools.map((tool) => {
-										const ToolIcon =
-											tool.icon || IconSettingsCog
-										return (
-											<div
-												key={tool.name}
-												className="flex items-center justify-between p-4"
-											>
-												<div className="flex items-center gap-4">
-													<ToolIcon className="w-8 h-8 text-gray-400" />
-													<div>
-														<h3 className="font-semibold text-white text-lg">
-															{tool.display_name}
-														</h3>
-														<p className="text-gray-400 text-sm">
-															{tool.description}
-														</p>
+						<section>
+							<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-neutral-700 pb-2">
+								Default System Tools
+							</h2>
+							<div className="bg-neutral-800/50 p-2 md:p-4 rounded-lg border border-neutral-700">
+								<div className="divide-y divide-neutral-700/50">
+									{loadingIntegrations ? (
+										<div className="flex justify-center items-center py-10">
+											<IconLoader className="w-8 h-8 animate-spin text-lightblue" />
+										</div>
+									) : defaultTools.length > 0 ? (
+										defaultTools.map((tool) => {
+											const ToolIcon =
+												tool.icon || IconSettingsCog
+											return (
+												<div
+													key={tool.name}
+													className="flex items-center justify-between p-4"
+												>
+													<div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+														<ToolIcon className="w-8 h-8 text-gray-400" />
+														<div className="flex-1 min-w-0">
+															<h3 className="font-semibold text-white text-base sm:text-lg truncate">
+																{
+																	tool.display_name
+																}
+															</h3>
+															<p className="text-gray-400 text-xs sm:text-sm truncate">
+																{
+																	tool.description
+																}
+															</p>
+														</div>
 													</div>
 												</div>
-											</div>
-										)
-									})
-								) : (
-									<p className="text-gray-400 italic text-center py-8">
-										No default tools available.
-									</p>
-								)}
+											)
+										})
+									) : (
+										<p className="text-gray-400 italic text-center py-8">
+											No default tools available.
+										</p>
+									)}
+								</div>
 							</div>
-						</div>
-					</section>
+						</section>
+					</div>
 
 					{activeManualIntegration && (
 						<ManualTokenEntryModal
@@ -649,7 +668,7 @@ const Settings = () => {
 							cancelButton={false}
 						/>
 					)}
-				</div>
+				</main>
 			</div>
 		</div>
 	)

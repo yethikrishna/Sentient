@@ -314,15 +314,15 @@ const OnboardingForm = () => {
 	}
 
 	return (
-		<div className="min-h-screen bg-matteblack text-white p-6 flex items-center justify-center">
+		<div className="min-h-screen bg-matteblack text-white p-4 sm:p-6 flex items-center justify-center">
 			<motion.div
 				initial={{ opacity: 0, y: 20 }}
 				animate={{ opacity: 1, y: 0 }}
 				transition={{ duration: 0.5 }}
-				className="w-full max-w-4xl"
+				className="w-full max-w-4xl mx-auto"
 			>
 				<div className="text-center mb-12">
-					<h1 className="text-4xl font-Poppins font-bold mb-3 text-white">
+					<h1 className="text-3xl sm:text-4xl font-Poppins font-bold mb-3 text-white">
 						Welcome to Sentient
 					</h1>
 					<p className="text-lg text-gray-400">
@@ -346,7 +346,7 @@ const OnboardingForm = () => {
 
 						return (
 							<div key={q.id}>
-								<label className="block text-xl font-Poppins font-semibold mb-4 text-gray-200">
+								<label className="block text-lg sm:text-xl font-Poppins font-semibold mb-4 text-gray-200">
 									{q.question}
 								</label>
 								{q.type === "text-input" ? (
@@ -399,7 +399,7 @@ const OnboardingForm = () => {
 													key={option}
 													type="button"
 													className={cn(
-														"px-5 py-2.5 rounded-lg text-base font-medium transition-all duration-200",
+														"px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg text-sm sm:text-base font-medium transition-all duration-200",
 														isSelected
 															? "bg-lightblue text-white shadow-md"
 															: "bg-neutral-700 text-gray-300 hover:bg-neutral-600"
@@ -420,7 +420,7 @@ const OnboardingForm = () => {
 											<button
 												key={ans}
 												type="button"
-												className="px-5 py-2.5 rounded-lg text-base font-medium transition-all duration-200 bg-lightblue text-white shadow-md"
+												className="px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg text-sm sm:text-base font-medium transition-all duration-200 bg-lightblue text-white shadow-md"
 												onClick={() =>
 													handleAnswer(
 														q.id,
@@ -435,7 +435,7 @@ const OnboardingForm = () => {
 										<button
 											type="button"
 											className={cn(
-												"px-5 py-2.5 rounded-lg text-base font-medium transition-all duration-200 bg-neutral-700 text-gray-300 hover:bg-neutral-600"
+												"px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg text-sm sm:text-base font-medium transition-all duration-200 bg-neutral-700 text-gray-300 hover:bg-neutral-600"
 											)}
 											onClick={() =>
 												toggleCustomInput(q.id)

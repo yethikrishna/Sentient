@@ -379,7 +379,7 @@ const ChatBubble = ({
 		<div
 			className={`p-4 rounded-lg ${
 				isUser
-					? "bg-white text-black text-lg font-semibold self-end max-w-xs md:max-w-md lg:max-w-lg mt-5 mb-5"
+					? "bg-white text-black text-base sm:text-lg font-semibold self-end max-w-[80%] sm:max-w-md lg:max-w-lg mt-5 mb-5"
 					: "bg-transparent text-lg text-white self-start w-full border-b border-t border-lightblue"
 			} mb-2 relative font-Inter`}
 			style={{ wordBreak: "break-word" }}

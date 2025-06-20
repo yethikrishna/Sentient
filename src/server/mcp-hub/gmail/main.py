@@ -43,7 +43,7 @@ def build_gmail_user_prompt(query: str, username: str, previous_tool_response: s
 
 
 # --- Tool Definitions ---
-@mcp.tool(scopes=["https://www.googleapis.com/auth/gmail.send"])
+@mcp.tool()
 async def send_email(ctx: Context, to: str, subject: str, body: str) -> Dict[str, Any]:
     """Sends an email to a specified recipient."""
     try:
@@ -59,7 +59,7 @@ async def send_email(ctx: Context, to: str, subject: str, body: str) -> Dict[str
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
-@mcp.tool(scopes=["https://www.googleapis.com/auth/gmail.compose"])
+@mcp.tool()
 async def create_draft(ctx: Context, to: str, subject: str, body: str) -> Dict[str, Any]:
     """Creates a draft email."""
     try:
@@ -75,7 +75,7 @@ async def create_draft(ctx: Context, to: str, subject: str, body: str) -> Dict[s
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
-@mcp.tool(scopes=["https://www.googleapis.com/auth/gmail.readonly"])
+@mcp.tool()
 async def search_inbox(ctx: Context, query: str) -> Dict[str, Any]:
     """Searches the Gmail inbox for emails matching a query."""
     try:
@@ -114,7 +114,7 @@ async def search_inbox(ctx: Context, query: str) -> Dict[str, Any]:
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
-@mcp.tool(scopes=["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.send"])
+@mcp.tool()
 async def reply_email(ctx: Context, query: str, body: str) -> Dict[str, Any]:
     """Finds an email based on a query and sends a reply."""
     try:
@@ -148,7 +148,7 @@ async def reply_email(ctx: Context, query: str, body: str) -> Dict[str, Any]:
     except Exception as e:
         return {"status": "failure", "error": f"Error replying to email: {e}"}
 
-@mcp.tool(scopes=["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.send"])
+@mcp.tool()
 async def forward_email(ctx: Context, query: str, to: str) -> Dict[str, Any]:
     """Finds an email based on a query and forwards it."""
     try:
@@ -173,7 +173,7 @@ async def forward_email(ctx: Context, query: str, to: str) -> Dict[str, Any]:
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
-@mcp.tool(scopes=["https://www.googleapis.com/auth/gmail.modify"])
+@mcp.tool()
 async def delete_email(ctx: Context, query: str) -> Dict[str, Any]:
     """Finds and deletes an email based on a query."""
     try:
@@ -191,7 +191,7 @@ async def delete_email(ctx: Context, query: str) -> Dict[str, Any]:
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
-@mcp.tool(scopes=["https://www.googleapis.com/auth/gmail.modify"])
+@mcp.tool()
 async def mark_email_as_read(ctx: Context, query: str) -> Dict[str, Any]:
     """Finds an email by query and marks it as read."""
     try:
@@ -209,7 +209,7 @@ async def mark_email_as_read(ctx: Context, query: str) -> Dict[str, Any]:
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
-@mcp.tool(scopes=["https://www.googleapis.com/auth/gmail.modify"])
+@mcp.tool()
 async def mark_email_as_unread(ctx: Context, query: str) -> Dict[str, Any]:
     """Finds an email by query and marks it as unread."""
     try:
@@ -227,7 +227,7 @@ async def mark_email_as_unread(ctx: Context, query: str) -> Dict[str, Any]:
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
-@mcp.tool(scopes=["https://www.googleapis.com/auth/gmail.modify"])
+@mcp.tool()
 async def delete_spam_emails(ctx: Context) -> Dict[str, Any]:
     """Deletes all emails from the spam folder."""
     try:

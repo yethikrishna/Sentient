@@ -107,17 +107,28 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 		}
 	}
 
+	// Separate effect for fetching data, depends on userDetails
 	useEffect(() => {
-		// Guard clause: Do not run authentication-dependent logic if userDetails is not yet available.
 		if (!userDetails) {
 			return
 		}
-
 		fetchPricingPlan()
 		fetchChats()
+	}, [userDetails, fetchPricingPlan, fetchChats])
+
+	// Separate, dedicated effect for WebSocket lifecycle management
+	useEffect(() => {
+		// Guard clause: Do not run WebSocket logic if userDetails.sub is not yet available.
+		if (!userDetails?.sub) {
+			return
+		}
 
 		const connectWebSocket = async () => {
-			if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+			if (wsRef.current && wsRef.current.readyState < 2) {
+				// 0=CONNECTING, 1=OPEN
+				console.log(
+					"Sidebar WS: A connection is already open or connecting."
+				)
 				return
 			}
 
@@ -127,6 +138,8 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 					console.error(
 						"Sidebar WS: Could not get auth token for WebSocket."
 					)
+					// Retry after a delay if token fetch fails
+					setTimeout(connectWebSocket, 5000)
 					return
 				}
 				const { accessToken } = await tokenResponse.json()
@@ -140,6 +153,7 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 				const wsUrl = `${serverUrlWs}/api/ws/notifications`
 
 				const ws = new WebSocket(wsUrl)
+				ws.isCleaningUp = false // Custom flag on the instance itself
 				wsRef.current = ws
 
 				ws.onopen = () => {
@@ -155,11 +169,7 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 						toast.custom(
 							(t) => (
 								<div
-									className={`${
-										t.visible
-											? "animate-enter"
-											: "animate-leave"
-									} max-w-md w-full bg-neutral-800 shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5 border border-neutral-700`}
+									className={`${t.visible ? "animate-enter" : "animate-leave"} max-w-md w-full bg-neutral-800 shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5 border border-neutral-700`}
 								>
 									<div className="flex-1 w-0 p-4">
 										<div className="flex items-start">
@@ -195,10 +205,19 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 				}
 
 				ws.onclose = () => {
-					console.log(
-						"Sidebar: Notification WebSocket disconnected. Will try to reconnect..."
-					)
-					setTimeout(connectWebSocket, 5000) // Reconnect after 5 seconds
+					// IMPORTANT: Check the flag on the instance that was closed, NOT the ref.
+					if (ws.isCleaningUp) {
+						console.log(
+							"Sidebar: WebSocket closed intentionally on cleanup."
+						)
+					} else {
+						console.log(
+							"Sidebar: Notification WebSocket disconnected unexpectedly. Reconnecting..."
+						)
+						// Clear the ref to allow a new connection to be made.
+						wsRef.current = null
+						setTimeout(connectWebSocket, 5000) // Attempt to reconnect
+					}
 				}
 
 				ws.onerror = (error) => {
@@ -206,6 +225,7 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 						"Sidebar: Notification WebSocket error:",
 						error
 					)
+					// The onclose event will fire after an error, triggering the reconnect logic if needed.
 					ws.close()
 				}
 			} catch (error) {
@@ -219,19 +239,24 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 
 		connectWebSocket()
 
+		// This cleanup function runs when the component unmounts or dependencies change
 		return () => {
 			if (wsRef.current) {
+				console.log(
+					"Sidebar: Cleaning up WebSocket connection for effect re-run or unmount."
+				)
+				wsRef.current.isCleaningUp = true // Mark for intentional close
 				wsRef.current.close()
 			}
 		}
-	}, [userDetails, fetchPricingPlan, fetchChats, router])
+	}, [userDetails?.sub]) // Depend only on the stable user ID
 
 	return (
 		<>
 			<div
-				id="sidebar"
-				className={`w-1/5 h-full flex flex-col bg-smokeblack overflow-y-auto transform transition-all duration-300 fixed top-0 left-0 ${isSidebarVisible ? "translate-x-0 opacity-100 z-40 pointer-events-auto" : "-translate-x-full opacity-0 z-0 pointer-events-none"}`}
-				// onMouseLeave={() => setSidebarVisible(false)} // This can be annoying, let's allow manual closing
+				className={`fixed flex flex-col justify-between inset-y-0 left-0 z-40 w-80 md:w-96 bg-smokeblack transform transition-transform duration-300 ease-in-out ${
+					isSidebarVisible ? "translate-x-0" : "-translate-x-full"
+				}`}
 			>
 				<div className="flex items-center px-6 py-6">
 					<div className="flex items-center justify-center rounded-xl w-12 h-12">
@@ -299,7 +324,7 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 					</button>
 
 					{/* Chat History Section */}
-					<div className="flex-grow mt-6 overflow-y-auto no-scrollbar border-t border-neutral-700 pt-4">
+					<div className="flex-grow mt-6 border-t border-neutral-700 pt-4">
 						<div className="flex justify-between items-center px-4 mb-2">
 							<h3 className="text-sm font-semibold text-gray-400 uppercase">
 								Chats
@@ -321,7 +346,7 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 								No chats yet. Start a new one!
 							</p>
 						) : (
-							<div className="space-y-1">
+							<div className="space-y-1 h-[200px] overflow-y-scroll no-scrollbar">
 								{chats.map((chat) => (
 									<div
 										key={chat.chat_id}
@@ -427,14 +452,11 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 					</div>
 				</div>
 			</div>
+			{/* Desktop hover trigger to show the sidebar */}
 			<div
-				className="fixed top-0 left-0 bg-transparent w-[5%] h-full z-30 flex items-center justify-start"
+				className="hidden md:block fixed top-0 left-0 h-full w-8 z-30"
 				onMouseEnter={() => setSidebarVisible(true)}
-			>
-				<div className="ml-3">
-					<IconChevronRight className="text-white w-6 h-6 animate-pulse font-bold" />
-				</div>
-			</div>
+			/>
 			{editingChat && (
 				<ModalDialog
 					title="Rename Chat"

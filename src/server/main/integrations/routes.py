@@ -103,13 +103,16 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
             token_data = token_response.json()
         
         if service_name.startswith('g'):
+            # Extract granted scopes from the token response
+            granted_scopes = token_data.get("scope", "").split(" ")
+            # Update the credentials object to include scopes
             creds_to_save = {
                 "token": token_data["access_token"],
                 "refresh_token": token_data.get("refresh_token"),
                 "token_uri": token_url,
                 "client_id": GOOGLE_CLIENT_ID,
                 "client_secret": GOOGLE_CLIENT_SECRET,
-                "scopes": token_data.get("scope", "").split(" "),
+                "scopes": granted_scopes,  # <--- SAVE THE SCOPES HERE
             }
         elif service_name == 'github':
              if "access_token" not in token_data:

@@ -51,6 +51,16 @@ def get_user_id_from_context(ctx: Context) -> str:
         raise ToolError("Authentication failed: 'X-User-ID' header is missing.")
     return user_id
 
+async def get_user_timezone(user_id: str) -> str:
+    """Fetches the user's timezone from their profile, defaulting to UTC."""
+    user_doc = await users_collection.find_one(
+        {"user_id": user_id},
+        {"userData.personalInfo.timezone": 1}
+    )
+    if not user_doc:
+        return "UTC"
+    return user_doc.get("userData", {}).get("personalInfo", {}).get("timezone", "UTC")
+
 async def get_google_creds(user_id: str) -> Credentials:
     """Fetches Google OAuth token from MongoDB for a given user_id."""
     user_doc = await users_collection.find_one({"user_id": user_id})

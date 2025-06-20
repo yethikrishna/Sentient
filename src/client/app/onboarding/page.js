@@ -44,14 +44,20 @@ const questions = [
 			{ value: "America/New_York", label: "Eastern Time (US & Canada)" },
 			{ value: "America/Chicago", label: "Central Time (US & Canada)" },
 			{ value: "America/Denver", label: "Mountain Time (US & Canada)" },
+			{ value: "America/Phoenix", label: "Arizona" },
 			{
 				value: "America/Los_Angeles",
 				label: "Pacific Time (US & Canada)"
 			},
+			{ value: "America/Anchorage", label: "Alaska" },
+			{ value: "Pacific/Honolulu", label: "Hawaii" },
 			{ value: "Europe/London", label: "London, Dublin (GMT/BST)" },
-			{ value: "Europe/Paris", label: "Paris, Berlin (CET)" },
-			{ value: "Asia/Tokyo", label: "Tokyo (JST)" },
+			{ value: "Europe/Berlin", label: "Berlin, Paris (CET)" },
+			{ value: "Europe/Moscow", label: "Moscow (MSK)" },
+			{ value: "Asia/Dubai", label: "Dubai (GST)" },
 			{ value: "Asia/Kolkata", label: "India (IST)" },
+			{ value: "Asia/Singapore", label: "Singapore (SGT)" },
+			{ value: "Asia/Tokyo", label: "Tokyo (JST)" },
 			{ value: "Australia/Sydney", label: "Sydney (AEST)" },
 			{ value: "UTC", label: "Coordinated Universal Time (UTC)" }
 		]
@@ -329,7 +335,12 @@ const OnboardingForm = () => {
 						const selectedAnswers = answers[q.id] || []
 						const customAnswers = Array.isArray(selectedAnswers)
 							? selectedAnswers.filter(
-									(ans) => !q.options?.includes(ans)
+									(ans) =>
+										!q.options?.some((o) =>
+											typeof o === "object"
+												? o.value === ans
+												: o === ans
+										)
 								)
 							: []
 
@@ -364,7 +375,7 @@ const OnboardingForm = () => {
 											)
 										}
 										className="w-full px-4 py-3 rounded-lg bg-neutral-800 text-white border border-neutral-700 focus:outline-none focus:ring-2 focus:ring-lightblue"
-										required
+										required={q.id === "timezone"}
 									>
 										<option value="" disabled>
 											Select your timezone...
@@ -475,7 +486,9 @@ const OnboardingForm = () => {
 						<button
 							type="submit"
 							disabled={
-								!answers["user-name"]?.trim() || isSubmitting
+								!answers["user-name"]?.trim() ||
+								isSubmitting ||
+								!answers["timezone"]
 							}
 							className="px-8 py-3 rounded-lg text-lg font-semibold transition-colors duration-300 bg-lightblue hover:bg-blue-700 text-white disabled:bg-neutral-600 disabled:text-gray-400 disabled:cursor-not-allowed"
 						>

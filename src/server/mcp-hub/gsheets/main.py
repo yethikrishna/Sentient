@@ -27,7 +27,7 @@ def build_gsheets_user_prompt(query: str, username: str, previous_tool_response:
     )
     return Message(role="user", content=content)
 
-@mcp.tool
+@mcp.tool(scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
 async def create_google_sheet(ctx: Context, title: str, sheets_json: str) -> Dict[str, Any]:
     """
     Creates a new Google Spreadsheet with one or more sheets containing data.

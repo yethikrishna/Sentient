@@ -1,5 +1,3 @@
-# server/mcp-hub/gdrive/main.py
-
 import os
 import asyncio
 from typing import Dict, Any
@@ -36,7 +34,7 @@ def build_gdrive_user_prompt(query: str, username: str, previous_tool_response: 
 
 # --- Tool Definitions ---
 
-@mcp.tool
+@mcp.tool(scopes=["https://www.googleapis.com/auth/drive.readonly"])
 async def gdrive_search(ctx: Context, query: str) -> Dict[str, Any]:
     """Searches for files in Google Drive matching a query."""
     try:
@@ -80,7 +78,7 @@ async def gdrive_search(ctx: Context, query: str) -> Dict[str, Any]:
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
-@mcp.tool
+@mcp.tool(scopes=["https://www.googleapis.com/auth/drive.readonly"])
 async def gdrive_read_file(ctx: Context, file_id: str) -> Dict[str, Any]:
     """Reads the content of a file from Google Drive by its ID."""
     try:

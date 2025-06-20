@@ -26,6 +26,7 @@ import {
 import toast from "react-hot-toast"
 import GmailSearchResults from "@components/agents/GmailSearchResults"
 import { cn } from "@utils/cn"
+import { motion } from "framer-motion"
 
 const integrationIcons = {
 	gmail: IconMail,
@@ -192,16 +193,22 @@ const Chat = ({ params }) => {
 							toast.error(`An error occurred: ${parsed.message}`)
 							continue
 						}
-						// New event to handle chat creation
+						// New event to handle chat creation and dynamic title
 						if (parsed.type === "chat_created") {
+							// Replace URL without triggering a re-render/navigation
 							window.history.replaceState(
 								null,
-								"",
+								parsed.title,
 								`/chat/${parsed.chatId}`
 							)
+							document.title = parsed.title // Update page title
 							setCurrentChatId(parsed.chatId)
 							setIsNewChat(false)
-							// Optional: Add to sidebar chat list dynamically
+							// The Sidebar component will need to be made aware of this change
+							// to update the chat list. A simple way is to use a custom event.
+							window.dispatchEvent(
+								new CustomEvent("chatListUpdate")
+							)
 						} else if (
 							parsed.type === "agent_step" ||
 							parsed.type === "gmail_search"
@@ -344,9 +351,15 @@ const Chat = ({ params }) => {
 											</p>
 										</div>
 									) : (
-										messages.map((msg) => (
-											<div
+										messages.map((msg, i) => (
+											<motion.div
 												key={msg.id}
+												initial={{ opacity: 0, y: 10 }}
+												animate={{ opacity: 1, y: 0 }}
+												transition={{
+													delay: i * 0.05,
+													duration: 0.3
+												}}
 												className={`flex ${msg.isUser ? "justify-end" : "justify-start"} w-full`}
 											>
 												{msg.type === "agent_step" ? (
@@ -390,7 +403,7 @@ const Chat = ({ params }) => {
 														}
 													/>
 												)}
-											</div>
+											</motion.div>
 										))
 									)}
 									{thinking && (

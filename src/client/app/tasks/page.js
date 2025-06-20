@@ -198,18 +198,23 @@ const Tasks = () => {
 			const data = await response.json()
 			const integrations = data.integrations || []
 
-			// This logic should ideally match the backend's logic for determining availability
 			const googleAuthResponse = await fetch("/api/settings/google-auth")
 			const googleAuthData = await googleAuthResponse.json()
 			const googleAuthMode = googleAuthData.mode || "default"
 
 			const tools = integrations
 				.filter((i) => {
+					// Built-in tools are always available.
+					if (i.auth_type === "builtin") {
+						return true
+					}
+					// For Google-specific OAuth tools, check connection status or if custom mode is on.
 					const isGoogleTool = i.name.startsWith("g")
 					if (isGoogleTool) {
 						return googleAuthMode === "custom" || i.connected
 					}
-					return i.auth_type === "builtin" || i.connected
+					// For other OAuth/manual tools (like Slack, Notion, GitHub), just check connection status.
+					return i.connected
 				})
 				.map((i) => ({ name: i.name, display_name: i.display_name }))
 

@@ -66,10 +66,6 @@
 	scrollbar-width: none;
 }
 
-.prose {
-	white-space: pre-line;
-}
-
 .prose code {
 	background-color: black;
 	padding: 2px 6px;

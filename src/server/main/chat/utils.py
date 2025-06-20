@@ -13,6 +13,38 @@ from ..config import INTEGRATIONS_CONFIG, SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_
 
 logger = logging.getLogger(__name__)
 
+async def generate_chat_title(user_input: str) -> str:
+    """
+    Generates a concise title for a new chat based on the first user query.
+    """
+    from ..llm import get_qwen_assistant # Local import to avoid circular dependencies
+    
+    logger.info(f"Generating chat title for input: '{user_input[:50]}...'")
+    
+    system_prompt = "You are a title generator. Based on the following user query, create a short, concise title for the conversation. The title should be no more than 5 words. Do not add quotes. Just return the title."
+    summarizer_agent = get_qwen_assistant(system_message=system_prompt, function_list=[])
+    messages = [{'role': 'user', 'content': user_input}]
+    
+    loop = asyncio.get_running_loop()
+    
+    def run_and_get_response():
+        final_content = ""
+        try:
+            for response in summarizer_agent.run(messages=messages):
+                if isinstance(response, list) and response:
+                    last_message = response[-1]
+                    if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
+                        final_content = last_message["content"]
+            return final_content.strip().replace('"', '')
+        except Exception as e:
+            logger.error(f"Error during title generation agent run: {e}", exc_info=True)
+            return ""
+
+    generated_title = await loop.run_in_executor(None, run_and_get_response)
+    
+    # Fallback to the first 3 words if generation fails or returns empty
+    return generated_title or ' '.join(user_input.split()[:3])
+
 async def get_chat_history_util(user_id: str, db_manager: MongoManager, chat_id: str) -> List[Dict[str, Any]]:
     """
     Fetches and serializes chat history for a given user and chat ID.

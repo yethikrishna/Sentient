@@ -9,8 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from .models import ChatMessageInput, ChatHistoryRequest, RenameChatRequest, DeleteChatRequest
-from .utils import get_chat_history_util, generate_chat_llm_stream # generate_chat_llm_stream will use Qwen
-from ..auth.utils import PermissionChecker, AuthHelper  # Import PermissionChecker and AuthHelper from auth.utils
+from .utils import get_chat_history_util, generate_chat_llm_stream, generate_chat_title
+from ..auth.utils import PermissionChecker, AuthHelper
 from ..dependencies import mongo_manager
 from typing import Optional
 
@@ -82,7 +82,6 @@ async def chat_endpoint(
     user_profile = await mongo_manager.get_user_profile(user_id)
     username = user_profile.get("userData", {}).get("personalInfo", {}).get("name", "User") if user_profile else "User"
     
-    # Robustly handle chatId which may be a string, a list, or None
     chat_id_from_req = request_body.chatId
     chat_id: Optional[str] = None
     if isinstance(chat_id_from_req, str) and chat_id_from_req:
@@ -92,15 +91,24 @@ async def chat_endpoint(
         
     is_new_chat = not chat_id
 
+    # If it's a new chat, generate a dynamic title first
     if is_new_chat:
         chat_id = str(uuid.uuid4())
-        title = ' '.join(request_body.input.split()[:3])
+        try:
+            title = await generate_chat_title(request_body.input)
+        except Exception as e:
+            logger.error(f"Error generating chat title for user {user_id}: {e}")
+            title = ' '.join(request_body.input.split()[:3]) # Fallback title
+
         await mongo_manager.create_new_chat_session(user_id, chat_id, title)
-        logger.info(f"Created new chat with ID {chat_id} and title '{title}' for user {user_id}")
+        logger.info(f"Created new chat with ID {chat_id} and dynamic title '{title}' for user {user_id}")
+    else:
+        # For existing chats, we don't need the title here.
+        title = None
 
     async def event_stream_generator():
-        # For new chats, send a special event first with the new chat ID and title
-        if is_new_chat:
+        if is_new_chat and title:
+            # Send the dynamically generated chat info to the client
             yield json.dumps({"type": "chat_created", "chatId": chat_id, "title": title}) + "\n"
         try:
             async for event in generate_chat_llm_stream(
@@ -115,7 +123,7 @@ async def chat_endpoint(
                 enable_maps=request_body.enable_maps,
                 enable_shopping=request_body.enable_shopping
             ):
-                if not event: continue # Skip empty events
+                if not event: continue
                 yield json.dumps(event) + "\n"
         except asyncio.CancelledError:
              logger.info(f"Client disconnected, stream cancelled for user {user_id}.")
@@ -125,6 +133,6 @@ async def chat_endpoint(
                 "type": "error",
                 "message": "Sorry, I encountered an error while processing your request."
             }
-            yield json.dumps(error_response) + "\n" # This yield might fail if client is already gone
+            yield json.dumps(error_response) + "\n"
 
     return StreamingResponse(event_stream_generator(), media_type="application/x-ndjson")

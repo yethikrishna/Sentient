@@ -414,6 +414,16 @@ const Settings = () => {
 	const [googleAuthMode, setGoogleAuthMode] = useState("default")
 	const [loadingGoogleAuthMode, setLoadingGoogleAuthMode] = useState(true)
 
+	// --- CORRECTED: Specific list of Google services ---
+	const googleServices = [
+		"gmail",
+		"gcalendar",
+		"gdrive",
+		"gdocs",
+		"gslides",
+		"gsheets"
+	]
+
 	const fetchGoogleAuthMode = useCallback(async () => {
 		setLoadingGoogleAuthMode(true)
 		try {
@@ -484,7 +494,6 @@ const Settings = () => {
 			const state = serviceName
 			let authUrl = ""
 
-			// Define scopes required by our default OAuth app
 			const scopes = {
 				gdrive: "https://www.googleapis.com/auth/drive",
 				gcalendar: "https://www.googleapis.com/auth/calendar",
@@ -502,7 +511,8 @@ const Settings = () => {
 				scopes[serviceName] ||
 				"https://www.googleapis.com/auth/userinfo.email"
 
-			if (serviceName.startsWith("g")) {
+			// --- CORRECTED: Use precise list for Google services ---
+			if (googleServices.includes(serviceName)) {
 				authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=consent&state=${state}`
 			} else if (serviceName === "github") {
 				authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${state}`
@@ -728,9 +738,11 @@ const Settings = () => {
 										const isProcessing =
 											processingIntegration ===
 											integration.name
+										// --- CORRECTED: Use precise list for check ---
 										const isGoogleServiceInCustomMode =
-											integration.name.startsWith("g") &&
-											googleAuthMode === "custom"
+											googleServices.includes(
+												integration.name
+											) && googleAuthMode === "custom"
 
 										return (
 											<div

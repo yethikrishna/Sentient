@@ -1,5 +1,3 @@
-# server/mcp-hub/gmail/main.py
-
 import os
 from typing import Dict, Any, List
 from dotenv import load_dotenv
@@ -28,9 +26,6 @@ mcp = FastMCP(
 
 
 # --- Prompt Registration ---
-# We register your prompts as resources, so a client can read them to understand
-# how to interact with the tools on this server.
-
 @mcp.resource("prompt://gmail-agent-system")
 def get_gmail_system_prompt() -> str:
     """Provides the system prompt for the GMail agent."""
@@ -48,12 +43,7 @@ def build_gmail_user_prompt(query: str, username: str, previous_tool_response: s
 
 
 # --- Tool Definitions ---
-# Each tool follows a standard pattern:
-# 1. Authenticate using user_id from context.
-# 2. Execute the core logic (often calling a helper).
-# 3. Handle errors gracefully.
-
-@mcp.tool
+@mcp.tool(scopes=["https://www.googleapis.com/auth/gmail.send"])
 async def send_email(ctx: Context, to: str, subject: str, body: str) -> Dict[str, Any]:
     """Sends an email to a specified recipient."""
     try:
@@ -69,7 +59,7 @@ async def send_email(ctx: Context, to: str, subject: str, body: str) -> Dict[str
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
-@mcp.tool
+@mcp.tool(scopes=["https://www.googleapis.com/auth/gmail.compose"])
 async def create_draft(ctx: Context, to: str, subject: str, body: str) -> Dict[str, Any]:
     """Creates a draft email."""
     try:
@@ -85,17 +75,14 @@ async def create_draft(ctx: Context, to: str, subject: str, body: str) -> Dict[s
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
-@mcp.tool
+@mcp.tool(scopes=["https://www.googleapis.com/auth/gmail.readonly"])
 async def search_inbox(ctx: Context, query: str) -> Dict[str, Any]:
     """Searches the Gmail inbox for emails matching a query."""
     try:
         user_id = auth.get_user_id_from_context(ctx)
-        # Function is now async, so we can await creds fetching directly
         creds = await auth.get_google_creds(user_id)
         service = auth.authenticate_gmail(creds)
 
-        # The Google API client is synchronous. To avoid blocking the event loop,
-        # run the blocking I/O calls in a separate thread.
         def _execute_sync_search():
             results = service.users().messages().list(userId="me", q=query).execute()
             messages = results.get("messages", [])
@@ -127,7 +114,7 @@ async def search_inbox(ctx: Context, query: str) -> Dict[str, Any]:
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
-@mcp.tool
+@mcp.tool(scopes=["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.send"])
 async def reply_email(ctx: Context, query: str, body: str) -> Dict[str, Any]:
     """Finds an email based on a query and sends a reply."""
     try:
@@ -144,7 +131,6 @@ async def reply_email(ctx: Context, query: str, body: str) -> Dict[str, Any]:
         subject = f"Re: {original['subject']}"
         thread_id = original['threadId']
         
-        # Create reply MIME message
         msg = MIMEText(body)
         msg["to"] = to
         msg["subject"] = subject
@@ -162,7 +148,7 @@ async def reply_email(ctx: Context, query: str, body: str) -> Dict[str, Any]:
     except Exception as e:
         return {"status": "failure", "error": f"Error replying to email: {e}"}
 
-@mcp.tool
+@mcp.tool(scopes=["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.send"])
 async def forward_email(ctx: Context, query: str, to: str) -> Dict[str, Any]:
     """Finds an email based on a query and forwards it."""
     try:
@@ -187,7 +173,7 @@ async def forward_email(ctx: Context, query: str, to: str) -> Dict[str, Any]:
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
-@mcp.tool
+@mcp.tool(scopes=["https://www.googleapis.com/auth/gmail.modify"])
 async def delete_email(ctx: Context, query: str) -> Dict[str, Any]:
     """Finds and deletes an email based on a query."""
     try:
@@ -205,7 +191,7 @@ async def delete_email(ctx: Context, query: str) -> Dict[str, Any]:
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
-@mcp.tool
+@mcp.tool(scopes=["https://www.googleapis.com/auth/gmail.modify"])
 async def mark_email_as_read(ctx: Context, query: str) -> Dict[str, Any]:
     """Finds an email by query and marks it as read."""
     try:
@@ -223,7 +209,7 @@ async def mark_email_as_read(ctx: Context, query: str) -> Dict[str, Any]:
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
-@mcp.tool
+@mcp.tool(scopes=["https://www.googleapis.com/auth/gmail.modify"])
 async def mark_email_as_unread(ctx: Context, query: str) -> Dict[str, Any]:
     """Finds an email by query and marks it as unread."""
     try:
@@ -241,7 +227,7 @@ async def mark_email_as_unread(ctx: Context, query: str) -> Dict[str, Any]:
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
-@mcp.tool
+@mcp.tool(scopes=["https://www.googleapis.com/auth/gmail.modify"])
 async def delete_spam_emails(ctx: Context) -> Dict[str, Any]:
     """Deletes all emails from the spam folder."""
     try:
@@ -270,5 +256,4 @@ if __name__ == "__main__":
     
     print(f"Starting GMail MCP Server on http://{host}:{port}")
     
-    # Run the server using the recommended streamable HTTP transport
     mcp.run(transport="sse", host=host, port=port)

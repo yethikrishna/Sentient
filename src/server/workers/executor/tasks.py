@@ -14,7 +14,8 @@ from server.workers.utils.api_client import notify_user
 # Load environment variables for the worker
 from server.main.config import ( # Corrected import path
     MONGO_URI, MONGO_DB_NAME, INTEGRATIONS_CONFIG, LLM_PROVIDER,
-    OLLAMA_BASE_URL, OLLAMA_MODEL_NAME
+    OLLAMA_BASE_URL, OLLAMA_MODEL_NAME, SUPERMEMORY_MCP_BASE_URL,
+    SUPERMEMORY_MCP_ENDPOINT_SUFFIX
 )
 
 # Setup logger for this module
@@ -100,57 +101,24 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     # Set status to processing
     await update_task_status(db, task_id, "processing", user_id)
     await add_progress_update(db, task_id, user_id, "Executor has picked up the task and is starting execution.")
-
-    # 1. Determine required and available tools for the user
-    required_tools_from_plan = {step['tool'] for step in task.get('plan', [])}
-    logger.info(f"Task {task_id}: Plan requires tools: {required_tools_from_plan}")
     
     user_profile = await db.user_profiles.find_one({"user_id": user_id})
-    user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
-    google_auth_mode = user_profile.get("userData", {}).get("googleAuth", {}).get("mode", "default")
-    
-    # Construct Supermemory URL from stored user ID
     supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id") if user_profile else None
     
     active_mcp_servers = {}
 
-    # Always connect progress_updater
-    progress_updater_config = INTEGRATIONS_CONFIG.get("progress_updater", {}).get("mcp_server_config")
-    if progress_updater_config:
-        active_mcp_servers[progress_updater_config["name"]] = {"url": progress_updater_config["url"], "headers": {"X-User-ID": user_id}}
+    # Add all MCP servers from config
+    for config in INTEGRATIONS_CONFIG.values():
+        mcp_config = config.get("mcp_server_config")
+        if mcp_config:
+            active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
 
-    # Always connect supermemory if available for user
+    # Special handling for Supermemory as its URL is user-specific
     if supermemory_user_id:
-        from server.main.config import SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX
         active_mcp_servers["supermemory"] = {
             "transport": "sse",
             "url": f"{SUPERMEMORY_MCP_BASE_URL.rstrip('/')}/{supermemory_user_id}{SUPERMEMORY_MCP_ENDPOINT_SUFFIX}"
         }
-
-    # Connect tools specified in the plan if they are available to the user
-    for tool_name in required_tools_from_plan:
-        if tool_name not in INTEGRATIONS_CONFIG:
-            logger.warning(f"Task {task_id}: Plan requires tool '{tool_name}' which is not in server config.")
-            continue
-
-        config = INTEGRATIONS_CONFIG[tool_name]
-        mcp_config = config.get("mcp_server_config")
-        
-        # Skip if no MCP config or if it's a tool we handle specially or exclude
-        if not mcp_config or tool_name in ["progress_updater", "supermemory", "chat_tools"]:
-            continue
-            
-        # Check availability
-        is_google_service = tool_name.startswith('g')
-        is_available_via_custom = is_google_service and google_auth_mode == 'custom'
-        is_builtin = config.get("auth_type") == "builtin"
-        is_connected_via_oauth = user_integrations.get(tool_name, {}).get("connected", False)
-
-        if is_builtin or is_connected_via_oauth or is_available_via_custom:
-            active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
-        else:
-            logger.warning(f"Task {task_id}: Plan requires tool '{tool_name}' but it is not available/connected for user {user_id}.")
-
 
     tools_config = [{"mcpServers": active_mcp_servers}]
     logger.info(f"Task {task_id}: Executor configured with tools: {list(active_mcp_servers.keys())}")

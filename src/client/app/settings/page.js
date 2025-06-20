@@ -207,198 +207,6 @@ const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {
 	)
 }
 
-const GoogleAuthSettings = ({ mode, onModeChange, onSaveSuccess }) => {
-	const [credentials, setCredentials] = useState("")
-	const [isSaving, setIsSaving] = useState(false)
-
-	const handleSave = async () => {
-		if (mode === "custom") {
-			try {
-				JSON.parse(credentials)
-			} catch (e) {
-				toast.error(
-					"Invalid JSON. Please paste the entire content of your Service Account key file."
-				)
-				return
-			}
-		}
-
-		setIsSaving(true)
-		try {
-			const res = await fetch("/api/settings/google-auth", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					mode: mode,
-					credentialsJson: mode === "custom" ? credentials : undefined
-				})
-			})
-
-			const data = await res.json()
-			if (!res.ok) {
-				throw new Error(
-					data.detail || "Failed to save Google settings."
-				)
-			}
-			toast.success(
-				data.message || "Google API settings saved successfully!"
-			)
-			setCredentials("") // Clear credentials after successful save
-			onSaveSuccess(mode) // Notify parent of the successful change
-		} catch (error) {
-			toast.error(`Error: ${error.message}`)
-		} finally {
-			setIsSaving(false)
-		}
-	}
-
-	const renderInstructions = () => (
-		<div className="mt-4 text-sm text-gray-400 space-y-3 p-4 bg-neutral-900/50 rounded-lg border border-neutral-700">
-			<h4 className="font-semibold text-gray-200">
-				How to get your Service Account Key:
-			</h4>
-			<ol className="list-decimal list-inside space-y-2">
-				<li>
-					Go to the{" "}
-					<a
-						href="https://console.cloud.google.com/"
-						target="_blank"
-						rel="noopener noreferrer"
-						className="text-lightblue hover:underline"
-					>
-						Google Cloud Console
-					</a>{" "}
-					and create a new project.
-				</li>
-				<li>
-					Enable the APIs you want to use (e.g., Gmail API, Google
-					Drive API, Google Calendar API, Google Maps Platform APIs,
-					Google Shopping Content API) in the "APIs & Services"
-					dashboard.
-				</li>
-				<li>
-					Go to "Credentials", click "Create Credentials", and select
-					"Service account".
-				</li>
-				<li>
-					Give the service account a name, grant it appropriate roles
-					(e.g., "Project Viewer"), and click "Done".
-				</li>
-				<li>
-					Find your new service account, go to the "Keys" tab, click
-					"Add Key", choose "Create new key", select "JSON", and
-					download the file.
-				</li>
-				<li>
-					Open the downloaded JSON file and paste its entire content
-					into the text box above.
-				</li>
-				<li className="font-bold text-yellow-400">
-					Important: You must enable{" "}
-					<a
-						href="https://developers.google.com/workspace/guides/configure-domain-wide-delegation"
-						target="_blank"
-						rel="noopener noreferrer"
-						className="text-lightblue hover:underline"
-					>
-						Domain-Wide Delegation
-					</a>{" "}
-					for your service account in your Google Workspace Admin
-					Console. You must grant it the following scopes:
-					<ul className="list-disc list-inside mt-1 pl-4 font-mono text-xs text-gray-300">
-						<li>https://www.googleapis.com/auth/calendar</li>
-						<li>https://www.googleapis.com/auth/drive</li>
-						<li>https://mail.google.com/</li>
-						<li>https://www.googleapis.com/auth/documents</li>
-						<li>https://www.googleapis.com/auth/presentations</li>
-						<li>https://www.googleapis.com/auth/spreadsheets</li>
-						<li>https://www.googleapis.com/auth/cloud-platform</li>
-						<li>https://www.googleapis.com/auth/content</li>
-					</ul>
-				</li>
-			</ol>
-		</div>
-	)
-
-	return (
-		<div className="bg-neutral-800/50 p-4 md:p-6 rounded-lg border border-neutral-700">
-			<div className="flex items-center gap-4">
-				<IconBrandGoogle className="w-8 h-8 text-white" />
-				<div>
-					<h3 className="font-semibold text-white text-lg">
-						Google Project Configuration
-					</h3>
-					<p className="text-gray-400 text-sm">
-						Choose how to authenticate with Google services.
-					</p>
-				</div>
-			</div>
-
-			<div className="mt-6 flex items-center space-x-4">
-				<button
-					onClick={() => onModeChange("default")}
-					className={cn(
-						"flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2",
-						mode === "default"
-							? "bg-lightblue text-white"
-							: "bg-neutral-700 hover:bg-neutral-600"
-					)}
-				>
-					<IconRocket size={16} />
-					Use Our Default Project
-				</button>
-				<button
-					onClick={() => onModeChange("custom")}
-					className={cn(
-						"flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2",
-						mode === "custom"
-							? "bg-green-600 text-white"
-							: "bg-neutral-700 hover:bg-neutral-600"
-					)}
-				>
-					<IconUser size={16} />
-					Use My Own Project
-				</button>
-			</div>
-
-			{mode === "custom" && (
-				<div className="mt-6">
-					<label
-						htmlFor="gcp-credentials"
-						className="block text-sm font-medium text-gray-300 mb-2"
-					>
-						Service Account JSON Key
-					</label>
-					<textarea
-						id="gcp-credentials"
-						rows={8}
-						className="w-full bg-neutral-900 border border-neutral-600 rounded-md p-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 font-mono text-xs"
-						placeholder="Paste the content of your service account JSON file here..."
-						value={credentials}
-						onChange={(e) => setCredentials(e.target.value)}
-					/>
-					{renderInstructions()}
-				</div>
-			)}
-
-			<div className="mt-6 flex justify-end">
-				<button
-					onClick={handleSave}
-					disabled={isSaving}
-					className="flex items-center justify-center gap-2 py-2 px-5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors disabled:opacity-50"
-				>
-					{isSaving ? (
-						<IconLoader className="animate-spin" size={18} />
-					) : (
-						<IconFileText size={18} />
-					)}
-					<span>{isSaving ? "Saving..." : "Save Settings"}</span>
-				</button>
-			</div>
-		</div>
-	)
-}
-
 const Settings = () => {
 	const [userDetails, setUserDetails] = useState({})
 	const [isSidebarVisible, setSidebarVisible] = useState(false)
@@ -411,8 +219,6 @@ const Settings = () => {
 	const [loadingIntegrations, setLoadingIntegrations] = useState(true)
 	const [activeManualIntegration, setActiveManualIntegration] = useState(null)
 	const [processingIntegration, setProcessingIntegration] = useState(null)
-	const [googleAuthMode, setGoogleAuthMode] = useState("default")
-	const [loadingGoogleAuthMode, setLoadingGoogleAuthMode] = useState(true)
 
 	// --- CORRECTED: Specific list of Google services ---
 	const googleServices = [
@@ -423,21 +229,6 @@ const Settings = () => {
 		"gslides",
 		"gsheets"
 	]
-
-	const fetchGoogleAuthMode = useCallback(async () => {
-		setLoadingGoogleAuthMode(true)
-		try {
-			const res = await fetch("/api/settings/google-auth")
-			if (!res.ok)
-				throw new Error("Failed to fetch Google auth settings.")
-			const data = await res.json()
-			setGoogleAuthMode(data.mode || "default")
-		} catch (error) {
-			toast.error(error.message)
-		} finally {
-			setLoadingGoogleAuthMode(false)
-		}
-	}, [])
 
 	const fetchIntegrations = useCallback(async () => {
 		setLoadingIntegrations(true)
@@ -634,7 +425,6 @@ const Settings = () => {
 		fetchPricingPlan()
 		fetchReferralDetails()
 		fetchIntegrations()
-		fetchGoogleAuthMode()
 
 		const urlParams = new URLSearchParams(window.location.search)
 		const success = urlParams.get("integration_success")
@@ -652,8 +442,7 @@ const Settings = () => {
 		fetchUserDetails,
 		fetchPricingPlan,
 		fetchReferralDetails,
-		fetchIntegrations,
-		fetchGoogleAuthMode
+		fetchIntegrations
 	])
 
 	return (
@@ -703,26 +492,6 @@ const Settings = () => {
 				<div className="w-full max-w-5xl mx-auto space-y-10 flex-grow">
 					<section>
 						<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-neutral-700 pb-2">
-							API & Service Configuration
-						</h2>
-						{loadingGoogleAuthMode ? (
-							<div className="flex justify-center items-center py-10">
-								<IconLoader className="w-8 h-8 animate-spin text-lightblue" />
-							</div>
-						) : (
-							<GoogleAuthSettings
-								mode={googleAuthMode}
-								onModeChange={setGoogleAuthMode}
-								onSaveSuccess={() => {
-									fetchGoogleAuthMode()
-									fetchIntegrations()
-								}}
-							/>
-						)}
-					</section>
-
-					<section>
-						<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-neutral-700 pb-2">
 							Connected Apps & Integrations
 						</h2>
 						<div className="bg-neutral-800/50 p-2 md:p-4 rounded-lg border border-neutral-700">
@@ -738,11 +507,6 @@ const Settings = () => {
 										const isProcessing =
 											processingIntegration ===
 											integration.name
-										// --- CORRECTED: Use precise list for check ---
-										const isGoogleServiceInCustomMode =
-											googleServices.includes(
-												integration.name
-											) && googleAuthMode === "custom"
 
 										return (
 											<div
@@ -765,17 +529,7 @@ const Settings = () => {
 													</div>
 												</div>
 												<div className="w-40 text-right">
-													{isGoogleServiceInCustomMode ? (
-														<div className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-green-600/20 text-green-400 text-xs font-medium cursor-default">
-															<IconLockOpen
-																size={14}
-															/>
-															<span>
-																Managed by
-																Custom Project
-															</span>
-														</div>
-													) : isProcessing ? (
+													{isProcessing ? (
 														<IconLoader className="w-6 h-6 animate-spin text-lightblue ml-auto" />
 													) : integration.connected ? (
 														<button

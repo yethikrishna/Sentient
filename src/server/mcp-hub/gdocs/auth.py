@@ -55,41 +55,16 @@ async def get_google_creds(user_id: str) -> Credentials:
         raise ToolError(f"User profile or userData not found for user_id: {user_id}.")
 
     user_data = user_doc["userData"]
-    google_auth_config = user_data.get("googleAuth", {})
-    auth_mode = google_auth_config.get("mode", "default")
-
-    if auth_mode == "custom":
-        user_email = user_data.get("personalInfo", {}).get("email")
-        if not user_email:
-            raise ToolError("User email is not available for service account impersonation.")
-        
-        encrypted_creds = google_auth_config.get("encryptedCredentials")
-        if not encrypted_creds:
-            raise ToolError("Custom Google auth mode is selected, but no credentials are provided for Google Docs.")
-        
-        try:
-            decrypted_creds_json = aes_decrypt(encrypted_creds)
-            service_account_info = json.loads(decrypted_creds_json)
-            scopes = ["https://www.googleapis.com/auth/documents", "https://www.googleapis.com/auth/drive"]
-            
-            creds = service_account.Credentials.from_service_account_info(
-                service_account_info, scopes=scopes, subject=user_email
-            )
-            return creds
-        except Exception as e:
-            raise ToolError(f"Failed to use custom Google credentials: {e}")
-
-    else:
-        gdocs_data = user_data.get("integrations", {}).get("gdocs")
-        if not gdocs_data or not gdocs_data.get("connected") or "credentials" not in gdocs_data:
-            raise ToolError(f"Google Docs integration not connected. Please use the default connect flow.")
-        
-        try:
-            decrypted_creds_str = aes_decrypt(gdocs_data["credentials"])
-            token_info = json.loads(decrypted_creds_str)
-            return Credentials.from_authorized_user_info(token_info)
-        except Exception as e:
-            raise ToolError(f"Failed to decrypt or parse default OAuth token for Google Docs: {e}")
+    gdocs_data = user_data.get("integrations", {}).get("gdocs")
+    if not gdocs_data or not gdocs_data.get("connected") or "credentials" not in gdocs_data:
+        raise ToolError(f"Google Docs integration not connected. Please use the default connect flow.")
+    
+    try:
+        decrypted_creds_str = aes_decrypt(gdocs_data["credentials"])
+        token_info = json.loads(decrypted_creds_str)
+        return Credentials.from_authorized_user_info(token_info)
+    except Exception as e:
+        raise ToolError(f"Failed to decrypt or parse default OAuth token for Google Docs: {e}")
 
 def authenticate_gdocs(creds: Credentials) -> Resource:
     return build("docs", "v1", credentials=creds)

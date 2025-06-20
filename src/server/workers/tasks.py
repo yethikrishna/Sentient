@@ -6,9 +6,9 @@ from server.main.config import SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOIN
 
 from server.workers.utils.api_client import notify_user
 from server.celery_app import celery_app
-from .planner.llm import get_planner_agent
-from .planner.db import PlannerMongoManager
-from .supermemory_agent_utils import get_supermemory_qwen_agent, get_db_manager as get_memory_db_manager
+from .llm import get_planner_agent
+from .db import PlannerMongoManager, get_all_mcp_descriptions
+from ..supermemory_agent_utils import get_supermemory_qwen_agent, get_db_manager as get_memory_db_manager
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -92,19 +92,19 @@ def process_action_item(user_id: str, action_items: list, source_event_id: str, 
     Celery task to process action items and generate a plan.
     """
     logger.info(f"Celery worker received planner task for user {user_id} with {len(action_items)} actions.")
-    db_manager = PlannerMongoManager() # This is the correct DB manager for planner
+    db_manager = PlannerMongoManager()
 
     async def async_main():
-        # Step 1: Determine the user's available tools
-        available_tools = await db_manager.get_available_tools(user_id)
+        # Step 1: Get the static list of all available service descriptions
+        available_tools = get_all_mcp_descriptions()
         
         if not available_tools:
-            logger.warning(f"No available tools for user {user_id}. Planner cannot create a plan.")
-            return {"status": "aborted", "reason": "No available tools for user."}
+            logger.warning(f"No available MCP descriptions found. Aborting task for user {user_id}.")
+            return {"status": "aborted", "reason": "No available tools configured."}
 
-        logger.info(f"Planner task for user {user_id} prompted with available tools: {available_tools}")
+        logger.info(f"Planner task for user {user_id} will be prompted with {len(available_tools)} available services.")
 
-        # Step 2: Initialize the planner agent with the list of available tools
+        # Step 2: Initialize the planner agent with the list of available services
         agent = get_planner_agent(available_tools)
         
         user_prompt_content = "Please create a plan for the following action items:\n- " + "\n- ".join(action_items)
@@ -133,14 +133,14 @@ def process_action_item(user_id: str, action_items: list, source_event_id: str, 
             description = plan_data.get("description", "Proactively generated plan")
             plan_steps = plan_data.get("plan", [])
 
-            # Step 3: Validate the generated plan against the user's available tools
+            # Step 3: Validate the generated plan against the master service list
             if plan_steps:
+                valid_service_names = available_tools.keys()
                 for step in plan_steps:
                     tool_used = step.get("tool")
-                    if tool_used not in available_tools:
-                        error_msg = f"Plan for user {user_id} hallucinated an unavailable tool: '{tool_used}'. Available tools: {available_tools}"
+                    if tool_used not in valid_service_names:
+                        error_msg = f"Plan for user {user_id} hallucinated an unavailable service: '{tool_used}'. Available services: {list(valid_service_names)}"
                         logger.error(error_msg)
-                        # Do not save the task, as it's invalid.
                         return {"status": "failure", "reason": error_msg}
 
             if not plan_steps:

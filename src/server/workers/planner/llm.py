@@ -6,10 +6,14 @@ from . import prompts
 
 logger = logging.getLogger(__name__)
 
-def get_planner_agent(available_tools: list):
+def get_planner_agent(available_tools: dict):
     """Initializes and returns a Qwen Assistant agent for planning."""
+    
+    # Format the MCP descriptions for the prompt
+    tools_list_str = "\n".join([f"- {name}: {desc}" for name, desc in available_tools.items()])
+    
     system_prompt = prompts.SYSTEM_PROMPT.format(
-        available_tools=", ".join(available_tools)
+        available_tools=tools_list_str
     )
 
     llm_cfg = {}

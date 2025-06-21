@@ -29,7 +29,7 @@ def get_planner_agent(available_tools: dict):
             }
         }
     else:
-        raise ValueError(f"Unsupported LLM_PROVIDER for planner: {config.LLM_PROVIDER}")
+        raise ValueError(f"Unsupported LLM_PROVIDER for planner: {config.LLM_PROVIDER}. Must be 'OLLAMA' or 'NOVITA'")
 
     try:
         agent = Assistant(

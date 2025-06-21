@@ -24,20 +24,20 @@ def get_extractor_agent():
             }
         }
         logger.info(f"Qwen Agent configured for OLLAMA: model={config.OLLAMA_MODEL_NAME}")
-    elif config.LLM_PROVIDER == "OPENROUTER":
-        openrouter_v1_url = "https://openrouter.ai/api/v1"
+    elif config.LLM_PROVIDER == "NOVITA":
+        novita_v1_url = "https://api.novita.ai/v3/openai"
         llm_cfg = {
-            'model': config.OPENROUTER_MODEL_NAME,
-            'model_server': openrouter_v1_url,
-            'api_key': config.OPENROUTER_API_KEY,
+            'model': config.NOVITA_MODEL_NAME,
+            'model_server': novita_v1_url,
+            'api_key': config.NOVITA_API_KEY,
             'generate_cfg': {
                 'temperature': 0.1,
                 'response_format': {'type': 'json_object'},
             }
         }
-        logger.info(f"Qwen Agent configured for OPENROUTER: model={config.OPENROUTER_MODEL_NAME}")
+        logger.info(f"Qwen Agent configured for NOVITA: model={config.NOVITA_MODEL_NAME}")
     else:
-        raise ValueError(f"Invalid LLM_PROVIDER: {config.LLM_PROVIDER}")
+        raise ValueError(f"Invalid LLM_PROVIDER: {config.LLM_PROVIDER}. Must be 'OLLAMA' or 'NOVITA'")
 
     try:
         agent = Assistant(

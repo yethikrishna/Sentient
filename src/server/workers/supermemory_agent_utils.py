@@ -1,7 +1,7 @@
 import logging
 from qwen_agent.agents import Assistant
 from server.workers.planner.db import PlannerMongoManager # Re-use for DB access
-from server.workers.planner.config import LLM_PROVIDER, OLLAMA_MODEL_NAME, OLLAMA_BASE_URL, OPENROUTER_MODEL_NAME, OPENROUTER_API_KEY
+from server.workers.planner.config import LLM_PROVIDER, OLLAMA_MODEL_NAME, OLLAMA_BASE_URL, NOVITA_MODEL_NAME, NOVITA_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -31,19 +31,19 @@ def get_supermemory_qwen_agent(supermemory_mcp_url: str):
                 'temperature': 0.1, # Low temperature for deterministic tool use
             }
         }
-    elif LLM_PROVIDER == "OPENROUTER":
-        openrouter_v1_url = "https://openrouter.ai/api/v1"
+    elif LLM_PROVIDER == "NOVITA":
+        novita_v1_url = "https://api.novita.ai/v3/openai"
         llm_cfg = {
-            'model': OPENROUTER_MODEL_NAME,
-            'model_server': openrouter_v1_url,
-            'api_key': OPENROUTER_API_KEY,
+            'model': NOVITA_MODEL_NAME,
+            'model_server': novita_v1_url,
+            'api_key': NOVITA_API_KEY,
             'generate_cfg': {
                 'temperature': 0.1,
             }
         }
     else:
         logger.error(f"Invalid LLM_PROVIDER for Supermemory agent: '{LLM_PROVIDER}'.")
-        raise ValueError(f"Invalid LLM_PROVIDER configured: {LLM_PROVIDER}")
+        raise ValueError(f"Invalid LLM_PROVIDER configured: {LLM_PROVIDER}. Must be 'OLLAMA' or 'NOVITA'")
 
     if not llm_cfg.get('model'):
         logger.error("LLM model name is not configured. Supermemory Qwen Agent cannot be initialized.")

@@ -7,7 +7,7 @@ from qwen_agent.llm import get_chat_model
 from .config import (
     LLM_PROVIDER,
     OLLAMA_MODEL_NAME, OLLAMA_BASE_URL,
-    OPENROUTER_MODEL_NAME, OPENROUTER_API_KEY
+    NOVITA_MODEL_NAME, NOVITA_API_KEY
 )
 
 logger = logging.getLogger(__name__)
@@ -32,24 +32,24 @@ def get_qwen_assistant(system_message: str = DEFAULT_SYSTEM_PROMPT, function_lis
             }
         }
         logger.info(f"Qwen Agent configured for LLM_PROVIDER='OLLAMA': model={OLLAMA_MODEL_NAME}, server={ollama_v1_url}")
-    elif LLM_PROVIDER == "OPENROUTER":
-        # OpenRouter configuration for Qwen Agent
-        openrouter_v1_url = "https://openrouter.ai/api/v1" # Standard OpenRouter API base
+    elif LLM_PROVIDER == "NOVITA":
+        # Novita configuration for Qwen Agent
+        novita_v1_url = "https://api.novita.ai/v3/openai"
         llm_cfg = {
-            'model': OPENROUTER_MODEL_NAME,  # e.g., "meta-llama/llama-3.1-8b-instruct" or your "llama3.2:3b" if mapped
-            'model_server': openrouter_v1_url,
-            'api_key': OPENROUTER_API_KEY,
+            'model': NOVITA_MODEL_NAME,
+            'model_server': novita_v1_url,
+            'api_key': NOVITA_API_KEY,
             'generate_cfg': {
                 'temperature': 0.7, # Example generation parameter
             }
         }
-        # For OpenRouter, some models might need specific routing prefixes if not handled by model_server directly
-        # e.g. 'model': 'openrouter/meta-llama/llama-3.1-8b-instruct'
+        # For Novita, some models might need specific routing prefixes if not handled by model_server directly
+        # e.g. 'openrouter/meta-llama/llama-3.1-8b-instruct'
         # However, Qwen's OpenAI client usually takes the model name as passed.
         # The 'model_server' determines the endpoint.
-        logger.info(f"Qwen Agent configured for LLM_PROVIDER='OPENROUTER': model={OPENROUTER_MODEL_NAME}, server={openrouter_v1_url}")
+        logger.info(f"Qwen Agent configured for LLM_PROVIDER='NOVITA': model={NOVITA_MODEL_NAME}, server={novita_v1_url}")
     else:
-        logger.error(f"Invalid LLM_PROVIDER: '{LLM_PROVIDER}'. Must be 'OLLAMA' or 'OPENROUTER'.")
+        logger.error(f"Invalid LLM_PROVIDER: '{LLM_PROVIDER}'. Must be 'OLLAMA' or 'NOVITA'.")
         raise ValueError(f"Invalid LLM_PROVIDER configured: {LLM_PROVIDER}")
 
     if not llm_cfg.get('model'):

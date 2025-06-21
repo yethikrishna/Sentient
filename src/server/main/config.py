@@ -290,7 +290,7 @@ INTEGRATIONS_CONFIG = {
 
 # --- Service Provider Configuration ---
 # These variables allow for flexible switching between different service providers.
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "OLLAMA") # Options: "OLLAMA", "OPENROUTER"
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "OLLAMA") # Options: "OLLAMA", "NOVITA"
 # STT_PROVIDER = os.getenv("STT_PROVIDER", "FASTER_WHISPER") # Voice removed
 # TTS_PROVIDER = os.getenv("TTS_PROVIDER", "ORPHEUS") # Voice removed
 
@@ -304,8 +304,8 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "OLLAMA") # Options: "OLLAMA", "OPENROU
 # LLM Endpoint Configuration
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434") 
 OLLAMA_MODEL_NAME = os.getenv("OLLAMA_MODEL_NAME", "qwen3:4b") 
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY") 
-OPENROUTER_MODEL_NAME = os.getenv("OPENROUTER_MODEL_NAME", "qwen/qwen3-8b:free") 
+NOVITA_API_KEY = os.getenv("NOVITA_API_KEY")
+NOVITA_MODEL_NAME = os.getenv("NOVITA_MODEL_NAME", "qwen/qwen3-4b-fp8")
 # MCP Server URLs
 PROGRESS_UPDATER_MCP_SERVER_URL=os.getenv("PROGRESS_UPDATER_MCP_SERVER_URL", "http://localhost:9011/sse")
 CHAT_TOOLS_MCP_SERVER_URL=os.getenv("CHAT_TOOLS_MCP_SERVER_URL", "http://localhost:9013/sse") # For agent action handoff

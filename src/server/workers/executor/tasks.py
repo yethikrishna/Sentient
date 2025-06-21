@@ -28,10 +28,12 @@ if LLM_PROVIDER == "OLLAMA":
         'model_server': f"{OLLAMA_BASE_URL.rstrip('/')}/v1/",
         'api_key': 'ollama', # Ollama doesn't require a key
     }
-elif LLM_PROVIDER == "OPENROUTER":
-    from server.main.config import OPENROUTER_API_KEY, OPENROUTER_MODEL_NAME
+elif LLM_PROVIDER == "NOVITA":
+    from server.main.config import NOVITA_API_KEY, NOVITA_MODEL_NAME
     llm_cfg = {
-        "model": OPENROUTER_MODEL_NAME, "api_key": OPENROUTER_API_KEY
+        "model": NOVITA_MODEL_NAME,
+        "api_key": NOVITA_API_KEY,
+        "model_server": "https://api.novita.ai/v3/openai"
     }
 
 

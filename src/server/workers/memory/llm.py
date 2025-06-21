@@ -51,16 +51,16 @@ def get_memory_qwen_agent(user_id: str):
             'api_key': 'ollama',
             'generate_cfg': {'temperature': 0.1} # Lower temp for more deterministic classification
         }
-    elif config.LLM_PROVIDER == "OPENROUTER":
-        openrouter_v1_url = "https://openrouter.ai/api/v1"
+    elif config.LLM_PROVIDER == "NOVITA":
+        novita_v1_url = "https://api.novita.ai/v3/openai"
         llm_cfg = {
-            'model': config.OPENROUTER_MODEL_NAME,
-            'model_server': openrouter_v1_url,
-            'api_key': config.OPENROUTER_API_KEY,
+            'model': config.NOVITA_MODEL_NAME,
+            'model_server': novita_v1_url,
+            'api_key': config.NOVITA_API_KEY,
             'generate_cfg': {'temperature': 0.1}
         }
     else:
-        raise ValueError(f"Invalid LLM_PROVIDER: {config.LLM_PROVIDER}")
+        raise ValueError(f"Invalid LLM_PROVIDER: {config.LLM_PROVIDER}. Must be 'OLLAMA' or 'NOVITA'")
 
     # The agent will have access to all tools on the memory server,
     # including both `save_long_term_fact` and `add_short_term_memory`.

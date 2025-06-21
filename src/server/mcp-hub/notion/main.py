@@ -8,8 +8,9 @@ from fastmcp.prompts.prompt import Message
 from notion_client.helpers import is_full_page_or_database
 
 from . import auth, prompts, utils
-
-load_dotenv()
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path=dotenv_path)
 
 mcp = FastMCP(
     name="NotionServer",

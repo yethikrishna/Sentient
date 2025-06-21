@@ -7,8 +7,9 @@ from celery import Celery
 
 from fastmcp import FastMCP, Context
 from . import auth, config, db
-
-load_dotenv()
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path=dotenv_path)
 
 mcp = FastMCP(
     name="ChatToolsServer",

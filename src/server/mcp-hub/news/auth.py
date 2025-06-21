@@ -5,7 +5,8 @@ from dotenv import load_dotenv
 
 # Load from main server .env, which is two levels up
 dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
-load_dotenv(dotenv_path=dotenv_path)
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path=dotenv_path)
 
 def get_user_id_from_context(ctx: Context) -> str:
     """

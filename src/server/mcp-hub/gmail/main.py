@@ -16,7 +16,9 @@ from . import prompts
 from . import utils as helpers
 
 # Load environment variables from .env file
-load_dotenv()
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path=dotenv_path)
 
 # --- Server Initialization ---
 mcp = FastMCP(

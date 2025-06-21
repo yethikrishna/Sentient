@@ -8,8 +8,8 @@ import motor.motor_asyncio
 from google_auth_oauthlib.flow import InstalledAppFlow
 
 # --- Configuration ---
-CREDENTIALS_FILE = "server/mcp-hub/credentials.json"
-ENV_FILE = "server/.env"
+CREDENTIALS_FILE = os.path.join(os.path.dirname(__file__), '..', 'credentials.json')
+ENV_FILE = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
 
 # This scope allows for full read/write access to Google Drive files.
 SCOPES = ["https://www.googleapis.com/auth/drive"]
@@ -18,7 +18,8 @@ SCOPES = ["https://www.googleapis.com/auth/drive"]
 if not os.path.exists(ENV_FILE):
     print(f"Error: The .env file was not found. Please create it from .env.template.")
     exit()
-load_dotenv(ENV_FILE)
+if os.path.exists(ENV_FILE):
+    load_dotenv(dotenv_path=ENV_FILE)
 
 MONGO_URI = os.getenv("MONGO_URI")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")

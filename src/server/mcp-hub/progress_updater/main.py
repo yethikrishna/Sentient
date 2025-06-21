@@ -7,8 +7,9 @@ from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from . import auth
 
-load_dotenv(os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
-
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path=dotenv_path)
 # --- DB Setup ---
 MONGO_URI = os.getenv("MONGO_URI")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")

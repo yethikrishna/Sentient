@@ -7,17 +7,15 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 
 # --- Configuration ---
 # This script should be in the same directory as your .env and credentials.json
-CREDENTIALS_FILE = "server/mcp-hub/gmail/credentials.json"
-ENV_FILE = "server/.env"
+CREDENTIALS_FILE = os.path.join(os.path.dirname(__file__), 'credentials.json')
+ENV_FILE = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
 
 # This is the all-encompassing scope for Gmail management.
 SCOPES = ["https://mail.google.com/"]
 
 # Load environment variables from .env file
-if not os.path.exists(ENV_FILE):
-    print(f"Error: The .env file was not found. Please create it from .env.template.")
-    exit()
-load_dotenv(ENV_FILE)
+if os.path.exists(ENV_FILE):
+    load_dotenv(dotenv_path=ENV_FILE)
 
 MONGO_URI = os.getenv("MONGO_URI")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")

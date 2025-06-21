@@ -308,12 +308,3 @@ services:
           - key: MCP_SERVER_PORT
             value: 9017
           - fromGroup: sentient-dev-group
-
-    # Kafka Topic Initializer (One-off Job)
-    - type: job
-      name: kafka-topic-initializer
-      plan: free # A one-off job can run on the free plan
-      startCommand: "python workers/utils/kafka_topic_initializer.py"
-      # No build command needed if it uses same dependencies as another worker
-      # but for isolation, you could add one:
-      # buildCommand: pip install -r workers/utils/requirements.txt

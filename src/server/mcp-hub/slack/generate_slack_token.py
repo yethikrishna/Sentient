@@ -25,13 +25,14 @@ import motor.motor_asyncio
 from getpass import getpass
 
 # --- Configuration ---
-ENV_FILE = "server/.env"
+ENV_FILE = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
 
 # Load environment variables from .env file
 if not os.path.exists(ENV_FILE):
     print(f"Error: The .env file was not found. Please create it from .env.template.")
     exit()
-load_dotenv(ENV_FILE)
+if os.path.exists(ENV_FILE):
+    load_dotenv(dotenv_path=ENV_FILE)
 
 MONGO_URI = os.getenv("MONGO_URI")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")

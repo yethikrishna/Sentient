@@ -1,13 +1,5 @@
-# Core framework
 fastmcp
-
-# Database & Graph
+python-dotenv
 pymongo
-neo4j
-
-# ML
 sentence-transformers
 numpy
-
-# Utilities
-python-dotenv

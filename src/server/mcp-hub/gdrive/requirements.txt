@@ -1,16 +1,7 @@
-# server/mcp-hub/gdrive/requirements.txt
-
-# Core framework
 fastmcp
-
-# Google API
+python-dotenv
 google-api-python-client
 google-auth-httplib2
 google-auth-oauthlib
-
-# Database
-motor         # Async MongoDB driver
-python-dotenv # For loading .env files
-
-# HTTP and async
-httpx
+motor
+cryptography

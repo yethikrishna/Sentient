@@ -1,10 +1,8 @@
-fastmcp
+kafka-python
 python-dotenv
+motor
+pymongo
 google-api-python-client
 google-auth-httplib2
 google-auth-oauthlib
-motor
 cryptography
-httpx
-sentence-transformers
-torch

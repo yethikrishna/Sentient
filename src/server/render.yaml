@@ -1,0 +1,319 @@
+# Blueprint for the DEVELOPMENT environment
+# Root Directory is src/server/. All paths are relative to this directory.
+
+services:
+    # 1. Main FastAPI Server (Public Web Service)
+    - type: web
+      name: main-server-dev
+      runtime: python
+      branch: dev
+      buildCommand: |
+          pip install --upgrade pip
+          pip install -r main/requirements.txt
+      startCommand: uvicorn main.app:app --host 0.0.0.0 --port $PORT
+      healthCheckPath: /health
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - fromGroup: sentient-dev-group
+
+    # 2. Celery Executor Worker
+    - type: worker
+      name: celery-worker-dev
+      runtime: python
+      branch: dev
+      buildCommand: |
+          pip install --upgrade pip
+          pip install -r workers/executor/requirements.txt
+      startCommand: celery -A celery_app worker --loglevel=info
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - fromGroup: sentient-dev-group
+
+    # 3. Kafka Extractor Worker
+    - type: worker
+      name: extractor-worker-dev
+      runtime: python
+      branch: dev
+      buildCommand: |
+          pip install --upgrade pip
+          pip install -r workers/extractor/requirements.txt
+      startCommand: python -m workers.extractor.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - fromGroup: sentient-dev-group
+
+    # 4. Gmail Poller Worker
+    - type: worker
+      name: gmail-poller-dev
+      runtime: python
+      branch: dev
+      buildCommand: |
+          pip install --upgrade pip
+          pip install -r workers/poller/gmail/requirements.txt
+      startCommand: python -m workers.poller.gmail.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - fromGroup: sentient-dev-group
+
+    # 5. Google Calendar Poller Worker
+    - type: worker
+      name: gcalendar-poller-dev
+      runtime: python
+      branch: dev
+      buildCommand: |
+          pip install --upgrade pip
+          pip install -r workers/poller/gcalendar/requirements.txt
+      startCommand: python -m workers.poller.gcalendar.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - fromGroup: sentient-dev-group
+
+    # --- MCP Hub Servers (Private Services) ---
+
+    - type: pserv
+      name: mcp-memory-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp-hub/memory/requirements.txt
+      startCommand: python -m mcp-hub.memory.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 8001
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-gmail-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp-hub/gmail/requirements.txt
+      startCommand: python -m mcp-hub.gmail.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9001
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-gcal-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp-hub/gcal/requirements.txt
+      startCommand: python -m mcp-hub.gcal.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9002
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-gdrive-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp-hub/gdrive/requirements.txt
+      startCommand: python -m mcp-hub.gdrive.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9003
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-gdocs-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp-hub/gdocs/requirements.txt
+      startCommand: python -m mcp-hub.gdocs.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9004
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-google-search-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp-hub/google_search/requirements.txt
+      startCommand: python -m mcp-hub.google_search.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9005
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-slack-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp-hub/slack/requirements.txt
+      startCommand: python -m mcp-hub.slack.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9006
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-accuweather-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp-hub/accuweather/requirements.txt
+      startCommand: python -m mcp-hub.accuweather.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9007
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-quickchart-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp-hub/quickchart/requirements.txt
+      startCommand: python -m mcp-hub.quickchart.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9008
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-notion-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp-hub/notion/requirements.txt
+      startCommand: python -m mcp-hub.notion.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9009
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-github-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp-hub/github/requirements.txt
+      startCommand: python -m mcp-hub.github.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9010
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-progress-updater-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp-hub/progress_updater/requirements.txt
+      startCommand: python -m mcp-hub.progress_updater.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9011
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-news-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp-hub/news/requirements.txt
+      startCommand: python -m mcp-hub.news.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9012
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-chat-tools-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp-hub/chat_tools/requirements.txt
+      startCommand: python -m mcp-hub.chat_tools.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9013
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-gslides-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp-hub/gslides/requirements.txt
+      startCommand: python -m mcp-hub.gslides.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9014
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-gsheets-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp-hub/gsheets/requirements.txt
+      startCommand: python -m mcp-hub.gsheets.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9015
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-gmaps-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp-hub/gmaps/requirements.txt
+      startCommand: python -m mcp-hub.gmaps.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9016
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-gshopping-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp-hub/gshopping/requirements.txt
+      startCommand: python -m mcp-hub.gshopping.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9017
+          - fromGroup: sentient-dev-group
+
+    # Kafka Topic Initializer (One-off Job)
+    - type: job
+      name: kafka-topic-initializer
+      plan: free # A one-off job can run on the free plan
+      startCommand: "python workers/utils/kafka_topic_initializer.py"
+      # No build command needed if it uses same dependencies as another worker
+      # but for isolation, you could add one:
+      # buildCommand: pip install -r workers/utils/requirements.txt

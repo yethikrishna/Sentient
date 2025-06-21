@@ -1,18 +1,7 @@
-# src/server/workers/extractor/requirements.txt
-# Kafka client
 aiokafka
-
-# For loading .env files
 python-dotenv
-
-# LLM Agent
+motor
+pymongo
 qwen-agent
-
-# Optional, but good practice for specific dependencies
-# of the LLM/Agent if not covered by qwen-agent
-torch
-sentence-transformers
-numpy
-
-# Database
-motor # Async MongoDB driver
+celery
+redis

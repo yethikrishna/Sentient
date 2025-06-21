@@ -1,10 +1,4 @@
-# server/mcp-hub/google_search/requirements.txt
-
-# Core framework
 fastmcp
-
-# For loading .env files
 python-dotenv
-
-# HTTP and async client for making API requests
 httpx
+motor

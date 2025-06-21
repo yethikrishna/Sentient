@@ -1,13 +1,5 @@
-# server/mcp-hub/slack/requirements.txt
-
-# Core framework
 fastmcp
-
-# For loading .env files
 python-dotenv
-
-# Async MongoDB driver
 motor
-
-# HTTP and async client for making API requests
+cryptography
 httpx

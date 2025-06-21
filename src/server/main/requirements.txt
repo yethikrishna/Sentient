@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+pydantic
+python-dotenv
+python-jose[cryptography]
+cryptography
+httpx
+nest_asyncio
+json5
+requests
+motor
+pymongo
+qwen-agent
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib

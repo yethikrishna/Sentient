@@ -1,5 +1,6 @@
 import os
 from celery import Celery
+from celery.schedules import crontab
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -19,6 +20,12 @@ celery_app = Celery(
 
 celery_app.conf.update(
     task_track_started=True,
+    beat_schedule = {
+        'check-scheduled-tasks-every-minute': {
+            'task': 'server.workers.tasks.check_scheduled_tasks',
+            'schedule': 60.0,
+        },
+    }
 )
 
 if __name__ == '__main__':

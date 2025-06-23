@@ -2,13 +2,18 @@ import asyncio
 import logging
 import json
 import re
-from server.main.config import SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX
+import datetime
+from dateutil import rrule
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from typing import Dict, Any, Optional
 
+from server.main.config import SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX
 from server.workers.utils.api_client import notify_user
 from server.celery_app import celery_app
 from .planner.llm import get_planner_agent
 from .planner.db import PlannerMongoManager, get_all_mcp_descriptions
 from ..workers.supermemory_agent_utils import get_supermemory_qwen_agent, get_db_manager as get_memory_db_manager
+from .executor.tasks import execute_task_plan
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -162,3 +167,85 @@ def process_action_item(user_id: str, action_items: list, source_event_id: str, 
             await db_manager.close()
 
     return run_async(async_main())
+
+# --- Scheduler Task ---
+
+def calculate_next_run(schedule: Dict[str, Any], last_run: Optional[datetime.datetime] = None) -> Optional[datetime.datetime]:
+    """Calculates the next execution time for a scheduled task."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    start_time = last_run or now
+
+    try:
+        frequency = schedule.get("frequency")
+        time_str = schedule.get("time", "00:00")
+        hour, minute = map(int, time_str.split(':'))
+
+        # We need the user's timezone to correctly calculate "today" or "next Monday"
+        # For simplicity, we'll work in UTC here. A more robust solution would fetch user's timezone.
+        # This means "daily at 9am" is 9am UTC.
+        dtstart = start_time.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+        rule = None
+        if frequency == 'daily':
+            rule = rrule.rrule(rrule.DAILY, dtstart=dtstart)
+        elif frequency == 'weekly':
+            days = schedule.get("days", [])
+            if not days: return None
+            # Map weekday names to rrule constants
+            weekday_map = {"Sunday": rrule.SU, "Monday": rrule.MO, "Tuesday": rrule.TU, "Wednesday": rrule.WE, "Thursday": rrule.TH, "Friday": rrule.FR, "Saturday": rrule.SA}
+            byweekday = [weekday_map[day] for day in days if day in weekday_map]
+            if not byweekday: return None
+            rule = rrule.rrule(rrule.WEEKLY, dtstart=dtstart, byweekday=byweekday)
+
+        if rule:
+            next_run = rule.after(start_time)
+            # Ensure next_run is timezone-aware
+            if next_run and next_run.tzinfo is None:
+                next_run = next_run.replace(tzinfo=datetime.timezone.utc)
+            return next_run
+
+    except Exception as e:
+        logger.error(f"Error calculating next run time for schedule {schedule}: {e}")
+
+    return None
+
+@celery_app.task(name="check_scheduled_tasks")
+def check_scheduled_tasks():
+    """
+    Celery Beat task to check for and queue scheduled tasks.
+    """
+    logger.info("Scheduler: Checking for due tasks...")
+    run_async(async_check_scheduled_tasks())
+
+async def async_check_scheduled_tasks():
+    db_manager = PlannerMongoManager()
+    try:
+        now = datetime.datetime.now(datetime.timezone.utc)
+        query = {
+            "status": "active",
+            "enabled": True,
+            "schedule.type": "recurring",
+            "next_execution_at": {"$lte": now}
+        }
+        due_tasks_cursor = db_manager.tasks_collection.find(query)
+        due_tasks = await due_tasks_cursor.to_list(length=None)
+
+        if not due_tasks:
+            logger.info("Scheduler: No tasks are due.")
+            return
+
+        logger.info(f"Scheduler: Found {len(due_tasks)} due tasks.")
+        for task in due_tasks:
+            logger.info(f"Scheduler: Queuing task {task['task_id']} for execution.")
+            execute_task_plan.delay(task['task_id'], task['user_id'])
+            
+            next_run_time = calculate_next_run(task['schedule'], last_run=now)
+            await db_manager.tasks_collection.update_one(
+                {"_id": task["_id"]},
+                {"$set": {"last_execution_at": now, "next_execution_at": next_run_time}}
+            )
+            logger.info(f"Scheduler: Rescheduled task {task['task_id']} for {next_run_time}.")
+    except Exception as e:
+        logger.error(f"Scheduler: An error occurred: {e}", exc_info=True)
+    finally:
+        await db_manager.close()

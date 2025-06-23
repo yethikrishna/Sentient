@@ -20,8 +20,7 @@ import {
 	IconChevronUp,
 	IconPlus,
 	IconMenu2,
-	IconGripVertical,
-	IconBrain
+	IconGripVertical
 } from "@tabler/icons-react"
 import ReactMarkdown from "react-markdown"
 import Sidebar from "@components/Sidebar"
@@ -30,6 +29,7 @@ import { Tooltip } from "react-tooltip"
 import "react-tooltip/dist/react-tooltip.css"
 import { cn } from "@utils/cn"
 import { motion, AnimatePresence } from "framer-motion"
+import { useRouter } from "next/navigation"
 
 const statusMap = {
 	pending: {
@@ -62,6 +62,12 @@ const statusMap = {
 		borderColor: "border-purple-500",
 		label: "Approval Pending"
 	},
+	active: {
+		// New status for recurring tasks
+		icon: IconRefresh,
+		color: "text-green-500",
+		label: "Active"
+	},
 	cancelled: {
 		icon: IconX,
 		color: "text-gray-500",
@@ -91,20 +97,29 @@ const Tasks = () => {
 	const [isSidebarVisible, setSidebarVisible] = useState(false)
 	const [editingTask, setEditingTask] = useState(null)
 	const [filterStatus, setFilterStatus] = useState("all")
+	const [isGeneratingPlan, setIsGeneratingPlan] = useState(false)
 	const [searchTerm, setSearchTerm] = useState("")
 	const [viewingTask, setViewingTask] = useState(null) // For viewing task details/approval
 	const [isCreatePlanOpen, setCreatePlanOpen] = useState(true)
 	const [openSections, setOpenSections] = useState({
+		active: true,
 		approval_pending: true,
 		processing: true,
 		completed: true
 	})
 	const [isAdding, setIsAdding] = useState(false)
-	const [newTaskDescription, setNewTaskDescription] = useState("")
+	const [generationPrompt, setGenerationPrompt] = useState("")
+	const [newTaskDescription, setNewTaskDescription] = useState("") // Populated by AI or manual edit
 	const [newTaskPriority, setNewTaskPriority] = useState(1)
 	const [newTaskPlan, setNewTaskPlan] = useState([
 		{ tool: "", description: "" }
 	])
+	const [newSchedule, setNewSchedule] = useState({
+		type: "once",
+		frequency: "daily",
+		time: "09:00",
+		days: []
+	})
 	const [availableTools, setAvailableTools] = useState([])
 	const [integrations, setIntegrations] = useState([])
 	const [loadingIntegrations, setLoadingIntegrations] = useState(true)
@@ -125,6 +140,7 @@ const Tasks = () => {
 			if (Array.isArray(data.tasks)) {
 				const sortedTasks = data.tasks.sort((a, b) => {
 					const statusOrder = {
+						active: -2,
 						approval_pending: -1, // Highest priority
 						processing: 0,
 						pending: 1,
@@ -227,7 +243,6 @@ const Tasks = () => {
 		}
 	}
 
-	// --- Effects ---
 	useEffect(() => {
 		fetchUserDetails()
 		fetchTasksData()
@@ -235,9 +250,42 @@ const Tasks = () => {
 		fetchAvailableTools()
 		const intervalId = setInterval(fetchTasksData, 60000)
 		return () => clearInterval(intervalId)
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [fetchTasksData])
 
 	// --- Task Actions ---
+	const handleGeneratePlan = async () => {
+		if (!generationPrompt.trim()) {
+			toast.error("Please enter a goal for your plan.")
+			return
+		}
+		setIsGeneratingPlan(true)
+		try {
+			const response = await fetch("/api/tasks/generate-plan", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ prompt: generationPrompt })
+			})
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(data.detail || "Failed to generate plan.")
+			}
+			if (!data.plan || data.plan.length === 0) {
+				toast.error(
+					"The agent could not generate a plan for this goal. Please try rephrasing."
+				)
+			} else {
+				setNewTaskDescription(data.description || generationPrompt)
+				setNewTaskPlan(data.plan)
+				toast.success("Plan generated! Review and save it below.")
+			}
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsGeneratingPlan(false)
+		}
+	}
+
 	const handleAddTask = async () => {
 		if (!newTaskDescription.trim()) {
 			toast.error("Please enter a task description.")
@@ -254,7 +302,8 @@ const Tasks = () => {
 			const taskData = {
 				description: newTaskDescription,
 				priority: newTaskPriority,
-				plan: newTaskPlan
+				plan: newTaskPlan,
+				schedule: newSchedule.type === "once" ? null : newSchedule
 			}
 			const response = await fetch("/api/tasks/add", {
 				method: "POST",
@@ -268,6 +317,13 @@ const Tasks = () => {
 			toast.success("New plan created successfully!")
 			setNewTaskDescription("")
 			setNewTaskPriority(1)
+			setNewTaskPlan([{ tool: "", description: "" }])
+			setNewSchedule({
+				type: "once",
+				frequency: "daily",
+				time: "09:00",
+				days: []
+			})
 			setNewTaskPlan([{ tool: "", description: "" }])
 			await fetchTasksData()
 		} catch (error) {
@@ -335,16 +391,13 @@ const Tasks = () => {
 		}
 		if (
 			editingTask.plan.some(
-				(step) => !step.tool || !step.description.trim()
+				(step) => !step.tool || !step.description?.trim()
 			)
 		) {
 			toast.error("All plan steps must have a tool and description.")
 			return
 		}
-		console.log("Updating task:", editingTask.task_id, {
-			description: editingTask.description,
-			priority: editingTask.priority
-		})
+
 		try {
 			const response = await fetch("/api/tasks/update", {
 				method: "POST",
@@ -353,7 +406,8 @@ const Tasks = () => {
 					taskId: editingTask.task_id,
 					description: editingTask.description,
 					priority: editingTask.priority,
-					plan: editingTask.plan
+					plan: editingTask.plan,
+					schedule: editingTask.schedule
 				})
 			})
 			const data = await response.json()
@@ -475,6 +529,7 @@ const Tasks = () => {
 			return false
 		return true
 	})
+	const activeTasks = filteredTasks.filter((t) => t.status === "active")
 
 	const pendingApprovalTasks = filteredTasks.filter(
 		(t) => t.status === "approval_pending"
@@ -607,6 +662,15 @@ const Tasks = () => {
 						) : (
 							<>
 								<CollapsibleSection
+									title="Active"
+									tasks={activeTasks}
+									isOpen={openSections.active}
+									toggleOpen={() => toggleSection("active")}
+									onViewDetails={setViewingTask}
+									onEditTask={handleEditTask}
+									onDeleteTask={handleDeleteTask}
+								/>
+								<CollapsibleSection
 									title="Pending Approval"
 									tasks={pendingApprovalTasks}
 									isOpen={openSections.approval_pending}
@@ -669,38 +733,75 @@ const Tasks = () => {
 									exit={{ height: 0, opacity: 0 }}
 									className="overflow-hidden"
 								>
-									<div className="space-y-4 pt-4">
-										<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-											<input
-												type="text"
-												placeholder="Describe the overall goal..."
-												value={newTaskDescription}
-												onChange={(e) =>
-													setNewTaskDescription(
-														e.target.value
-													)
-												}
-												className="md:col-span-2 p-3 bg-neutral-700/60 border border-neutral-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-lightblue"
-											/>
-											<select
-												value={newTaskPriority}
-												onChange={(e) =>
-													setNewTaskPriority(
-														Number(e.target.value)
-													)
-												}
-												className="p-3 bg-neutral-700/60 border border-neutral-600 rounded-lg text-white focus:outline-none focus:border-lightblue appearance-none"
-											>
-												<option value={0}>
-													High Priority
-												</option>
-												<option value={1}>
-													Medium Priority
-												</option>
-												<option value={2}>
-													Low Priority
-												</option>
-											</select>
+									<div className="space-y-6 pt-4">
+										<div>
+											<label className="text-sm font-medium text-gray-300 mb-2 block">
+												1. What is your goal?
+											</label>
+											<div className="flex gap-2">
+												<input
+													type="text"
+													placeholder="e.g., Send a daily summary of my calendar to my boss"
+													value={generationPrompt}
+													onChange={(e) =>
+														setGenerationPrompt(
+															e.target.value
+														)
+													}
+													className="flex-grow p-3 bg-neutral-700/60 border border-neutral-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-lightblue"
+												/>
+												<button
+													onClick={handleGeneratePlan}
+													disabled={isGeneratingPlan}
+													className="p-3 px-5 bg-darkblue hover:bg-lightblue rounded-lg text-white font-semibold transition-colors disabled:opacity-50 flex items-center"
+												>
+													{isGeneratingPlan ? (
+														<IconLoader className="w-5 h-5 animate-spin" />
+													) : (
+														"Generate Plan"
+													)}
+												</button>
+											</div>
+										</div>
+
+										<div>
+											<label className="text-sm font-medium text-gray-300 mb-2 block">
+												2. Review & Edit Plan
+											</label>
+											<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+												<input
+													type="text"
+													placeholder="Describe the overall goal..."
+													value={newTaskDescription}
+													onChange={(e) =>
+														setNewTaskDescription(
+															e.target.value
+														)
+													}
+													className="md:col-span-2 p-3 bg-neutral-700/60 border border-neutral-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-lightblue"
+												/>
+												<select
+													value={newTaskPriority}
+													onChange={(e) =>
+														setNewTaskPriority(
+															Number(
+																e.target.value
+															)
+														)
+													}
+													className="p-3 bg-neutral-700/60 border border-neutral-600 rounded-lg text-white focus:outline-none focus:border-lightblue appearance-none"
+												>
+													<option value={0}>
+														High Priority
+													</option>
+													<option value={1}>
+														Medium Priority
+													</option>
+													<option value={2}>
+														Low Priority
+													</option>
+												</select>
+											</div>
 										</div>
 										<div className="space-y-3">
 											<label className="text-sm font-medium text-gray-300">
@@ -738,27 +839,49 @@ const Tasks = () => {
 																			.value
 																	)
 																}
-																className="w-1/3 p-2 bg-neutral-700/60 border border-neutral-600 rounded-md text-white focus:outline-none focus:border-lightblue text-sm"
+																className="w-2/5 p-2 bg-neutral-700/60 border border-neutral-600 rounded-md text-white focus:outline-none focus:border-lightblue text-sm"
 															>
 																<option value="">
 																	Select a
 																	tool...
 																</option>
 																{availableTools.map(
-																	(tool) => (
-																		<option
-																			key={
-																				tool.name
-																			}
-																			value={
-																				tool.name
-																			}
-																		>
-																			{
-																				tool.display_name
-																			}
-																		</option>
-																	)
+																	(tool) => {
+																		const isConnected =
+																			integrations.find(
+																				(
+																					i
+																				) =>
+																					i.name ===
+																					tool.name
+																			)
+																				?.connected ||
+																			integrations.find(
+																				(
+																					i
+																				) =>
+																					i.name ===
+																					tool.name
+																			)
+																				?.auth_type ===
+																				"builtin"
+																		return (
+																			<option
+																				key={
+																					tool.name
+																				}
+																				value={
+																					tool.name
+																				}
+																			>
+																				{
+																					tool.display_name
+																				}{" "}
+																				{!isConnected &&
+																					" (Not Connected)"}
+																			</option>
+																		)
+																	}
 																)}
 															</select>
 															<input
@@ -777,6 +900,23 @@ const Tasks = () => {
 																}
 																className="flex-grow p-2 bg-neutral-700/60 border border-neutral-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:border-lightblue text-sm"
 															/>
+															{!integrations.find(
+																(i) =>
+																	i.name ===
+																	step.tool
+															)?.connected &&
+																integrations.find(
+																	(i) =>
+																		i.name ===
+																		step.tool
+																)?.auth_type !==
+																	"builtin" && (
+																	<ConnectToolButton
+																		toolName={
+																			step.tool
+																		}
+																	/>
+																)}
 															<button
 																onClick={() =>
 																	handleRemoveStep(
@@ -792,6 +932,17 @@ const Tasks = () => {
 												)}
 											</AnimatePresence>
 										</div>
+
+										<div>
+											<label className="text-sm font-medium text-gray-300 mb-2 block">
+												3. Set Schedule
+											</label>
+											<ScheduleEditor
+												schedule={newSchedule}
+												setSchedule={setNewSchedule}
+											/>
+										</div>
+
 										<div className="flex justify-between items-center">
 											<button
 												onClick={handleAddStep}
@@ -834,7 +985,12 @@ const Tasks = () => {
 				{/* --- Edit Task Modal --- */}
 				{editingTask && (
 					<div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 p-4">
-						<div className="bg-neutral-800 p-8 rounded-lg shadow-xl w-full max-w-2xl mx-auto max-h-[90vh] flex flex-col">
+						<motion.div
+							initial={{ opacity: 0, scale: 0.95 }}
+							animate={{ opacity: 1, scale: 1 }}
+							exit={{ opacity: 0, scale: 0.95 }}
+							className="bg-neutral-800 p-8 rounded-lg shadow-xl w-full max-w-3xl mx-auto max-h-[90vh] flex flex-col"
+						>
 							<h3 className="text-xl font-semibold mb-6 text-white flex justify-between items-center">
 								Edit Task
 								<button
@@ -844,7 +1000,7 @@ const Tasks = () => {
 									<IconX />
 								</button>
 							</h3>
-							<div className="overflow-y-auto custom-scrollbar pr-4 space-y-4">
+							<div className="overflow-y-auto custom-scrollbar pr-4 space-y-6">
 								<div>
 									<label className="block text-gray-300 text-sm font-medium">
 										Description
@@ -880,6 +1036,24 @@ const Tasks = () => {
 										<option value={2}>Low</option>
 									</select>
 								</div>
+								<div>
+									<label className="block text-gray-300 text-sm font-medium mb-2">
+										Schedule
+									</label>
+									<ScheduleEditor
+										schedule={
+											editingTask.schedule || {
+												type: "once"
+											}
+										}
+										setSchedule={(newSched) =>
+											setEditingTask({
+												...editingTask,
+												schedule: newSched
+											})
+										}
+									/>
+								</div>
 								<div className="space-y-3 pt-2">
 									<label className="text-sm font-medium text-gray-300">
 										Plan Steps
@@ -908,8 +1082,33 @@ const Tasks = () => {
 													<option
 														key={tool.name}
 														value={tool.name}
+														disabled={
+															!integrations.find(
+																(i) =>
+																	i.name ===
+																	tool.name
+															)?.connected &&
+															integrations.find(
+																(i) =>
+																	i.name ===
+																	tool.name
+															)?.auth_type !==
+																"builtin"
+														}
 													>
 														{tool.display_name}
+														{!integrations.find(
+															(i) =>
+																i.name ===
+																tool.name
+														)?.connected &&
+															integrations.find(
+																(i) =>
+																	i.name ===
+																	tool.name
+															)?.auth_type !==
+																"builtin" &&
+															" (Not Connected)"}
 													</option>
 												))}
 											</select>
@@ -926,6 +1125,16 @@ const Tasks = () => {
 												}
 												className="flex-grow p-2 bg-neutral-700/60 border border-neutral-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:border-lightblue text-sm"
 											/>
+											{!integrations.find(
+												(i) => i.name === step.tool
+											)?.connected &&
+												integrations.find(
+													(i) => i.name === step.tool
+												)?.auth_type !== "builtin" && (
+													<ConnectToolButton
+														toolName={step.tool}
+													/>
+												)}
 											<button
 												onClick={() =>
 													handleRemoveStepFromEditModal(
@@ -961,11 +1170,22 @@ const Tasks = () => {
 									Save Changes
 								</button>
 							</div>
-						</div>
+						</motion.div>
 					</div>
 				)}
 			</div>
 		</div>
+	)
+}
+const ConnectToolButton = ({ toolName }) => {
+	const router = useRouter()
+	return (
+		<button
+			onClick={() => router.push(`/settings?connect=${toolName}`)}
+			className="text-xs bg-yellow-600/80 text-white font-semibold py-1 px-3 rounded-md hover:bg-yellow-500 transition-colors whitespace-nowrap"
+		>
+			Connect
+		</button>
 	)
 }
 
@@ -976,49 +1196,52 @@ const CollapsibleSection = ({
 	toggleOpen,
 	integrations,
 	...handlers
-}) => (
-	<div>
-		<button
-			onClick={toggleOpen}
-			className="w-full flex justify-between items-center py-3 px-2 text-left"
-		>
-			<h2 className="text-xl font-semibold text-gray-300">
-				{title} ({tasks.length})
-			</h2>
-			<IconChevronUp
-				className={cn(
-					"transform transition-transform duration-200",
-					!isOpen && "rotate-180"
-				)}
-			/>
-		</button>
-		<AnimatePresence>
-			{isOpen && (
-				<motion.div
-					initial={{ height: 0, opacity: 0 }}
-					animate={{ height: "auto", opacity: 1 }}
-					exit={{ height: 0, opacity: 0 }}
-					className="overflow-hidden space-y-4"
-				>
-					{tasks.length > 0 ? (
-						tasks.map((task) => (
-							<TaskCard
-								key={task.task_id}
-								task={task}
-								integrations={integrations}
-								{...handlers}
-							/>
-						))
-					) : (
-						<p className="text-gray-500 text-center py-4 italic">
-							No tasks in this section.
-						</p>
+}) => {
+	if (tasks.length === 0 && title !== "Pending Approval") return null // Hide empty sections except for approval
+	return (
+		<div>
+			<button
+				onClick={toggleOpen}
+				className="w-full flex justify-between items-center py-3 px-2 text-left"
+			>
+				<h2 className="text-xl font-semibold text-gray-300 flex items-center gap-2">
+					{title} ({tasks.length})
+				</h2>
+				<IconChevronUp
+					className={cn(
+						"transform transition-transform duration-200",
+						!isOpen && "rotate-180"
 					)}
-				</motion.div>
-			)}
-		</AnimatePresence>
-	</div>
-)
+				/>
+			</button>
+			<AnimatePresence>
+				{isOpen && (
+					<motion.div
+						initial={{ height: 0, opacity: 0 }}
+						animate={{ height: "auto", opacity: 1 }}
+						exit={{ height: 0, opacity: 0 }}
+						className="overflow-hidden space-y-4"
+					>
+						{tasks.length > 0 ? (
+							tasks.map((task) => (
+								<TaskCard
+									key={task.task_id}
+									task={task}
+									integrations={integrations}
+									{...handlers}
+								/>
+							))
+						) : (
+							<p className="text-gray-500 text-center py-4 italic">
+								No tasks in this section.
+							</p>
+						)}
+					</motion.div>
+				)}
+			</AnimatePresence>
+		</div>
+	)
+}
 
 const TaskCard = ({
 	task,
@@ -1048,13 +1271,28 @@ const TaskCard = ({
 		})
 	}
 
+	const getScheduleText = () => {
+		if (!task.schedule) return null
+		const { frequency, time, days } = task.schedule
+		let scheduleText = `Repeats ${frequency}`
+		if (time) scheduleText += ` at ${time}`
+		if (frequency === "weekly" && days?.length > 0) {
+			scheduleText += ` on ${days.join(", ")}`
+		}
+		return scheduleText
+	}
+	const scheduleText = getScheduleText()
+
 	return (
 		<div
 			key={task.task_id}
 			className={cn(
 				"flex items-center gap-4 bg-neutral-800 p-4 rounded-lg shadow hover:bg-neutral-700/60 transition-colors duration-150",
-				"border-l-4",
-				statusInfo.borderColor,
+				"border-l-4 relative",
+				task.enabled === false
+					? "border-gray-600"
+					: statusInfo.borderColor,
+				task.enabled === false ? "opacity-60" : "opacity-100",
 				!missingTools.length && "cursor-pointer"
 			)}
 			onClick={() => !missingTools.length && onViewDetails(task)}
@@ -1080,6 +1318,17 @@ const TaskCard = ({
 				>
 					{task.description}
 				</p>
+				{scheduleText && (
+					<p className="text-xs text-blue-300 mt-1 flex items-center gap-1.5">
+						<IconRefresh size={14} />
+						<span>{scheduleText}</span>
+						{!task.enabled && (
+							<span className="font-bold text-yellow-400">
+								(Disabled)
+							</span>
+						)}
+					</p>
+				)}
 				{missingTools.length > 0 ? (
 					<div
 						className="flex items-center gap-2 mt-2 text-yellow-400 text-xs"
@@ -1101,10 +1350,10 @@ const TaskCard = ({
 				)}
 				{(task.result || task.error) && (
 					<p
-						className="text-xs text-gray-500 mt-1 truncate"
+						className="text-xs text-gray-500 mt-1 truncate italic"
 						title={task.result || task.error}
 					>
-						Result:{" "}
+						Last run result:{" "}
 						{typeof task.result === "string"
 							? task.result.substring(0, 50) + "..."
 							: "[Details in Modal/Log]"}
@@ -1160,6 +1409,24 @@ const TaskCard = ({
 							onClick={() => onDeleteTask(task.task_id)}
 							className="p-2 rounded-md text-red-400 hover:bg-neutral-700"
 							title="Delete Task"
+						>
+							<IconTrash className="h-5 w-5" />
+						</button>
+					</>
+				)}
+				{task.status === "active" && (
+					<>
+						<button
+							onClick={() => onEditTask(task)}
+							className="p-2 rounded-md text-yellow-400 hover:bg-neutral-700"
+							title="Edit Workflow"
+						>
+							<IconPencil className="h-5 w-5" />
+						</button>
+						<button
+							onClick={() => onDeleteTask(task.task_id)}
+							className="p-2 rounded-md text-red-400 hover:bg-neutral-700"
+							title="Delete Workflow"
 						>
 							<IconTrash className="h-5 w-5" />
 						</button>
@@ -1227,7 +1494,12 @@ const TaskDetailsModal = ({ task, onClose, onApprove, integrations }) => {
 	const { thoughts, finalAnswer, mainContent } = parseResult(task.result)
 
 	return (
-		<div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 p-4">
+		<motion.div
+			initial={{ opacity: 0 }}
+			animate={{ opacity: 1 }}
+			exit={{ opacity: 0 }}
+			className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 p-4"
+		>
 			<div className="bg-neutral-800 p-8 rounded-lg shadow-xl w-full max-w-3xl mx-auto max-h-[90vh] flex flex-col">
 				<div className="flex justify-between items-center mb-6">
 					<h3
@@ -1420,6 +1692,111 @@ const TaskDetailsModal = ({ task, onClose, onApprove, integrations }) => {
 					)}
 				</div>
 			</div>
+		</motion.div>
+	)
+}
+
+const ScheduleEditor = ({ schedule, setSchedule }) => {
+	const handleTypeChange = (type) => setSchedule({ ...schedule, type })
+	const handleFrequencyChange = (e) =>
+		setSchedule({ ...schedule, frequency: e.target.value })
+	const handleTimeChange = (e) =>
+		setSchedule({ ...schedule, time: e.target.value })
+	const handleDayToggle = (day) => {
+		const currentDays = schedule.days || []
+		const newDays = currentDays.includes(day)
+			? currentDays.filter((d) => d !== day)
+			: [...currentDays, day]
+		setSchedule({ ...schedule, days: newDays })
+	}
+
+	const weekdays = [
+		"Monday",
+		"Tuesday",
+		"Wednesday",
+		"Thursday",
+		"Friday",
+		"Saturday",
+		"Sunday"
+	]
+
+	return (
+		<div className="bg-neutral-700/50 p-4 rounded-lg space-y-4">
+			<div className="flex items-center gap-2">
+				<button
+					onClick={() => handleTypeChange("once")}
+					className={cn(
+						"px-4 py-1.5 rounded-full text-sm",
+						schedule.type === "once"
+							? "bg-lightblue text-white"
+							: "bg-neutral-600 hover:bg-neutral-500"
+					)}
+				>
+					Run Once
+				</button>
+				<button
+					onClick={() => handleTypeChange("recurring")}
+					className={cn(
+						"px-4 py-1.5 rounded-full text-sm",
+						schedule.type === "recurring"
+							? "bg-lightblue text-white"
+							: "bg-neutral-600 hover:bg-neutral-500"
+					)}
+				>
+					Recurring
+				</button>
+			</div>
+			{schedule.type === "recurring" && (
+				<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+					<div>
+						<label className="text-xs text-gray-400 block mb-1">
+							Frequency
+						</label>
+						<select
+							value={schedule.frequency}
+							onChange={handleFrequencyChange}
+							className="w-full p-2 bg-neutral-600/80 border border-neutral-600 rounded-md text-white focus:outline-none focus:border-lightblue"
+						>
+							<option value="daily">Daily</option>
+							<option value="weekly">Weekly</option>
+						</select>
+					</div>
+					<div>
+						<label className="text-xs text-gray-400 block mb-1">
+							Time (UTC)
+						</label>
+						<input
+							type="time"
+							value={schedule.time}
+							onChange={handleTimeChange}
+							className="w-full p-2 bg-neutral-600/80 border border-neutral-600 rounded-md text-white focus:outline-none focus:border-lightblue"
+						/>
+					</div>
+					{schedule.frequency === "weekly" && (
+						<div className="md:col-span-2">
+							<label className="text-xs text-gray-400 block mb-2">
+								Days
+							</label>
+							<div className="flex flex-wrap gap-2">
+								{weekdays.map((day) => (
+									<button
+										key={day}
+										onClick={() => handleDayToggle(day)}
+										className={cn(
+											"px-3 py-1.5 rounded-full text-xs font-semibold",
+											(schedule.days || []).includes(day)
+												? "bg-lightblue text-white"
+												: "bg-neutral-600 text-gray-300 hover:bg-neutral-500"
+										)}
+									>
+										{day.substring(0, 3)}
+									</button>
+								))}
+							</div>
+						</div>
+					)}
+				</div>
+			)}
 		</div>
 	)
 }

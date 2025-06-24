@@ -52,6 +52,15 @@ class GCalendarPollingService:
         updated_state = polling_state.copy()
 
         try:
+            user_profile = await self.db_manager.get_user_profile(user_id)
+            if not user_profile:
+                logger.error(f"Could not find profile for user {user_id}. Disabling GCalendar polling.")
+                updated_state["is_enabled"] = False
+                updated_state["last_successful_poll_status_message"] = "Disabled, user profile not found."
+                updated_state["next_scheduled_poll_time"] = datetime.datetime.now(timezone.utc) + datetime.timedelta(days=1)
+                return
+
+            privacy_filters = user_profile.get("userData", {}).get("privacyFilters", [])
             creds = await get_gcalendar_credentials(user_id, self.db_manager)
             if not creds:
                 logger.error(f"No valid GCalendar credentials for user {user_id}. Disabling polling.")
@@ -67,6 +76,13 @@ class GCalendarPollingService:
             batch_payloads = []
             for event in events:
                 event_id = event["id"]
+
+                content_to_check = (event.get("summary", "") + " " + event.get("description", "")).lower()
+                if any(word.lower() in content_to_check for word in privacy_filters):
+                    logger.info(f"Skipping event {event_id} for user {user_id} due to privacy filter match.")
+                    await self.db_manager.log_processed_item(user_id, self.service_name, event_id)
+                    continue
+
                 if not await self.db_manager.is_item_processed(user_id, self.service_name, event_id):
                     kafka_payload = {
                         "user_id": user_id,
@@ -111,7 +127,6 @@ class GCalendarPollingService:
                     updated_state["is_enabled"] = False
                     updated_state["next_scheduled_poll_time"] = datetime.datetime.now(timezone.utc) + datetime.timedelta(days=1)
             else:
-                user_profile = await self.db_manager.get_user_profile(user_id)
                 next_interval = self._calculate_next_poll_interval(user_profile or {})
                 updated_state["next_scheduled_poll_time"] = datetime.datetime.now(timezone.utc) + datetime.timedelta(seconds=next_interval)
             

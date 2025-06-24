@@ -1,35 +1,26 @@
 // src/client/components/Sidebar.js
 "use client"
 import { useRouter } from "next/navigation"
-import { useEffect, useState, useRef, React, useCallback } from "react"
+import { useEffect, useState, useRef, useCallback } from "react"
 import {
-	IconChevronRight,
 	IconChevronLeft,
 	IconUser,
 	IconLogout,
 	IconAdjustments,
 	IconMessage,
 	IconChecklist,
-	IconBrain,
 	IconNotification,
 	IconBell,
-	IconX,
-	IconPlus,
-	IconMicrophone,
-	IconPencil,
-	IconTrash
+	IconBook,
+	IconHome
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
-import ModalDialog from "./ModalDialog"
 
 const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 	const router = useRouter()
 	const [pricing, setPricing] = useState("free")
-	const [chats, setChats] = useState([])
-	const [loadingChats, setLoadingChats] = useState(false)
-	const [editingChat, setEditingChat] = useState(null)
-	const [newChatTitle, setNewChatTitle] = useState("")
 	const wsRef = useRef(null)
+	// Removed chat list state and handlers
 
 	const fetchPricingPlan = useCallback(async () => {
 		try {
@@ -46,66 +37,7 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 		router.push("/auth/logout")
 	}
 
-	const fetchChats = useCallback(async () => {
-		setLoadingChats(true)
-		try {
-			const response = await fetch("/api/chat/list-chats")
-			if (!response.ok) throw new Error("Failed to fetch chats")
-			const data = await response.json()
-			// Sort chats by last_updated timestamp descending
-			const sortedChats = (data.chats || []).sort((a, b) => {
-				return new Date(b.last_updated) - new Date(a.last_updated)
-			})
-			setChats(sortedChats)
-		} catch (error) {
-			toast.error("Error fetching chat list.")
-		} finally {
-			setLoadingChats(false)
-		}
-	}, [])
-
-	const handleRenameChat = async () => {
-		if (!editingChat || !newChatTitle.trim()) return
-		try {
-			const response = await fetch("/api/chat/rename", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					chatId: editingChat.chat_id,
-					newTitle: newChatTitle
-				})
-			})
-			if (!response.ok) throw new Error("Failed to rename chat")
-			toast.success("Chat renamed.")
-			setEditingChat(null)
-			setNewChatTitle("")
-			fetchChats() // Refresh list
-		} catch (error) {
-			toast.error(error.message)
-		}
-	}
-
-	const handleDeleteChat = async (chatId) => {
-		if (
-			!window.confirm(
-				"Are you sure you want to delete this chat permanently?"
-			)
-		)
-			return
-		try {
-			const response = await fetch("/api/chat/delete", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ chatId })
-			})
-			if (!response.ok) throw new Error("Failed to delete chat")
-			toast.success("Chat deleted.")
-			fetchChats() // Refresh list
-			router.push("/chat") // Redirect to new chat page
-		} catch (error) {
-			toast.error(error.message)
-		}
-	}
+	// Removed chat-related handlers: fetchChats, handleRenameChat, handleDeleteChat
 
 	// Separate effect for fetching data, depends on userDetails
 	useEffect(() => {
@@ -113,8 +45,7 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 			return
 		}
 		fetchPricingPlan()
-		fetchChats()
-	}, [userDetails, fetchPricingPlan, fetchChats])
+	}, [userDetails, fetchPricingPlan])
 
 	// Separate, dedicated effect for WebSocket lifecycle management
 	useEffect(() => {
@@ -278,11 +209,18 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 						<IconChevronLeft />
 					</button>
 					<button
-						onClick={() => router.push("/chat")}
+						onClick={() => router.push("/home")}
 						className="cursor-pointer flex items-center gap-3 w-full text-left px-4 py-2 rounded-lg text-white hover:text-lightblue hover:bg-neutral-800 mt-1"
 					>
-						<IconMessage className="w-5 h-5" />
-						<span className="text-base text-white">Chat</span>
+						<IconHome className="w-5 h-5" />
+						<span className="text-base text-white">Home</span>
+					</button>
+					<button // New Journal link
+						onClick={() => router.push("/journal")}
+						className="cursor-pointer flex items-center gap-3 w-full text-left px-4 py-2 rounded-lg text-white hover:text-lightblue hover:bg-neutral-800 mt-1"
+					>
+						<IconBook className="w-5 h-5" />
+						<span className="text-base text-white">Journal</span>
 					</button>
 
 					<button
@@ -291,13 +229,6 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 					>
 						<IconChecklist className="w-5 h-5" />
 						<span className="text-base text-white">Tasks</span>
-					</button>
-					<button
-						onClick={() => router.push("/memory")}
-						className="cursor-pointer flex items-center gap-3 w-full text-left px-4 py-2 rounded-lg text-white hover:text-lightblue hover:bg-neutral-800 mt-1"
-					>
-						<IconBrain className="w-5 h-5" />
-						<span className="text-base text-white">Memories</span>
 					</button>
 					<button
 						onClick={() => router.push("/settings")}
@@ -315,77 +246,8 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 							Notifications
 						</span>
 					</button>
-					<button
-						onClick={() => router.push("/voice")}
-						className="cursor-pointer flex items-center gap-3 w-full text-left px-4 py-2 rounded-lg text-white hover:text-lightblue hover:bg-neutral-800 mt-1"
-					>
-						<IconMicrophone className="w-5 h-5" />
-						<span className="text-base text-white">Voice</span>
-					</button>
 
-					{/* Chat History Section */}
-					<div className="flex-grow mt-6 border-t border-neutral-700 pt-4">
-						<div className="flex justify-between items-center px-4 mb-2">
-							<h3 className="text-sm font-semibold text-gray-400 uppercase">
-								Chats
-							</h3>
-							<button
-								onClick={() => router.push("/chat")}
-								className="p-1 text-gray-400 hover:text-white"
-								title="New Chat"
-							>
-								<IconPlus size={18} />
-							</button>
-						</div>
-						{loadingChats ? (
-							<p className="text-center text-gray-500 text-sm">
-								Loading chats...
-							</p>
-						) : chats.length === 0 ? (
-							<p className="text-center text-gray-500 text-sm px-4">
-								No chats yet. Start a new one!
-							</p>
-						) : (
-							<div className="space-y-1 h-[200px] overflow-y-scroll no-scrollbar">
-								{chats.map((chat) => (
-									<div
-										key={chat.chat_id}
-										className="group flex items-center justify-between text-left px-4 py-2 rounded-lg text-white hover:bg-neutral-800 cursor-pointer"
-										onClick={() =>
-											router.push(`/chat/${chat.chat_id}`)
-										}
-									>
-										<span className="text-sm truncate pr-2">
-											{chat.title}
-										</span>
-										<div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-											<button
-												onClick={(e) => {
-													e.stopPropagation()
-													setEditingChat(chat)
-													setNewChatTitle(chat.title)
-												}}
-												className="p-1 hover:text-yellow-400"
-											>
-												<IconPencil size={14} />
-											</button>
-											<button
-												onClick={(e) => {
-													e.stopPropagation()
-													handleDeleteChat(
-														chat.chat_id
-													)
-												}}
-												className="p-1 hover:text-red-400"
-											>
-												<IconTrash size={14} />
-											</button>
-										</div>
-									</div>
-								))}
-							</div>
-						)}
-					</div>
+					{/* Chat history removed */}
 
 					<div className="mt-auto mb-6 mx-2 pt-6">
 						<div className="bg-gradient-to-br from-darkblue to-lightblue rounded-xl p-4 relative overflow-hidden mt-4">
@@ -457,20 +319,6 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 				className="hidden md:block fixed top-0 left-0 h-full w-8 z-30"
 				onMouseEnter={() => setSidebarVisible(true)}
 			/>
-			{editingChat && (
-				<ModalDialog
-					title="Rename Chat"
-					description={`Enter a new title for "${editingChat.title}"`}
-					showInput={true}
-					inputValue={newChatTitle}
-					onInputChange={setNewChatTitle}
-					inputPlaceholder="New chat title..."
-					onConfirm={handleRenameChat}
-					onCancel={() => setEditingChat(null)}
-					confirmButtonText="Rename"
-					confirmButtonType="success"
-				/>
-			)}
 		</>
 	)
 }

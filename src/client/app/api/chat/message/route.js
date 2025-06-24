@@ -13,7 +13,7 @@ export async function POST(request) {
 
 	try {
 		const {
-			input,
+			messages, // Changed from `input`
 			chatId,
 			enable_internet,
 			enable_weather,
@@ -41,7 +41,8 @@ export async function POST(request) {
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },
 				body: JSON.stringify({
-					input,
+					// Pass `messages` array instead of `input`
+					messages,
 					chatId,
 					pricing,
 					credits,

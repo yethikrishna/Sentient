@@ -64,17 +64,16 @@ async def get_chat_history_util(user_id: str, db_manager: MongoManager, chat_id:
 
 async def generate_chat_llm_stream(
     user_id: str,
-    chat_id: str,
-    user_input: str, 
+    messages: List[Dict[str, Any]], # This is now the history from the client
     username: str,
     db_manager: MongoManager,
-    assistant_message_id_override: Optional[str] = None,
     enable_internet: bool = False,
     enable_weather: bool = False,
     enable_news: bool = False,
     enable_maps: bool = False,
     enable_shopping: bool = False
     ) -> AsyncGenerator[Dict[str, Any], None]:
+    assistant_message_id_override = None # Not needed for stateless overlay chat
     assistant_message_id = assistant_message_id_override or str(uuid.uuid4())
 
     try:
@@ -115,35 +114,21 @@ async def generate_chat_llm_stream(
 
         tools = [{"mcpServers": active_mcp_servers}]
 
-        user_message_payload = {"id": str(uuid.uuid4()), "message": user_input, "isUser": True, "type": "text", "isVisible": True}
-        assistant_placeholder_payload = {
-            "id": assistant_message_id, 
-            "message": "", 
-            "isUser": False, 
-            "type": "text", 
-            "isVisible": True, 
-            "agentsUsed": True,
-            "memoryUsed": bool(supermemory_user_id) # Set memoryUsed flag
-        }
-        
-        await db_manager.add_chat_message(user_id, chat_id, user_message_payload)
-        await db_manager.add_chat_message(user_id, chat_id, assistant_placeholder_payload)
+        # Removed saving messages to DB for stateless chat
     except Exception as e:
-        logger.error(f"Failed to save initial messages for user {user_id}: {e}", exc_info=True)
-        yield {"type": "error", "message": "Failed to save message."}
+        logger.error(f"Failed during initial setup for chat stream for user {user_id}: {e}", exc_info=True)
+        yield {"type": "error", "message": "Failed to set up chat stream."}
         return
 
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue[Optional[Any]] = asyncio.Queue()
-    history_from_db = await get_chat_history_util(user_id, db_manager, chat_id)
+
+    # Convert the history from the client into the format Qwen Agent expects.
+    # The client sends extra keys like 'id', so we strip them out.
     qwen_formatted_history = []
-    for msg in history_from_db:
-        if msg.get("id") == assistant_message_id: continue
-        if msg.get('isUser'): qwen_formatted_history.append({"role": "user", "content": str(msg.get("message", ""))})
-        else:
-            if isinstance(msg.get('structured_history'), list) and msg['structured_history']: qwen_formatted_history.extend(msg['structured_history'])
-            elif msg.get("message"): qwen_formatted_history.append({"role": "assistant", "content": str(msg.get("message", ""))})
-    
+    for msg in messages:
+        qwen_formatted_history.append({"role": msg["role"], "content": msg["content"]})
+
     stream_interrupted = False
     try:
         def worker():
@@ -199,8 +184,7 @@ async def generate_chat_llm_stream(
         if stream_interrupted and not final_text_content.endswith("[STREAM STOPPED BY USER]"):
             final_text_content += "\n\n[STREAM STOPPED BY USER]"
         
-        update_payload = {"message": final_text_content, "structured_history": assistant_turn_messages, "agentsUsed": True, "memoryUsed": bool(supermemory_user_id)}
-        if final_text_content.strip(): await db_manager.update_chat_message(user_id, chat_id, assistant_message_id, update_payload)
+        # Do not save the final response to DB for stateless chat.
         
         yield {"type": "assistantStream", "token": "", "done": True, "messageId": assistant_message_id}
         await asyncio.to_thread(thread.join)

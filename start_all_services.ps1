@@ -141,8 +141,8 @@ try {
     $workerServices = @(
         # The single Celery worker now handles Memory, Planning, and Execution tasks.
         @{ Name = "Celery (Memory, Planner, Executor)"; Command = "& '$venvActivatePath'; celery -A server.celery_app worker --loglevel=info --pool=solo" },
-        @{ Name = "Extractor (Kafka Consumer)";        Command = "& '$venvActivatePath'; python -m server.workers.extractors.main" },
-        @{ Name = "Gmail Poller (Kafka Producer)";     Command = "& '$venvActivatePath'; python -m server.workers.pollers.gmail.main" }
+        @{ Name = "Extractor (Kafka Consumer)";        Command = "& '$venvActivatePath'; python -m server.workers.extractor.main" },
+        @{ Name = "Gmail Poller (Kafka Producer)";     Command = "& '$venvActivatePath'; python -m server.workers.poller.gmail.main" }
     )
 
     foreach ($service in $workerServices) {

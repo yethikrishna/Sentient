@@ -56,6 +56,15 @@ class GmailPollingService:
         new_data_found = False
 
         try:
+            user_profile = await self.db_manager.get_user_profile(user_id)
+            if not user_profile:
+                logger.error(f"Could not find profile for user {user_id}. Disabling polling.")
+                updated_state["is_enabled"] = False
+                updated_state["last_successful_poll_status_message"] = "Disabled, user profile not found."
+                updated_state["next_scheduled_poll_time"] = datetime.datetime.now(timezone.utc) + datetime.timedelta(days=1)
+                return
+
+            privacy_filters = user_profile.get("userData", {}).get("privacyFilters", [])
             creds = await get_gmail_credentials(user_id, self.db_manager)
             if not creds:
                 logger.error(f"No valid Gmail credentials for user {user_id}. Disabling polling.")
@@ -74,6 +83,13 @@ class GmailPollingService:
             batch_payloads = []
             for email in emails:
                 email_item_id = email["id"]
+
+                content_to_check = (email.get("subject", "") + " " + email.get("body", "")).lower()
+                if any(word.lower() in content_to_check for word in privacy_filters):
+                    logger.info(f"Skipping email {email['id']} for user {user_id} due to privacy filter match.")
+                    await self.db_manager.log_processed_item(user_id, self.service_name, email_item_id)
+                    continue
+
                 if not await self.db_manager.is_item_processed(user_id, self.service_name, email_item_id):
                     # Send to Kafka
                     kafka_payload = {
@@ -127,7 +143,6 @@ class GmailPollingService:
                     updated_state["is_enabled"] = False # Disable after too many failures
                     updated_state["next_scheduled_poll_time"] = datetime.datetime.now(timezone.utc) + datetime.timedelta(days=1) # Check much later
             else:
-                user_profile = await self.db_manager.get_user_profile(user_id)
                 next_interval = self._calculate_next_poll_interval(user_profile or {})
                 updated_state["next_scheduled_poll_time"] = datetime.datetime.now(timezone.utc) + datetime.timedelta(seconds=next_interval)
             

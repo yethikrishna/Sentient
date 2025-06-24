@@ -30,7 +30,8 @@ import {
 	IconMapPin,
 	IconShoppingCart,
 	IconLink,
-	IconMenu2
+	IconMenu2,
+	IconFilterOff
 } from "@tabler/icons-react"
 import { useState, useEffect, useCallback } from "react"
 import Sidebar from "@components/Sidebar"
@@ -205,6 +206,117 @@ const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {
 			isConfirmDisabled={isSubmitting}
 			extraContent={modalContent}
 		/>
+	)
+}
+
+const PrivacySettings = () => {
+	const [filters, setFilters] = useState([])
+	const [newFilter, setNewFilter] = useState("")
+	const [isLoading, setIsLoading] = useState(true)
+
+	const fetchFilters = useCallback(async () => {
+		setIsLoading(true)
+		try {
+			const response = await fetch("/api/settings/filters")
+			if (!response.ok) throw new Error("Failed to fetch filters.")
+			const data = await response.json()
+			setFilters(data.filters || [])
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsLoading(false)
+		}
+	}, [])
+
+	useEffect(() => {
+		fetchFilters()
+	}, [fetchFilters])
+
+	const handleAddFilter = async () => {
+		if (!newFilter.trim()) {
+			toast.error("Filter cannot be empty.")
+			return
+		}
+		const updatedFilters = [...filters, newFilter.trim()]
+		await handleSaveFilters(updatedFilters)
+		setNewFilter("") // Clear input after adding
+	}
+
+	const handleDeleteFilter = async (filterToDelete) => {
+		const updatedFilters = filters.filter((f) => f !== filterToDelete)
+		await handleSaveFilters(updatedFilters)
+	}
+
+	const handleSaveFilters = async (updatedFilters) => {
+		setIsLoading(true)
+		try {
+			const response = await fetch("/api/settings/filters", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ filters: updatedFilters })
+			})
+			if (!response.ok) throw new Error("Failed to save filters.")
+			toast.success("Privacy filters updated.")
+			setFilters(updatedFilters)
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsLoading(false)
+		}
+	}
+
+	return (
+		<section>
+			<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-neutral-700 pb-2">
+				Privacy Filters
+			</h2>
+			<div className="bg-neutral-800/50 p-4 md:p-6 rounded-lg border border-neutral-700">
+				<p className="text-gray-400 text-sm mb-4">
+					Add keywords to prevent emails or events containing them
+					from being processed by the proactive pipeline.
+				</p>
+				<div className="flex gap-2 mb-4">
+					<input
+						type="text"
+						value={newFilter}
+						onChange={(e) => setNewFilter(e.target.value)}
+						onKeyDown={(e) =>
+							e.key === "Enter" && handleAddFilter()
+						}
+						placeholder="Add a new filter keyword..."
+						className="flex-grow bg-neutral-700 border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-lightblue"
+					/>
+					<button
+						onClick={handleAddFilter}
+						disabled={isLoading}
+						className="py-2 px-4 rounded-md bg-lightblue hover:bg-blue-700 text-white font-medium transition-colors"
+					>
+						Add
+					</button>
+				</div>
+				<div className="flex flex-wrap gap-2">
+					{filters.map((filter, index) => (
+						<div
+							key={index}
+							className="flex items-center gap-2 bg-neutral-700 rounded-full py-1.5 px-3 text-sm text-gray-200"
+						>
+							<span>{filter}</span>
+							<button onClick={() => handleDeleteFilter(filter)}>
+								<IconX
+									size={14}
+									className="text-gray-500 hover:text-red-400"
+								/>
+							</button>
+						</div>
+					))}
+				</div>
+				{isLoading && (
+					<div className="flex justify-center mt-4">
+						<IconLoader className="w-6 h-6 animate-spin text-lightblue" />
+					</div>
+				)}
+			</div>
+		</section>
 	)
 }
 
@@ -498,9 +610,9 @@ const Settings = () => {
 						</button>
 					</div>
 				</header>
-
 				<main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 custom-scrollbar">
 					<div className="w-full max-w-5xl mx-auto space-y-10">
+						<PrivacySettings />
 						<section>
 							<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-neutral-700 pb-2">
 								Connected Apps & Integrations

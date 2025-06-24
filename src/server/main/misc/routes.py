@@ -13,6 +13,8 @@ from ..models import OnboardingRequest
 from ..auth.utils import PermissionChecker, AuthHelper, aes_encrypt, aes_decrypt
 from ..config import AUTH0_AUDIENCE
 from ..dependencies import mongo_manager, auth_helper, websocket_manager as main_websocket_manager
+from pydantic import BaseModel
+
 
 # Google API libraries for validation
 from google.oauth2 import service_account
@@ -21,6 +23,9 @@ from googleapiclient.errors import HttpError
 
 # For dispatching memory tasks
 from ...workers.tasks import process_memory_item
+
+class PrivacyFiltersRequest(BaseModel):
+    filters: List[str]
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +44,17 @@ async def save_onboarding_data_endpoint(
         # Generate and add supermemory_user_id
         supermemory_user_id = secrets.token_urlsafe(16)
 
+        default_privacy_filters = [
+            "bank statement", "account statement", "OTP", "one-time password",
+            "password reset", "credit card", "debit card", "financial statement",
+            "confidential", "do not share", "ssn", "social security"
+        ]
+
         user_data_to_set: Dict[str, Any] = {
             "onboardingAnswers": request_body.data,
             "onboardingComplete": True,
             "supermemory_user_id": supermemory_user_id,
+            "privacyFilters": default_privacy_filters,
         }
         personal_info = {}
         if "user-name" in request_body.data and isinstance(request_body.data["user-name"], str):
@@ -197,3 +209,14 @@ async def user_activity_heartbeat_endpoint(user_id: str = Depends(PermissionChec
     if success:
         return JSONResponse(content={"message": "User activity timestamp updated."})
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update user activity.")
+
+@router.post("/settings/privacy-filters", summary="Update User Privacy Filters")
+async def update_privacy_filters_endpoint(
+    request: PrivacyFiltersRequest,
+    user_id: str = Depends(PermissionChecker(required_permissions=["write:config"]))
+):
+    update_payload = {"userData.privacyFilters": request.filters}
+    success = await mongo_manager.update_user_profile(user_id, update_payload)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update privacy filters.")
+    return JSONResponse(content={"message": "Privacy filters updated successfully."})

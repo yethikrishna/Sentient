@@ -1,10 +1,10 @@
 from pydantic import BaseModel, Field
-from typing import Optional, Any
+from typing import Optional, Any, List, Dict
 
 class ChatMessageInput(BaseModel):
-    input: str
+    messages: List[Dict[str, Any]] # The full conversation history for context
     chatId: Optional[Any] = None
-    pricing: Optional[str] = "free" 
+    pricing: Optional[str] = "free"
     credits: Optional[int] = 0
     enable_internet: Optional[bool] = False
     enable_weather: Optional[bool] = False
@@ -15,9 +15,3 @@ class ChatMessageInput(BaseModel):
 class ChatHistoryRequest(BaseModel):
     chatId: Any
 
-class RenameChatRequest(BaseModel):
-    chatId: str
-    newTitle: str
-
-class DeleteChatRequest(BaseModel):
-    chatId: str

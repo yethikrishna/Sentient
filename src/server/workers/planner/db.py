@@ -36,6 +36,7 @@ class PlannerMongoManager:
         self.db = self.client[MONGO_DB_NAME]
         self.user_profiles_collection = self.db["user_profiles"]
         self.tasks_collection = self.db["tasks"]
+        self.journal_blocks_collection = self.db["journal_blocks"]
         logger.info("PlannerMongoManager initialized.")
 
     async def save_plan_as_task(self, user_id: str, description: str, plan: list, original_context: dict, source_event_id: str):
@@ -60,6 +61,26 @@ class PlannerMongoManager:
         }
         await self.tasks_collection.insert_one(task_doc)
         logger.info(f"Saved new plan with task_id: {task_id} for user: {user_id}")
+        
+        # If the plan originated from a journal block, link it back
+        if original_context.get("service_name") == "journal_block":
+            block_id = original_context.get("event_id")
+            if block_id:
+                await self.journal_blocks_collection.update_one(
+                    {"block_id": block_id, "user_id": user_id},
+                    {"$set": {"linked_task_id": task_id, "task_status": "approval_pending"}}
+                )
+                logger.info(f"Linked new task {task_id} to journal block {block_id}.")
+            else:
+                 # Check if the plan originated from an updated block and needs to replace an old plan.
+                old_task_id_to_deprecate = original_context.get("deprecate_task_id")
+                if old_task_id_to_deprecate:
+                    await self.tasks_collection.update_one(
+                        {"task_id": old_task_id_to_deprecate, "user_id": user_id},
+                        {"$set": {"status": "cancelled", "description": f"[DEPRECATED] {description}"}}
+                    )
+                    logger.info(f"Deprecated old task {old_task_id_to_deprecate} for block {block_id}.")
+
         return task_id
 
     async def close(self):

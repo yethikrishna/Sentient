@@ -24,27 +24,41 @@ class ExtractorService:
             logger.info(f"Received message from Kafka at offset {msg.offset}. Processing...")
             event_batch = msg.value
             if not isinstance(event_batch, list):
-                logger.warning(f"Received non-list payload. Skipping. Payload: {event_batch}")
-                return
+                # Handle single event object as well for flexibility
+                if isinstance(event_batch, dict):
+                    event_batch = [event_batch]
+                else:
+                    logger.warning(f"Received non-list/dict payload. Skipping. Payload: {event_batch}")
+                    return
 
             for event_data in event_batch:
                 user_id = event_data.get("user_id")
                 event_id = event_data.get("event_id")
-
-                if not all([user_id, event_id]) or await self.db_manager.is_event_processed(user_id, event_id):
+                service_name = event_data.get("service_name")
+                
+                if not all([user_id, event_id, service_name]) or await self.db_manager.is_event_processed(user_id, event_id):
                     logger.info(f"Skipping event {event_id} (missing data or already processed).")
                     continue
 
-                email_content = event_data.get("data", {})
-                subject = email_content.get("subject", "")
-                body = email_content.get("body", "")
-
-                if not body and not subject:
+                # Prepare LLM input based on the event source
+                llm_input_content = ""
+                if service_name == "journal_block":
+                    llm_input_content = f"Source: Journal Entry\n\nContent:\n{event_data.get('data', {}).get('content', '')}"
+                elif service_name == "gmail":
+                    subject = event_data.get("data", {}).get("subject", "")
+                    body = event_data.get("data", {}).get("body", "")
+                    llm_input_content = f"Source: Email\nSubject: {subject}\n\nBody:\n{body}"
+                elif service_name == "gcalendar":
+                    summary = event_data.get("data", {}).get("summary", "")
+                    description = event_data.get("data", {}).get("description", "")
+                    llm_input_content = f"Source: Calendar Event\nSummary: {summary}\n\nDescription:\n{description}"
+                
+                if not llm_input_content.strip():
+                    logger.warning(f"Skipping event {event_id} due to empty content.")
                     continue
 
-                logger.info(f"Processing event {event_id} for user {user_id}")
+                logger.info(f"Processing event {event_id} ({service_name}) for user {user_id}")
 
-                llm_input_content = f"Subject: {subject}\n\nBody:\n{body}"
                 messages = [{'role': 'user', 'content': llm_input_content}]
 
                 loop = asyncio.get_running_loop()
@@ -69,44 +83,21 @@ class ExtractorService:
                     memory_items = extracted_data.get("memory_items", [])
                     action_items = extracted_data.get("action_items", [])
                 except json.JSONDecodeError:
-                    logger.error(f"Failed to decode LLM JSON for event {event_id}.")
+                    logger.error(f"Failed to decode LLM JSON for event {event_id}: {llm_response_str}")
                     continue
 
                 # --- Send to Kafka Topics ---
-                producer = await KafkaManager.get_producer()
-                if not producer:
-                    logger.error("Could not get Kafka producer. Halting message processing.")
-                    return
-                
                 for fact in memory_items:
                     if isinstance(fact, str) and fact.strip():
-                        memory_payload = {"user_id": user_id, "fact": fact}
-                        await producer.send_and_wait(config.MEMORY_OPERATIONS_TOPIC, memory_payload)
-                        logger.info(f"Sent memory item to Kafka for user {user_id}: '{fact[:50]}...'")
+                        # The memory worker will handle storing this
+                        process_memory_item.delay(user_id, fact)
+                        logger.info(f"Dispatched memory item to Celery for user {user_id}: '{fact[:50]}...'")
 
                 if action_items:
-                    process_action_item.delay(user_id, action_items, event_id, email_content)
-                    logger.info(f"Sent {len(action_items)} action items to Planner for user {user_id}.")
+                    process_action_item.delay(user_id, action_items, event_id, event_data)
+                    logger.info(f"Dispatched {len(action_items)} action items to Planner for user {user_id}.")
 
                 await self.db_manager.log_extraction_result(event_id, user_id, len(memory_items), len(action_items))
 
         except Exception as e:
             logger.error(f"Error processing message at offset {msg.offset}: {e}", exc_info=True)
-
-    async def run(self, shutdown_event: asyncio.Event):
-        logger.info("Extractor service running. Waiting for messages...")
-        consumer = await KafkaManager.get_consumer()
-        
-        while not shutdown_event.is_set():
-            try:
-                result = await asyncio.wait_for(consumer.getmany(timeout_ms=1000), timeout=1.5)
-                for tp, messages in result.items():
-                    for msg in messages:
-                        await self.process_message(msg)
-            except asyncio.TimeoutError:
-                continue
-            except Exception as e:
-                logger.error(f"An error occurred in consumer loop: {e}", exc_info=True)
-                await asyncio.sleep(5)
-        
-        logger.info("Shutdown signal received, exiting consumer loop.")

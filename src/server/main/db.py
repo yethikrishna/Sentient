@@ -16,6 +16,7 @@ NOTIFICATIONS_COLLECTION = "notifications"
 POLLING_STATE_COLLECTION = "polling_state_store" 
 PROCESSED_ITEMS_COLLECTION = "processed_items_log" 
 TASK_COLLECTION = "tasks"
+JOURNAL_BLOCKS_COLLECTION = "journal_blocks"
 
 class MongoManager:
     def __init__(self):
@@ -28,6 +29,7 @@ class MongoManager:
         self.polling_state_collection = self.db[POLLING_STATE_COLLECTION]
         self.processed_items_collection = self.db[PROCESSED_ITEMS_COLLECTION]
         self.task_collection = self.db[TASK_COLLECTION]
+        self.journal_blocks_collection = self.db[JOURNAL_BLOCKS_COLLECTION]
         
         print(f"[{datetime.datetime.now()}] [MainServer_MongoManager] Initialized. Database: {MONGO_DB_NAME}")
 
@@ -70,6 +72,11 @@ class MongoManager:
                 IndexModel([("status", ASCENDING), ("agent_id", ASCENDING)], name="task_status_agent_idx", sparse=True), 
                 IndexModel([("task_id", ASCENDING)], unique=True, name="task_id_unique_idx")
             ],
+            self.journal_blocks_collection: [
+                IndexModel([("block_id", ASCENDING)], unique=True, name="journal_block_id_unique_idx"),
+                IndexModel([("user_id", ASCENDING), ("page_date", DESCENDING), ("order", ASCENDING)], name="journal_user_date_order_idx"),
+                IndexModel([("linked_task_id", ASCENDING)], name="journal_linked_task_idx", sparse=True)
+            ]
         }
 
         for collection, indexes in collections_with_indexes.items():

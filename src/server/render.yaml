@@ -308,3 +308,16 @@ services:
           - key: MCP_SERVER_PORT
             value: 9017
           - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-journal-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp-hub/journal/requirements.txt
+      startCommand: python -m mcp-hub.journal.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9018
+          - fromGroup: sentient-dev-group

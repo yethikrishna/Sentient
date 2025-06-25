@@ -34,14 +34,14 @@ const Home = () => {
 			console.error("Authentication error:", authError)
 			toast.error("Authentication failed. Please try again.")
 			// Redirect to login to re-attempt authentication.
-			router.push("/auth/login")
+			router.push("/api/auth/login")
 			return
 		}
 
 		if (!user) {
 			// User is not authenticated. Redirect to the Auth0 login page.
 			console.log("No user session found, redirecting to login.")
-			router.push("/auth/login")
+			router.push("/api/auth/login")
 			return
 		}
 

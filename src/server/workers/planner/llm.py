@@ -3,6 +3,7 @@ from qwen_agent.agents import Assistant
 
 from . import config
 from . import prompts
+from .db import get_all_mcp_descriptions
 
 logger = logging.getLogger(__name__)
 
@@ -10,6 +11,7 @@ def get_planner_agent(available_tools: dict):
     """Initializes and returns a Qwen Assistant agent for planning."""
     
     # Format the MCP descriptions for the prompt
+    # The keys are now the simple names (e.g., 'gmail')
     tools_list_str = "\n".join([f"- {name}: {desc}" for name, desc in available_tools.items()])
     
     system_prompt = prompts.SYSTEM_PROMPT.format(

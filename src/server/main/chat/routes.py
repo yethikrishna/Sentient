@@ -1,5 +1,3 @@
-# src/server/main/chat/routes.py
-import datetime
 import datetime
 import uuid
 import json
@@ -8,64 +6,31 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from .models import ChatMessageInput, ChatHistoryRequest
-from .utils import get_chat_history_util, generate_chat_llm_stream, generate_chat_title
-from ..auth.utils import PermissionChecker, AuthHelper
+from .models import ChatMessageInput
+from .utils import generate_chat_llm_stream
+from ..auth.utils import PermissionChecker
 from ..dependencies import mongo_manager
-from typing import Optional
-
-auth_helper = AuthHelper()
 
 router = APIRouter(
+    prefix="/chat",
     tags=["Chat"]
 )
 logger = logging.getLogger(__name__)
 
-@router.post("/get-history", summary="Get Chat History")
-async def get_chat_history_endpoint(
-    request: ChatHistoryRequest,
-    user_id: str = Depends(PermissionChecker(required_permissions=["read:chat"]))
-):
-    # Robustly handle chatId which may be a string or an array
-    chat_id_from_req = request.chatId
-    final_chat_id: Optional[str] = None
-
-    if isinstance(chat_id_from_req, str):
-        final_chat_id = chat_id_from_req
-    elif isinstance(chat_id_from_req, list):
-        if chat_id_from_req: # Check if list is not empty
-            final_chat_id = str(chat_id_from_req[0])
-
-    if not final_chat_id:
-        # A new chat page might call this without a valid ID.
-        # Returning an empty list is appropriate.
-        return JSONResponse(content={"messages": []})
-
-    messages = await get_chat_history_util(user_id, mongo_manager, final_chat_id)
-    return JSONResponse(content={"messages": messages})
-
-# Removing list, rename, delete chat endpoints as per the new design.
-
-@router.post("/chat", summary="Process Chat Message (Overlay Chat)")
+@router.post("/message", summary="Process Chat Message (Overlay Chat)")
 async def chat_endpoint(
     request_body: ChatMessageInput, 
     user_id: str = Depends(PermissionChecker(required_permissions=["read:chat", "write:chat"]))
 ):
     user_profile = await mongo_manager.get_user_profile(user_id)
     username = user_profile.get("userData", {}).get("personalInfo", {}).get("name", "User") if user_profile else "User"
-    # For the new stateless overlay chat, we don't need to handle chatId, new chats, or titles.
-    # We just process the incoming message history.
-    chat_id_from_req = request_body.chatId
-    chat_id: Optional[str] = None
-    if isinstance(chat_id_from_req, str) and chat_id_from_req:
-        chat_id = chat_id_from_req
-    elif isinstance(chat_id_from_req, list) and chat_id_from_req:
-        chat_id = str(chat_id_from_req[0])
-
-
+    
+    # The new stateless chat sends the entire message history.
+    # We no longer save or retrieve history from the database here.
+    
     async def event_stream_generator():
-        # Removed logic for sending 'chat_created' event
         try:
+            # Pass the full message history directly to the LLM stream generator
             async for event in generate_chat_llm_stream(
                 user_id,
                 request_body.messages,

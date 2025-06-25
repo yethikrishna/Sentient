@@ -97,17 +97,34 @@ async def update_journal_block(
 ):
     """Updates a journal block's content and re-sends it for processing."""
     now = datetime.datetime.now(datetime.timezone.utc)
+    
+    # Find the original block to check if a plan needs to be deprecated
+    original_block = await mongo_manager.journal_blocks_collection.find_one({"user_id": user_id, "block_id": block_id})
+    if not original_block:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Block not found")
+        
+    old_task_id_to_deprecate = original_block.get("linked_task_id")
+    if old_task_id_to_deprecate:
+        await mongo_manager.task_collection.update_one(
+            {"task_id": old_task_id_to_deprecate, "user_id": user_id},
+            {"$set": {"status": "cancelled", "description": f"[DEPRECATED] {original_block.get('content')}"}}
+        )
+        print(f"Deprecated old task {old_task_id_to_deprecate} for block {block_id}.")
+
+    # Update the block content and reset task-related fields
     update_data = {
         "content": request.content,
-        "updated_at": now
+        "updated_at": now,
+        "linked_task_id": None,
+        "task_status": None,
+        "task_progress": [],
+        "task_result": None
     }
     result = await mongo_manager.journal_blocks_collection.find_one_and_update(
         {"user_id": user_id, "block_id": block_id},
         {"$set": update_data},
         return_document=True
     )
-    if not result:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Block not found")
 
     # Re-send to Kafka for context extraction
     kafka_payload = {
@@ -115,7 +132,7 @@ async def update_journal_block(
         "service_name": "journal_block",
         "event_type": "updated_block",
         "event_id": block_id,
-        "data": {"content": request.content, "block_id": block_id},
+        "data": {"content": request.content, "block_id": block_id, "deprecate_task_id": old_task_id_to_deprecate},
         "timestamp_utc": now.isoformat()
     }
     journal_topic = next((t for t in CONTEXT_EVENTS_TOPIC if "journal" in t), None)

@@ -31,7 +31,8 @@ import {
 	IconShoppingCart,
 	IconLink,
 	IconMenu2,
-	IconFilterOff
+	IconFilterOff,
+	IconX
 } from "@tabler/icons-react"
 import { useState, useEffect, useCallback } from "react"
 import Sidebar from "@components/Sidebar"
@@ -217,7 +218,7 @@ const PrivacySettings = () => {
 	const fetchFilters = useCallback(async () => {
 		setIsLoading(true)
 		try {
-			const response = await fetch("/api/settings/filters")
+			const response = await fetch("/api/settings/privacy-filters")
 			if (!response.ok) throw new Error("Failed to fetch filters.")
 			const data = await response.json()
 			setFilters(data.filters || [])
@@ -250,7 +251,7 @@ const PrivacySettings = () => {
 	const handleSaveFilters = async (updatedFilters) => {
 		setIsLoading(true)
 		try {
-			const response = await fetch("/api/settings/filters", {
+			const response = await fetch("/api/settings/privacy-filters", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ filters: updatedFilters })

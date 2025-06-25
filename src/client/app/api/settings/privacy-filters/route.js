@@ -38,7 +38,7 @@ export async function GET() {
 
 		return NextResponse.json({ filters })
 	} catch (error) {
-		console.error("API Error in /settings/filters (GET):", error)
+		console.error("API Error in /settings/privacy-filters (GET):", error)
 		return NextResponse.json(
 			{ error: "Internal Server Error", details: error.message },
 			{ status: 500 }
@@ -90,7 +90,7 @@ export async function POST(request) {
 		}
 		return NextResponse.json(data)
 	} catch (error) {
-		console.error("API Error in /settings/filters (POST):", error)
+		console.error("API Error in /settings/privacy-filters (POST):", error)
 		return NextResponse.json(
 			{ error: "Internal Server Error", details: error.message },
 			{ status: 500 }

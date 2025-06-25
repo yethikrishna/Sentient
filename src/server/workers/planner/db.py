@@ -20,11 +20,12 @@ def get_all_mcp_descriptions() -> Dict[str, str]:
         return {}
     
     mcp_descriptions = {}
-    for config in INTEGRATIONS_CONFIG.values():
+    for name, config in INTEGRATIONS_CONFIG.items():
         display_name = config.get("display_name")
         description = config.get("description")
         if display_name and description:
-            mcp_descriptions[display_name] = description
+            # Use the simple name (e.g., 'gmail') as the key for the planner
+            mcp_descriptions[name] = description
             
     return mcp_descriptions
 
@@ -71,16 +72,7 @@ class PlannerMongoManager:
                     {"$set": {"linked_task_id": task_id, "task_status": "approval_pending"}}
                 )
                 logger.info(f"Linked new task {task_id} to journal block {block_id}.")
-            else:
-                 # Check if the plan originated from an updated block and needs to replace an old plan.
-                old_task_id_to_deprecate = original_context.get("deprecate_task_id")
-                if old_task_id_to_deprecate:
-                    await self.tasks_collection.update_one(
-                        {"task_id": old_task_id_to_deprecate, "user_id": user_id},
-                        {"$set": {"status": "cancelled", "description": f"[DEPRECATED] {description}"}}
-                    )
-                    logger.info(f"Deprecated old task {old_task_id_to_deprecate} for block {block_id}.")
-
+        
         return task_id
 
     async def close(self):

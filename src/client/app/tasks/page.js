@@ -1,4 +1,3 @@
-// src/client/app/tasks/page.js
 "use client"
 
 import React, { useState, useEffect, useCallback } from "react"
@@ -20,7 +19,8 @@ import {
 	IconChevronUp,
 	IconPlus,
 	IconMenu2,
-	IconGripVertical
+	IconGripVertical,
+	IconBrain
 } from "@tabler/icons-react"
 import ReactMarkdown from "react-markdown"
 import Sidebar from "@components/Sidebar"

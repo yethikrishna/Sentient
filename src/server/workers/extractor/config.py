@@ -17,6 +17,7 @@ NOVITA_API_KEY = os.getenv("NOVITA_API_KEY")
 NOVITA_MODEL_NAME = os.getenv("NOVITA_MODEL_NAME", "qwen/qwen3-4b-fp8")
 
 # Kafka Configuration
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 CONTEXT_EVENTS_TOPIC_STR = os.getenv("CONTEXT_EVENTS_TOPIC", "gmail_polling_results,gcalendar_polling_results,dev_journal_block_events")
 CONTEXT_EVENTS_TOPIC = [topic.strip() for topic in CONTEXT_EVENTS_TOPIC_STR.split(',')]
 MEMORY_OPERATIONS_TOPIC = os.getenv("MEMORY_OPERATIONS_TOPIC", "memory_operations")

@@ -10,6 +10,7 @@ class CreateBlockRequest(BaseModel):
     content: str
     page_date: str # YYYY-MM-DD
     order: int
+    processWithAI: bool = False
     
 class UpdateBlockRequest(BaseModel):
     content: str

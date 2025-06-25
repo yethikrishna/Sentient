@@ -72,19 +72,21 @@ async def create_journal_block(
     }
     await mongo_manager.journal_blocks_collection.insert_one(block_doc)
     
-    # Send to Kafka for context extraction
-    kafka_payload = {
-        "user_id": user_id,
-        "service_name": "journal_block",
-        "event_type": "new_block",
-        "event_id": block_id,
-        "data": {"content": request.content, "block_id": block_id},
-        "timestamp_utc": now.isoformat()
-    }
-    # CONTEXT_EVENTS_TOPIC can have multiple topics, we send to the journal one
-    journal_topic = next((t for t in CONTEXT_EVENTS_TOPIC if "journal" in t), None)
-    if journal_topic:
-        send_to_kafka(journal_topic, kafka_payload)
+    # Conditionally send to Kafka for context extraction
+    if request.processWithAI:
+        kafka_payload = {
+            "user_id": user_id,
+            "service_name": "journal_block",
+            "event_type": "new_block",
+            "event_id": block_id,
+            "data": {"content": request.content, "block_id": block_id},
+            "timestamp_utc": now.isoformat()
+        }
+        # CONTEXT_EVENTS_TOPIC can have multiple topics, we send to the journal one
+        journal_topic = next((t for t in CONTEXT_EVENTS_TOPIC if "journal" in t), None)
+        if journal_topic:
+            send_to_kafka(journal_topic, kafka_payload)
+            print(f"Sent journal block {block_id} to Kafka for processing.")
     
     block_doc["_id"] = str(block_doc["_id"])
     return block_doc

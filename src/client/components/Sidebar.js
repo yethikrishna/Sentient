@@ -33,7 +33,7 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 	}, [])
 
 	const logout = () => {
-		router.push("/api/auth/logout")
+		router.push("/auth/logout")
 	}
 
 	// Removed chat-related handlers: fetchChats, handleRenameChat, handleDeleteChat

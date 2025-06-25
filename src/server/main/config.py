@@ -57,6 +57,17 @@ else:
     print(f"[{datetime.datetime.now()}] [MainServer_Config_WARNING] AES_IV is not set. Encryption/Decryption will fail.")
 
 
+# Kafka Configuration
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
+CONTEXT_EVENTS_TOPIC_STR = os.getenv("CONTEXT_EVENTS_TOPIC")
+
+if CONTEXT_EVENTS_TOPIC_STR:
+    CONTEXT_EVENTS_TOPIC = [topic.strip() for topic in CONTEXT_EVENTS_TOPIC_STR.split(',')]
+else:
+    CONTEXT_EVENTS_TOPIC = []
+    print(f"[{datetime.datetime.now()}] [MainServer_Config_WARNING] CONTEXT_EVENTS_TOPIC is not set.")
+
+
 # Google API Config (mainly for token storage path if server handles auth code exchange)
 _SERVER_DIR_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..")) # main -> server
 GOOGLE_TOKEN_STORAGE_DIR = os.path.join(_SERVER_DIR_ROOT, "google_tokens")
@@ -284,6 +295,16 @@ INTEGRATIONS_CONFIG = {
         "mcp_server_config": {
             "name": "chat_tools_server",
             "url": os.getenv("CHAT_TOOLS_MCP_SERVER_URL", "http://localhost:9013/sse")
+        }
+    },
+    "journal": { # Built-in, for chat agent
+        "display_name": "Journal Tools",
+        "description": "Tools for the managing the user's Journal.",
+        "auth_type": "builtin",
+        "icon": "IconMessage", # Frontend can map this
+        "mcp_server_config": {
+            "name": "journal_server",
+            "url": os.getenv("JOURNAL_MCP_SERVER_URL", "http://localhost:9018/sse")
         }
     },
 }

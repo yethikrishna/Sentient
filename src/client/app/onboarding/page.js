@@ -207,7 +207,7 @@ const OnboardingForm = () => {
 				}
 				const result = await response.json()
 				if (result?.data?.onboardingComplete) {
-					router.push("/chat") // User already onboarded, redirect
+					router.push("/home") // User already onboarded, redirect
 				} else {
 					setIsLoading(false) // Not onboarded, show the form
 				}
@@ -273,7 +273,7 @@ const OnboardingForm = () => {
 			console.log("Onboarding data saved successfully.")
 			setSubmissionComplete(true)
 			// Redirect after a short delay
-			setTimeout(() => router.push("/chat"), 2000)
+			setTimeout(() => router.push("/home"), 2000)
 		} catch (error) {
 			console.error("Error saving onboarding data:", error)
 			toast.error(`Error saving onboarding data: ${error.message}`)

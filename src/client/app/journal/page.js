@@ -141,7 +141,7 @@ const JournalPage = () => {
 		})
 	}
 
-	const handleCreateBlock = async () => {
+	const handleCreateBlock = async (processWithAI = false) => {
 		if (!newBlockContent.trim()) return
 		const newOrder =
 			blocks.length > 0 ? Math.max(...blocks.map((b) => b.order)) + 1 : 0
@@ -153,13 +153,17 @@ const JournalPage = () => {
 				body: JSON.stringify({
 					content: newBlockContent,
 					page_date: currentDate.toISOString().split("T")[0],
-					order: newOrder
+					order: newOrder,
+					processWithAI: processWithAI
 				})
 			})
 			if (!response.ok) throw new Error("Failed to create block")
 			const newBlock = await response.json()
 			setBlocks((prev) => [...prev, newBlock])
 			setNewBlockContent("")
+			if (processWithAI) {
+				toast.success("Entry sent to AI for processing.")
+			}
 		} catch (error) {
 			toast.error(error.message)
 		}
@@ -204,7 +208,10 @@ const JournalPage = () => {
 	const handleKeyDownNewBlock = (e) => {
 		if (e.key === "Enter" && !e.shiftKey) {
 			e.preventDefault()
-			handleCreateBlock()
+			handleCreateBlock(false)
+		} else if (e.key === "Enter" && e.shiftKey) {
+			e.preventDefault()
+			handleCreateBlock(true)
 		}
 	}
 
@@ -278,7 +285,7 @@ const JournalPage = () => {
 									setNewBlockContent(e.target.value)
 								}
 								onKeyDown={handleKeyDownNewBlock}
-								placeholder="Write something..."
+								placeholder="Write something... (Shift+Enter to send to AI)"
 								className="w-full bg-transparent text-gray-200 resize-none focus:outline-none overflow-hidden"
 								rows={1}
 							/>

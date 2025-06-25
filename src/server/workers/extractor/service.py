@@ -101,3 +101,25 @@ class ExtractorService:
 
         except Exception as e:
             logger.error(f"Error processing message at offset {msg.offset}: {e}", exc_info=True)
+    async def run(self, shutdown_event: asyncio.Event):
+        logger.info("Extractor service running. Waiting for context events...")
+        consumer = await KafkaManager.get_consumer()
+
+        while not shutdown_event.is_set():
+            try:
+                # Poll for messages
+                result = await asyncio.wait_for(consumer.getmany(timeout_ms=1000), timeout=1.5)
+                for tp, messages in result.items():
+                    for msg in messages:
+                        await self.process_message(msg)
+            except asyncio.TimeoutError:
+                # This is expected when no messages are available
+                continue
+            except Exception as e:
+                if "GroupCoordinatorNotAvailableError" in str(e):
+                     logger.error("Could not connect to Kafka Group Coordinator. Is Kafka running and accessible at the configured address?")
+                else:
+                    logger.error(f"An error occurred in the extractor consumer loop: {e}", exc_info=True)
+                await asyncio.sleep(5) # Wait before retrying
+
+        logger.info("Shutdown signal received, exiting extractor consumer loop.")

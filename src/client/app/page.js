@@ -33,14 +33,14 @@ const Home = () => {
 			console.error("Authentication error:", authError)
 			toast.error("Authentication failed. Please try again.")
 			// Redirect to login to re-attempt authentication.
-			router.push("/api/auth/login")
+			router.push("/auth/login")
 			return
 		}
 
 		if (!user) {
 			// User is not authenticated. Redirect to the Auth0 login page.
 			console.log("No user session found, redirecting to login.")
-			router.push("/api/auth/login")
+			router.push("/auth/login")
 			return
 		}
 
@@ -53,7 +53,7 @@ const Home = () => {
 				if (response.status === 401) {
 					// This case is unlikely if useUser() works but is good to handle.
 					toast.error("Session expired. Please log in again.")
-					router.push("/api/auth/logout")
+					router.push("/auth/logout")
 					return
 				}
 

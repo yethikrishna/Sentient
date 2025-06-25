@@ -25,8 +25,9 @@ Instructions:
 1.  Read the action items and determine the user's ultimate goal.
 2.  Write a brief `description` summarizing this goal.
 3.  Break down the goal into a sequence of logical steps.
-4.  For each step, choose the most appropriate service from the provided list (e.g., "Gmail", "Google Drive", "Slack").
+4.  For each step, choose the most appropriate service from the provided list (e.g., "gmail", "gdrive", "slack").
 5.  Write a clear `description` for each step, telling the executor exactly what to do with that service.
 6.  If an action item doesn't require a tool (e.g., "Think about the marketing report"), do not create a plan for it. Only create plans for actionable items.
 7.  Do not include any text, explanations, or markdown outside of the JSON object. Your response must begin with `{{` and end with `}}`.
+8. You also have access to memory sources. Use the "supermemory" tool to retrieve information about long-term
 """

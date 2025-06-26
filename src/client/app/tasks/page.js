@@ -20,7 +20,11 @@ import {
 	IconPlus,
 	IconMenu2,
 	IconGripVertical,
-	IconBrain
+	IconBrain,
+	IconBook,
+	IconMail,
+	IconCalendarEvent,
+	IconMessage
 } from "@tabler/icons-react"
 import ReactMarkdown from "react-markdown"
 import Sidebar from "@components/Sidebar"
@@ -1283,6 +1287,48 @@ const TaskCard = ({
 	}
 	const scheduleText = getScheduleText()
 
+	const { original_context } = task // Destructure the context
+
+	// Function to render the source information
+	const renderTaskSource = () => {
+		if (!original_context) return null
+
+		const source = original_context.source || original_context.service_name
+		let sourceText = "From an unknown source"
+		let icon = <IconHelpCircle size={14} />
+
+		if (source === "journal_block" && original_context.original_content) {
+			sourceText = `From Journal: "${original_context.original_content.substring(
+				0,
+				40
+			)}..."`
+			icon = <IconBook size={14} />
+		} else if (source === "gmail") {
+			sourceText = `From Gmail: "${
+				original_context.subject || "No Subject"
+			}"`
+			icon = <IconMail size={14} />
+		} else if (source === "gcalendar") {
+			sourceText = `From Calendar: "${
+				original_context.summary || "No Summary"
+			}"`
+			icon = <IconCalendarEvent size={14} />
+		} else if (source === "chat") {
+			sourceText = `From Chat: "${original_context.description}"`
+			icon = <IconMessage size={14} />
+		}
+
+		return (
+			<p
+				className="text-xs text-gray-500 mt-1 flex items-center gap-1.5 italic"
+				title={sourceText}
+			>
+				{icon}
+				<span className="truncate">{sourceText}</span>
+			</p>
+		)
+	}
+
 	return (
 		<div
 			key={task.task_id}
@@ -1318,6 +1364,9 @@ const TaskCard = ({
 				>
 					{task.description}
 				</p>
+
+				{renderTaskSource()}
+
 				{scheduleText && (
 					<p className="text-xs text-blue-300 mt-1 flex items-center gap-1.5">
 						<IconRefresh size={14} />

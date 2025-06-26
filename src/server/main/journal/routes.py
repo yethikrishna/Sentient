@@ -3,34 +3,15 @@ import uuid
 import json
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
-from kafka import KafkaProducer
 from .models import CreateBlockRequest, UpdateBlockRequest
 from ..dependencies import mongo_manager
 from ..auth.utils import PermissionChecker
-from ..config import CONTEXT_EVENTS_TOPIC, KAFKA_BOOTSTRAP_SERVERS
+from ...workers.tasks import extract_from_context
 
 router = APIRouter(
     prefix="/journal",
     tags=["Journal"]
 )
-
-try:
-    producer = KafkaProducer(
-        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-        value_serializer=lambda v: json.dumps(v, default=str).encode('utf-8')
-    )
-except Exception as e:
-    print(f"Failed to initialize Kafka producer for Journal: {e}")
-    producer = None
-
-def send_to_kafka(topic: str, value: dict):
-    if not producer:
-        print("Kafka producer not initialized. Cannot send message.")
-        return
-    try:
-        producer.send(topic, value=value)
-    except Exception as e:
-        print(f"Failed to send message to Kafka topic {topic}: {e}")
 
 @router.get("/blocks", status_code=status.HTTP_200_OK)
 async def get_journal_blocks(
@@ -53,7 +34,7 @@ async def create_journal_block(
     request: CreateBlockRequest,
     user_id: str = Depends(PermissionChecker(required_permissions=["write:journal"]))
 ):
-    """Creates a new journal block and sends it to the context pipeline."""
+    """Creates a new journal block and optionally sends it for AI processing."""
     now = datetime.datetime.now(datetime.timezone.utc)
     block_id = str(uuid.uuid4())
     block_doc = {
@@ -72,21 +53,15 @@ async def create_journal_block(
     }
     await mongo_manager.journal_blocks_collection.insert_one(block_doc)
     
-    # Conditionally send to Kafka for context extraction
+    # Conditionally send to Celery worker for context extraction
     if request.processWithAI:
-        kafka_payload = {
-            "user_id": user_id,
-            "service_name": "journal_block",
-            "event_type": "new_block",
-            "event_id": block_id,
-            "data": {"content": request.content, "block_id": block_id},
-            "timestamp_utc": now.isoformat()
+        event_data = {
+            "content": request.content,
+            "block_id": block_id
         }
-        # CONTEXT_EVENTS_TOPIC can have multiple topics, we send to the journal one
-        journal_topic = next((t for t in CONTEXT_EVENTS_TOPIC if "journal" in t), None)
-        if journal_topic:
-            send_to_kafka(journal_topic, kafka_payload)
-            print(f"Sent journal block {block_id} to Kafka for processing.")
+        # Call Celery task asynchronously
+        extract_from_context.delay(user_id, "journal_block", block_id, event_data)
+        print(f"Dispatched journal block {block_id} to Celery for processing.")
     
     block_doc["_id"] = str(block_doc["_id"])
     return block_doc
@@ -128,18 +103,14 @@ async def update_journal_block(
         return_document=True
     )
 
-    # Re-send to Kafka for context extraction
-    kafka_payload = {
-        "user_id": user_id,
-        "service_name": "journal_block",
-        "event_type": "updated_block",
-        "event_id": block_id,
-        "data": {"content": request.content, "block_id": block_id, "deprecate_task_id": old_task_id_to_deprecate},
-        "timestamp_utc": now.isoformat()
+    # Re-send to Celery for context extraction
+    event_data = {
+        "content": request.content,
+        "block_id": block_id,
+        "deprecate_task_id": old_task_id_to_deprecate
     }
-    journal_topic = next((t for t in CONTEXT_EVENTS_TOPIC if "journal" in t), None)
-    if journal_topic:
-        send_to_kafka(journal_topic, kafka_payload)
+    extract_from_context.delay(user_id, "journal_block", block_id, event_data)
+    print(f"Dispatched updated journal block {block_id} to Celery for processing.")
     
     result["_id"] = str(result["_id"])
     return result

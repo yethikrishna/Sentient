@@ -15,7 +15,10 @@ celery_app = Celery(
     'tasks',
     broker=CELERY_BROKER_URL,
     backend=CELERY_RESULT_BACKEND,
-    include=['server.workers.executor.tasks', 'server.workers.tasks']
+    include=[
+        'server.workers.executor.tasks', 
+        'server.workers.tasks'
+    ]
 )
 
 celery_app.conf.update(
@@ -23,6 +26,10 @@ celery_app.conf.update(
     beat_schedule = {
         'check-scheduled-tasks-every-minute': {
             'task': 'server.workers.tasks.check_scheduled_tasks',
+            'schedule': 60.0,
+        },
+        'schedule-polling-tasks-every-minute': {
+            'task': 'server.workers.tasks.schedule_all_polling',
             'schedule': 60.0,
         },
     }

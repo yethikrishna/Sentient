@@ -7,13 +7,23 @@ from dateutil import rrule
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Dict, Any, Optional
 
-from server.main.config import SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX
+from server.main.config import SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX, SUPPORTED_POLLING_SERVICES
 from server.workers.utils.api_client import notify_user
 from server.celery_app import celery_app
-from .planner.llm import get_planner_agent
-from .planner.db import PlannerMongoManager, get_all_mcp_descriptions
+from server.workers.planner.llm import get_planner_agent
+from server.workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions
 from ..workers.supermemory_agent_utils import get_supermemory_qwen_agent, get_db_manager as get_memory_db_manager
 from .executor.tasks import execute_task_plan
+
+# Imports for extractor logic
+from server.workers.extractor.llm import get_extractor_agent
+from server.workers.extractor.db import ExtractorMongoManager
+
+# Imports for poller logic
+from server.workers.poller.gmail.service import GmailPollingService
+from server.workers.poller.gcalendar.service import GCalendarPollingService
+from server.workers.poller.gmail.db import PollerMongoManager as GmailPollerDB
+from server.workers.poller.gcalendar.db import PollerMongoManager as GCalPollerDB
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -52,19 +62,15 @@ def process_memory_item(user_id: str, fact_text: str):
             supermemory_mcp_url = f"{SUPERMEMORY_MCP_BASE_URL.rstrip('/')}/{supermemory_user_id}{SUPERMEMORY_MCP_ENDPOINT_SUFFIX}"
 
             agent = get_supermemory_qwen_agent(supermemory_mcp_url)
-            messages = [{'role': 'user', 'content': f"Remember this fact: {fact_text}"}] # Give clear instruction to agent
+            messages = [{'role': 'user', 'content': f"Remember this fact: {fact_text}"}]
 
-            # The agent.run is a generator. We must exhaust it to ensure all steps
-            # (including tool calls and their results) are completed.
             all_responses = list(agent.run(messages=messages))
             final_history = all_responses[-1] if all_responses else None
-            logger.info(f"Supermemory agent final history for user {user_id}: {json.dumps(final_history, indent=2)}")
-
+            
             if not final_history:
                 logger.error(f"Supermemory agent produced no output for user {user_id}.")
                 return {"status": "failure", "reason": "Agent produced no output"}
 
-            # Check the final history for a successful function call result.
             function_call_succeeded = False
             tool_response_content = "No tool response received."
 
@@ -79,96 +85,175 @@ def process_memory_item(user_id: str, fact_text: str):
                 logger.info(f"Successfully executed Supermemory store for user {user_id}. MCP Response: '{tool_response_content}'. Fact: '{fact_text[:50]}...'")
                 return {"status": "success", "fact": fact_text, "mcp_response": tool_response_content}
             else:
-                logger.error(f"Supermemory agent tool call failed or did not return success for user {user_id}. Last Tool Response: {tool_response_content}")
+                logger.error(f"Supermemory agent tool call failed for user {user_id}. Response: {tool_response_content}")
                 return {"status": "failure", "reason": "Supermemory tool call did not succeed", "mcp_response": tool_response_content}
-        except Exception as e:
-            logger.error(f"Critical error in process_memory_item for user {user_id}: {e}", exc_info=True)
-            raise # Re-raise to let Celery handle the task failure (retry, etc.)
         finally:
-            if 'db_manager' in locals() and db_manager: # Ensure db_manager is defined
+            if 'db_manager' in locals() and db_manager:
                 await db_manager.close()
 
     return run_async(async_process_memory())
 
-# --- Planning Task ---
+# --- Extractor Task ---
+@celery_app.task(name="extract_from_context")
+def extract_from_context(user_id: str, service_name: str, event_id: str, event_data: Dict[str, Any]):
+    """
+    Celery task to replace the Extractor worker. It takes context data,
+    runs it through an LLM to extract memories and action items,
+    and then dispatches further Celery tasks.
+    """
+    logger.info(f"Extractor task running for event {event_id} ({service_name}) for user {user_id}")
+    
+    async def async_extract():
+        db_manager = ExtractorMongoManager()
+        try:
+            if await db_manager.is_event_processed(user_id, event_id):
+                logger.info(f"Skipping event {event_id} - already processed.")
+                return
+
+            llm_input_content = ""
+            if service_name == "journal_block":
+                llm_input_content = f"Source: Journal Entry\n\nContent:\n{event_data.get('content', '')}"
+            elif service_name == "gmail":
+                llm_input_content = f"Source: Email\nSubject: {event_data.get('subject', '')}\n\nBody:\n{event_data.get('body', '')}"
+            elif service_name == "gcalendar":
+                llm_input_content = f"Source: Calendar Event\nSummary: {event_data.get('summary', '')}\n\nDescription:\n{event_data.get('description', '')}"
+
+            if not llm_input_content.strip():
+                logger.warning(f"Skipping event {event_id} due to empty content.")
+                return
+
+            agent = get_extractor_agent()
+            messages = [{'role': 'user', 'content': llm_input_content}]
+            
+            final_response_str = ""
+            for chunk in agent.run(messages=messages):
+                if isinstance(chunk, list) and chunk:
+                    last_message = chunk[-1]
+                    if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
+                        content = last_message["content"]
+                        match = re.search(r'```json\n(.*?)\n```', content, re.DOTALL)
+                        final_response_str = match.group(1) if match else content
+
+            if not final_response_str:
+                logger.error(f"Extractor LLM returned no response for event {event_id}.")
+                return
+
+            extracted_data = json.loads(final_response_str)
+            memory_items = extracted_data.get("memory_items", [])
+            action_items = extracted_data.get("action_items", [])
+
+            for fact in memory_items:
+                if isinstance(fact, str) and fact.strip():
+                    process_memory_item.delay(user_id, fact)
+
+            if action_items:
+                process_action_item.delay(user_id, action_items, event_id, event_data)
+
+            await db_manager.log_extraction_result(event_id, user_id, len(memory_items), len(action_items))
+        
+        except Exception as e:
+            logger.error(f"Error in extractor task for event {event_id}: {e}", exc_info=True)
+        finally:
+            await db_manager.close()
+
+    run_async(async_extract())
+
+# --- Planner Task ---
 @celery_app.task(name="process_action_item")
 def process_action_item(user_id: str, action_items: list, source_event_id: str, original_context: dict):
-    """
-    Celery task to process action items and generate a plan.
-    """
-    logger.info(f"Celery worker received planner task for user {user_id} with {len(action_items)} actions.")
-    db_manager = PlannerMongoManager()
+    """Celery task to process action items and generate a plan."""
+    logger.info(f"Planner task running for user {user_id} with {len(action_items)} actions.")
 
     async def async_main():
-        # Step 1: Get the static list of all available service descriptions
-        available_tools = get_all_mcp_descriptions()
-        
-        if not available_tools:
-            logger.warning(f"No available MCP descriptions found. Aborting task for user {user_id}.")
-            return {"status": "aborted", "reason": "No available tools configured."}
-
-        logger.info(f"Planner task for user {user_id} will be prompted with {len(available_tools)} available services.")
-
-        # Step 2: Initialize the planner agent with the list of available services
-        agent = get_planner_agent(available_tools)
-        
-        user_prompt_content = "Please create a plan for the following action items:\n- " + "\n- ".join(action_items)
-        messages = [{'role': 'user', 'content': user_prompt_content}]
-
-        final_response_str = ""
-        for chunk in agent.run(messages=messages):
-            if isinstance(chunk, list) and chunk:
-                last_message = chunk[-1]
-                if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
-                    content = last_message.get("content")
-                    if "```json" in content:
-                        match = re.search(r'```json\n(.*?)\n```', content, re.DOTALL)
-                        if match:
-                            content = match.group(1)
-                    final_response_str = content
-        
-        if not final_response_str:
-            logger.error(f"Planner agent for user {user_id} returned no response.")
-            return {"status": "failure", "reason": "Planner agent returned empty response"}
-            
-        logger.info(f"Planner agent response for user {user_id}: {final_response_str}")
-
+        db_manager = PlannerMongoManager()
         try:
+            available_tools = get_all_mcp_descriptions()
+            if not available_tools:
+                logger.warning(f"No tools available for planner task for user {user_id}.")
+                return
+
+            agent = get_planner_agent(available_tools)
+            user_prompt_content = "Please create a plan for the following action items:\n- " + "\n- ".join(action_items)
+            messages = [{'role': 'user', 'content': user_prompt_content}]
+
+            final_response_str = ""
+            for chunk in agent.run(messages=messages):
+                if isinstance(chunk, list) and chunk:
+                    last_message = chunk[-1]
+                    if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
+                        content = last_message["content"]
+                        match = re.search(r'```json\n(.*?)\n```', content, re.DOTALL)
+                        final_response_str = match.group(1) if match else content
+            
+            if not final_response_str:
+                logger.error(f"Planner agent for user {user_id} returned no response.")
+                return
+
             plan_data = json.loads(final_response_str)
             description = plan_data.get("description", "Proactively generated plan")
             plan_steps = plan_data.get("plan", [])
 
-            # Step 3: Validate the generated plan against the master service list
-            if plan_steps:
-                valid_service_names = available_tools.keys()
-                for step in plan_steps:
-                    tool_used = step.get("tool")
-                    if tool_used not in valid_service_names:
-                        error_msg = f"Plan for user {user_id} hallucinated an unavailable service: '{tool_used}'. Available services: {list(valid_service_names)}"
-                        logger.error(error_msg)
-                        return {"status": "failure", "reason": error_msg}
+            if plan_steps and all(step.get("tool") in available_tools for step in plan_steps):
+                task_id = await db_manager.save_plan_as_task(user_id, description, plan_steps, original_context, source_event_id)
+                notification_message = f"I've created a new plan to '{description}'. It's ready for your approval."
+                await notify_user(user_id, notification_message, task_id)
+                logger.info(f"Saved plan as task {task_id} for user {user_id}.")
+            else:
+                 logger.warning(f"Planner for user {user_id} generated an empty or invalid plan.")
 
-            if not plan_steps:
-                logger.warning(f"Planner agent for user {user_id} generated an empty plan.")
-                return {"status": "success", "message": "No plan generated."}
-
-            # Step 4: If valid, save the plan as a task for approval
-            task_id = await db_manager.save_plan_as_task(user_id, description, plan_steps, original_context, source_event_id)
-            logger.info(f"Successfully saved plan as task {task_id} for user {user_id}.")
-
-            notification_message = f"I've created a new plan to '{description}'. It's ready for your approval."
-            await notify_user(user_id, notification_message, task_id)
-
-            return {"status": "success", "task_id": task_id}
         except Exception as e:
-            logger.error(f"Failed to parse or save plan for user {user_id}: {e}", exc_info=True)
-            return {"status": "failure", "reason": str(e)}
+            logger.error(f"Failed to process/save plan for user {user_id}: {e}", exc_info=True)
         finally:
             await db_manager.close()
 
-    return run_async(async_main())
+    run_async(async_main())
 
-# --- Scheduler Task ---
+# --- Polling Tasks ---
+@celery_app.task(name="poll_gmail_for_user")
+def poll_gmail_for_user(user_id: str, polling_state: dict):
+    logger.info(f"Polling Gmail for user {user_id}")
+    db_manager = GmailPollerDB()
+    service = GmailPollingService(db_manager)
+    run_async(service._run_single_user_poll_cycle(user_id, polling_state))
+
+@celery_app.task(name="poll_gcalendar_for_user")
+def poll_gcalendar_for_user(user_id: str, polling_state: dict):
+    logger.info(f"Polling GCalendar for user {user_id}")
+    db_manager = GCalPollerDB()
+    service = GCalendarPollingService(db_manager)
+    run_async(service._run_single_user_poll_cycle(user_id, polling_state))
+
+# --- Scheduler Tasks ---
+@celery_app.task(name="schedule_all_polling")
+def schedule_all_polling():
+    """Celery Beat task to check for and queue polling tasks for all services."""
+    logger.info("Polling Scheduler: Checking for due polling tasks...")
+    
+    async def async_schedule():
+        # Using GmailPollerDB, but it's a generic poller DB manager
+        db_manager = GmailPollerDB()
+        try:
+            # Reset any locks that have been held for too long
+            await db_manager.reset_stale_polling_locks("gmail")
+            await db_manager.reset_stale_polling_locks("gcalendar")
+
+            for service_name in SUPPORTED_POLLING_SERVICES:
+                due_tasks_states = await db_manager.get_due_polling_tasks_for_service(service_name)
+                logger.info(f"Found {len(due_tasks_states)} due tasks for {service_name}.")
+                
+                for task_state in due_tasks_states:
+                    user_id = task_state["user_id"]
+                    locked_task_state = await db_manager.set_polling_status_and_get(user_id, service_name)
+                    if locked_task_state:
+                        if service_name == "gmail":
+                            poll_gmail_for_user.delay(user_id, locked_task_state)
+                        elif service_name == "gcalendar":
+                            poll_gcalendar_for_user.delay(user_id, locked_task_state)
+                        logger.info(f"Dispatched polling task for {user_id} - service: {service_name}")
+        finally:
+            await db_manager.close()
+
+    run_async(async_schedule())
 
 def calculate_next_run(schedule: Dict[str, Any], last_run: Optional[datetime.datetime] = None) -> Optional[datetime.datetime]:
     """Calculates the next execution time for a scheduled task."""
@@ -179,10 +264,6 @@ def calculate_next_run(schedule: Dict[str, Any], last_run: Optional[datetime.dat
         frequency = schedule.get("frequency")
         time_str = schedule.get("time", "00:00")
         hour, minute = map(int, time_str.split(':'))
-
-        # We need the user's timezone to correctly calculate "today" or "next Monday"
-        # For simplicity, we'll work in UTC here. A more robust solution would fetch user's timezone.
-        # This means "daily at 9am" is 9am UTC.
         dtstart = start_time.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
         rule = None
@@ -191,7 +272,6 @@ def calculate_next_run(schedule: Dict[str, Any], last_run: Optional[datetime.dat
         elif frequency == 'weekly':
             days = schedule.get("days", [])
             if not days: return None
-            # Map weekday names to rrule constants
             weekday_map = {"Sunday": rrule.SU, "Monday": rrule.MO, "Tuesday": rrule.TU, "Wednesday": rrule.WE, "Thursday": rrule.TH, "Friday": rrule.FR, "Saturday": rrule.SA}
             byweekday = [weekday_map[day] for day in days if day in weekday_map]
             if not byweekday: return None
@@ -199,22 +279,17 @@ def calculate_next_run(schedule: Dict[str, Any], last_run: Optional[datetime.dat
 
         if rule:
             next_run = rule.after(start_time)
-            # Ensure next_run is timezone-aware
             if next_run and next_run.tzinfo is None:
                 next_run = next_run.replace(tzinfo=datetime.timezone.utc)
             return next_run
-
     except Exception as e:
         logger.error(f"Error calculating next run time for schedule {schedule}: {e}")
-
     return None
 
 @celery_app.task(name="check_scheduled_tasks")
 def check_scheduled_tasks():
-    """
-    Celery Beat task to check for and queue scheduled tasks.
-    """
-    logger.info("Scheduler: Checking for due tasks...")
+    """Celery Beat task to check for and queue user-defined scheduled tasks."""
+    logger.info("Scheduler: Checking for due user-defined tasks...")
     run_async(async_check_scheduled_tasks())
 
 async def async_check_scheduled_tasks():
@@ -222,21 +297,19 @@ async def async_check_scheduled_tasks():
     try:
         now = datetime.datetime.now(datetime.timezone.utc)
         query = {
-            "status": "active",
-            "enabled": True,
-            "schedule.type": "recurring",
+            "status": "active", "enabled": True, "schedule.type": "recurring",
             "next_execution_at": {"$lte": now}
         }
         due_tasks_cursor = db_manager.tasks_collection.find(query)
         due_tasks = await due_tasks_cursor.to_list(length=None)
 
         if not due_tasks:
-            logger.info("Scheduler: No tasks are due.")
+            logger.info("Scheduler: No user-defined tasks are due.")
             return
 
-        logger.info(f"Scheduler: Found {len(due_tasks)} due tasks.")
+        logger.info(f"Scheduler: Found {len(due_tasks)} due user-defined tasks.")
         for task in due_tasks:
-            logger.info(f"Scheduler: Queuing task {task['task_id']} for execution.")
+            logger.info(f"Scheduler: Queuing user-defined task {task['task_id']} for execution.")
             execute_task_plan.delay(task['task_id'], task['user_id'])
             
             next_run_time = calculate_next_run(task['schedule'], last_run=now)
@@ -244,8 +317,8 @@ async def async_check_scheduled_tasks():
                 {"_id": task["_id"]},
                 {"$set": {"last_execution_at": now, "next_execution_at": next_run_time}}
             )
-            logger.info(f"Scheduler: Rescheduled task {task['task_id']} for {next_run_time}.")
+            logger.info(f"Scheduler: Rescheduled user-defined task {task['task_id']} for {next_run_time}.")
     except Exception as e:
-        logger.error(f"Scheduler: An error occurred: {e}", exc_info=True)
+        logger.error(f"Scheduler: An error occurred checking user-defined tasks: {e}", exc_info=True)
     finally:
         await db_manager.close()

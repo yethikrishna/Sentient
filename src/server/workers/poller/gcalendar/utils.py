@@ -10,65 +10,12 @@ from cryptography.hazmat.backends import default_backend
 
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request as GoogleAuthRequest
-from googleapiclient.discovery import build, Resource
+from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-from kafka import KafkaProducer
-from kafka.errors import KafkaError
-
-from .config import KAFKA_BOOTSTRAP_SERVERS, GCALENDAR_POLL_KAFKA_TOPIC, AES_SECRET_KEY, AES_IV
+from .config import AES_SECRET_KEY, AES_IV
 from .db import PollerMongoManager
 from typing import Optional, List, Dict, Tuple
-
-class GCalendarKafkaProducer:
-    _producer: Optional[KafkaProducer] = None
-    _lock = asyncio.Lock()
-
-    @staticmethod
-    async def get_producer() -> Optional[KafkaProducer]:
-        async with GCalendarKafkaProducer._lock:
-            if GCalendarKafkaProducer._producer is None:
-                print(f"[{datetime.datetime.now()}] [GCalendarPoller_Kafka] Initializing Kafka Producer...")
-                try:
-                    loop = asyncio.get_event_loop()
-                    GCalendarKafkaProducer._producer = await loop.run_in_executor(
-                        None, lambda: KafkaProducer(
-                            bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-                            value_serializer=lambda v: json.dumps(v, default=str).encode('utf-8'),
-                            key_serializer=lambda k: k.encode('utf-8') if k else None,
-                            retries=3, acks='all'
-                        ))
-                    print(f"[{datetime.datetime.now()}] [GCalendarPoller_Kafka] Kafka Producer initialized.")
-                except Exception as e:
-                    print(f"[{datetime.datetime.now()}] [GCalendarPoller_Kafka_ERROR] Failed to init Kafka Producer: {e}")
-                    GCalendarKafkaProducer._producer = None
-        return GCalendarKafkaProducer._producer
-
-    @staticmethod
-    async def send_gcalendar_data(data_payload: dict, user_id: str):
-        producer = await GCalendarKafkaProducer.get_producer()
-        if not producer:
-            print(f"[{datetime.datetime.now()}] [GCalendarPoller_Kafka_ERROR] Producer not available for user {user_id}.")
-            return False
-        try:
-            loop = asyncio.get_event_loop()
-            future = producer.send(GCALENDAR_POLL_KAFKA_TOPIC, value=data_payload, key=user_id)
-            await loop.run_in_executor(None, future.get, 30)
-            return True
-        except Exception as e:
-            print(f"[{datetime.datetime.now()}] [GCalendarPoller_Kafka_ERROR] Failed to send to Kafka for user {user_id}: {e}")
-            return False
-    
-    @staticmethod
-    async def close_producer():
-        async with GCalendarKafkaProducer._lock:
-            if GCalendarKafkaProducer._producer:
-                print(f"[{datetime.datetime.now()}] [GCalendarPoller_Kafka] Closing Kafka Producer...")
-                loop = asyncio.get_event_loop()
-                await loop.run_in_executor(None, GCalendarKafkaProducer._producer.flush)
-                await loop.run_in_executor(None, GCalendarKafkaProducer._producer.close)
-                GCalendarKafkaProducer._producer = None
-                print(f"[{datetime.datetime.now()}] [GCalendarPoller_Kafka] Kafka Producer closed.")
 
 def aes_decrypt(encrypted_data_b64: str) -> str:
     if not AES_SECRET_KEY or not AES_IV:
@@ -106,6 +53,8 @@ async def get_gcalendar_credentials(user_id: str, db_manager: PollerMongoManager
             await loop.run_in_executor(None, creds.refresh, GoogleAuthRequest())
             
             refreshed_token_info = json.loads(creds.to_json())
+            # AES encrypt function needs to be available or imported
+            from server.main.auth.utils import aes_encrypt
             encrypted_refreshed_creds = aes_encrypt(json.dumps(refreshed_token_info))
             await db_manager.user_profiles_collection.update_one(
                 {"user_id": user_id},

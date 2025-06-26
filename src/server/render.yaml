@@ -17,57 +17,15 @@ services:
             value: "3.11.5"
           - fromGroup: sentient-dev-group
 
-    # 2. Celery Executor Worker
+    # 2. Celery Worker (runs scheduled tasks, polling, extraction, planning, execution)
     - type: worker
       name: celery-worker-dev
       runtime: python
       branch: dev
       buildCommand: |
           pip install --upgrade pip
-          pip install -r workers/executor/requirements.txt
-      startCommand: celery -A celery_app worker --loglevel=info
-      envVars:
-          - key: PYTHON_VERSION
-            value: "3.11.5"
-          - fromGroup: sentient-dev-group
-
-    # 3. Kafka Extractor Worker
-    - type: worker
-      name: extractor-worker-dev
-      runtime: python
-      branch: dev
-      buildCommand: |
-          pip install --upgrade pip
-          pip install -r workers/extractor/requirements.txt
-      startCommand: python -m workers.extractor.main
-      envVars:
-          - key: PYTHON_VERSION
-            value: "3.11.5"
-          - fromGroup: sentient-dev-group
-
-    # 4. Gmail Poller Worker
-    - type: worker
-      name: gmail-poller-dev
-      runtime: python
-      branch: dev
-      buildCommand: |
-          pip install --upgrade pip
-          pip install -r workers/poller/gmail/requirements.txt
-      startCommand: python -m workers.poller.gmail.main
-      envVars:
-          - key: PYTHON_VERSION
-            value: "3.11.5"
-          - fromGroup: sentient-dev-group
-
-    # 5. Google Calendar Poller Worker
-    - type: worker
-      name: gcalendar-poller-dev
-      runtime: python
-      branch: dev
-      buildCommand: |
-          pip install --upgrade pip
-          pip install -r workers/poller/gcalendar/requirements.txt
-      startCommand: python -m workers.poller.gcalendar.main
+          pip install -r requirements.txt # Use the main requirements file
+      startCommand: celery -A server.celery_app worker -B --loglevel=info # -B runs beat scheduler
       envVars:
           - key: PYTHON_VERSION
             value: "3.11.5"

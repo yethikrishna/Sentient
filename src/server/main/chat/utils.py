@@ -41,6 +41,10 @@ async def generate_chat_llm_stream(
         
         active_mcp_servers["chat_tools"] = {"url": INTEGRATIONS_CONFIG["chat_tools"]["mcp_server_config"]["url"], "headers": {"X-User-ID": user_id}}
         
+        # ADDED: Journal Server
+        active_mcp_servers["journal_server"] = {"url": INTEGRATIONS_CONFIG["journal"]["mcp_server_config"]["url"], "headers": {"X-User-ID": user_id}}
+
+
         tool_flags = {
             "internet_search": enable_internet,
             "accuweather": enable_weather,
@@ -74,6 +78,7 @@ async def generate_chat_llm_stream(
     try:
         def worker():
             try:
+                # ADDED: Updated system prompt
                 system_prompt = (
                     f"You are Sentient, a helpful AI assistant. The user's name is {username}. Today's date is {datetime.datetime.now().strftime('%Y-%m-%d')}.\n\n"
                     "MEMORY:\n"
@@ -81,7 +86,9 @@ async def generate_chat_llm_stream(
                     "TASK MANAGEMENT:\n"
                     "- For complex actions, use the `create_task_from_description` tool to hand it off to the planning system.\n"
                     "JOURNAL:\n"
-                    "- You can add entries to the user's journal with `add_journal_entry`."
+                    "- You can search the user's journal entries with `search_journal(query='...')`.\n"
+                    "- You can retrieve all entries for a specific day with `summarize_day(date='YYYY-MM-DD')`.\n"
+                    "- You can add new entries to the user's journal with `add_journal_entry(content='...', date='YYYY-MM-DD')`."
                 )
                 qwen_assistant = get_qwen_assistant(system_message=system_prompt, function_list=tools)
                 for new_history_step in qwen_assistant.run(messages=qwen_formatted_history):

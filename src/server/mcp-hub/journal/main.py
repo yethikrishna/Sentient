@@ -39,11 +39,39 @@ async def add_journal_entry(ctx: Context, content: str, date: Optional[str] = No
 async def add_progress_update_to_block(ctx: Context, block_id: str, update_message: str) -> Dict[str, Any]:
     """Appends a progress update to a specific journal block, typically one that generated a task."""
     try:
-        # No user_id needed as block_id is globally unique
+        # No user_id needed as block_id is globally unique, but auth is still good practice.
+        auth.get_user_id_from_context(ctx)
         success = await db_manager.add_progress_update(block_id, update_message)
         if not success:
             return {"status": "failure", "error": "Block not found or update failed."}
         return {"status": "success", "result": "Progress update added to block."}
+    except Exception as e:
+        return {"status": "failure", "error": str(e)}
+
+@mcp.tool
+async def search_journal(ctx: Context, query: str) -> Dict[str, Any]:
+    """Searches the user's journal entries for a specific keyword or phrase."""
+    try:
+        user_id = auth.get_user_id_from_context(ctx)
+        search_results = await db_manager.search_journal_content(user_id, query)
+        if not search_results:
+            return {"status": "success", "result": "No matching journal entries found."}
+        
+        simplified_results = [
+            f"On {item['page_date']}: \"{item['content']}\""
+            for item in search_results
+        ]
+        return {"status": "success", "result": "\n".join(simplified_results)}
+    except Exception as e:
+        return {"status": "failure", "error": str(e)}
+
+@mcp.tool
+async def summarize_day(ctx: Context, date: str) -> Dict[str, Any]:
+    """Retrieves all journal entries for a given date (format: YYYY-MM-DD) and returns their combined content."""
+    try:
+        user_id = auth.get_user_id_from_context(ctx)
+        summary = await db_manager.get_day_summary(user_id, date)
+        return {"status": "success", "result": summary}
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 

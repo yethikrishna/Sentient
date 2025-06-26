@@ -7,8 +7,7 @@ import traceback
 from .kafka_clients import KafkaManager
 from .llm import get_extractor_agent
 from .db import ExtractorMongoManager
-from ..tasks import process_action_item
-from . import config
+from ..tasks import process_action_item, process_memory_item, add_journal_entry_task
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +23,6 @@ class ExtractorService:
             logger.info(f"Received message from Kafka at offset {msg.offset}. Processing...")
             event_batch = msg.value
             if not isinstance(event_batch, list):
-                # Handle single event object as well for flexibility
                 if isinstance(event_batch, dict):
                     event_batch = [event_batch]
                 else:
@@ -40,7 +38,6 @@ class ExtractorService:
                     logger.info(f"Skipping event {event_id} (missing data or already processed).")
                     continue
 
-                # Prepare LLM input based on the event source
                 llm_input_content = ""
                 if service_name == "journal_block":
                     llm_input_content = f"Source: Journal Entry\n\nContent:\n{event_data.get('data', {}).get('content', '')}"
@@ -82,44 +79,48 @@ class ExtractorService:
                     extracted_data = json.loads(llm_response_str)
                     memory_items = extracted_data.get("memory_items", [])
                     action_items = extracted_data.get("action_items", [])
+                    short_term_notes = extracted_data.get("short_term_notes", [])
                 except json.JSONDecodeError:
                     logger.error(f"Failed to decode LLM JSON for event {event_id}: {llm_response_str}")
                     continue
 
-                # --- Send to Kafka Topics ---
+                # --- Send to Celery Tasks ---
                 for fact in memory_items:
                     if isinstance(fact, str) and fact.strip():
-                        # The memory worker will handle storing this
                         process_memory_item.delay(user_id, fact)
                         logger.info(f"Dispatched memory item to Celery for user {user_id}: '{fact[:50]}...'")
 
                 if action_items:
                     process_action_item.delay(user_id, action_items, event_id, event_data)
                     logger.info(f"Dispatched {len(action_items)} action items to Planner for user {user_id}.")
+                
+                for note in short_term_notes:
+                    if isinstance(note, str) and note.strip():
+                        add_journal_entry_task.delay(user_id, note)
+                        logger.info(f"Dispatched short-term note as journal entry for user {user_id}: '{note[:50]}...'")
 
                 await self.db_manager.log_extraction_result(event_id, user_id, len(memory_items), len(action_items))
 
         except Exception as e:
             logger.error(f"Error processing message at offset {msg.offset}: {e}", exc_info=True)
+            
     async def run(self, shutdown_event: asyncio.Event):
         logger.info("Extractor service running. Waiting for context events...")
         consumer = await KafkaManager.get_consumer()
 
         while not shutdown_event.is_set():
             try:
-                # Poll for messages
                 result = await asyncio.wait_for(consumer.getmany(timeout_ms=1000), timeout=1.5)
                 for tp, messages in result.items():
                     for msg in messages:
                         await self.process_message(msg)
             except asyncio.TimeoutError:
-                # This is expected when no messages are available
                 continue
             except Exception as e:
                 if "GroupCoordinatorNotAvailableError" in str(e):
                      logger.error("Could not connect to Kafka Group Coordinator. Is Kafka running and accessible at the configured address?")
                 else:
                     logger.error(f"An error occurred in the extractor consumer loop: {e}", exc_info=True)
-                await asyncio.sleep(5) # Wait before retrying
+                await asyncio.sleep(5) 
 
         logger.info("Shutdown signal received, exiting extractor consumer loop.")

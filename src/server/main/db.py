@@ -75,7 +75,8 @@ class MongoManager:
             self.journal_blocks_collection: [
                 IndexModel([("block_id", ASCENDING)], unique=True, name="journal_block_id_unique_idx"),
                 IndexModel([("user_id", ASCENDING), ("page_date", DESCENDING), ("order", ASCENDING)], name="journal_user_date_order_idx"),
-                IndexModel([("linked_task_id", ASCENDING)], name="journal_linked_task_idx", sparse=True)
+                IndexModel([("linked_task_id", ASCENDING)], name="journal_linked_task_idx", sparse=True),
+                IndexModel([("content", "text")], name="journal_content_text_idx")
             ]
         }
 

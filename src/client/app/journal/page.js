@@ -10,14 +10,107 @@ import {
 	IconPencil,
 	IconTrash,
 	IconFileSymlink,
-	IconActivity
+	IconActivity,
+	IconChevronDown,
+	IconCircleCheck,
+	IconAlertCircle,
+	IconClock,
+	IconX
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import { AnimatePresence, motion } from "framer-motion"
+import { cn } from "@utils/cn"
+
+const TaskDetails = ({ task }) => {
+	if (!task) return null
+
+	const statusMap = {
+		pending: { icon: IconClock, color: "text-yellow-400" },
+		processing: { icon: IconLoader, color: "text-blue-400", animate: true },
+		completed: { icon: IconCircleCheck, color: "text-green-400" },
+		error: { icon: IconAlertCircle, color: "text-red-400" },
+		approval_pending: { icon: IconClock, color: "text-purple-400" },
+		cancelled: { icon: IconX, color: "text-gray-500" }
+	}
+
+	const StatusIcon = statusMap[task.status]?.icon || IconActivity
+	const statusColor = statusMap[task.status]?.color || "text-gray-400"
+	const animateStatus = statusMap[task.status]?.animate || false
+
+	return (
+		<div className="mt-2 text-xs text-gray-400 p-3 bg-neutral-800/60 rounded-md border border-neutral-700/50">
+			<div className="flex justify-between items-center mb-2">
+				<p className="font-semibold text-gray-200">
+					{task.description}
+				</p>
+				<span
+					className={cn(
+						"flex items-center gap-1.5 font-medium capitalize",
+						statusColor
+					)}
+				>
+					<StatusIcon
+						size={14}
+						className={cn(animateStatus && "animate-spin")}
+					/>
+					{task.status.replace("_", " ")}
+				</span>
+			</div>
+
+			<div className="space-y-2">
+				<div>
+					<h5 className="font-bold text-gray-300 mb-1">Plan:</h5>
+					<ul className="list-decimal list-inside pl-2 space-y-1">
+						{task.plan?.map((step, index) => (
+							<li key={index} className="text-gray-400">
+								<span className="font-semibold text-gray-300">
+									{step.tool}:
+								</span>{" "}
+								{step.description}
+							</li>
+						))}
+					</ul>
+				</div>
+				{task.progress_updates?.length > 0 && (
+					<div>
+						<h5 className="font-bold text-gray-300 mb-1">
+							Progress:
+						</h5>
+						<ul className="space-y-1">
+							{task.progress_updates.map((update, index) => (
+								<li key={index} className="text-gray-400 pl-2">
+									- {update.message}
+								</li>
+							))}
+						</ul>
+					</div>
+				)}
+				{(task.result || task.error) && (
+					<div>
+						<h5 className="font-bold text-gray-300 mb-1">
+							Result:
+						</h5>
+						<p
+							className={cn(
+								"pl-2 whitespace-pre-wrap",
+								task.error ? "text-red-400" : "text-gray-300"
+							)}
+						>
+							{task.result || task.error}
+						</p>
+					</div>
+				)}
+			</div>
+		</div>
+	)
+}
 
 const JournalBlock = ({ block, onUpdate, onDelete }) => {
 	const [content, setContent] = useState(block.content)
 	const [isEditing, setIsEditing] = useState(false)
+	const [isExpanded, setIsExpanded] = useState(false)
+	const [taskDetails, setTaskDetails] = useState(null)
+	const [isLoadingTask, setIsLoadingTask] = useState(false)
 	const textareaRef = useRef(null)
 
 	const handleSave = () => {
@@ -41,6 +134,28 @@ const JournalBlock = ({ block, onUpdate, onDelete }) => {
 			handleSave()
 		}
 	}
+
+	const fetchTaskDetails = useCallback(async () => {
+		if (!block.linked_task_id || taskDetails) return
+		setIsLoadingTask(true)
+		try {
+			const response = await fetch(`/api/tasks/${block.linked_task_id}`)
+			if (!response.ok) throw new Error("Failed to fetch task details")
+			const data = await response.json()
+			setTaskDetails(data)
+		} catch (error) {
+			toast.error(error.message)
+			setTaskDetails(null) // Reset on error
+		} finally {
+			setIsLoadingTask(false)
+		}
+	}, [block.linked_task_id, taskDetails])
+
+	useEffect(() => {
+		if (isExpanded) {
+			fetchTaskDetails()
+		}
+	}, [isExpanded, fetchTaskDetails])
 
 	return (
 		<motion.div
@@ -71,10 +186,26 @@ const JournalBlock = ({ block, onUpdate, onDelete }) => {
 					</p>
 				)}
 				{block.linked_task_id && (
-					<div className="mt-2 flex items-center gap-2 text-xs text-blue-400 p-2 bg-blue-500/10 rounded-md border border-blue-500/20">
-						<IconFileSymlink size={16} />
-						<span>Plan Generated: {block.task_status}</span>
-					</div>
+					<details
+						className="mt-2 text-xs"
+						onToggle={(e) => setIsExpanded(e.currentTarget.open)}
+					>
+						<summary className="cursor-pointer select-none flex items-center gap-2 text-blue-400 hover:text-blue-300 font-medium">
+							<IconFileSymlink size={16} />
+							<span>Plan Generated: {block.task_status}</span>
+							<IconChevronDown
+								size={16}
+								className="transition-transform details-arrow"
+							/>
+						</summary>
+						{isLoadingTask ? (
+							<div className="flex justify-center p-4">
+								<IconLoader className="animate-spin text-gray-400" />
+							</div>
+						) : (
+							<TaskDetails task={taskDetails} />
+						)}
+					</details>
 				)}
 			</div>
 			<div className="opacity-0 group-hover:opacity-100 transition-opacity">
@@ -217,6 +348,17 @@ const JournalPage = () => {
 
 	return (
 		<div className="flex h-screen bg-matteblack dark">
+			<style jsx global>{`
+				details > summary {
+					list-style: none;
+				}
+				details > summary::-webkit-details-marker {
+					display: none;
+				}
+				details[open] .details-arrow {
+					transform: rotate(180deg);
+				}
+			`}</style>
 			<Sidebar
 				userDetails={userDetails}
 				isSidebarVisible={isSidebarVisible}

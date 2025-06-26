@@ -21,6 +21,22 @@ router = APIRouter(
 )
 
 
+@router.get("/tasks/{task_id}", status_code=status.HTTP_200_OK)
+async def get_task_details(
+    task_id: str,
+    user_id: str = Depends(PermissionChecker(required_permissions=["read:tasks"]))
+):
+    """Fetches the full details of a single task by its ID."""
+    task = await mongo_manager.task_collection.find_one(
+        {"task_id": task_id, "user_id": user_id}
+    )
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    
+    if "_id" in task:
+        task["_id"] = str(task["_id"])
+    return task
+
 @router.post("/add-task", status_code=status.HTTP_201_CREATED)
 async def add_task(
     request: AddTaskRequest,

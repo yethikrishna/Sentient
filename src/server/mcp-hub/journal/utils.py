@@ -61,3 +61,29 @@ class JournalDBManager:
 
     async def get_block(self, block_id: str) -> Optional[Dict]:
         return await self.blocks_collection.find_one({"block_id": block_id})
+
+    async def search_journal_content(self, user_id: str, query: str, limit: int = 10) -> List[Dict]:
+        """Performs a text search on the journal content for a given user."""
+        cursor = self.blocks_collection.find(
+            {"user_id": user_id, "$text": {"$search": query}},
+            {"score": {"$meta": "textScore"}}
+        ).sort([("score", {"$meta": "textScore"})]).limit(limit)
+        
+        results = await cursor.to_list(length=limit)
+        for doc in results:
+            doc["_id"] = str(doc["_id"])
+        return results
+
+    async def get_day_summary(self, user_id: str, date_str: str) -> str:
+        """Fetches all blocks for a given day and concatenates their content."""
+        cursor = self.blocks_collection.find(
+            {"user_id": user_id, "page_date": date_str}
+        ).sort("order", 1)
+        
+        blocks = await cursor.to_list(length=None)
+        if not blocks:
+            return f"No journal entries found for {date_str}."
+            
+        # Concatenate content from all blocks for that day
+        full_content = "\n- ".join([block['content'] for block in blocks])
+        return f"Journal for {date_str}:\n- {full_content}"

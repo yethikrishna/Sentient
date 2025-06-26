@@ -25,11 +25,11 @@ celery_app.conf.update(
     task_track_started=True,
     beat_schedule = {
         'check-scheduled-tasks-every-minute': {
-            'task': 'server.workers.tasks.check_scheduled_tasks',
+            'task': 'check_scheduled_tasks',
             'schedule': 60.0,
         },
         'schedule-polling-tasks-every-minute': {
-            'task': 'server.workers.tasks.schedule_all_polling',
+            'task': 'schedule_all_polling',
             'schedule': 60.0,
         },
     }

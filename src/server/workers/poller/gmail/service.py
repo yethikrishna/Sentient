@@ -6,9 +6,9 @@ import traceback
 import time # For sleep
 import logging # Import logging
 
-from .config import POLLING_INTERVALS_WORKER as POLL_CFG, GMAIL_POLL_KAFKA_TOPIC, ACTIVE_THRESHOLD_MINUTES_WORKER, RECENTLY_ACTIVE_THRESHOLD_HOURS_WORKER, PEAK_HOURS_START_WORKER, PEAK_HOURS_END_WORKER
+from .config import POLLING_INTERVALS_WORKER as POLL_CFG
 from .db import PollerMongoManager
-from .utils import GmailKafkaProducer, get_gmail_credentials, fetch_emails # AES decryption is in get_gmail_credentials
+from .utils import get_gmail_credentials, fetch_emails
 from googleapiclient.errors import HttpError # Import HttpError
 
 logger = logging.getLogger(__name__)
@@ -21,6 +21,12 @@ class GmailPollingService:
 
     def _calculate_next_poll_interval(self, user_profile: dict) -> int:
         """Calculates the polling interval based on user activity."""
+        from .config import (
+            ACTIVE_THRESHOLD_MINUTES_WORKER,
+            RECENTLY_ACTIVE_THRESHOLD_HOURS_WORKER,
+            PEAK_HOURS_START_WORKER,
+            PEAK_HOURS_END_WORKER
+        )
         now = datetime.datetime.now(timezone.utc)
         last_active_ts = user_profile.get("userData", {}).get("last_active_timestamp")
 
@@ -53,7 +59,6 @@ class GmailPollingService:
     async def _run_single_user_poll_cycle(self, user_id: str, polling_state: dict):
         logger.info(f"Starting poll cycle for user {user_id}")
         updated_state = polling_state.copy() # To modify and save later
-        new_data_found = False
 
         try:
             user_profile = await self.db_manager.get_user_profile(user_id)
@@ -77,48 +82,29 @@ class GmailPollingService:
             last_ts_unix = polling_state.get("last_successful_poll_timestamp_unix")
             emails = await fetch_emails(creds, last_ts_unix, max_results=25) # Fetch up to 25 new emails
             
-            highest_email_ts_ms = 0
             processed_count = 0
 
-            batch_payloads = []
             for email in emails:
                 email_item_id = email["id"]
 
                 content_to_check = (email.get("subject", "") + " " + email.get("body", "")).lower()
                 if any(word.lower() in content_to_check for word in privacy_filters):
                     logger.info(f"Skipping email {email['id']} for user {user_id} due to privacy filter match.")
-                    await self.db_manager.log_processed_item(user_id, self.service_name, email_item_id)
                     continue
 
                 if not await self.db_manager.is_item_processed(user_id, self.service_name, email_item_id):
-                    # Send to Kafka
-                    kafka_payload = {
-                        "user_id": user_id,
-                        "service_name": self.service_name,
-                        "event_type": "new_email",
-                        "event_id": email_item_id,
-                        "data": email, # Full email data
-                        "timestamp_utc": datetime.datetime.fromtimestamp(email["timestamp_ms"] / 1000, tz=timezone.utc)
-                    }
-                    batch_payloads.append(kafka_payload)
-                
-                if email["timestamp_ms"] > highest_email_ts_ms:
-                    highest_email_ts_ms = email["timestamp_ms"]
-            
-            if batch_payloads:
-                success = await GmailKafkaProducer.send_gmail_data(batch_payloads, user_id)
-                if success:
-                    for payload in batch_payloads:
-                        await self.db_manager.log_processed_item(user_id, self.service_name, payload["event_id"])
-                    processed_count = len(batch_payloads)
-                    new_data_found = True
+                    from server.workers.tasks import extract_from_context
+                    extract_from_context.delay(user_id, self.service_name, email_item_id, email)
+                    await self.db_manager.log_processed_item(user_id, self.service_name, email_item_id)
+                    processed_count += 1
+
+            if processed_count > 0:
+                # If we processed emails, update the timestamp to the newest one we saw.
+                highest_email_ts_ms = max(email["timestamp_ms"] for email in emails) if emails else 0
+                updated_state["last_successful_poll_timestamp_unix"] = highest_email_ts_ms // 1000
 
             if processed_count > 0:
                 logger.info(f"Processed and sent {processed_count} new emails to Kafka for user {user_id}.")
-            
-            # Update last processed timestamp if new emails were found and processed
-            if highest_email_ts_ms > 0 : # and new_data_found (implicit if highest_email_ts_ms is updated)
-                 updated_state["last_successful_poll_timestamp_unix"] = highest_email_ts_ms // 1000 # Store as Unix seconds
             
             updated_state["last_successful_poll_status_message"] = f"Successfully polled. Found {len(emails)} messages, processed {processed_count} new."
             updated_state["consecutive_failure_count"] = 0

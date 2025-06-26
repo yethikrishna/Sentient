@@ -1,7 +1,5 @@
-import os
 import datetime
 import json
-import asyncio
 import base64
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
@@ -34,6 +32,8 @@ def aes_decrypt(encrypted_data_b64: str) -> str:
         raise ValueError(f"Decryption failed: {str(e)}")
 
 async def get_gmail_credentials(user_id: str, db_manager: PollerMongoManager) -> Optional[Credentials]:
+    import asyncio
+    import json
     user_profile = await db_manager.get_user_profile(user_id)
     if not user_profile or "userData" not in user_profile:
         print(f"[{datetime.datetime.now()}] [GmailPoller_Auth] No user profile found for {user_id} to get Google token.")
@@ -79,6 +79,7 @@ async def get_gmail_credentials(user_id: str, db_manager: PollerMongoManager) ->
         return None
 
 async def fetch_emails(creds: Credentials, last_processed_timestamp_unix: Optional[int] = None, max_results: int = 10) -> List[Dict]:
+    import asyncio
     try:
         loop = asyncio.get_event_loop()
         service = await loop.run_in_executor(None, lambda: build('gmail', 'v1', credentials=creds))

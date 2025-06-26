@@ -4,9 +4,9 @@ from datetime import timezone
 import traceback
 import logging
 
-from .config import POLLING_INTERVALS_WORKER as POLL_CFG, ACTIVE_THRESHOLD_MINUTES_WORKER, RECENTLY_ACTIVE_THRESHOLD_HOURS_WORKER, PEAK_HOURS_START_WORKER, PEAK_HOURS_END_WORKER
+from .config import POLLING_INTERVALS_WORKER as POLL_CFG
 from .db import PollerMongoManager
-from .utils import GCalendarKafkaProducer, get_gcalendar_credentials, fetch_events
+from .utils import get_gcalendar_credentials, fetch_events
 from googleapiclient.errors import HttpError
 
 logger = logging.getLogger(__name__)
@@ -19,6 +19,13 @@ class GCalendarPollingService:
 
     def _calculate_next_poll_interval(self, user_profile: dict) -> int:
         """Calculates the polling interval based on user activity."""
+        # Import these here to avoid circular dependency issues at module load time
+        from .config import (
+            ACTIVE_THRESHOLD_MINUTES_WORKER,
+            RECENTLY_ACTIVE_THRESHOLD_HOURS_WORKER,
+            PEAK_HOURS_START_WORKER,
+            PEAK_HOURS_END_WORKER
+        )
         now = datetime.datetime.now(timezone.utc)
         last_active_ts = user_profile.get("userData", {}).get("last_active_timestamp")
 
@@ -73,33 +80,21 @@ class GCalendarPollingService:
             events, new_last_updated_iso = await fetch_events(creds, last_updated_iso, max_results=50)
             
             processed_count = 0
-            batch_payloads = []
             for event in events:
                 event_id = event["id"]
 
                 content_to_check = (event.get("summary", "") + " " + event.get("description", "")).lower()
                 if any(word.lower() in content_to_check for word in privacy_filters):
                     logger.info(f"Skipping event {event_id} for user {user_id} due to privacy filter match.")
-                    await self.db_manager.log_processed_item(user_id, self.service_name, event_id)
+                    # Log as processed to avoid re-checking
                     continue
 
                 if not await self.db_manager.is_item_processed(user_id, self.service_name, event_id):
-                    kafka_payload = {
-                        "user_id": user_id,
-                        "service_name": self.service_name,
-                        "event_type": "calendar_event",
-                        "event_id": event_id,
-                        "data": event,
-                        "timestamp_utc": event["updated"]
-                    }
-                    batch_payloads.append(kafka_payload)
-            
-            if batch_payloads:
-                success = await GCalendarKafkaProducer.send_gcalendar_data(batch_payloads, user_id)
-                if success:
-                    for payload in batch_payloads:
-                        await self.db_manager.log_processed_item(user_id, self.service_name, payload["event_id"])
-                    processed_count = len(batch_payloads)
+                    # Dispatch a Celery task for each new event
+                    from server.workers.tasks import extract_from_context
+                    extract_from_context.delay(user_id, self.service_name, event_id, event)
+                    await self.db_manager.log_processed_item(user_id, self.service_name, event_id)
+                    processed_count += 1
 
             if processed_count > 0:
                 logger.info(f"Processed and sent {processed_count} new GCalendar events to Kafka for user {user_id}.")

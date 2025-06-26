@@ -10,10 +10,10 @@
 
     The script handles:
     - Starting databases like MongoDB (as admin).
-    - Launching services within the Windows Subsystem for Linux (WSL), such as Kafka and Redis.
+    - Launching services within the Windows Subsystem for Linux (WSL), such as Redis and Kafka.
     - Dynamically discovering and starting all MCP (Modular Companion Protocol) servers.
     - Activating the Python virtual environment for all backend scripts.
-    - Running Python workers for Kafka and Celery.
+    - Running the Celery worker and beat scheduler.
     - Starting the main FastAPI server and the Next.js frontend client.
 
 .NOTES
@@ -26,13 +26,8 @@
 # --- Configuration ---
 # Please review and update these paths to match your local setup.
 
-# The name of your WSL distribution where Kafka and Redis are installed.
+# The name of your WSL distribution where Redis is installed.
 $wslDistroName = "Ubuntu"
-
-# The base path to your Kafka installation inside your WSL distribution.
-# Example: "/home/your_wsl_username/kafka_2.13-3.7.0"
-$kafkaBasePathInWsl = "/home/kabeer2004/kafka_2.13-3.9.1" # <-- IMPORTANT: UPDATE THIS PATH
-# $kafkaBasePathInWsl = "/home/existence/kafka_2.13-3.9.1" # <-- IMPORTANT: UPDATE THIS PATH
 
 # --- Script Body ---
 try {
@@ -68,12 +63,11 @@ try {
             ArgumentList     = "-NoExit", "-Command", $psCommand
         }
         if (-not $NoExit) {
-            # For fire-and-forget commands like the topic initializer
+            # For fire-and-forget commands
             $startArgs.ArgumentList = "-Command", $psCommand
         }
         Start-Process @startArgs
     }
-
 
     # --- 1. Start Databases & Core Infrastructure ---
     Write-Host "`n--- 1. Starting Databases & Core Infrastructure ---" -ForegroundColor Cyan
@@ -85,22 +79,8 @@ try {
 
     # Start Redis Server (for Celery)
     Write-Host "🚀 Launching Redis Server (in WSL)..." -ForegroundColor Yellow
-    Start-NewTerminal -WindowTitle "SERVICE - Redis" -Command "wsl -d $wslDistroName -e redis-server"
+    Start-NewTerminal -WindowTitle "SERVICE - Redis" -Command "wsl -d $wslDistroName -e redis-server --bind 0.0.0.0"
     Start-Sleep -Seconds 2
-
-    # Start Zookeeper for Kafka
-    Write-Host "🚀 Launching Zookeeper (in WSL)..." -ForegroundColor Yellow
-    if ($kafkaBasePathInWsl -like "*your_wsl_username*") { throw "Kafka path not configured. Please update `$kafkaBasePathInWsl in the script." }
-    $zookeeperCommand = "wsl -d $wslDistroName -e bash -c '$kafkaBasePathInWsl/bin/zookeeper-server-start.sh $kafkaBasePathInWsl/config/zookeeper.properties'"
-    Start-NewTerminal -WindowTitle "SERVICE - Zookeeper" -Command $zookeeperCommand
-    Start-Sleep -Seconds 5 # Give Zookeeper time to start before Kafka
-
-    # Start Kafka Server
-    Write-Host "🚀 Launching Kafka Server (in WSL)..." -ForegroundColor Yellow
-    $kafkaCommand = "wsl -d $wslDistroName -e bash -c '$kafkaBasePathInWsl/bin/kafka-server-start.sh $kafkaBasePathInWsl/config/server.properties'"
-    Start-NewTerminal -WindowTitle "SERVICE - Kafka" -Command $kafkaCommand
-    Start-Sleep -Seconds 5 # Give Kafka time to start
-
 
     # --- 2. Start MCP Servers ---
     Write-Host "`n--- 2. Starting All MCP Servers ---" -ForegroundColor Cyan
@@ -110,7 +90,7 @@ try {
     Write-Host "Found the following MCP servers to start:" -ForegroundColor Green
     $mcpServers | ForEach-Object { Write-Host " - $_" }
     Write-Host ""
-    
+
     foreach ($serverName in $mcpServers) {
         $windowTitle = "MCP - $($serverName.ToUpper())"
         $pythonModule = "server.mcp-hub.$serverName.main"
@@ -120,29 +100,19 @@ try {
         Start-Sleep -Milliseconds 500
     }
 
-
     # --- 3. Resetting Queues & State (for clean development starts) ---
     Write-Host "`n--- 3. Resetting Queues & State ---" -ForegroundColor Cyan
 
-    # Clear Redis (Celery queue)
+    # Clear Redis (Celery queue) - This is fast, runs in the current window.
     Write-Host "🚀 Flushing Redis database (Celery Queue)..." -ForegroundColor Yellow
     $redisFlushCommand = "wsl -d $wslDistroName -e redis-cli FLUSHALL"
     Start-NewTerminal -WindowTitle "RESET - Redis Flush" -Command $redisFlushCommand -WorkDir $srcPath -NoExit:$false
 
-    # Initialize Kafka Topics (if they don't exist)
-    Write-Host "🚀 Initializing Kafka topics..." -ForegroundColor Yellow
-    $kafkaInitCommand = "& '$venvActivatePath'; python -m server.workers.utils.kafka_topic_initializer" # This command runs and closes the window on completion
-    Start-NewTerminal -WindowTitle "SETUP - Kafka Topics" -Command $kafkaInitCommand -WorkDir $srcPath -NoExit:$false
-    Start-Sleep -Seconds 3
-
-
     # --- 4. Start Backend Workers ---
     Write-Host "`n--- 4. Starting Backend Workers ---" -ForegroundColor Cyan
     $workerServices = @(
-        # The single Celery worker now handles Memory, Planning, and Execution tasks.
-        @{ Name = "Celery (Memory, Planner, Executor)"; Command = "& '$venvActivatePath'; celery -A server.celery_app worker --loglevel=info --pool=solo" },
-        @{ Name = "Extractor (Kafka Consumer)";        Command = "& '$venvActivatePath'; python -m server.workers.extractor.main" },
-        @{ Name = "Gmail Poller (Kafka Producer)";     Command = "& '$venvActivatePath'; python -m server.workers.poller.gmail.main" }
+        @{ Name = "Celery Worker"; Command = "& '$venvActivatePath'; celery -A server.celery_app worker --loglevel=info --pool=solo" },
+        @{ Name = "Celery Beat Scheduler"; Command = "& '$venvActivatePath'; celery -A server.celery_app beat --loglevel=info" }
     )
 
     foreach ($service in $workerServices) {
@@ -151,7 +121,6 @@ try {
         Start-NewTerminal -WindowTitle $windowTitle -Command $service.Command -WorkDir $srcPath
         Start-Sleep -Milliseconds 500
     }
-
 
     # --- 5. Start Main API Server and Frontend Client ---
     Write-Host "`n--- 5. Starting Main API and Client ---" -ForegroundColor Cyan

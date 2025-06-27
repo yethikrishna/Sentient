@@ -1,4 +1,3 @@
-aiokafka
 python-dotenv
 motor
 pymongo

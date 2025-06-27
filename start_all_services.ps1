@@ -10,10 +10,10 @@
 
     The script handles:
     - Starting databases like MongoDB (as admin).
-    - Launching services within the Windows Subsystem for Linux (WSL), such as Redis and Kafka.
+    - Launching the Redis message broker within the Windows Subsystem for Linux (WSL).
     - Dynamically discovering and starting all MCP (Modular Companion Protocol) servers.
     - Activating the Python virtual environment for all backend scripts.
-    - Running the Celery worker and beat scheduler.
+    - Running the Celery worker and beat scheduler for background tasks.
     - Starting the main FastAPI server and the Next.js frontend client.
 
 .NOTES

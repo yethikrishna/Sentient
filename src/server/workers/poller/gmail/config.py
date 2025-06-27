@@ -11,9 +11,6 @@ if os.path.exists(dotenv_path):
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_agent_db")
 
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092").split(',')
-GMAIL_POLL_KAFKA_TOPIC = os.getenv("GMAIL_POLL_KAFKA_TOPIC", "gmail_polling_results")
-
 # AES Encryption Keys (for decrypting Google tokens stored by main server)
 AES_SECRET_KEY_HEX = os.getenv("AES_SECRET_KEY")
 AES_IV_HEX = os.getenv("AES_IV")
@@ -51,4 +48,4 @@ RECENTLY_ACTIVE_THRESHOLD_HOURS_WORKER = int(os.getenv("WORKER_RECENT_THRESHOLD_
 PEAK_HOURS_START_WORKER = int(os.getenv("WORKER_PEAK_HOURS_START", 8))
 PEAK_HOURS_END_WORKER = int(os.getenv("WORKER_PEAK_HOURS_END", 22))
 
-print(f"[{datetime.datetime.now()}] [GmailPoller_Config] Config loaded. Kafka: {KAFKA_BOOTSTRAP_SERVERS}")
+print(f"[{datetime.datetime.now()}] [GmailPoller_Config] Config loaded.")

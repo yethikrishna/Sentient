@@ -1,41 +1,51 @@
-# Core Framework & Web Server
-fastapi
-uvicorn
-pydantic
-fastmcp
+# src/server/requirements.txt
+# This is the master requirements file for the entire Python backend.
+# It includes dependencies for the main FastAPI server, all MCP servers, and all Celery workers.
 
-# Environment Variables
+# --- Core Framework & Web Server ---
+fastapi
+uvicorn[standard]  # Includes standard dependencies like websockets
+
+# --- Data Validation & Config ---
+pydantic
 python-dotenv
 
-# Authentication & Security
+# --- Authentication & Security ---
 python-jose[cryptography]
 cryptography
 
-# HTTP & Async Networking
+# --- Asynchronous & HTTP Clients ---
 httpx
 nest_asyncio
-json5
 requests
+json5
 
-# Database
+# --- Database & Caching ---
 motor           # Async MongoDB driver
 pymongo
 neo4j
+redis
 
-# AI / Machine Learning (LLM, STT, TTS)
+# --- AI & Machine Learning ---
 qwen-agent
 sentence-transformers
+torch
 numpy
 
-# Google API Clients
+# --- Background Task Queue ---
+celery
+
+# --- Google API Clients ---
 google-api-python-client
 google-auth-httplib2
 google-auth-oauthlib
-# GitHub API Client
-PyGithub
 
-# Message Queues & Workers
-aiokafka
-kafka-python
-celery
-redis
+# --- Other 3rd Party API Clients ---
+PyGithub
+notion-client
+
+# --- MCP Framework ---
+fastmcp
+
+# --- Charting (for gslides MCP) ---
+matplotlib

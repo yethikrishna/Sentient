@@ -131,9 +131,8 @@ const Tasks = () => {
 	// --- Fetching Data ---
 	const fetchTasksData = useCallback(async () => {
 		console.log("Fetching tasks data...")
-		if (tasks.length === 0) {
-			setLoading(true)
-		}
+		// The loading state is managed by the initial state and the finally block,
+		// so we don't need to check tasks.length here. This makes the function stable.
 		setError(null)
 		try {
 			const response = await fetch("/api/tasks")
@@ -183,7 +182,7 @@ const Tasks = () => {
 			console.log("Finished fetching tasks, setting loading false.")
 			setLoading(false)
 		}
-	}, [tasks.length])
+	}, []) // Empty dependency array makes this function stable
 
 	const fetchUserDetails = async () => {
 		try {
@@ -254,7 +253,6 @@ const Tasks = () => {
 		fetchAvailableTools()
 		const intervalId = setInterval(fetchTasksData, 60000)
 		return () => clearInterval(intervalId)
-		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [fetchTasksData])
 
 	// --- Task Actions ---
@@ -1256,6 +1254,7 @@ const TaskCard = ({
 	onApproveTask,
 	onReRunTask
 }) => {
+	const router = useRouter() // <-- Add router hook here
 	const statusInfo = statusMap[task.status] || statusMap.default
 	const priorityInfo = priorityMap[task.priority] || priorityMap.default
 
@@ -1303,6 +1302,24 @@ const TaskCard = ({
 				40
 			)}..."`
 			icon = <IconBook size={14} />
+
+			// NEW: Make journal source clickable
+			const pageDate = original_context.page_date
+			if (pageDate) {
+				return (
+					<button
+						onClick={(e) => {
+							e.stopPropagation() // Prevent card's main onClick
+							router.push(`/journal?date=${pageDate}`)
+						}}
+						className="w-full text-left text-xs text-gray-500 mt-1 flex items-center gap-1.5 italic hover:text-blue-400 transition-colors"
+						title={`Go to journal entry on ${pageDate}`}
+					>
+						{icon}
+						<span className="truncate">{sourceText}</span>
+					</button>
+				)
+			}
 		} else if (source === "gmail") {
 			sourceText = `From Gmail: "${
 				original_context.subject || "No Subject"
@@ -1318,6 +1335,7 @@ const TaskCard = ({
 			icon = <IconMessage size={14} />
 		}
 
+		// Fallback for non-clickable sources
 		return (
 			<p
 				className="text-xs text-gray-500 mt-1 flex items-center gap-1.5 italic"

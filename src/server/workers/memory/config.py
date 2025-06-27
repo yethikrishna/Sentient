@@ -16,11 +16,6 @@ OLLAMA_MODEL_NAME = os.getenv("OLLAMA_MODEL_NAME", "qwen3:4b")
 NOVITA_API_KEY = os.getenv("NOVITA_API_KEY")
 NOVITA_MODEL_NAME = os.getenv("NOVITA_MODEL_NAME", "qwen/qwen3-4b-fp8")
 
-# Kafka Configuration
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092").split(',')
-MEMORY_OPERATIONS_TOPIC = os.getenv("MEMORY_OPERATIONS_TOPIC", "memory_operations")
-KAFKA_CONSUMER_GROUP_ID = os.getenv("KAFKA_CONSUMER_GROUP_ID", "memory_worker_group")
-
 # Memory MCP Server URL
 MEMORY_MCP_SERVER_URL = os.getenv("MEMORY_MCP_SERVER_URL", "http://localhost:8001/sse")
 
@@ -28,4 +23,4 @@ MEMORY_MCP_SERVER_URL = os.getenv("MEMORY_MCP_SERVER_URL", "http://localhost:800
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_db")
 
-logging.info(f"Memory Worker configured. Input Topic: {MEMORY_OPERATIONS_TOPIC}, MCP Target: {MEMORY_MCP_SERVER_URL}")
+logging.info(f"Memory Worker configured. MCP Target: {MEMORY_MCP_SERVER_URL}")

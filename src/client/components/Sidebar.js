@@ -1,19 +1,22 @@
 "use client"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { useEffect, useState, useRef, useCallback } from "react"
 import {
-	IconChevronLeft,
-	IconUser,
-	IconLogout,
 	IconAdjustments,
-	IconMessage,
-	IconChecklist,
-	IconNotification,
 	IconBell,
 	IconBook,
-	IconHome
+	IconChecklist,
+	IconChevronDown,
+	IconHome,
+	IconLogout,
+	IconPlus,
+	IconSearch,
+	IconUser,
+	IconX
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
+import { AnimatePresence, motion } from "framer-motion"
+import { cn } from "@utils/cn"
 
 const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 	const router = useRouter()
@@ -181,141 +184,175 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 		}
 	}, [userDetails?.sub, router]) // Depend only on the stable user ID
 
+	const NavLink = ({ href, icon, label }) => {
+		const pathname = usePathname() ?? ""
+		const isActive = pathname === href
+
+		return (
+			<motion.button
+				onClick={() => router.push(href)}
+				whileHover={{
+					x: 4,
+					transition: { duration: 0.15 }
+				}}
+				whileTap={{ scale: 0.98 }}
+				className={cn(
+					"flex items-center gap-3 w-full text-left px-3 py-2.5 rounded-[var(--radius-base)] text-sm font-medium transition-all duration-200 group",
+					isActive
+						? "bg-[var(--color-accent-blue)]/15 text-[var(--color-text-primary)] shadow-sm"
+						: "text-[var(--color-text-secondary)] hover:bg-[var(--color-primary-surface-elevated)] hover:text-[var(--color-text-primary)]"
+				)}
+			>
+				<motion.div
+					whileHover={{ rotate: isActive ? 0 : -5, scale: 1.1 }}
+					transition={{ duration: 0.2 }}
+				>
+					{icon}
+				</motion.div>
+				<span className="group-hover:translate-x-0.5 transition-transform duration-150">
+					{label}
+				</span>
+			</motion.button>
+		)
+	}
+
+	const [isProfileOpen, setProfileOpen] = useState(false)
+
 	return (
 		<>
-			<div
-				className={`fixed flex flex-col justify-between inset-y-0 left-0 z-40 w-80 md:w-96 bg-smokeblack transform transition-transform duration-300 ease-in-out ${
-					isSidebarVisible ? "translate-x-0" : "-translate-x-full"
-				}`}
+			<motion.div
+				initial={{ x: -280 }}
+				animate={{ x: isSidebarVisible ? 0 : -281 }}
+				transition={{ type: "spring", stiffness: 300, damping: 30 }}
+				className="fixed flex flex-col inset-y-0 left-0 z-50 w-[280px] bg-[var(--color-primary-surface)] border-r border-[var(--color-primary-surface-elevated)]"
+				onMouseLeave={() =>
+					window.innerWidth > 768 && setSidebarVisible(false)
+				}
 			>
-				<div className="flex items-center px-6 py-6">
-					<div className="flex items-center justify-center rounded-xl w-12 h-12">
+				<div className="flex-1 flex flex-col p-4 overflow-y-auto custom-scrollbar">
+					<motion.button
+						onClick={() => setSidebarVisible(false)}
+						className="absolute top-4 right-4 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] md:hidden p-1 hover:bg-[var(--color-primary-surface-elevated)] rounded-[var(--radius-base)] transition-colors duration-150"
+						whileHover={{ scale: 1.1 }}
+						whileTap={{ scale: 0.9 }}
+					>
+						<IconX size={20} />
+					</motion.button>
+
+					{/* User Profile Dropdown */}
+					<div className="relative mb-6">
+						<motion.button
+							onClick={() => setProfileOpen(!isProfileOpen)}
+							className="flex items-center w-full gap-3 p-3 rounded-[var(--radius-lg)] hover:bg-[var(--color-primary-surface-elevated)] transition-all duration-200 group"
+							whileHover={{ scale: 1.02 }}
+							whileTap={{ scale: 0.98 }}
+						>
+							{userDetails?.picture ? (
+								<motion.img
+									src={userDetails.picture}
+									alt="User"
+									className="w-9 h-9 rounded-full border-2 border-[var(--color-primary-surface-elevated)]"
+									whileHover={{ scale: 1.1 }}
+									transition={{ duration: 0.2 }}
+								/>
+							) : (
+								<motion.div
+									className="w-9 h-9 rounded-full bg-[var(--color-primary-surface-elevated)] flex items-center justify-center border-2 border-[var(--color-primary-surface-elevated)]"
+									whileHover={{ scale: 1.1 }}
+									transition={{ duration: 0.2 }}
+								>
+									<IconUser className="w-5 h-5 text-[var(--color-text-primary)]" />
+								</motion.div>
+							)}
+							<span className="font-semibold text-[var(--color-text-primary)] text-sm flex-1 text-left group-hover:translate-x-0.5 transition-transform duration-150">
+								{userDetails?.given_name || "User"}
+							</span>
+							<motion.div
+								animate={{ rotate: isProfileOpen ? 180 : 0 }}
+								transition={{ duration: 0.2 }}
+							>
+								<IconChevronDown className="w-4 h-4 text-[var(--color-text-secondary)] transition-colors duration-150" />
+							</motion.div>
+						</motion.button>
+						<AnimatePresence>
+							{isProfileOpen && (
+								<motion.div
+									initial={{ opacity: 0, y: -10 }}
+									animate={{ opacity: 1, y: 0 }}
+									exit={{ opacity: 0, y: -10 }}
+									className="absolute top-full left-0 right-0 mt-3 bg-[var(--color-primary-surface-elevated)] rounded-[var(--radius-lg)] shadow-xl p-1 z-10"
+								>
+									<motion.button
+										onClick={logout}
+										className="flex items-center gap-3 w-full text-left px-3 py-2.5 rounded-[var(--radius-base)] text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-primary-surface)] hover:text-[var(--color-text-primary)]"
+									>
+										<IconLogout size={16} />
+										<span>Logout</span>
+									</motion.button>
+								</motion.div>
+							)}
+						</AnimatePresence>
+					</div>
+
+					{/* Primary Actions */}
+					<div className="flex items-center gap-2 mb-6 px-1">
+						<button
+							onClick={() => router.push("/tasks?action=add")}
+							className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-[var(--radius-base)] bg-[var(--color-accent-red)] text-white text-sm font-semibold hover:bg-red-500 transition-colors"
+						>
+							<IconPlus size={16} />
+							Add task
+						</button>
+						<button className="p-2.5 text-[var(--color-text-secondary)] hover:bg-[var(--color-primary-surface-elevated)] rounded-[var(--radius-base)] transition-colors">
+							<IconSearch size={20} />
+						</button>
+					</div>
+
+					{/* Main Navigation */}
+					<nav className="flex flex-col gap-1 mb-6">
+						<NavLink
+							href="/home"
+							icon={<IconHome size={20} />}
+							label="Home"
+						/>
+						<NavLink
+							href="/tasks"
+							icon={<IconChecklist size={20} />}
+							label="Today"
+						/>
+						<NavLink
+							href="/journal"
+							icon={<IconBook size={20} />}
+							label="Journal"
+						/>
+						<NavLink
+							href="/notifications"
+							icon={<IconBell size={20} />}
+							label="Notifications"
+						/>
+						<NavLink
+							href="/settings"
+							icon={<IconAdjustments size={20} />}
+							label="Settings"
+						/>
+					</nav>
+				</div>
+				<div className="p-4 border-t border-[var(--color-primary-surface-elevated)]">
+					<div className="flex items-center gap-2">
 						<img
 							src="/images/half-logo-dark.svg"
 							alt="Logo"
-							className="w-8 h-8"
+							className="w-6 h-6 opacity-70"
 						/>
-					</div>
-					<span className="text-2xl text-white font-extralight ml-3">
-						Sentient
-					</span>
-				</div>
-				<div className="flex flex-col px-4 pt-4 pb-8 flex-grow">
-					<button
-						onClick={() => setSidebarVisible(false)}
-						className="absolute top-4 right-4 text-gray-400 hover:text-white"
-					>
-						<IconChevronLeft />
-					</button>
-					<button
-						onClick={() => router.push("/home")}
-						className="cursor-pointer flex items-center gap-3 w-full text-left px-4 py-2 rounded-lg text-white hover:text-lightblue hover:bg-neutral-800 mt-1"
-					>
-						<IconHome className="w-5 h-5" />
-						<span className="text-base text-white">Home</span>
-					</button>
-					<button // New Journal link
-						onClick={() => router.push("/journal")}
-						className="cursor-pointer flex items-center gap-3 w-full text-left px-4 py-2 rounded-lg text-white hover:text-lightblue hover:bg-neutral-800 mt-1"
-					>
-						<IconBook className="w-5 h-5" />
-						<span className="text-base text-white">Journal</span>
-					</button>
-
-					<button
-						onClick={() => router.push("/tasks")}
-						className="cursor-pointer flex items-center gap-3 w-full text-left px-4 py-2 rounded-lg text-white hover:text-lightblue hover:bg-neutral-800 mt-1"
-					>
-						<IconChecklist className="w-5 h-5" />
-						<span className="text-base text-white">Tasks</span>
-					</button>
-					<button
-						onClick={() => router.push("/settings")}
-						className="cursor-pointer flex items-center gap-3 w-full text-left px-4 py-2 rounded-lg text-white hover:text-lightblue hover:bg-neutral-800 mt-1"
-					>
-						<IconAdjustments className="w-5 h-5" />
-						<span className="text-base text-white">Settings</span>
-					</button>
-					<button
-						onClick={() => router.push("/notifications")}
-						className="cursor-pointer flex items-center gap-3 w-full text-left px-4 py-2 rounded-lg text-white hover:text-lightblue hover:bg-neutral-800 mt-1"
-					>
-						<IconNotification className="w-5 h-5" />
-						<span className="text-base text-white">
-							Notifications
+						<span className="text-sm font-medium text-[var(--color-text-tertiary)]">
+							Sentient
 						</span>
-					</button>
-
-					{/* Chat history removed */}
-
-					<div className="mt-auto mb-6 mx-2 pt-6">
-						<div className="bg-gradient-to-br from-darkblue to-lightblue rounded-xl p-4 relative overflow-hidden mt-4">
-							<div className="absolute top-0 right-0 w-24 h-24 rounded-full bg-white opacity-10 -mr-8 -mt-8"></div>
-							<div className="flex items-center mb-2">
-								<div className="bg-white bg-opacity-20 p-1 rounded-lg">
-									<img
-										src="/images/half-logo-dark.svg"
-										alt="Logo"
-										className="w-6 h-6"
-									/>
-								</div>
-								<span className="text-xl font-bold text-white ml-2">
-									Pro Plan
-								</span>
-							</div>
-							<p className="text-white text-sm mb-4">
-								Unlimited access to all features!
-							</p>
-							<div className="flex items-center justify-between">
-								<span className="text-white font-bold">
-									$3 / mo
-								</span>
-								<button
-									onClick={() => router.push("/settings")}
-									className="bg-white text-black font-medium py-1 px-4 rounded-full"
-								>
-									Get
-								</button>
-							</div>
-						</div>
-					</div>
-					<button
-						onClick={logout}
-						className="flex items-center justify-between px-6 py-2 text-[#9ca3af] hover:text-white"
-					>
-						<span className="text-base">Log out</span>
-						<IconLogout className="w-5 h-5" />
-					</button>
-				</div>
-				<div className="px-6 py-3 mt-auto border-t border-[#373a43]">
-					<div className="flex items-center space-x-3">
-						{userDetails?.picture ? (
-							<img
-								src={userDetails.picture}
-								alt="User"
-								className="w-10 h-10 rounded-full"
-							/>
-						) : (
-							<div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center">
-								<IconUser className="w-6 h-6 text-white" />
-							</div>
-						)}
-						<div>
-							<p className="text-white font-semibold">
-								{userDetails?.given_name || "User"}
-							</p>
-							<p className="text-sm text-gray-400">
-								{pricing.charAt(0).toUpperCase() +
-									pricing.slice(1)}{" "}
-								Plan
-							</p>
-						</div>
 					</div>
 				</div>
-			</div>
+			</motion.div>
 			{/* Desktop hover trigger to show the sidebar */}
 			<div
-				className="hidden md:block fixed top-0 left-0 h-full w-8 z-30"
+				className="hidden md:block fixed top-0 left-0 h-full w-5 z-40"
 				onMouseEnter={() => setSidebarVisible(true)}
 			/>
 		</>

@@ -25,7 +25,7 @@ const Switch = ({ checked, onCheckedChange }) => (
 		onClick={() => onCheckedChange(!checked)}
 		className={cn(
 			"relative inline-flex h-[18px] w-[34px] flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-lightblue focus:ring-offset-2 focus:ring-offset-matteblack",
-			checked ? "bg-lightblue" : "bg-neutral-600"
+			checked ? "bg-[var(--color-accent-blue)]" : "bg-neutral-600"
 		)}
 	>
 		<span
@@ -209,15 +209,15 @@ const ChatOverlay = ({ isOpen, onClose }) => {
 				animate={{ opacity: 1, y: 0, scale: 1 }}
 				exit={{ opacity: 0, y: 50, scale: 0.9 }}
 				transition={{ duration: 0.3, ease: "easeInOut" }}
-				className="bg-matteblack border border-neutral-700 rounded-2xl w-full max-w-2xl h-[85vh] flex flex-col shadow-2xl"
+				className="bg-[var(--color-primary-background)] border border-[var(--color-primary-surface-elevated)] rounded-2xl w-full max-w-2xl h-[85vh] flex flex-col shadow-2xl"
 			>
-				<header className="flex justify-between items-center p-4 border-b border-neutral-800 flex-shrink-0">
-					<h2 className="text-xl font-semibold text-white">
+				<header className="flex justify-between items-center p-4 border-b border-[var(--color-primary-surface)] flex-shrink-0">
+					<h2 className="text-xl font-semibold text-[var(--color-text-primary)]">
 						Chat with Sentient
 					</h2>
 					<button
 						onClick={onClose}
-						className="text-gray-400 hover:text-white"
+						className="text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
 					>
 						<IconX />
 					</button>
@@ -226,7 +226,7 @@ const ChatOverlay = ({ isOpen, onClose }) => {
 				<div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 no-scrollbar">
 					{messages.length === 0 && !thinking ? (
 						<div className="flex-1 flex flex-col justify-center items-center text-gray-400">
-							<p className="text-3xl text-white mb-4">
+							<p className="text-3xl text-[var(--color-text-primary)] mb-4">
 								Ask me anything.
 							</p>
 						</div>
@@ -262,14 +262,16 @@ const ChatOverlay = ({ isOpen, onClose }) => {
 					<div ref={chatEndRef} />
 				</div>
 
-				<div className="p-4 border-t border-neutral-800">
-					<div className="flex items-center flex-wrap justify-center gap-4 mb-3 text-xs text-gray-400">
+				<div className="p-4 border-t border-[var(--color-primary-surface)]">
+					<div className="flex items-center flex-wrap justify-center gap-4 mb-3 text-xs text-[var(--color-text-secondary)]">
 						{/* Tool Toggles Here */}
 						<label className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors">
 							<IconWorldSearch
 								size={16}
 								className={
-									isInternetEnabled ? "text-lightblue" : ""
+									isInternetEnabled
+										? "text-[var(--color-accent-blue)]"
+										: ""
 								}
 							/>
 							<span>Internet</span>
@@ -282,7 +284,9 @@ const ChatOverlay = ({ isOpen, onClose }) => {
 							<IconCloud
 								size={16}
 								className={
-									isWeatherEnabled ? "text-lightblue" : ""
+									isWeatherEnabled
+										? "text-[var(--color-accent-blue)]"
+										: ""
 								}
 							/>
 							<span>Weather</span>
@@ -295,7 +299,9 @@ const ChatOverlay = ({ isOpen, onClose }) => {
 							<IconNews
 								size={16}
 								className={
-									isNewsEnabled ? "text-lightblue" : ""
+									isNewsEnabled
+										? "text-[var(--color-accent-blue)]"
+										: ""
 								}
 							/>
 							<span>News</span>
@@ -308,7 +314,9 @@ const ChatOverlay = ({ isOpen, onClose }) => {
 							<IconMap
 								size={16}
 								className={
-									isMapsEnabled ? "text-lightblue" : ""
+									isMapsEnabled
+										? "text-[var(--color-accent-blue)]"
+										: ""
 								}
 							/>
 							<span>Maps</span>
@@ -321,7 +329,9 @@ const ChatOverlay = ({ isOpen, onClose }) => {
 							<IconShoppingCart
 								size={16}
 								className={
-									isShoppingEnabled ? "text-lightblue" : ""
+									isShoppingEnabled
+										? "text-[var(--color-accent-blue)]"
+										: ""
 								}
 							/>
 							<span>Shopping</span>
@@ -331,7 +341,7 @@ const ChatOverlay = ({ isOpen, onClose }) => {
 							/>
 						</label>
 					</div>
-					<div className="relative w-full flex flex-row gap-4 items-end px-4 py-2 bg-matteblack border-[1px] border-gray-600 rounded-lg">
+					<div className="relative w-full flex flex-row gap-4 items-end px-4 py-2 bg-[var(--color-primary-background)] border-[1px] border-[var(--color-primary-surface-elevated)] rounded-lg">
 						<textarea
 							ref={textareaRef}
 							value={input}
@@ -342,7 +352,7 @@ const ChatOverlay = ({ isOpen, onClose }) => {
 									sendMessage()
 								}
 							}}
-							className="flex-grow p-2 pr-28 rounded-lg bg-transparent text-base text-white focus:outline-none resize-none no-scrollbar overflow-y-auto"
+							className="flex-grow p-2 pr-28 rounded-lg bg-transparent text-base text-[var(--color-text-primary)] focus:outline-none resize-none no-scrollbar overflow-y-auto"
 							placeholder="Type your message..."
 							style={{ maxHeight: "150px", minHeight: "24px" }}
 							rows={1}
@@ -354,13 +364,13 @@ const ChatOverlay = ({ isOpen, onClose }) => {
 									className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-white bg-red-600 hover:bg-red-500"
 									title="Stop Generation"
 								>
-									<IconPlayerStopFilled className="w-4 h-4 text-white" />
+									<IconPlayerStopFilled className="w-4 h-4 text-[var(--color-text-primary)]" />
 								</button>
 							) : (
 								<button
 									onClick={sendMessage}
 									disabled={input.trim() === ""}
-									className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-white disabled:opacity-50 disabled:cursor-not-allowed"
+									className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-[var(--color-text-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
 									title="Send Message"
 								>
 									<IconSend className="w-4 h-4 text-white" />

@@ -588,7 +588,7 @@ const Tasks = () => {
 					>
 						<IconMenu2 />
 					</button>
-					<h1 className="text-lg font-semibold text-white">Tasks</h1>
+					<h1 className="text-lg font-semibold text-white">Today</h1>
 				</header>
 				{/* --- Top Bar for Search/Filter --- */}
 				<div className="md:absolute md:top-6 md:left-1/2 md:transform md:-translate-x-1/2 z-30 w-full max-w-3xl md:px-4 p-4 md:p-0">
@@ -628,7 +628,7 @@ const Tasks = () => {
 				{/* --- Refresh Button (Top Right) --- */}
 				<div className="absolute top-4 right-4 md:top-6 md:right-6 z-30">
 					<button
-						onClick={fetchTasksData}
+						onClick={() => fetchTasksData()}
 						className="p-2.5 rounded-full hover:bg-neutral-700/60 transition-colors text-gray-300"
 						data-tooltip-id="refresh-tooltip"
 						disabled={loading && tasks.length > 0}
@@ -651,8 +651,8 @@ const Tasks = () => {
 				</div>
 
 				{/* --- Task List Container --- */}
-				<main className="flex-1 w-full max-w-4xl mx-auto px-4 sm:px-0 md:pt-24 pb-28 flex flex-col overflow-hidden">
-					<div className="flex-grow overflow-y-auto space-y-6 md:pr-2 custom-scrollbar">
+				<main className="flex-1 w-full max-w-2xl mx-auto py-6 flex flex-col overflow-hidden">
+					<div className="flex-grow overflow-y-auto space-y-2 md:pr-2 custom-scrollbar">
 						{loading || loadingIntegrations ? (
 							<div className="flex justify-center items-center h-full">
 								<IconLoader className="w-10 h-10 animate-spin text-white" />
@@ -710,7 +710,7 @@ const Tasks = () => {
 					</div>
 				</main>
 
-				<div className="absolute bottom-0 left-0 right-0 p-4 bg-matteblack/90 backdrop-blur-sm border-t border-neutral-700">
+				<div className="absolute bottom-0 left-0 right-0 p-4 bg-[#1a1a1a]/80 backdrop-blur-sm border-t border-[#2a2a2a]">
 					<div className="max-w-4xl mx-auto">
 						<div
 							onClick={() => setCreatePlanOpen(!isCreatePlanOpen)}
@@ -750,12 +750,12 @@ const Tasks = () => {
 															e.target.value
 														)
 													}
-													className="flex-grow p-3 bg-neutral-700/60 border border-neutral-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-lightblue"
+													className="flex-grow p-3 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#4a9eff]"
 												/>
 												<button
 													onClick={handleGeneratePlan}
 													disabled={isGeneratingPlan}
-													className="p-3 px-5 bg-darkblue hover:bg-lightblue rounded-lg text-white font-semibold transition-colors disabled:opacity-50 flex items-center"
+													className="p-3 px-5 bg-[#4a9eff] hover:bg-blue-500 rounded-lg text-white font-semibold transition-colors disabled:opacity-50 flex items-center"
 												>
 													{isGeneratingPlan ? (
 														<IconLoader className="w-5 h-5 animate-spin" />
@@ -780,7 +780,7 @@ const Tasks = () => {
 															e.target.value
 														)
 													}
-													className="md:col-span-2 p-3 bg-neutral-700/60 border border-neutral-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-lightblue"
+													className="md:col-span-2 p-3 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#4a9eff]"
 												/>
 												<select
 													value={newTaskPriority}
@@ -791,7 +791,7 @@ const Tasks = () => {
 															)
 														)
 													}
-													className="p-3 bg-neutral-700/60 border border-neutral-600 rounded-lg text-white focus:outline-none focus:border-lightblue appearance-none"
+													className="p-3 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#4a9eff] appearance-none"
 												>
 													<option value={0}>
 														High Priority
@@ -831,17 +831,18 @@ const Tasks = () => {
 															<IconGripVertical className="h-5 w-5 text-gray-500 flex-shrink-0" />
 															<select
 																value={
-																	step.tool
+																	step.tool ||
+																	""
 																}
 																onChange={(e) =>
 																	handleStepChange(
 																		index,
 																		"tool",
 																		e.target
-																			.value
+																			?.value
 																	)
 																}
-																className="w-2/5 p-2 bg-neutral-700/60 border border-neutral-600 rounded-md text-white focus:outline-none focus:border-lightblue text-sm"
+																className="w-2/5 p-2 bg-[#2a2a2a] border border-[#3a3a3a] rounded-md text-white focus:outline-none focus:ring-2 focus:ring-[#4a9eff] text-sm"
 															>
 																<option value="">
 																	Select a
@@ -900,7 +901,7 @@ const Tasks = () => {
 																			.value
 																	)
 																}
-																className="flex-grow p-2 bg-neutral-700/60 border border-neutral-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:border-lightblue text-sm"
+																className="flex-grow p-2 bg-[#2a2a2a] border border-[#3a3a3a] rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#4a9eff] text-sm"
 															/>
 															{!integrations.find(
 																(i) =>
@@ -948,7 +949,7 @@ const Tasks = () => {
 										<div className="flex justify-between items-center">
 											<button
 												onClick={handleAddStep}
-												className="flex items-center gap-1.5 py-2 px-4 rounded-full bg-neutral-600 hover:bg-neutral-500 text-white text-xs font-medium transition-colors"
+												className="flex items-center gap-1.5 py-2 px-4 rounded-full bg-[#3a3a3a] hover:bg-[#4a4a4a] text-white text-xs font-medium transition-colors"
 											>
 												<IconPlus className="h-4 w-4" />{" "}
 												Add Step
@@ -956,16 +957,13 @@ const Tasks = () => {
 											<button
 												onClick={handleAddTask}
 												disabled={isAdding}
-												className="flex items-center gap-2 py-2.5 px-6 rounded-lg bg-lightblue hover:bg-blue-700 text-white text-sm font-semibold transition-colors disabled:opacity-50"
+												className="flex items-center gap-2 py-2.5 px-6 rounded-lg bg-[#4a9eff] hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-50"
 											>
 												{isAdding ? (
 													<IconLoader className="h-5 w-5 animate-spin" />
 												) : (
-													<IconCircleCheck className="h-5 w-5" />
+													"Save New Plan"
 												)}
-												{isAdding
-													? "Saving Plan..."
-													: "Save New Plan"}
 											</button>
 										</div>
 									</div>
@@ -1250,15 +1248,15 @@ const TaskCard = ({
 	integrations,
 	onViewDetails,
 	onEditTask,
+	onReRunTask,
 	onDeleteTask,
-	onApproveTask,
-	onReRunTask
+	onApproveTask
 }) => {
-	const router = useRouter() // <-- Add router hook here
+	const router = useRouter()
 	const statusInfo = statusMap[task.status] || statusMap.default
 	const priorityInfo = priorityMap[task.priority] || priorityMap.default
 
-	// --- NEW: Check for missing tools ---
+	// Check for missing tools
 	let missingTools = []
 	if (task.status === "approval_pending" && integrations) {
 		const requiredTools = new Set(task.plan?.map((step) => step.tool) || [])
@@ -1303,7 +1301,7 @@ const TaskCard = ({
 			)}..."`
 			icon = <IconBook size={14} />
 
-			// NEW: Make journal source clickable
+			// Make journal source clickable
 			const pageDate = original_context.page_date
 			if (pageDate) {
 				return (
@@ -1377,7 +1375,7 @@ const TaskCard = ({
 			{/* Task Details */}
 			<div className="flex-grow min-w-0">
 				<p
-					className="text-base font-medium text-white truncate"
+					className="text-base font-normal text-[var(--color-text-primary)]"
 					title={task.description}
 				>
 					{task.description}
@@ -1386,7 +1384,7 @@ const TaskCard = ({
 				{renderTaskSource()}
 
 				{scheduleText && (
-					<p className="text-xs text-blue-300 mt-1 flex items-center gap-1.5">
+					<p className="text-xs text-[var(--color-accent-blue)] mt-1 flex items-center gap-1.5">
 						<IconRefresh size={14} />
 						<span>{scheduleText}</span>
 						{!task.enabled && (
@@ -1430,14 +1428,17 @@ const TaskCard = ({
 
 			{/* Actions */}
 			<div
-				className="flex items-center gap-2 flex-shrink-0"
+				className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
 				onClick={(e) => e.stopPropagation()}
 			>
 				{task.status === "approval_pending" && (
 					<>
 						<button
-							onClick={() => onApproveTask(task.task_id)}
-							className="p-2 rounded-md text-green-400 hover:bg-neutral-700 disabled:text-gray-600 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+							onClick={(e) => {
+								e.stopPropagation()
+								onApproveTask(task.task_id)
+							}}
+							className="p-2 rounded-md text-green-400 hover:bg-[var(--color-primary-surface-elevated)] disabled:text-gray-600 disabled:cursor-not-allowed disabled:hover:bg-transparent"
 							title={
 								missingTools.length
 									? `Connect: ${missingTools.join(", ")}`
@@ -1448,51 +1449,70 @@ const TaskCard = ({
 							<IconCircleCheck className="h-5 w-5" />
 						</button>
 						<button
-							onClick={() => onEditTask(task)}
-							className="p-2 rounded-md text-yellow-400 hover:bg-neutral-700"
+							onClick={(e) => {
+								e.stopPropagation()
+								onEditTask(task)
+							}}
+							className="p-2 rounded-md text-yellow-400 hover:bg-[var(--color-primary-surface-elevated)]"
 							title="Edit Plan"
 						>
 							<IconPencil className="h-5 w-5" />
 						</button>
 						<button
-							onClick={() => onDeleteTask(task.task_id)}
-							className="p-2 rounded-md text-red-400 hover:bg-neutral-700"
+							onClick={(e) => {
+								e.stopPropagation()
+								onDeleteTask(task.task_id)
+							}}
+							className="p-2 rounded-md text-red-400 hover:bg-[var(--color-primary-surface-elevated)]"
 							title="Delete Plan"
 						>
 							<IconTrash className="h-5 w-5" />
 						</button>
 					</>
 				)}
-				{["completed", "error", "cancelled"].includes(task.status) && (
-					<>
-						<button
-							onClick={() => onReRunTask(task.task_id)}
-							className="p-2 rounded-md text-blue-400 hover:bg-neutral-700"
-							title="Re-run Task"
-						>
-							<IconRefresh className="h-5 w-5" />
-						</button>
-						<button
-							onClick={() => onDeleteTask(task.task_id)}
-							className="p-2 rounded-md text-red-400 hover:bg-neutral-700"
-							title="Delete Task"
-						>
-							<IconTrash className="h-5 w-5" />
-						</button>
-					</>
-				)}
+				{["completed", "error", "cancelled"].includes(task.status) &&
+					!task.schedule && (
+						<>
+							<button
+								onClick={(e) => {
+									e.stopPropagation()
+									onReRunTask(task.task_id)
+								}}
+								className="p-2 rounded-md text-blue-400 hover:bg-[var(--color-primary-surface-elevated)]"
+								title="Re-run Task"
+							>
+								<IconRefresh className="h-5 w-5" />
+							</button>
+							<button
+								onClick={(e) => {
+									e.stopPropagation()
+									onDeleteTask(task.task_id)
+								}}
+								className="p-2 rounded-md text-red-400 hover:bg-[var(--color-primary-surface-elevated)]"
+								title="Delete Task"
+							>
+								<IconTrash className="h-5 w-5" />
+							</button>
+						</>
+					)}
 				{task.status === "active" && (
 					<>
 						<button
-							onClick={() => onEditTask(task)}
-							className="p-2 rounded-md text-yellow-400 hover:bg-neutral-700"
+							onClick={(e) => {
+								e.stopPropagation()
+								onEditTask(task)
+							}}
+							className="p-2 rounded-md text-yellow-400 hover:bg-[var(--color-primary-surface-elevated)]"
 							title="Edit Workflow"
 						>
 							<IconPencil className="h-5 w-5" />
 						</button>
 						<button
-							onClick={() => onDeleteTask(task.task_id)}
-							className="p-2 rounded-md text-red-400 hover:bg-neutral-700"
+							onClick={(e) => {
+								e.stopPropagation()
+								onDeleteTask(task.task_id)
+							}}
+							className="p-2 rounded-md text-red-400 hover:bg-[var(--color-primary-surface-elevated)]"
 							title="Delete Workflow"
 						>
 							<IconTrash className="h-5 w-5" />
@@ -1508,7 +1528,7 @@ const TaskDetailsModal = ({ task, onClose, onApprove, integrations }) => {
 	const statusInfo = statusMap[task.status] || statusMap.default
 	const priorityInfo = priorityMap[task.priority] || priorityMap.default
 
-	// --- RE-ADD THE CHECK HERE FOR THE MODAL ---
+	// Check for missing tools for the modal
 	let missingTools = []
 	if (task.status === "approval_pending" && integrations) {
 		const requiredTools = new Set(task.plan?.map((step) => step.tool) || [])

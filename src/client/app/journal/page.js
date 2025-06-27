@@ -15,7 +15,8 @@ import {
 	IconCircleCheck,
 	IconAlertCircle,
 	IconClock,
-	IconX
+	IconX,
+	IconSparkles
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import { AnimatePresence, motion } from "framer-motion"
@@ -40,11 +41,15 @@ const TaskDetails = ({ task }) => {
 	const animateStatus = statusMap[task.status]?.animate || false
 
 	return (
-		<div
+		<motion.div
 			onClick={() => router.push("/tasks")}
-			className="mt-2 text-xs text-gray-400 p-3 bg-neutral-800/60 rounded-md border border-neutral-700/50 cursor-pointer hover:bg-neutral-700/70 transition-colors"
+			className="mt-2 text-xs text-gray-400 p-3 bg-[var(--color-primary-surface)] rounded-[var(--radius-base)] border border-[#3a3a3a] cursor-pointer hover:bg-[var(--color-primary-surface-elevated)] transition-all duration-200 hover:transform hover:scale-[1.02] hover:shadow-lg group"
+			whileHover={{
+				rotateX: 2,
+				transition: { duration: 0.2 }
+			}}
 		>
-			<div className="flex justify-between items-center mb-2">
+			<div className="flex justify-between items-center mb-2 group-hover:text-[var(--color-text-primary)] transition-colors duration-200">
 				<p className="font-semibold text-gray-200">
 					{task.description}
 				</p>
@@ -98,7 +103,9 @@ const TaskDetails = ({ task }) => {
 						<p
 							className={cn(
 								"pl-2 whitespace-pre-wrap",
-								task.error ? "text-red-400" : "text-gray-300"
+								task.error
+									? "text-[var(--color-accent-red)]"
+									: "text-gray-300"
 							)}
 						>
 							{task.result || task.error}
@@ -106,7 +113,7 @@ const TaskDetails = ({ task }) => {
 					</div>
 				)}
 			</div>
-		</div>
+		</motion.div>
 	)
 }
 
@@ -182,14 +189,36 @@ const JournalBlock = ({ block, onUpdate, onDelete }) => {
 	}, [isExpanded, taskDetails, fetchTaskDetails])
 
 	return (
-		<motion.div
+		<motion.article
 			layout
-			initial={{ opacity: 0, y: 20 }}
-			animate={{ opacity: 1, y: 0 }}
-			exit={{ opacity: 0, x: -20 }}
-			className="flex items-start gap-3 p-3 rounded-lg hover:bg-neutral-800/50 group"
+			initial={{ opacity: 0, y: 20, scale: 0.95 }}
+			animate={{
+				opacity: 1,
+				y: 0,
+				scale: 1,
+				transition: {
+					type: "spring",
+					stiffness: 300,
+					damping: 25
+				}
+			}}
+			exit={{
+				opacity: 0,
+				x: -20,
+				scale: 0.95,
+				transition: { duration: 0.2 }
+			}}
+			whileHover={{
+				scale: 1.01,
+				transition: { duration: 0.2 }
+			}}
+			className="flex items-start gap-3 p-4 rounded-[var(--radius-lg)] hover:bg-[var(--color-primary-surface)]/50 group transition-all duration-200 hover:shadow-sm border border-transparent hover:border-[#3a3a3a]/30"
 		>
-			<div className="w-4 h-4 mt-1.5 bg-neutral-700 rounded-full flex-shrink-0"></div>
+			<motion.div
+				className="w-3 h-3 mt-2 bg-[var(--color-accent-blue)] rounded-full flex-shrink-0"
+				whileHover={{ scale: 1.2 }}
+				transition={{ type: "spring", stiffness: 400 }}
+			></motion.div>
 			<div className="flex-1">
 				{isEditing ? (
 					<textarea
@@ -198,55 +227,98 @@ const JournalBlock = ({ block, onUpdate, onDelete }) => {
 						onChange={(e) => setContent(e.target.value)}
 						onBlur={handleSave}
 						onKeyDown={handleKeyDown}
-						className="w-full bg-transparent text-gray-200 resize-none focus:outline-none overflow-hidden"
+						className="w-full bg-transparent text-[var(--color-text-primary)] resize-none focus:outline-none overflow-hidden border-none focus:ring-2 focus:ring-[var(--color-accent-blue)]/30 rounded-[var(--radius-sm)] p-2 -m-2"
 						rows={1}
 					/>
 				) : (
-					<p
-						className="text-gray-200 whitespace-pre-wrap"
+					<motion.p
+						className="text-[var(--color-text-primary)] whitespace-pre-wrap cursor-text hover:bg-[var(--color-primary-surface)]/30 rounded-[var(--radius-sm)] p-2 -m-2 transition-colors duration-150"
 						onClick={() => setIsEditing(true)}
+						whileHover={{ x: 2 }}
+						transition={{ duration: 0.15 }}
 					>
 						{block.content}
-					</p>
+					</motion.p>
 				)}
 				{block.linked_task_id && (
-					<details
-						className="mt-2 text-xs"
+					<motion.details
+						className="mt-3 text-xs"
 						onToggle={(e) => setIsExpanded(e.currentTarget.open)}
+						initial={{ opacity: 0 }}
+						animate={{ opacity: 1 }}
+						transition={{ delay: 0.2 }}
 					>
-						<summary className="cursor-pointer select-none flex items-center gap-2 text-blue-400 hover:text-blue-300 font-medium">
-							<IconFileSymlink size={16} />
+						<motion.summary
+							className="cursor-pointer select-none flex items-center gap-2 text-[var(--color-accent-blue)] hover:text-[var(--color-accent-blue)]/80 font-medium p-2 rounded-[var(--radius-sm)] hover:bg-[var(--color-primary-surface)]/30 transition-colors duration-150"
+							whileHover={{ x: 4 }}
+							transition={{ duration: 0.15 }}
+						>
+							<motion.div
+								whileHover={{ rotate: 15 }}
+								transition={{ duration: 0.2 }}
+							>
+								<IconSparkles size={16} />
+							</motion.div>
 							<span>Plan Generated: {block.task_status}</span>
-							<IconChevronDown
-								size={16}
-								className="transition-transform details-arrow"
-							/>
-						</summary>
+							<motion.div
+								animate={{ rotate: isExpanded ? 180 : 0 }}
+								transition={{ duration: 0.2 }}
+							>
+								<IconChevronDown size={16} />
+							</motion.div>
+						</motion.summary>
 						{isLoadingTask ? (
-							<div className="flex justify-center p-4">
-								<IconLoader className="animate-spin text-gray-400" />
-							</div>
+							<motion.div
+								className="flex justify-center p-4"
+								initial={{ opacity: 0 }}
+								animate={{ opacity: 1 }}
+							>
+								<motion.div
+									animate={{ rotate: 360 }}
+									transition={{
+										duration: 1,
+										repeat: Infinity,
+										ease: "linear"
+									}}
+								>
+									<IconLoader className="text-[var(--color-accent-blue)]" />
+								</motion.div>
+							</motion.div>
 						) : (
-							<TaskDetails task={taskDetails} />
+							<motion.div
+								initial={{ opacity: 0, y: -10 }}
+								animate={{ opacity: 1, y: 0 }}
+								transition={{ duration: 0.3 }}
+							>
+								<TaskDetails task={taskDetails} />
+							</motion.div>
 						)}
-					</details>
+					</motion.details>
 				)}
 			</div>
-			<div className="opacity-0 group-hover:opacity-100 transition-opacity">
-				<button
+			<motion.div
+				className="opacity-0 group-hover:opacity-100 transition-all duration-200 flex gap-1"
+				initial={{ x: 10, opacity: 0 }}
+				animate={{ x: 0 }}
+			>
+				<motion.button
 					onClick={() => setIsEditing(true)}
-					className="p-1 text-gray-400 hover:text-white"
+					className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-primary-surface)] rounded-[var(--radius-sm)] transition-colors duration-150"
+					whileHover={{ scale: 1.1 }}
+					whileTap={{ scale: 0.95 }}
 				>
 					<IconPencil size={16} />
-				</button>
-				<button
+				</motion.button>
+				<motion.button
 					onClick={() => onDelete(block.block_id)}
-					className="p-1 text-gray-400 hover:text-red-400"
+					className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-accent-red)] hover:bg-[var(--color-accent-red)]/10 rounded-[var(--radius-sm)] transition-colors duration-150"
+					whileHover={{ scale: 1.1 }}
+					whileTap={{ scale: 0.95 }}
 				>
 					<IconTrash size={16} />
-				</button>
-			</div>
-		</motion.div>
+				</motion.button>
+			</motion.div>
+		</motion.article>
 	)
 }
 
@@ -371,67 +443,101 @@ const JournalPage = () => {
 	}
 
 	return (
-		<div className="flex h-screen bg-matteblack dark">
-			<style jsx global>{`
-				details > summary {
-					list-style: none;
-				}
-				details > summary::-webkit-details-marker {
-					display: none;
-				}
-				details[open] .details-arrow {
-					transform: rotate(180deg);
-				}
-			`}</style>
+		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)]">
 			<Sidebar
 				userDetails={userDetails}
 				isSidebarVisible={isSidebarVisible}
 				setSidebarVisible={setSidebarVisible}
 			/>
 			<div className="flex-1 flex flex-col overflow-hidden">
-				<header className="flex items-center justify-between p-4 bg-matteblack border-b border-neutral-800 shrink-0">
-					<button
+				<motion.header
+					className="flex items-center justify-between p-6 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)] shrink-0"
+					initial={{ opacity: 0, y: -20 }}
+					animate={{ opacity: 1, y: 0 }}
+					transition={{ duration: 0.3 }}
+				>
+					<motion.button
 						onClick={() => setSidebarVisible(true)}
-						className="text-white md:hidden"
+						className="text-[var(--color-text-primary)] md:hidden p-2 hover:bg-[var(--color-primary-surface)] rounded-[var(--radius-base)] transition-colors duration-150"
+						whileHover={{ scale: 1.05 }}
+						whileTap={{ scale: 0.95 }}
 					>
 						<IconMenu2 />
-					</button>
-					<div className="flex items-center gap-4">
-						<h1 className="text-xl font-semibold text-white">
+					</motion.button>
+					<div className="flex items-center gap-6">
+						<motion.h1
+							className="text-2xl font-semibold text-[var(--color-text-primary)]"
+							initial={{ opacity: 0, x: -20 }}
+							animate={{ opacity: 1, x: 0 }}
+							transition={{ delay: 0.1 }}
+						>
 							Journal
-						</h1>
-						<div className="flex items-center gap-2 bg-neutral-800 rounded-full p-1">
-							<button
+						</motion.h1>
+						<motion.div
+							className="flex items-center gap-1 bg-[var(--color-primary-surface)] rounded-full p-1 border border-[var(--color-primary-surface-elevated)]"
+							initial={{ opacity: 0, scale: 0.9 }}
+							animate={{ opacity: 1, scale: 1 }}
+							transition={{ delay: 0.2 }}
+						>
+							<motion.button
 								onClick={() => handleDateChange(-1)}
-								className="p-1.5 text-gray-300 hover:text-white hover:bg-neutral-700 rounded-full"
+								className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-primary-surface-elevated)] rounded-full transition-colors duration-150"
+								whileHover={{ scale: 1.1 }}
+								whileTap={{ scale: 0.9 }}
 							>
 								<IconChevronLeft size={18} />
-							</button>
-							<span className="text-sm font-medium text-white w-28 text-center">
+							</motion.button>
+							<motion.span
+								className="text-sm font-medium text-[var(--color-text-primary)] w-32 text-center"
+								key={currentDate.toDateString()}
+								initial={{ opacity: 0, y: 10 }}
+								animate={{ opacity: 1, y: 0 }}
+								transition={{ duration: 0.2 }}
+							>
 								{currentDate.toLocaleDateString(undefined, {
 									month: "long",
 									day: "numeric",
 									year: "numeric"
 								})}
-							</span>
-							<button
+							</motion.span>
+							<motion.button
 								onClick={() => handleDateChange(1)}
-								className="p-1.5 text-gray-300 hover:text-white hover:bg-neutral-700 rounded-full"
+								className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-primary-surface-elevated)] rounded-full transition-colors duration-150"
+								whileHover={{ scale: 1.1 }}
+								whileTap={{ scale: 0.9 }}
 							>
 								<IconChevronRight size={18} />
-							</button>
-						</div>
+							</motion.button>
+						</motion.div>
 					</div>
 					<div></div>
-				</header>
-				<main className="flex-1 flex flex-col overflow-y-auto p-4 sm:p-6 custom-scrollbar">
-					<div className="w-full max-w-2xl mx-auto">
+				</motion.header>
+				<main className="flex-1 flex flex-col overflow-y-auto p-6 custom-scrollbar">
+					<motion.div
+						className="w-full max-w-4xl mx-auto"
+						initial={{ opacity: 0, y: 20 }}
+						animate={{ opacity: 1, y: 0 }}
+						transition={{ delay: 0.3, duration: 0.4 }}
+					>
 						{isLoading ? (
-							<div className="flex justify-center py-20">
-								<IconLoader className="w-10 h-10 animate-spin text-lightblue" />
-							</div>
+							<motion.div
+								className="flex justify-center py-20"
+								initial={{ opacity: 0 }}
+								animate={{ opacity: 1 }}
+							>
+								<motion.div
+									animate={{ rotate: 360 }}
+									transition={{
+										duration: 1,
+										repeat: Infinity,
+										ease: "linear"
+									}}
+								>
+									<IconLoader className="w-10 h-10 text-[var(--color-accent-blue)]" />
+								</motion.div>
+							</motion.div>
 						) : (
-							<AnimatePresence>
+							<AnimatePresence mode="popLayout">
 								{blocks.map((block) => (
 									<JournalBlock
 										key={block.block_id}
@@ -442,8 +548,20 @@ const JournalPage = () => {
 								))}
 							</AnimatePresence>
 						)}
-						<div className="flex items-start gap-3 p-3">
-							<div className="w-4 h-4 mt-1.5 bg-neutral-700 rounded-full flex-shrink-0"></div>
+						<motion.div
+							className="flex items-start gap-3 p-4 rounded-[var(--radius-lg)] hover:bg-[var(--color-primary-surface)]/30 transition-colors duration-200 border border-transparent hover:border-[#3a3a3a]/30"
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.4 }}
+						>
+							<motion.div
+								className="w-3 h-3 mt-2 bg-[var(--color-text-muted)] rounded-full flex-shrink-0"
+								whileHover={{
+									scale: 1.2,
+									backgroundColor: "var(--color-accent-blue)"
+								}}
+								transition={{ duration: 0.2 }}
+							></motion.div>
 							<textarea
 								ref={newBlockTextareaRef}
 								value={newBlockContent}
@@ -451,12 +569,12 @@ const JournalPage = () => {
 									setNewBlockContent(e.target.value)
 								}
 								onKeyDown={handleKeyDownNewBlock}
-								placeholder="Write something... (Shift+Enter to send to AI)"
-								className="w-full bg-transparent text-gray-200 resize-none focus:outline-none overflow-hidden"
+								placeholder="Write something... (Enter to save, Shift+Enter to send to AI)"
+								className="w-full bg-transparent text-[var(--color-text-primary)] resize-none focus:outline-none overflow-hidden placeholder-[var(--color-text-muted)] border-none focus:ring-2 focus:ring-[var(--color-accent-blue)]/30 rounded-[var(--radius-sm)] p-2 -m-2"
 								rows={1}
 							/>
-						</div>
-					</div>
+						</motion.div>
+					</motion.div>
 				</main>
 			</div>
 		</div>

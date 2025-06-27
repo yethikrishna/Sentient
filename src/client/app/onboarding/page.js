@@ -181,28 +181,28 @@ const OnboardingForm = () => {
 
 	if (isLoading) {
 		return (
-			<div className="flex flex-col items-center justify-center min-h-screen bg-matteblack text-white">
-				<IconLoader className="w-10 h-10 animate-spin text-lightblue" />
+			<div className="flex flex-col items-center justify-center min-h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)]">
+				<IconLoader className="w-10 h-10 animate-spin text-[var(--color-accent-blue)]" />
 			</div>
 		)
 	}
 	if (submissionComplete) {
 		return (
-			<div className="flex flex-col items-center justify-center min-h-screen bg-matteblack text-white p-4">
+			<div className="flex flex-col items-center justify-center min-h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] p-4">
 				<motion.div
 					initial={{ opacity: 0, y: 20 }}
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ duration: 0.5 }}
 					className="text-center"
 				>
-					<CheckFilled className="w-24 h-24 text-green-500 mx-auto mb-6" />
+					<CheckFilled className="w-24 h-24 text-[var(--color-accent-green)] mx-auto mb-6" />
 					<h1 className="text-4xl font-Poppins font-bold mb-4">
 						Onboarding Complete!
 					</h1>
-					<p className="text-lg text-gray-300">
+					<p className="text-lg text-[var(--color-text-secondary)]">
 						Thank you. We're setting things up for you.
 					</p>
-					<p className="text-md text-gray-400 mt-2">
+					<p className="text-md text-[var(--color-text-muted)] mt-2">
 						Redirecting to your new companion...
 					</p>
 				</motion.div>
@@ -211,7 +211,7 @@ const OnboardingForm = () => {
 	}
 
 	return (
-		<div className="min-h-screen bg-matteblack text-white p-4 sm:p-6 flex items-center justify-center">
+		<div className="min-h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] p-4 sm:p-6 flex items-center justify-center">
 			<motion.div
 				initial={{ opacity: 0, y: 20 }}
 				animate={{ opacity: 1, y: 0 }}
@@ -219,10 +219,10 @@ const OnboardingForm = () => {
 				className="w-full max-w-4xl mx-auto"
 			>
 				<div className="text-center mb-12">
-					<h1 className="text-3xl sm:text-4xl font-Poppins font-bold mb-3 text-white">
+					<h1 className="text-3xl sm:text-4xl font-Poppins font-bold mb-3 text-[var(--color-text-primary)]">
 						Welcome to Sentient
 					</h1>
-					<p className="text-lg text-gray-400">
+					<p className="text-lg text-[var(--color-text-secondary)]">
 						Let's personalize your AI companion.
 					</p>
 				</div>
@@ -231,11 +231,11 @@ const OnboardingForm = () => {
 					{questions.map((q) => {
 						return (
 							<div key={q.id}>
-								<label className="block text-lg sm:text-xl font-Poppins font-semibold mb-2 text-gray-200">
+								<label className="block text-lg sm:text-xl font-Poppins font-semibold mb-2 text-[var(--color-text-primary)]">
 									{q.question}
 								</label>
 								{q.description && (
-									<p className="text-sm text-gray-400 mb-4">
+									<p className="text-sm text-[var(--color-text-secondary)] mb-4">
 										{q.description}
 									</p>
 								)}
@@ -250,7 +250,7 @@ const OnboardingForm = () => {
 												true
 											)
 										}
-										className="w-full px-4 py-3 rounded-lg bg-neutral-800 text-white border border-neutral-700 focus:outline-none focus:ring-2 focus:ring-lightblue placeholder-gray-500"
+										className="w-full px-4 py-3 rounded-lg bg-[var(--color-primary-surface)] text-[var(--color-text-primary)] border border-[var(--color-primary-surface-elevated)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)] placeholder-[var(--color-text-muted)]"
 										placeholder="Type your answer here..."
 										required={q.required}
 									/>
@@ -264,7 +264,7 @@ const OnboardingForm = () => {
 												true
 											)
 										}
-										className="w-full px-4 py-3 rounded-lg bg-neutral-800 text-white border border-neutral-700 focus:outline-none focus:ring-2 focus:ring-lightblue"
+										className="w-full px-4 py-3 rounded-lg bg-[var(--color-primary-surface)] text-[var(--color-text-primary)] border border-[var(--color-primary-surface-elevated)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
 										required={q.required}
 									>
 										<option value="" disabled>
@@ -289,7 +289,7 @@ const OnboardingForm = () => {
 												true
 											)
 										}
-										className="w-full px-4 py-3 rounded-lg bg-neutral-800 text-white border border-neutral-700 focus:outline-none focus:ring-2 focus:ring-lightblue placeholder-gray-500 min-h-[100px] resize-y"
+										className="w-full px-4 py-3 rounded-lg bg-[var(--color-primary-surface)] text-[var(--color-text-primary)] border border-[var(--color-primary-surface-elevated)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)] placeholder-[var(--color-text-muted)] min-h-[100px] resize-y"
 										placeholder={q.placeholder}
 									/>
 								) : q.type === "location-input" ? (
@@ -298,7 +298,7 @@ const OnboardingForm = () => {
 											type="button"
 											onClick={handleGetLocation}
 											disabled={locationState.loading}
-											className="flex items-center gap-2 px-5 py-3 rounded-lg bg-neutral-700 text-white hover:bg-neutral-600 transition-colors"
+											className="flex items-center gap-2 px-5 py-3 rounded-lg bg-[var(--color-primary-surface-elevated)] text-[var(--color-text-primary)] hover:bg-neutral-600 transition-colors"
 										>
 											<IconMapPin size={20} />
 											<span>
@@ -308,13 +308,13 @@ const OnboardingForm = () => {
 											</span>
 										</button>
 										{locationState.data && (
-											<div className="flex items-center gap-2 text-green-400">
+											<div className="flex items-center gap-2 text-[var(--color-accent-green)]">
 												<IconMapPinFilled size={20} />
 												<span>Location captured!</span>
 											</div>
 										)}
 										{locationState.error && (
-											<p className="text-sm text-red-400">
+											<p className="text-sm text-[var(--color-accent-red)]">
 												Could not get location. You can
 												continue without it.
 											</p>
@@ -324,7 +324,7 @@ const OnboardingForm = () => {
 							</div>
 						)
 					})}
-					<div className="flex justify-end pt-6 border-t border-neutral-700">
+					<div className="flex justify-end pt-6 border-t border-[var(--color-primary-surface-elevated)]">
 						<button
 							type="submit"
 							disabled={
@@ -332,7 +332,7 @@ const OnboardingForm = () => {
 								isSubmitting ||
 								!answers["timezone"]
 							}
-							className="px-8 py-3 rounded-lg text-lg font-semibold transition-colors duration-300 bg-lightblue hover:bg-blue-700 text-white disabled:bg-neutral-600 disabled:text-gray-400 disabled:cursor-not-allowed"
+							className="px-8 py-3 rounded-lg text-lg font-semibold transition-colors duration-300 bg-[var(--color-accent-blue)] hover:bg-blue-700 text-white disabled:bg-neutral-600 disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed"
 						>
 							{isSubmitting ? "Saving..." : "Save & Continue"}
 						</button>

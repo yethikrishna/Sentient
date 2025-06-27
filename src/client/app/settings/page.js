@@ -180,7 +180,7 @@ const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {
 							htmlFor={field.id}
 							className="block text-sm font-medium text-gray-300 mb-1"
 						>
-							{field.label}
+							Enter {field.label}
 						</label>
 						<input
 							type={field.type}
@@ -188,7 +188,7 @@ const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {
 							id={field.id}
 							onChange={handleChange}
 							value={credentials[field.id] || ""}
-							className="w-full bg-neutral-700 border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-lightblue"
+							className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
 							autoComplete="off"
 						/>
 					</div>
@@ -268,10 +268,10 @@ const PrivacySettings = () => {
 
 	return (
 		<section>
-			<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-neutral-700 pb-2">
+			<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2">
 				Privacy Filters
 			</h2>
-			<div className="bg-neutral-800/50 p-4 md:p-6 rounded-lg border border-neutral-700">
+			<div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)]">
 				<p className="text-gray-400 text-sm mb-4">
 					Add keywords to prevent emails or events containing them
 					from being processed by the proactive pipeline.
@@ -285,12 +285,12 @@ const PrivacySettings = () => {
 							e.key === "Enter" && handleAddFilter()
 						}
 						placeholder="Add a new filter keyword..."
-						className="flex-grow bg-neutral-700 border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-lightblue"
+						className="flex-grow bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
 					/>
 					<button
 						onClick={handleAddFilter}
 						disabled={isLoading}
-						className="py-2 px-4 rounded-md bg-lightblue hover:bg-blue-700 text-white font-medium transition-colors"
+						className="py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-blue-700 text-white font-medium transition-colors"
 					>
 						Add
 					</button>
@@ -299,7 +299,7 @@ const PrivacySettings = () => {
 					{filters.map((filter, index) => (
 						<div
 							key={index}
-							className="flex items-center gap-2 bg-neutral-700 rounded-full py-1.5 px-3 text-sm text-gray-200"
+							className="flex items-center gap-2 bg-[var(--color-primary-surface-elevated)] rounded-full py-1.5 px-3 text-sm text-gray-200"
 						>
 							<span>{filter}</span>
 							<button onClick={() => handleDeleteFilter(filter)}>
@@ -313,7 +313,7 @@ const PrivacySettings = () => {
 				</div>
 				{isLoading && (
 					<div className="flex justify-center mt-4">
-						<IconLoader className="w-6 h-6 animate-spin text-lightblue" />
+						<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)]" />
 					</div>
 				)}
 			</div>
@@ -560,22 +560,22 @@ const Settings = () => {
 	])
 
 	return (
-		<div className="flex h-screen bg-matteblack dark">
+		<div className="flex h-screen bg-[var(--color-primary-background)]">
 			<Sidebar
 				userDetails={userDetails}
 				isSidebarVisible={isSidebarVisible}
 				setSidebarVisible={setSidebarVisible}
 			/>
 			<div className="flex-1 flex flex-col overflow-hidden">
-				<header className="flex flex-col sm:flex-row items-center justify-between p-4 bg-matteblack border-b border-neutral-800 gap-4">
+				<header className="flex flex-col sm:flex-row items-center justify-between p-4 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)] gap-4">
 					<div className="flex items-center gap-4 w-full sm:w-auto">
 						<button
 							onClick={() => setSidebarVisible(true)}
-							className="text-white md:hidden"
+							className="text-[var(--color-text-primary)] md:hidden"
 						>
 							<IconMenu2 />
 						</button>
-						<h1 className="font-Poppins text-white text-2xl sm:text-3xl font-light">
+						<h1 className="font-Poppins text-[var(--color-text-primary)] text-2xl sm:text-3xl font-light">
 							Settings
 						</h1>
 					</div>
@@ -587,7 +587,7 @@ const Settings = () => {
 									"_blank"
 								)
 							}
-							className="flex-1 sm:flex-none flex items-center justify-center gap-2 py-2 px-4 rounded-full bg-darkblue hover:bg-lightblue text-white text-xs sm:text-sm font-medium transition-colors shadow-md"
+							className="flex-1 sm:flex-none flex items-center justify-center gap-2 py-2 px-4 rounded-full bg-blue-900/50 hover:bg-[var(--color-accent-blue)] text-white text-xs sm:text-sm font-medium transition-colors shadow-md"
 							title={
 								pricing === "free"
 									? "Upgrade for more features"
@@ -603,7 +603,7 @@ const Settings = () => {
 						</button>
 						<button
 							onClick={() => setShowReferralDialog(true)}
-							className="flex-1 sm:flex-none flex items-center justify-center gap-2 py-2 px-4 rounded-full bg-neutral-700 hover:bg-neutral-600 text-white text-xs sm:text-sm font-medium transition-colors shadow-md"
+							className="flex-1 sm:flex-none flex items-center justify-center gap-2 py-2 px-4 rounded-full bg-[var(--color-primary-surface-elevated)] hover:bg-neutral-600 text-white text-xs sm:text-sm font-medium transition-colors shadow-md"
 							title="Refer a friend"
 						>
 							<IconGift size={18} />
@@ -615,14 +615,14 @@ const Settings = () => {
 					<div className="w-full max-w-5xl mx-auto space-y-10">
 						<PrivacySettings />
 						<section>
-							<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-neutral-700 pb-2">
+							<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2">
 								Connected Apps & Integrations
 							</h2>
-							<div className="bg-neutral-800/50 p-2 md:p-4 rounded-lg border border-neutral-700">
-								<div className="divide-y divide-neutral-700/50">
+							<div className="bg-[var(--color-primary-surface)]/50 p-2 md:p-4 rounded-lg border border-[var(--color-primary-surface-elevated)]">
+								<div className="divide-y divide-[var(--color-primary-surface-elevated)]/50">
 									{loadingIntegrations ? (
 										<div className="flex justify-center items-center py-10">
-											<IconLoader className="w-8 h-8 animate-spin text-lightblue" />
+											<IconLoader className="w-8 h-8 animate-spin text-[var(--color-accent-blue)]" />
 										</div>
 									) : userIntegrations.length > 0 ? (
 										userIntegrations.map((integration) => {
@@ -639,9 +639,9 @@ const Settings = () => {
 													className="flex items-center justify-between p-4"
 												>
 													<div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
-														<IntegrationIcon className="w-8 h-8 text-lightblue" />
+														<IntegrationIcon className="w-8 h-8 text-[var(--color-accent-blue)]" />
 														<div className="flex-1 min-w-0">
-															<h3 className="font-semibold text-white text-base sm:text-lg truncate">
+															<h3 className="font-semibold text-[var(--color-text-primary)] text-base sm:text-lg truncate">
 																{
 																	integration.display_name
 																}
@@ -655,7 +655,7 @@ const Settings = () => {
 													</div>
 													<div className="w-32 sm:w-40 text-right flex-shrink-0">
 														{isProcessing ? (
-															<IconLoader className="w-6 h-6 animate-spin text-lightblue ml-auto" />
+															<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)] ml-auto" />
 														) : integration.connected ? (
 															<button
 																onClick={() =>
@@ -663,7 +663,7 @@ const Settings = () => {
 																		integration.name
 																	)
 																}
-																className="flex items-center justify-center gap-1 sm:gap-2 w-full py-2 px-3 rounded-md bg-red-600/20 hover:bg-red-600/40 text-red-400 text-sm font-medium transition-colors"
+																className="flex items-center justify-center gap-1 sm:gap-2 w-full py-2 px-3 rounded-md bg-[var(--color-accent-red)]/20 hover:bg-[var(--color-accent-red)]/40 text-red-400 text-sm font-medium transition-colors"
 															>
 																<IconPlugOff
 																	size={16}
@@ -679,7 +679,7 @@ const Settings = () => {
 																		integration
 																	)
 																}
-																className="flex items-center justify-center gap-1 sm:gap-2 w-full py-2 px-3 rounded-md bg-blue-600/50 hover:bg-blue-600/70 text-white text-sm font-medium transition-colors"
+																className="flex items-center justify-center gap-1 sm:gap-2 w-full py-2 px-3 rounded-md bg-[var(--color-accent-blue)]/50 hover:bg-[var(--color-accent-blue)]/70 text-white text-sm font-medium transition-colors"
 															>
 																<IconPlugConnected
 																	size={16}
@@ -703,14 +703,14 @@ const Settings = () => {
 						</section>
 
 						<section>
-							<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-neutral-700 pb-2">
+							<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2">
 								Default System Tools
 							</h2>
-							<div className="bg-neutral-800/50 p-2 md:p-4 rounded-lg border border-neutral-700">
-								<div className="divide-y divide-neutral-700/50">
+							<div className="bg-[var(--color-primary-surface)]/50 p-2 md:p-4 rounded-lg border border-[var(--color-primary-surface-elevated)]">
+								<div className="divide-y divide-[var(--color-primary-surface-elevated)]/50">
 									{loadingIntegrations ? (
 										<div className="flex justify-center items-center py-10">
-											<IconLoader className="w-8 h-8 animate-spin text-lightblue" />
+											<IconLoader className="w-8 h-8 animate-spin text-[var(--color-accent-blue)]" />
 										</div>
 									) : defaultTools.length > 0 ? (
 										defaultTools.map((tool) => {
@@ -722,9 +722,9 @@ const Settings = () => {
 													className="flex items-center justify-between p-4"
 												>
 													<div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
-														<ToolIcon className="w-8 h-8 text-gray-400" />
+														<ToolIcon className="w-8 h-8 text-[var(--color-text-muted)]" />
 														<div className="flex-1 min-w-0">
-															<h3 className="font-semibold text-white text-base sm:text-lg truncate">
+															<h3 className="font-semibold text-[var(--color-text-primary)] text-base sm:text-lg truncate">
 																{
 																	tool.display_name
 																}
@@ -768,11 +768,17 @@ const Settings = () => {
 							extraContent={
 								referrerStatus ? (
 									<p className="text-sm text-green-400">
-										Referrer status: Active
+										Your referral status is:{" "}
+										<span className="font-bold">
+											Active
+										</span>
 									</p>
 								) : (
 									<p className="text-sm text-yellow-400">
-										Referrer status: Inactive
+										Your referral status is:{" "}
+										<span className="font-bold">
+											Inactive
+										</span>
 									</p>
 								)
 							}

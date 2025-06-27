@@ -97,7 +97,7 @@ const Home = () => {
 
 	// Show a loading screen while checking authentication or onboarding status.
 	return (
-		<div className="min-h-screen flex flex-col items-center justify-center bg-black">
+		<div className="min-h-screen flex flex-col items-center justify-center bg-[var(--color-primary-background)]">
 			<div className="flex flex-col items-center justify-center h-full backdrop-blur-xs">
 				<AnimatedLogo />
 				<h1 className="text-white text-4xl mt-4">Sentient</h1>

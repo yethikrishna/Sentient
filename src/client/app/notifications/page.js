@@ -138,7 +138,7 @@ const Notifications = () => {
 
 	// --- Render Logic ---
 	return (
-		<div className="flex h-screen bg-matteblack dark">
+		<div className="flex h-screen bg-[var(--color-primary-background)]">
 			<Sidebar
 				userDetails={userDetails}
 				isSidebarVisible={isSidebarVisible}
@@ -146,14 +146,14 @@ const Notifications = () => {
 			/>
 
 			<div className="flex-1 flex flex-col overflow-hidden">
-				<header className="flex items-center justify-between p-4 bg-matteblack border-b border-neutral-800 md:flex-row md:items-center">
+				<header className="flex items-center justify-between p-4 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)] md:flex-row md:items-center">
 					<button
 						onClick={() => setSidebarVisible(true)}
-						className="text-white md:hidden"
+						className="text-[var(--color-text-primary)] md:hidden"
 					>
 						<IconMenu2 />
 					</button>
-					<h1 className="text-2xl sm:text-3xl font-light text-white flex-grow text-center md:text-left md:flex-grow-0">
+					<h1 className="text-2xl sm:text-3xl font-light text-[var(--color-text-primary)] flex-grow text-center md:text-left md:flex-grow-0">
 						Notifications
 					</h1>
 				</header>
@@ -161,23 +161,23 @@ const Notifications = () => {
 				<main className="flex-1 w-full max-w-3xl mx-auto flex flex-col overflow-hidden p-4 sm:p-6">
 					{isLoading ? ( // Handle loading state first
 						<div className="flex-grow flex flex-col justify-center items-center text-center p-10">
-							<IconLoader className="w-10 h-10 text-lightblue animate-spin" />
-							<span className="ml-3 text-gray-400 text-lg mt-4">
+							<IconLoader className="w-10 h-10 text-[var(--color-accent-blue)] animate-spin" />
+							<span className="ml-3 text-[var(--color-text-secondary)] text-lg mt-4">
 								Loading Notifications...
 							</span>
 						</div>
 					) : error ? ( // Display error message if error state is set
 						<div className="flex-grow flex flex-col justify-center items-center text-center p-10">
-							<IconAlertCircle className="w-12 h-12 text-red-500 mb-4" />
-							<p className="text-red-400 text-lg mb-4">
+							<IconAlertCircle className="w-12 h-12 text-[var(--color-accent-red)] mb-4" />
+							<p className="text-[var(--color-accent-red)] text-lg mb-4">
 								Could not load notifications
 							</p>
-							<p className="text-gray-500 text-sm mb-6">
+							<p className="text-[var(--color-text-muted)] text-sm mb-6">
 								{error}
 							</p>
 							<button
 								onClick={fetchNotifications} // Allow retry
-								className="py-2 px-5 rounded bg-lightblue hover:bg-blue-700 text-white text-sm font-medium transition-colors"
+								className="py-2 px-5 rounded bg-[var(--color-accent-blue)] hover:bg-blue-700 text-white text-sm font-medium transition-colors"
 							>
 								Retry
 							</button>
@@ -199,17 +199,17 @@ const Notifications = () => {
 								<div // eslint-disable-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
 									key={notif.id ?? Math.random()}
 									onClick={() => router.push("/tasks")}
-									className="flex items-center gap-4 bg-neutral-800 p-4 rounded-lg border border-neutral-700/50 shadow-sm cursor-pointer hover:bg-neutral-700/70 transition-colors group"
+									className="flex items-center gap-4 bg-[var(--color-primary-surface)] p-4 rounded-lg border border-[var(--color-primary-surface-elevated)]/50 shadow-sm cursor-pointer hover:bg-[var(--color-primary-surface-elevated)]/70 transition-colors group"
 								>
 									<div className="flex-shrink-0 pt-1">
-										<IconBell className="w-5 h-5 text-lightblue" />
+										<IconBell className="w-5 h-5 text-[var(--color-accent-blue)]" />
 									</div>
 									<div className="flex-grow">
-										<p className="text-white text-sm leading-relaxed mb-1">
+										<p className="text-[var(--color-text-primary)] text-sm leading-relaxed mb-1">
 											{notif.message ||
 												"No message content."}
 										</p>
-										<p className="text-gray-500 text-xs">
+										<p className="text-[var(--color-text-muted)] text-xs">
 											{formatTimestamp(notif.timestamp)}
 										</p>
 									</div>
@@ -218,7 +218,7 @@ const Notifications = () => {
 											onClick={(e) =>
 												handleDelete(e, notif.id)
 											}
-											className="p-1.5 text-gray-500 rounded-full opacity-0 group-hover:opacity-100 hover:bg-neutral-600 hover:text-red-400 transition-all duration-200"
+											className="p-1.5 text-[var(--color-text-muted)] rounded-full opacity-0 group-hover:opacity-100 hover:bg-neutral-600 hover:text-[var(--color-accent-red)] transition-all duration-200"
 											title="Dismiss notification"
 										>
 											<IconX size={16} />

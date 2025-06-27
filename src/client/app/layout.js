@@ -30,7 +30,7 @@ export default function RootLayout({ children }) {
 	return (
 		<html lang="en" suppressHydrationWarning>
 			<Auth0Provider>
-				<body className="bg-black">
+				<body>
 					<Toaster position="bottom-right" />
 					<LayoutWrapper>{children}</LayoutWrapper>
 				</body>

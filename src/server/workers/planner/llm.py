@@ -7,15 +7,17 @@ from .db import get_all_mcp_descriptions
 
 logger = logging.getLogger(__name__)
 
-def get_planner_agent(available_tools: dict):
+def get_planner_agent(available_tools: dict, current_time_str: str):
     """Initializes and returns a Qwen Assistant agent for planning."""
     
     # Format the MCP descriptions for the prompt
     # The keys are now the simple names (e.g., 'gmail')
     tools_list_str = "\n".join([f"- {name}: {desc}" for name, desc in available_tools.items()])
     
+    # Add current time to the prompt for better contextual planning
     system_prompt = prompts.SYSTEM_PROMPT.format(
-        available_tools=tools_list_str
+        available_tools=tools_list_str,
+        current_time=current_time_str
     )
 
     llm_cfg = {}

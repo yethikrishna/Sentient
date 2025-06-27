@@ -114,7 +114,11 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
 
             llm_input_content = ""
             if service_name == "journal_block":
-                llm_input_content = f"Source: Journal Entry\n\nContent:\n{event_data.get('content', '')}"
+                page_date = event_data.get('page_date')
+                if page_date:
+                    llm_input_content = f"Source: Journal Entry on {page_date}\n\nContent:\n{event_data.get('content', '')}"
+                else:
+                    llm_input_content = f"Source: Journal Entry\n\nContent:\n{event_data.get('content', '')}"
             elif service_name == "gmail":
                 llm_input_content = f"Source: Email\nSubject: {event_data.get('subject', '')}\n\nBody:\n{event_data.get('body', '')}"
             elif service_name == "gcalendar":
@@ -182,7 +186,7 @@ def add_journal_entry_task(user_id: str, content: str, date: Optional[str] = Non
     logger.info(f"Journal task running for user {user_id}: '{content[:50]}...'")
 
     async def async_add_entry():
-        mcp_url = os.getenv("JOURNAL_MCP_SERVER_URL", "http://localhost:9018/sse").replace("/sse", "")
+        mcp_url = os.getenv("JOURNAL_MCP_SERVER_URL", "http://localhost:9018/sse")
         payload = {
             "tool": "add_journal_entry",
             "parameters": {
@@ -216,12 +220,27 @@ def process_action_item(user_id: str, action_items: list, source_event_id: str, 
     async def async_main():
         db_manager = PlannerMongoManager()
         try:
+            # Fetch user's timezone to provide current time context to the planner
+            user_profile = await db_manager.user_profiles_collection.find_one({"user_id": user_id})
+            user_timezone_str = "UTC"
+            if user_profile and user_profile.get("userData", {}).get("personalInfo", {}).get("timezone"):
+                user_timezone_str = user_profile["userData"]["personalInfo"]["timezone"]
+            
+            try:
+                user_timezone = ZoneInfo(user_timezone_str)
+            except ZoneInfoNotFoundError:
+                logger.warning(f"Invalid timezone '{user_timezone_str}' for user {user_id}. Defaulting to UTC.")
+                user_timezone = ZoneInfo("UTC")
+            
+            current_user_time = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
+
             available_tools = get_all_mcp_descriptions()
             if not available_tools:
                 logger.warning(f"No tools available for planner task for user {user_id}.")
                 return
 
-            agent = get_planner_agent(available_tools)
+            # Pass current time to the agent prompt
+            agent = get_planner_agent(available_tools, current_user_time)
             user_prompt_content = "Please create a plan for the following action items:\n- " + "\n- ".join(action_items)
             messages = [{'role': 'user', 'content': user_prompt_content}]
 

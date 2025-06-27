@@ -210,6 +210,17 @@ async def user_activity_heartbeat_endpoint(user_id: str = Depends(PermissionChec
         return JSONResponse(content={"message": "User activity timestamp updated."})
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update user activity.")
 
+@router.get("/settings/privacy-filters", summary="Get User Privacy Filters")
+async def get_privacy_filters_endpoint(
+    user_id: str = Depends(PermissionChecker(required_permissions=["read:config"]))
+):
+    profile = await mongo_manager.get_user_profile(user_id)
+    filters = []
+    if profile and profile.get("userData"):
+        filters = profile["userData"].get("privacyFilters", [])
+    
+    return JSONResponse(content={"filters": filters})
+
 @router.post("/settings/privacy-filters", summary="Update User Privacy Filters")
 async def update_privacy_filters_endpoint(
     request: PrivacyFiltersRequest,

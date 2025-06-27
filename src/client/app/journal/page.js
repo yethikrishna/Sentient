@@ -20,8 +20,10 @@ import {
 import toast from "react-hot-toast"
 import { AnimatePresence, motion } from "framer-motion"
 import { cn } from "@utils/cn"
+import { useRouter } from "next/navigation"
 
 const TaskDetails = ({ task }) => {
+	const router = useRouter()
 	if (!task) return null
 
 	const statusMap = {
@@ -38,7 +40,10 @@ const TaskDetails = ({ task }) => {
 	const animateStatus = statusMap[task.status]?.animate || false
 
 	return (
-		<div className="mt-2 text-xs text-gray-400 p-3 bg-neutral-800/60 rounded-md border border-neutral-700/50">
+		<div
+			onClick={() => router.push("/tasks")}
+			className="mt-2 text-xs text-gray-400 p-3 bg-neutral-800/60 rounded-md border border-neutral-700/50 cursor-pointer hover:bg-neutral-700/70 transition-colors"
+		>
 			<div className="flex justify-between items-center mb-2">
 				<p className="font-semibold text-gray-200">
 					{task.description}
@@ -136,7 +141,7 @@ const JournalBlock = ({ block, onUpdate, onDelete }) => {
 	}
 
 	const fetchTaskDetails = useCallback(async () => {
-		if (!block.linked_task_id || taskDetails) return
+		if (!block.linked_task_id) return
 		setIsLoadingTask(true)
 		try {
 			const response = await fetch(`/api/tasks/${block.linked_task_id}`)
@@ -149,13 +154,32 @@ const JournalBlock = ({ block, onUpdate, onDelete }) => {
 		} finally {
 			setIsLoadingTask(false)
 		}
-	}, [block.linked_task_id, taskDetails])
+	}, [block.linked_task_id])
 
 	useEffect(() => {
 		if (isExpanded) {
 			fetchTaskDetails()
 		}
 	}, [isExpanded, fetchTaskDetails])
+
+	// This effect sets up polling for real-time progress updates
+	useEffect(() => {
+		let intervalId = null
+		if (
+			isExpanded &&
+			taskDetails &&
+			["processing", "pending", "approval_pending"].includes(
+				taskDetails.status
+			)
+		) {
+			intervalId = setInterval(fetchTaskDetails, 5000) // Poll every 5 seconds
+		}
+		return () => {
+			if (intervalId) {
+				clearInterval(intervalId)
+			}
+		}
+	}, [isExpanded, taskDetails, fetchTaskDetails])
 
 	return (
 		<motion.div

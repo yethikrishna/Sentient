@@ -57,10 +57,11 @@ async def create_journal_block(
     if request.processWithAI:
         event_data = {
             "content": request.content,
-            "block_id": block_id
+            "block_id": block_id,
+            "page_date": request.page_date # Pass the date of the journal entry
         }
         # Call Celery task asynchronously
-        extract_from_context.delay(user_id, "journal_block", block_id, event_data)
+        extract_from_context.delay(user_id, "journal_block", event_id=block_id, event_data=event_data)
         print(f"Dispatched journal block {block_id} to Celery for processing.")
     
     block_doc["_id"] = str(block_doc["_id"])
@@ -80,11 +81,10 @@ async def update_journal_block(
     if not original_block:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Block not found")
         
-    old_task_id_to_deprecate = original_block.get("linked_task_id")
-    if old_task_id_to_deprecate:
+    if old_task_id_to_deprecate := original_block.get("linked_task_id"):
         await mongo_manager.task_collection.update_one(
             {"task_id": old_task_id_to_deprecate, "user_id": user_id},
-            {"$set": {"status": "cancelled", "description": f"[DEPRECATED] {original_block.get('content')}"}}
+            {"$set": {"status": "cancelled", "description": f"[DEPRECATED by journal edit] {original_block.get('description', '')}"}}
         )
         print(f"Deprecated old task {old_task_id_to_deprecate} for block {block_id}.")
 
@@ -103,14 +103,16 @@ async def update_journal_block(
         return_document=True
     )
 
-    # Re-send to Celery for context extraction
-    event_data = {
-        "content": request.content,
-        "block_id": block_id,
-        "deprecate_task_id": old_task_id_to_deprecate
-    }
-    extract_from_context.delay(user_id, "journal_block", block_id, event_data)
-    print(f"Dispatched updated journal block {block_id} to Celery for processing.")
+    # Re-send for processing only if it was a user-created block
+    if original_block.get('created_by') == 'user':
+        event_data = {
+            "content": request.content,
+            "block_id": block_id,
+            "page_date": result['page_date'] # Pass the date from the updated document
+        }
+        # Call Celery task asynchronously
+        extract_from_context.delay(user_id, "journal_block", event_id=block_id, event_data=event_data)
+        print(f"Dispatched updated journal block {block_id} to Celery for processing.")
     
     result["_id"] = str(result["_id"])
     return result

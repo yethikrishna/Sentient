@@ -1,10 +1,10 @@
 "use client"
 import React, { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { cn } from "@/utils/cn"
+import { cn } from "@utils/cn"
 import toast from "react-hot-toast"
 import { useRouter } from "next/navigation"
-import { IconLoader } from "@tabler/icons-react"
+import { IconLoader, IconMapPin, IconMapPinFilled } from "@tabler/icons-react"
 
 const CheckIcon = ({ className }) => (
 	<svg
@@ -35,157 +35,53 @@ const CheckFilled = ({ className }) => (
 )
 
 const questions = [
-	{ id: "user-name", question: "What is your name?", type: "text-input" },
+	{
+		id: "user-name",
+		question: "What should I call you?",
+		type: "text-input",
+		required: true
+	},
 	{
 		id: "timezone",
 		question: "What is your timezone?",
 		type: "select",
+		required: true,
 		options: [
 			{ value: "America/New_York", label: "Eastern Time (US & Canada)" },
 			{ value: "America/Chicago", label: "Central Time (US & Canada)" },
 			{ value: "America/Denver", label: "Mountain Time (US & Canada)" },
-			{ value: "America/Phoenix", label: "Arizona" },
 			{
 				value: "America/Los_Angeles",
 				label: "Pacific Time (US & Canada)"
 			},
-			{ value: "America/Anchorage", label: "Alaska" },
-			{ value: "Pacific/Honolulu", label: "Hawaii" },
 			{ value: "Europe/London", label: "London, Dublin (GMT/BST)" },
 			{ value: "Europe/Berlin", label: "Berlin, Paris (CET)" },
-			{ value: "Europe/Moscow", label: "Moscow (MSK)" },
-			{ value: "Asia/Dubai", label: "Dubai (GST)" },
 			{ value: "Asia/Kolkata", label: "India (IST)" },
 			{ value: "Asia/Singapore", label: "Singapore (SGT)" },
-			{ value: "Asia/Tokyo", label: "Tokyo (JST)" },
-			{ value: "Australia/Sydney", label: "Sydney (AEST)" },
 			{ value: "UTC", label: "Coordinated Universal Time (UTC)" }
 		]
 	},
 	{
-		id: "personal-interests",
-		question: "What are your primary personal interests?",
-		type: "multiple-choice",
-		options: [
-			"Reading & Literature",
-			"Sports & Fitness",
-			"Arts & Crafts",
-			"Technology & Gadgets",
-			"Travel & Exploration",
-			"Cooking & Food",
-			"Gaming",
-			"Music & Concerts"
-		]
+		id: "location",
+		question: "Where are you located?",
+		description:
+			"Your location helps me provide relevant info like local weather and places. You can skip this if you're not comfortable sharing.",
+		type: "location-input"
 	},
 	{
-		id: "professional-aspirations",
-		question: "What are your professional aspirations or career goals?",
-		type: "multiple-choice",
-		options: [
-			"Career Advancement",
-			"Skill Development",
-			"Entrepreneurship",
-			"Work-Life Balance",
-			"Innovation & Research",
-			"Leadership",
-			"Social Impact",
-			"Financial Growth"
-		]
+		id: "professional-context",
+		question:
+			"To help me assist you better, what do you do for work and what are your main goals?",
+		type: "textarea",
+		placeholder:
+			"e.g., I'm a software developer aiming to become a team lead. I want to improve my project management skills."
 	},
 	{
-		id: "hobbies",
-		question: "What are some of your favorite hobbies?",
-		type: "multiple-choice",
-		options: [
-			"Hiking",
-			"Photography",
-			"Gardening",
-			"Playing Musical Instruments",
-			"Writing",
-			"Painting",
-			"Collecting",
-			"Volunteering"
-		]
-	},
-	{
-		id: "values",
-		question: "What values are most important to you?",
-		type: "multiple-choice",
-		options: [
-			"Integrity",
-			"Compassion",
-			"Creativity",
-			"Ambition",
-			"Security",
-			"Freedom",
-			"Community",
-			"Knowledge"
-		]
-	},
-	{
-		id: "learning-style",
-		question: "How do you prefer to learn new things?",
-		type: "multiple-choice",
-		options: [
-			"Hands-on (Kinesthetic)",
-			"Visual (Seeing)",
-			"Auditory (Hearing)",
-			"Reading/Writing",
-			"Through discussion",
-			"By teaching others"
-		]
-	},
-	{
-		id: "social-preferences",
-		question: "What is your preferred social setting?",
-		type: "multiple-choice",
-		options: [
-			"Large gatherings",
-			"Small intimate groups",
-			"One-on-one conversations",
-			"Online communities",
-			"Quiet environments",
-			"Loud and energetic environments"
-		]
-	},
-	{
-		id: "decision-making",
-		question: "How do you typically make decisions?",
-		type: "multiple-choice",
-		options: [
-			"Logically and analytically",
-			"Intuitively and emotionally",
-			"By consulting others",
-			"By weighing pros and cons",
-			"Quickly and decisively",
-			"Slowly and deliberately"
-		]
-	},
-	{
-		id: "future-outlook",
-		question: "What is your general outlook on the future?",
-		type: "multiple-choice",
-		options: [
-			"Optimistic",
-			"Pessimistic",
-			"Realistic",
-			"Uncertain",
-			"Hopeful",
-			"Anxious"
-		]
-	},
-	{
-		id: "communication-style",
-		question: "What best describes your communication style?",
-		type: "multiple-choice",
-		options: [
-			"Direct and to the point",
-			"Indirect and diplomatic",
-			"Expressive and open",
-			"Reserved and thoughtful",
-			"Assertive",
-			"Passive"
-		]
+		id: "personal-context",
+		question: "What are some of your hobbies or personal interests?",
+		type: "textarea",
+		placeholder:
+			"e.g., I enjoy hiking on weekends, I'm learning to play the guitar, and I follow European soccer."
 	}
 ]
 
@@ -195,8 +91,11 @@ const OnboardingForm = () => {
 	const [submissionComplete, setSubmissionComplete] = useState(false)
 	const router = useRouter()
 	const [isLoading, setIsLoading] = useState(true) // Check onboarding status on load
-	const [customInputs, setCustomInputs] = useState({})
-	const [showCustomInputs, setShowCustomInputs] = useState({})
+	const [locationState, setLocationState] = useState({
+		loading: false,
+		data: null,
+		error: null
+	})
 
 	useEffect(() => {
 		const checkOnboardingStatus = async () => {
@@ -221,35 +120,33 @@ const OnboardingForm = () => {
 
 	const handleAnswer = (questionId, answer, isTextInput = false) => {
 		setAnswers((prev) => {
-			if (isTextInput) {
-				return { ...prev, [questionId]: answer }
-			}
-			// For multiple choice
-			const currentAnswers = prev[questionId] || []
-			const newAnswers = currentAnswers.includes(answer)
-				? currentAnswers.filter((item) => item !== answer) // Deselect
-				: [...currentAnswers, answer] // Select
-			return { ...prev, [questionId]: newAnswers }
+			return { ...prev, [questionId]: answer }
 		})
 	}
 
-	const handleCustomInputChange = (questionId, value) => {
-		setCustomInputs((prev) => ({ ...prev, [questionId]: value }))
-	}
-
-	const toggleCustomInput = (questionId) => {
-		setShowCustomInputs((prev) => ({
-			...prev,
-			[questionId]: !prev[questionId]
-		}))
-	}
-
-	const handleAddCustomOption = (questionId) => {
-		const newOption = customInputs[questionId]?.trim()
-		if (newOption) {
-			handleAnswer(questionId, newOption, false)
-			handleCustomInputChange(questionId, "") // Clear input
-			toggleCustomInput(questionId) // Hide input
+	const handleGetLocation = () => {
+		if (navigator.geolocation) {
+			setLocationState({ loading: true, data: null, error: null })
+			navigator.geolocation.getCurrentPosition(
+				(position) => {
+					const { latitude, longitude } = position.coords
+					const locationData = { latitude, longitude }
+					setLocationState({
+						loading: false,
+						data: locationData,
+						error: null
+					})
+					handleAnswer("location", locationData, true)
+				},
+				(error) => {
+					setLocationState({
+						loading: false,
+						data: null,
+						error: error.message
+					})
+					toast.error(`Could not get location: ${error.message}`)
+				}
+			)
 		}
 	}
 
@@ -332,23 +229,16 @@ const OnboardingForm = () => {
 
 				<form onSubmit={handleSubmit} className="space-y-10">
 					{questions.map((q) => {
-						const selectedAnswers = answers[q.id] || []
-						const customAnswers = Array.isArray(selectedAnswers)
-							? selectedAnswers.filter(
-									(ans) =>
-										!q.options?.some((o) =>
-											typeof o === "object"
-												? o.value === ans
-												: o === ans
-										)
-								)
-							: []
-
 						return (
 							<div key={q.id}>
-								<label className="block text-lg sm:text-xl font-Poppins font-semibold mb-4 text-gray-200">
+								<label className="block text-lg sm:text-xl font-Poppins font-semibold mb-2 text-gray-200">
 									{q.question}
 								</label>
+								{q.description && (
+									<p className="text-sm text-gray-400 mb-4">
+										{q.description}
+									</p>
+								)}
 								{q.type === "text-input" ? (
 									<input
 										type="text"
@@ -362,7 +252,7 @@ const OnboardingForm = () => {
 										}
 										className="w-full px-4 py-3 rounded-lg bg-neutral-800 text-white border border-neutral-700 focus:outline-none focus:ring-2 focus:ring-lightblue placeholder-gray-500"
 										placeholder="Type your answer here..."
-										required={q.id === "user-name"}
+										required={q.required}
 									/>
 								) : q.type === "select" ? (
 									<select
@@ -375,7 +265,7 @@ const OnboardingForm = () => {
 											)
 										}
 										className="w-full px-4 py-3 rounded-lg bg-neutral-800 text-white border border-neutral-700 focus:outline-none focus:ring-2 focus:ring-lightblue"
-										required={q.id === "timezone"}
+										required={q.required}
 									>
 										<option value="" disabled>
 											Select your timezone...
@@ -389,96 +279,48 @@ const OnboardingForm = () => {
 											</option>
 										))}
 									</select>
-								) : (
-									<div className="flex flex-wrap gap-3">
-										{q.options.map((option) => {
-											const isSelected =
-												selectedAnswers.includes(option)
-											return (
-												<button
-													key={option}
-													type="button"
-													className={cn(
-														"px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg text-sm sm:text-base font-medium transition-all duration-200",
-														isSelected
-															? "bg-lightblue text-white shadow-md"
-															: "bg-neutral-700 text-gray-300 hover:bg-neutral-600"
-													)}
-													onClick={() =>
-														handleAnswer(
-															q.id,
-															option,
-															false
-														)
-													}
-												>
-													{option}
-												</button>
+								) : q.type === "textarea" ? (
+									<textarea
+										value={answers[q.id] || ""}
+										onChange={(e) =>
+											handleAnswer(
+												q.id,
+												e.target.value,
+												true
 											)
-										})}
-										{customAnswers.map((ans) => (
-											<button
-												key={ans}
-												type="button"
-												className="px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg text-sm sm:text-base font-medium transition-all duration-200 bg-lightblue text-white shadow-md"
-												onClick={() =>
-													handleAnswer(
-														q.id,
-														ans,
-														false
-													)
-												}
-											>
-												{ans}
-											</button>
-										))}
+										}
+										className="w-full px-4 py-3 rounded-lg bg-neutral-800 text-white border border-neutral-700 focus:outline-none focus:ring-2 focus:ring-lightblue placeholder-gray-500 min-h-[100px] resize-y"
+										placeholder={q.placeholder}
+									/>
+								) : q.type === "location-input" ? (
+									<div className="flex items-center gap-4">
 										<button
 											type="button"
-											className={cn(
-												"px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg text-sm sm:text-base font-medium transition-all duration-200 bg-neutral-700 text-gray-300 hover:bg-neutral-600"
-											)}
-											onClick={() =>
-												toggleCustomInput(q.id)
-											}
+											onClick={handleGetLocation}
+											disabled={locationState.loading}
+											className="flex items-center gap-2 px-5 py-3 rounded-lg bg-neutral-700 text-white hover:bg-neutral-600 transition-colors"
 										>
-											Other...
+											<IconMapPin size={20} />
+											<span>
+												{locationState.loading
+													? "Getting Location..."
+													: "Share Current Location"}
+											</span>
 										</button>
+										{locationState.data && (
+											<div className="flex items-center gap-2 text-green-400">
+												<IconMapPinFilled size={20} />
+												<span>Location captured!</span>
+											</div>
+										)}
+										{locationState.error && (
+											<p className="text-sm text-red-400">
+												Could not get location. You can
+												continue without it.
+											</p>
+										)}
 									</div>
-								)}
-								{showCustomInputs[q.id] && (
-									<div className="flex items-center gap-2 mt-3">
-										<input
-											type="text"
-											value={customInputs[q.id] || ""}
-											onChange={(e) =>
-												handleCustomInputChange(
-													q.id,
-													e.target.value
-												)
-											}
-											onKeyPress={(e) => {
-												if (e.key === "Enter") {
-													e.preventDefault()
-													handleAddCustomOption(q.id)
-												}
-											}}
-											className="flex-grow px-4 py-2 rounded-lg bg-neutral-800 text-white border border-neutral-700 focus:outline-none focus:ring-2 focus:ring-lightblue"
-											placeholder="Type your answer..."
-										/>
-										<button
-											type="button"
-											onClick={() =>
-												handleAddCustomOption(q.id)
-											}
-											className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-white font-semibold transition-colors duration-300"
-											disabled={
-												!customInputs[q.id]?.trim()
-											}
-										>
-											Add
-										</button>
-									</div>
-								)}
+								) : null}
 							</div>
 						)
 					})}

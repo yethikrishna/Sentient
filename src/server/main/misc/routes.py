@@ -74,27 +74,22 @@ async def save_onboarding_data_endpoint(
 
         # After successful save, dispatch facts to Celery worker to be added to Supermemory
         try:
-            onboarding_facts = []
             fact_templates = {
                 "user-name": "The user's name is {}.",
                 "timezone": "The user's timezone is {}.",
-                "personal-interests": "The user's personal interests include {}.",
-                "professional-aspirations": "The user's professional aspirations include {}.",
-                "hobbies": "Some of the user's favorite hobbies are {}.",
-                "values": "Values that are most important to the user include {}.",
-                "learning-style": "The user prefers to learn new things in the following way: {}.",
-                "social-preferences": "The user's preferred social setting is {}.",
-                "decision-making": "The user typically makes decisions {}.",
-                "future-outlook": "The user's general outlook on the future is {}.",
-                "communication-style": "The user's communication style is best described as {}."
+                "location": "The user's location is at latitude {latitude}, longitude {longitude}.",
+                "professional-context": "The user has provided the following professional context: {}",
+                "personal-context": "The user has provided the following personal context: {}"
             }
-
+            onboarding_facts = []
             for key, value in request_body.data.items():
                 if not value or key not in fact_templates:
                     continue
                 
-                answer_text = ", ".join(value) if isinstance(value, list) else str(value)
-                fact = fact_templates[key].format(answer_text)
+                if key == "location" and isinstance(value, dict):
+                    fact = fact_templates[key].format(latitude=value.get('latitude'), longitude=value.get('longitude'))
+                else:
+                    fact = fact_templates[key].format(str(value))
                 onboarding_facts.append(fact)
 
             for fact in onboarding_facts:

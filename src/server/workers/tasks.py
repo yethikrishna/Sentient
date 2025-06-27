@@ -239,10 +239,10 @@ def process_action_item(user_id: str, action_items: list, source_event_id: str, 
                 logger.warning(f"No tools available for planner task for user {user_id}.")
                 return
 
-            # Pass current time to the agent prompt
             agent = get_planner_agent(available_tools, current_user_time)
             user_prompt_content = "Please create a plan for the following action items:\n- " + "\n- ".join(action_items)
             messages = [{'role': 'user', 'content': user_prompt_content}]
+
 
             final_response_str = ""
             for chunk in agent.run(messages=messages):

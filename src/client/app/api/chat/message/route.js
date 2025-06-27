@@ -1,16 +1,7 @@
 import { NextResponse } from "next/server"
-import { auth0 } from "@lib/auth0"
-import { getBackendAuthHeader } from "@lib/auth0"
+import { withAuth } from "@lib/api-utils"
 
-export async function POST(request) {
-	const session = await auth0.getSession()
-	if (!session?.user?.sub) {
-		return NextResponse.json(
-			{ message: "Not authenticated" },
-			{ status: 401 }
-		)
-	}
-
+export const POST = withAuth(async function POST(request, { authHeader }) {
 	try {
 		const {
 			messages, // Changed from `input`
@@ -21,7 +12,6 @@ export async function POST(request) {
 			enable_maps,
 			enable_shopping
 		} = await request.json()
-		const authHeader = await getBackendAuthHeader()
 
 		// Fetch user pricing/credits to pass to the backend
 		const pricingResponse = await fetch(
@@ -90,4 +80,4 @@ export async function POST(request) {
 			{ status: 500 }
 		)
 	}
-}
+})

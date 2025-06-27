@@ -1,25 +1,8 @@
 // src/client/app/api/tasks/update/route.js
 import { NextResponse } from "next/server"
-import { auth0 } from "@lib/auth0"
-import { getBackendAuthHeader } from "@lib/auth0"
+import { withAuth } from "@lib/api-utils"
 
-export async function POST(request) {
-	const session = await auth0.getSession()
-	if (!session?.user?.sub) {
-		return NextResponse.json(
-			{ error: "Not authenticated" },
-			{ status: 401 }
-		)
-	}
-
-	const authHeader = await getBackendAuthHeader()
-	if (!authHeader) {
-		return NextResponse.json(
-			{ error: "Could not create auth header" },
-			{ status: 500 }
-		)
-	}
-
+export const POST = withAuth(async function POST(request, { authHeader }) {
 	try {
 		const taskData = await request.json()
 		const response = await fetch(
@@ -40,4 +23,4 @@ export async function POST(request) {
 		console.error("API Error in /tasks/update:", error)
 		return NextResponse.json({ error: error.message }, { status: 500 })
 	}
-}
+})

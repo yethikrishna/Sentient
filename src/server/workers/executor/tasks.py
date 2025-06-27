@@ -158,13 +158,18 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     block_id_prompt = f"The block_id for this task is '{block_id}'. You MUST pass this ID to the 'update_progress' tool in the 'block_id' parameter." if block_id else "This task did not originate from a journal block."
 
     full_plan_prompt = (
-        f"The current date and time for the user is {current_user_time}.\n\n"
-        f"You are executing a task with ID: '{task_id}'. "
-        f"{block_id_prompt}\n"
+        f"You are an autonomous executor agent. The current date and time for the user is {current_user_time}.\n"
+        f"Your task ID is '{task_id}'. {block_id_prompt}\n\n"
         f"The original context that triggered this plan is:\n---BEGIN CONTEXT---\n{original_context_str}\n---END CONTEXT---\n\n"
-        f"Your main goal is: '{plan_description}'.\n"
+        f"**Main Goal:** '{plan_description}'.\n\n"
         f"The plan has the following steps:\n{plan_steps_str}\n\n"
-        "Review the original context if needed to successfully complete the steps. You don't have to follow the plan exactly as it is. Feel free to change any of the steps on the fly, as new information becomes apparent. Feel free to retry any failed steps, but only once. Remember to call the 'update_progress' tool to report your status to the user after each major step."
+        "**EXECUTION STRATEGY:**\n"
+        "1.  **Analyze and Adapt:** The provided plan is a guideline. Critically evaluate it. If a step seems wrong or if you gain new information, adapt the plan. Your goal is to achieve the main objective, not just to follow steps blindly.\n"
+        "2.  **Think Critically:** Before each action, think about its purpose and potential outcomes. What information do you need? What tool is best for the job? Is there a more efficient way? Reason through your choices.\n"
+        "3.  **Be Methodical:** Execute one step at a time. After each step, review the result. Did it succeed? Did it give you the information you needed for the next step? Your thought process should be clear.\n"
+        "4.  **Report Progress:** You MUST call the 'update_progress' tool to report your status to the user after each major step or when you encounter something unexpected. This is crucial for user visibility.\n"
+        "5.  **Handle Failures:** If a tool call fails, analyze the error. Do not give up immediately. Retry the step if it was a temporary issue, or try an alternative approach. If you are stuck, report the failure clearly using `update_progress`.\n"
+        "Now, begin your work. Think step-by-step and start executing the plan."
     )
     
     try:

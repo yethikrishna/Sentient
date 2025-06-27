@@ -16,8 +16,8 @@ def get_planner_agent(available_tools: dict, current_time_str: str):
     
     # Add current time to the prompt for better contextual planning
     system_prompt = prompts.SYSTEM_PROMPT.format(
-        available_tools=tools_list_str,
-        current_time=current_time_str
+        current_time=current_time_str,
+        available_tools=tools_list_str
     )
 
     llm_cfg = {}
@@ -32,7 +32,14 @@ def get_planner_agent(available_tools: dict, current_time_str: str):
                 'response_format': {'type': 'json_object'},
             }
         }
-    else:
+    elif config.LLM_PROVIDER == "NOVITA":
+        llm_cfg = {
+            'model': config.NOVITA_MODEL_NAME,
+            'model_server': "https://api.novita.ai/v3/openai",
+            'api_key': config.NOVITA_API_KEY,
+            'generate_cfg': {'temperature': 0.3, 'response_format': {'type': 'json_object'}}
+        }
+    else: # Add NOVITA provider
         raise ValueError(f"Unsupported LLM_PROVIDER for planner: {config.LLM_PROVIDER}. Must be 'OLLAMA' or 'NOVITA'")
 
     try:

@@ -1,32 +1,16 @@
 import { NextResponse } from "next/server"
-import { auth0, getBackendAuthHeader } from "@lib/auth0"
+import { withAuth } from "@lib/api-utils"
 
 const APP_SERVER_URL = process.env.APP_SERVER_URL
 
 // GET: Fetch blocks for a specific date
-export async function GET(request) {
-	const session = await auth0.getSession()
-	if (!session?.user?.sub) {
-		return NextResponse.json(
-			{ error: "Not authenticated" },
-			{ status: 401 }
-		)
-	}
-
+export const GET = withAuth(async function GET(request, { authHeader }) {
 	const { searchParams } = new URL(request.url)
 	const date = searchParams.get("date")
 	if (!date) {
 		return NextResponse.json(
 			{ error: "Date parameter is required" },
 			{ status: 400 }
-		)
-	}
-
-	const authHeader = await getBackendAuthHeader()
-	if (!authHeader) {
-		return NextResponse.json(
-			{ error: "Could not create auth header" },
-			{ status: 500 }
 		)
 	}
 
@@ -44,26 +28,10 @@ export async function GET(request) {
 	} catch (error) {
 		return NextResponse.json({ error: error.message }, { status: 500 })
 	}
-}
+})
 
 // POST: Create a new block
-export async function POST(request) {
-	const session = await auth0.getSession()
-	if (!session?.user?.sub) {
-		return NextResponse.json(
-			{ error: "Not authenticated" },
-			{ status: 401 }
-		)
-	}
-
-	const authHeader = await getBackendAuthHeader()
-	if (!authHeader) {
-		return NextResponse.json(
-			{ error: "Could not create auth header" },
-			{ status: 500 }
-		)
-	}
-
+export const POST = withAuth(async function POST(request, { authHeader }) {
 	try {
 		const body = await request.json()
 		const response = await fetch(`${APP_SERVER_URL}/journal/blocks`, {
@@ -78,32 +46,16 @@ export async function POST(request) {
 	} catch (error) {
 		return NextResponse.json({ error: error.message }, { status: 500 })
 	}
-}
+})
 
 // PUT: Update an existing block
-export async function PUT(request) {
-	const session = await auth0.getSession()
-	if (!session?.user?.sub) {
-		return NextResponse.json(
-			{ error: "Not authenticated" },
-			{ status: 401 }
-		)
-	}
-
+export const PUT = withAuth(async function PUT(request, { authHeader }) {
 	const { searchParams } = new URL(request.url)
 	const blockId = searchParams.get("blockId")
 	if (!blockId) {
 		return NextResponse.json(
 			{ error: "blockId parameter is required" },
 			{ status: 400 }
-		)
-	}
-
-	const authHeader = await getBackendAuthHeader()
-	if (!authHeader) {
-		return NextResponse.json(
-			{ error: "Could not create auth header" },
-			{ status: 500 }
 		)
 	}
 
@@ -124,32 +76,16 @@ export async function PUT(request) {
 	} catch (error) {
 		return NextResponse.json({ error: error.message }, { status: 500 })
 	}
-}
+})
 
 // DELETE: Delete a block
-export async function DELETE(request) {
-	const session = await auth0.getSession()
-	if (!session?.user?.sub) {
-		return NextResponse.json(
-			{ error: "Not authenticated" },
-			{ status: 401 }
-		)
-	}
-
+export const DELETE = withAuth(async function DELETE(request, { authHeader }) {
 	const { searchParams } = new URL(request.url)
 	const blockId = searchParams.get("blockId")
 	if (!blockId) {
 		return NextResponse.json(
 			{ error: "blockId parameter is required" },
 			{ status: 400 }
-		)
-	}
-
-	const authHeader = await getBackendAuthHeader()
-	if (!authHeader) {
-		return NextResponse.json(
-			{ error: "Could not create auth header" },
-			{ status: 500 }
 		)
 	}
 
@@ -169,4 +105,4 @@ export async function DELETE(request) {
 	} catch (error) {
 		return NextResponse.json({ error: error.message }, { status: 500 })
 	}
-}
+})

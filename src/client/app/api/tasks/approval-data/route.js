@@ -1,31 +1,14 @@
 // src/client/app/api/tasks/approval-data/route.js
 import { NextResponse } from "next/server"
-import { auth0 } from "@lib/auth0"
-import { getBackendAuthHeader } from "@lib/auth0"
+import { withAuth } from "@lib/api-utils"
 
-export async function GET(request) {
-	const session = await auth0.getSession()
-	if (!session?.user?.sub) {
-		return NextResponse.json(
-			{ error: "Not authenticated" },
-			{ status: 401 }
-		)
-	}
-
+export const GET = withAuth(async function GET(request, { authHeader }) {
 	const { searchParams } = new URL(request.url)
 	const taskId = searchParams.get("taskId")
 	if (!taskId) {
 		return NextResponse.json(
 			{ error: "Task ID is required" },
 			{ status: 400 }
-		)
-	}
-
-	const authHeader = await getBackendAuthHeader()
-	if (!authHeader) {
-		return NextResponse.json(
-			{ error: "Could not create auth header" },
-			{ status: 500 }
 		)
 	}
 
@@ -48,4 +31,4 @@ export async function GET(request) {
 		console.error("API Error in /tasks/approval-data:", error)
 		return NextResponse.json({ error: error.message }, { status: 500 })
 	}
-}
+})

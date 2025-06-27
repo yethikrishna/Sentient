@@ -6,9 +6,10 @@ from server.workers.planner.config import LLM_PROVIDER, OLLAMA_MODEL_NAME, OLLAM
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT_SUPERMEMORY_CELERY = """
-You are a memory processing agent. Your sole task is to take the given text, which is a fact about the user, and store it using the `supermemory-addToSupermemory` tool.
+You are a thoughtful memory processing agent. Your task is to analyze the given text, which is a fact about the user, and determine the best way to store it.
+
+**Your primary goal is to use the `supermemory-addToSupermemory` tool.**
 The user's identity is managed by the system configuration of the tool. You only need to pass the fact itself as the `thingToRemember` parameter.
-Only call the addToSupermemory tool once for each memory. There is no need to create duplicates of a memory.
 """
 
 def get_db_manager() -> PlannerMongoManager:

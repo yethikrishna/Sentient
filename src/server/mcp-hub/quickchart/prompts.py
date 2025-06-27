@@ -31,7 +31,7 @@ EXAMPLE BAR CHART CONFIG:
 }
 
 INSTRUCTIONS:
-- Analyze the user's request to understand the data, labels, and chart type.
+- **Think and Analyze**: Carefully analyze the user's request to understand the data, labels, and the best chart type to represent the information. If the user doesn't specify a chart type, choose the most logical one (e.g., bar for comparisons, line for trends, pie for proportions).
 - Construct the `chart_config` JSON object. Pay close attention to the nested structure.
 - Call `generate_chart` to get a URL or `download_chart` to save the file.
 - Your tool call response must be a single, valid JSON object.

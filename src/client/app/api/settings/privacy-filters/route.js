@@ -1,24 +1,8 @@
 import { NextResponse } from "next/server"
-import { auth0, getBackendAuthHeader } from "@lib/auth0"
+import { withAuth } from "@lib/api-utils"
 
 // GET handler to fetch current privacy filters
-export async function GET() {
-	const session = await auth0.getSession()
-	if (!session?.user?.sub) {
-		return NextResponse.json(
-			{ error: "Not authenticated" },
-			{ status: 401 }
-		)
-	}
-
-	const authHeader = await getBackendAuthHeader()
-	if (!authHeader) {
-		return NextResponse.json(
-			{ error: "Could not create auth header" },
-			{ status: 500 }
-		)
-	}
-
+export const GET = withAuth(async function GET(request, { authHeader }) {
 	try {
 		// We can get this from the get-user-data endpoint
 		const response = await fetch(
@@ -44,26 +28,10 @@ export async function GET() {
 			{ status: 500 }
 		)
 	}
-}
+})
 
 // POST handler to update privacy filters
-export async function POST(request) {
-	const session = await auth0.getSession()
-	if (!session?.user?.sub) {
-		return NextResponse.json(
-			{ error: "Not authenticated" },
-			{ status: 401 }
-		)
-	}
-
-	const authHeader = await getBackendAuthHeader()
-	if (!authHeader) {
-		return NextResponse.json(
-			{ error: "Could not create auth header" },
-			{ status: 500 }
-		)
-	}
-
+export const POST = withAuth(async function POST(request, { authHeader }) {
 	try {
 		const { filters } = await request.json()
 		if (!Array.isArray(filters)) {
@@ -96,4 +64,4 @@ export async function POST(request) {
 			{ status: 500 }
 		)
 	}
-}
+})

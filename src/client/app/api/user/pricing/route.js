@@ -1,25 +1,8 @@
 // src/client/app/api/user/pricing/route.js
 import { NextResponse } from "next/server"
-import { auth0 } from "@lib/auth0"
-import { getBackendAuthHeader } from "@lib/auth0"
+import { withAuth } from "@lib/api-utils"
 
-export async function GET() {
-	const session = await auth0.getSession()
-	if (!session?.user?.sub) {
-		return NextResponse.json(
-			{ message: "Not authenticated" },
-			{ status: 401 }
-		)
-	}
-
-	const authHeader = await getBackendAuthHeader()
-	if (!authHeader) {
-		return NextResponse.json(
-			{ message: "Could not create auth header" },
-			{ status: 500 }
-		)
-	}
-
+export const GET = withAuth(async function GET(request, { authHeader }) {
 	try {
 		// This single backend call can fetch all pricing-related info
 		const response = await fetch(
@@ -49,4 +32,4 @@ export async function GET() {
 			{ status: 500 }
 		)
 	}
-}
+})

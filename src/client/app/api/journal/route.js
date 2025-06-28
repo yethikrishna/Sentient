@@ -3,20 +3,30 @@ import { withAuth } from "@lib/api-utils"
 
 const APP_SERVER_URL = process.env.APP_SERVER_URL
 
-// GET: Fetch blocks for a specific date
+// GET: Fetch blocks for a specific date or date range
 export const GET = withAuth(async function GET(request, { authHeader }) {
 	const { searchParams } = new URL(request.url)
 	const date = searchParams.get("date")
-	if (!date) {
+	const startDate = searchParams.get("startDate")
+	const endDate = searchParams.get("endDate")
+
+	let queryString = ""
+	if (date) {
+		queryString = `date=${date}`
+	} else if (startDate && endDate) {
+		queryString = `start_date=${startDate}&end_date=${endDate}`
+	} else {
 		return NextResponse.json(
-			{ error: "Date parameter is required" },
+			{
+				error: "Either 'date' or both 'startDate' and 'endDate' parameters are required"
+			},
 			{ status: 400 }
 		)
 	}
 
 	try {
 		const response = await fetch(
-			`${APP_SERVER_URL}/journal/blocks?date=${date}`,
+			`${APP_SERVER_URL}/journal/blocks?${queryString}`,
 			{
 				headers: { "Content-Type": "application/json", ...authHeader }
 			}

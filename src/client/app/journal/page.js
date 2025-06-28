@@ -1,344 +1,97 @@
 "use client"
 
-import React, { useState, useEffect, useCallback, useRef } from "react"
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import Sidebar from "@components/Sidebar"
+import toast from "react-hot-toast"
 import {
 	IconMenu2,
-	IconLoader,
 	IconChevronLeft,
 	IconChevronRight,
+	IconLoader,
+	IconX,
 	IconPencil,
 	IconTrash,
-	IconFileSymlink,
-	IconActivity,
-	IconChevronDown,
-	IconCircleCheck,
-	IconAlertCircle,
+	IconPointFilled,
 	IconClock,
-	IconX,
+	IconPlus,
 	IconSparkles
 } from "@tabler/icons-react"
-import toast from "react-hot-toast"
 import { AnimatePresence, motion } from "framer-motion"
 import { cn } from "@utils/cn"
-import { useRouter } from "next/navigation"
+import {
+	format,
+	startOfMonth,
+	endOfMonth,
+	startOfWeek,
+	endOfWeek,
+	eachDayOfInterval,
+	isSameMonth,
+	isSameDay,
+	addMonths,
+	subMonths,
+	getDay,
+	isToday,
+	parseISO,
+	setHours,
+	setMinutes,
+	isWithinInterval,
+	addDays
+} from "date-fns"
 
-const TaskDetails = ({ task }) => {
-	const router = useRouter()
-	if (!task) return null
+const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
-	const statusMap = {
-		pending: { icon: IconClock, color: "text-yellow-400" },
-		processing: { icon: IconLoader, color: "text-blue-400", animate: true },
-		completed: { icon: IconCircleCheck, color: "text-green-400" },
-		error: { icon: IconAlertCircle, color: "text-red-400" },
-		approval_pending: { icon: IconClock, color: "text-purple-400" },
-		cancelled: { icon: IconX, color: "text-gray-500" }
-	}
-
-	const StatusIcon = statusMap[task.status]?.icon || IconActivity
-	const statusColor = statusMap[task.status]?.color || "text-gray-400"
-	const animateStatus = statusMap[task.status]?.animate || false
-
-	return (
-		<motion.div
-			onClick={() => router.push("/tasks")}
-			className="mt-2 text-xs text-gray-400 p-3 bg-[var(--color-primary-surface)] rounded-[var(--radius-base)] border border-[#3a3a3a] cursor-pointer hover:bg-[var(--color-primary-surface-elevated)] transition-all duration-200 hover:transform hover:scale-[1.02] hover:shadow-lg group"
-			whileHover={{
-				rotateX: 2,
-				transition: { duration: 0.2 }
-			}}
-		>
-			<div className="flex justify-between items-center mb-2 group-hover:text-[var(--color-text-primary)] transition-colors duration-200">
-				<p className="font-semibold text-gray-200">
-					{task.description}
-				</p>
-				<span
-					className={cn(
-						"flex items-center gap-1.5 font-medium capitalize",
-						statusColor
-					)}
-				>
-					<StatusIcon
-						size={14}
-						className={cn(animateStatus && "animate-spin")}
-					/>
-					{task.status.replace("_", " ")}
-				</span>
-			</div>
-
-			<div className="space-y-2">
-				<div>
-					<h5 className="font-bold text-gray-300 mb-1">Plan:</h5>
-					<ul className="list-decimal list-inside pl-2 space-y-1">
-						{task.plan?.map((step, index) => (
-							<li key={index} className="text-gray-400">
-								<span className="font-semibold text-gray-300">
-									{step.tool}:
-								</span>{" "}
-								{step.description}
-							</li>
-						))}
-					</ul>
-				</div>
-				{task.progress_updates?.length > 0 && (
-					<div>
-						<h5 className="font-bold text-gray-300 mb-1">
-							Progress:
-						</h5>
-						<ul className="space-y-1">
-							{task.progress_updates.map((update, index) => (
-								<li key={index} className="text-gray-400 pl-2">
-									- {update.message}
-								</li>
-							))}
-						</ul>
-					</div>
-				)}
-				{(task.result || task.error) && (
-					<div>
-						<h5 className="font-bold text-gray-300 mb-1">
-							Result:
-						</h5>
-						<p
-							className={cn(
-								"pl-2 whitespace-pre-wrap",
-								task.error
-									? "text-[var(--color-accent-red)]"
-									: "text-gray-300"
-							)}
-						>
-							{task.result || task.error}
-						</p>
-					</div>
-				)}
-			</div>
-		</motion.div>
-	)
+const taskStatusColors = {
+	pending: "bg-yellow-500/80 border-yellow-400",
+	processing: "bg-blue-500/80 border-blue-400",
+	completed: "bg-green-500/80 border-green-400",
+	error: "bg-red-500/80 border-red-400",
+	approval_pending: "bg-purple-500/80 border-purple-400",
+	active: "bg-green-500/80 border-green-400",
+	cancelled: "bg-gray-600/80 border-gray-500",
+	default: "bg-gray-500/80 border-gray-400"
 }
 
-const JournalBlock = ({ block, onUpdate, onDelete }) => {
-	const [content, setContent] = useState(block.content)
-	const [isEditing, setIsEditing] = useState(false)
-	const [isExpanded, setIsExpanded] = useState(false)
-	const [taskDetails, setTaskDetails] = useState(null)
-	const [isLoadingTask, setIsLoadingTask] = useState(false)
-	const textareaRef = useRef(null)
-
-	const handleSave = () => {
-		if (content.trim() !== block.content) {
-			onUpdate(block.block_id, content)
-		}
-		setIsEditing(false)
-	}
-
-	useEffect(() => {
-		if (isEditing && textareaRef.current) {
-			textareaRef.current.focus()
-			textareaRef.current.style.height = "auto"
-			textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`
-		}
-	}, [isEditing])
-
-	const handleKeyDown = (e) => {
-		if (e.key === "Enter" && !e.shiftKey) {
-			e.preventDefault()
-			handleSave()
-		}
-	}
-
-	const fetchTaskDetails = useCallback(async () => {
-		if (!block.linked_task_id) return
-		setIsLoadingTask(true)
-		try {
-			const response = await fetch(`/api/tasks/${block.linked_task_id}`)
-			if (!response.ok) throw new Error("Failed to fetch task details")
-			const data = await response.json()
-			setTaskDetails(data)
-		} catch (error) {
-			toast.error(error.message)
-			setTaskDetails(null) // Reset on error
-		} finally {
-			setIsLoadingTask(false)
-		}
-	}, [block.linked_task_id])
-
-	useEffect(() => {
-		if (isExpanded) {
-			fetchTaskDetails()
-		}
-	}, [isExpanded, fetchTaskDetails])
-
-	// This effect sets up polling for real-time progress updates
-	useEffect(() => {
-		let intervalId = null
-		if (
-			isExpanded &&
-			taskDetails &&
-			["processing", "pending", "approval_pending"].includes(
-				taskDetails.status
-			)
-		) {
-			intervalId = setInterval(fetchTaskDetails, 5000) // Poll every 5 seconds
-		}
-		return () => {
-			if (intervalId) {
-				clearInterval(intervalId)
-			}
-		}
-	}, [isExpanded, taskDetails, fetchTaskDetails])
-
-	return (
-		<motion.article
-			layout
-			initial={{ opacity: 0, y: 20, scale: 0.95 }}
-			animate={{
-				opacity: 1,
-				y: 0,
-				scale: 1,
-				transition: {
-					type: "spring",
-					stiffness: 300,
-					damping: 25
-				}
-			}}
-			exit={{
-				opacity: 0,
-				x: -20,
-				scale: 0.95,
-				transition: { duration: 0.2 }
-			}}
-			whileHover={{
-				scale: 1.01,
-				transition: { duration: 0.2 }
-			}}
-			className="flex items-start gap-3 p-4 rounded-[var(--radius-lg)] hover:bg-[var(--color-primary-surface)]/50 group transition-all duration-200 hover:shadow-sm border border-transparent hover:border-[#3a3a3a]/30"
-		>
-			<motion.div
-				className="w-3 h-3 mt-2 bg-[var(--color-accent-blue)] rounded-full flex-shrink-0"
-				whileHover={{ scale: 1.2 }}
-				transition={{ type: "spring", stiffness: 400 }}
-			></motion.div>
-			<div className="flex-1">
-				{isEditing ? (
-					<textarea
-						ref={textareaRef}
-						value={content}
-						onChange={(e) => setContent(e.target.value)}
-						onBlur={handleSave}
-						onKeyDown={handleKeyDown}
-						className="w-full bg-transparent text-[var(--color-text-primary)] resize-none focus:outline-none overflow-hidden border-none focus:ring-2 focus:ring-[var(--color-accent-blue)]/30 rounded-[var(--radius-sm)] p-2 -m-2"
-						rows={1}
-					/>
-				) : (
-					<motion.p
-						className="text-[var(--color-text-primary)] whitespace-pre-wrap cursor-text hover:bg-[var(--color-primary-surface)]/30 rounded-[var(--radius-sm)] p-2 -m-2 transition-colors duration-150"
-						onClick={() => setIsEditing(true)}
-						whileHover={{ x: 2 }}
-						transition={{ duration: 0.15 }}
-					>
-						{block.content}
-					</motion.p>
-				)}
-				{block.linked_task_id && (
-					<motion.details
-						className="mt-3 text-xs"
-						onToggle={(e) => setIsExpanded(e.currentTarget.open)}
-						initial={{ opacity: 0 }}
-						animate={{ opacity: 1 }}
-						transition={{ delay: 0.2 }}
-					>
-						<motion.summary
-							className="cursor-pointer select-none flex items-center gap-2 text-[var(--color-accent-blue)] hover:text-[var(--color-accent-blue)]/80 font-medium p-2 rounded-[var(--radius-sm)] hover:bg-[var(--color-primary-surface)]/30 transition-colors duration-150"
-							whileHover={{ x: 4 }}
-							transition={{ duration: 0.15 }}
-						>
-							<motion.div
-								whileHover={{ rotate: 15 }}
-								transition={{ duration: 0.2 }}
-							>
-								<IconSparkles size={16} />
-							</motion.div>
-							<span>Plan Generated: {block.task_status}</span>
-							<motion.div
-								animate={{ rotate: isExpanded ? 180 : 0 }}
-								transition={{ duration: 0.2 }}
-							>
-								<IconChevronDown size={16} />
-							</motion.div>
-						</motion.summary>
-						{isLoadingTask ? (
-							<motion.div
-								className="flex justify-center p-4"
-								initial={{ opacity: 0 }}
-								animate={{ opacity: 1 }}
-							>
-								<motion.div
-									animate={{ rotate: 360 }}
-									transition={{
-										duration: 1,
-										repeat: Infinity,
-										ease: "linear"
-									}}
-								>
-									<IconLoader className="text-[var(--color-accent-blue)]" />
-								</motion.div>
-							</motion.div>
-						) : (
-							<motion.div
-								initial={{ opacity: 0, y: -10 }}
-								animate={{ opacity: 1, y: 0 }}
-								transition={{ duration: 0.3 }}
-							>
-								<TaskDetails task={taskDetails} />
-							</motion.div>
-						)}
-					</motion.details>
-				)}
-			</div>
-			<motion.div
-				className="opacity-0 group-hover:opacity-100 transition-all duration-200 flex gap-1"
-				initial={{ x: 10, opacity: 0 }}
-				animate={{ x: 0 }}
-			>
-				<motion.button
-					onClick={() => setIsEditing(true)}
-					className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-primary-surface)] rounded-[var(--radius-sm)] transition-colors duration-150"
-					whileHover={{ scale: 1.1 }}
-					whileTap={{ scale: 0.95 }}
-				>
-					<IconPencil size={16} />
-				</motion.button>
-				<motion.button
-					onClick={() => onDelete(block.block_id)}
-					className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-accent-red)] hover:bg-[var(--color-accent-red)]/10 rounded-[var(--radius-sm)] transition-colors duration-150"
-					whileHover={{ scale: 1.1 }}
-					whileTap={{ scale: 0.95 }}
-				>
-					<IconTrash size={16} />
-				</motion.button>
-			</motion.div>
-		</motion.article>
-	)
-}
-
+// Main Journal Page Component
 const JournalPage = () => {
 	const [userDetails, setUserDetails] = useState(null)
 	const [isSidebarVisible, setSidebarVisible] = useState(false)
-	const [blocks, setBlocks] = useState([])
+	const [currentMonth, setCurrentMonth] = useState(new Date())
+	const [selectedDate, setSelectedDate] = useState(null)
+	const [isPanelOpen, setPanelOpen] = useState(false)
+	const [allJournalEntries, setAllJournalEntries] = useState([])
+	const [allTasks, setAllTasks] = useState([])
 	const [isLoading, setIsLoading] = useState(true)
-	const [currentDate, setCurrentDate] = useState(new Date())
-	const [newBlockContent, setNewBlockContent] = useState("")
-	const newBlockTextareaRef = useRef(null)
 
-	const fetchBlocks = useCallback(async (date) => {
+	// Fetch user details for the sidebar
+	useEffect(() => {
+		fetch("/api/user/profile")
+			.then((res) => res.json())
+			.then((data) => setUserDetails(data))
+	}, [])
+
+	// Fetch journal entries and tasks for the current month
+	const fetchMonthData = useCallback(async (month) => {
 		setIsLoading(true)
-		const dateString = date.toISOString().split("T")[0]
+		const monthStart = startOfMonth(month)
+		const monthEnd = endOfMonth(month)
+		const startDate = format(monthStart, "yyyy-MM-dd")
+		const endDate = format(monthEnd, "yyyy-MM-dd")
+
 		try {
-			const response = await fetch(`/api/journal?date=${dateString}`)
-			if (!response.ok) throw new Error("Failed to fetch journal entries")
-			const data = await response.json()
-			setBlocks(data.blocks || [])
+			const [entriesRes, tasksRes] = await Promise.all([
+				fetch(`/api/journal?startDate=${startDate}&endDate=${endDate}`),
+				fetch("/api/tasks")
+			])
+
+			if (!entriesRes.ok)
+				throw new Error("Failed to fetch journal entries")
+			if (!tasksRes.ok) throw new Error("Failed to fetch tasks")
+
+			const entriesData = await entriesRes.json()
+			const tasksData = await tasksRes.json()
+
+			setAllJournalEntries(entriesData.blocks || [])
+			setAllTasks(tasksData.tasks || [])
 		} catch (error) {
 			toast.error(error.message)
 		} finally {
@@ -347,99 +100,99 @@ const JournalPage = () => {
 	}, [])
 
 	useEffect(() => {
-		fetch("/api/user/profile")
-			.then((res) => res.json())
-			.then((data) => setUserDetails(data))
-		fetchBlocks(currentDate)
-	}, [fetchBlocks, currentDate])
+		fetchMonthData(currentMonth)
+	}, [currentMonth, fetchMonthData])
 
-	useEffect(() => {
-		if (newBlockTextareaRef.current) {
-			newBlockTextareaRef.current.style.height = "auto"
-			newBlockTextareaRef.current.style.height = `${newBlockTextareaRef.current.scrollHeight}px`
-		}
-	}, [newBlockContent])
-
-	const handleDateChange = (offset) => {
-		setCurrentDate((prevDate) => {
-			const newDate = new Date(prevDate)
-			newDate.setDate(newDate.getDate() + offset)
-			return newDate
-		})
+	const handleDateClick = (day) => {
+		setSelectedDate(day)
+		setPanelOpen(true)
 	}
 
-	const handleCreateBlock = async (processWithAI = false) => {
-		if (!newBlockContent.trim()) return
-		const newOrder =
-			blocks.length > 0 ? Math.max(...blocks.map((b) => b.order)) + 1 : 0
-
-		try {
-			const response = await fetch("/api/journal", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					content: newBlockContent,
-					page_date: currentDate.toISOString().split("T")[0],
-					order: newOrder,
-					processWithAI: processWithAI
-				})
-			})
-			if (!response.ok) throw new Error("Failed to create block")
-			const newBlock = await response.json()
-			setBlocks((prev) => [...prev, newBlock])
-			setNewBlockContent("")
-			if (processWithAI) {
-				toast.success("Entry sent to AI for processing.")
-			}
-		} catch (error) {
-			toast.error(error.message)
-		}
+	const handleClosePanel = () => {
+		setPanelOpen(false)
+		setSelectedDate(null)
 	}
 
-	const handleUpdateBlock = async (blockId, newContent) => {
-		setBlocks((prev) =>
-			prev.map((b) =>
-				b.block_id === blockId ? { ...b, content: newContent } : b
-			)
+	const changeMonth = (amount) => {
+		setCurrentMonth((prev) =>
+			amount > 0 ? addMonths(prev, 1) : subMonths(prev, 1)
 		)
-		try {
-			const response = await fetch(`/api/journal?blockId=${blockId}`, {
-				method: "PUT",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ content: newContent })
-			})
-			if (!response.ok) throw new Error("Failed to update block")
-			// Optionally refresh data
-			fetchBlocks(currentDate)
-		} catch (error) {
-			toast.error(error.message)
-			// Revert on error
-			fetchBlocks(currentDate)
-		}
 	}
 
-	const handleDeleteBlock = async (blockId) => {
-		const originalBlocks = [...blocks]
-		setBlocks((prev) => prev.filter((b) => b.block_id !== blockId))
-		try {
-			const response = await fetch(`/api/journal?blockId=${blockId}`, {
-				method: "DELETE"
-			})
-			if (!response.ok) throw new Error("Failed to delete block")
-		} catch (error) {
-			toast.error(error.message)
-			setBlocks(originalBlocks)
-		}
-	}
+	const journalEntriesByDate = useMemo(() => {
+		return allJournalEntries.reduce((acc, entry) => {
+			const date = entry.page_date
+			if (!acc[date]) {
+				acc[date] = []
+			}
+			acc[date].push(entry)
+			return acc
+		}, {})
+	}, [allJournalEntries])
 
-	const handleKeyDownNewBlock = (e) => {
-		if (e.key === "Enter" && !e.shiftKey) {
-			e.preventDefault()
-			handleCreateBlock(false)
-		} else if (e.key === "Enter" && e.shiftKey) {
-			e.preventDefault()
-			handleCreateBlock(true)
+	const calendarEvents = useMemo(() => {
+		if (!allTasks.length) return {}
+
+		const eventsByDate = {}
+		const monthStart = startOfWeek(startOfMonth(currentMonth))
+		const monthEnd = endOfWeek(endOfMonth(currentMonth))
+		const interval = { start: monthStart, end: monthEnd }
+
+		allTasks.forEach((task) => {
+			if (!task.schedule || task.schedule.type !== "recurring") {
+				// Handle one-off tasks if they have a date (not implemented in current data model)
+				return
+			}
+
+			const [hour, minute] = task.schedule.time
+				?.split(":")
+				.map(Number) || [9, 0]
+
+			eachDayOfInterval(interval).forEach((day) => {
+				const dayOfWeek = getDay(day) // Sunday is 0
+				const dayName = [
+					"Sunday",
+					"Monday",
+					"Tuesday",
+					"Wednesday",
+					"Thursday",
+					"Friday",
+					"Saturday"
+				][dayOfWeek]
+
+				let shouldRun = false
+				if (task.schedule.frequency === "daily") {
+					shouldRun = true
+				} else if (
+					task.schedule.frequency === "weekly" &&
+					task.schedule.days.includes(dayName)
+				) {
+					shouldRun = true
+				}
+
+				if (shouldRun) {
+					const dateKey = format(day, "yyyy-MM-dd")
+					if (!eventsByDate[dateKey]) {
+						eventsByDate[dateKey] = []
+					}
+					eventsByDate[dateKey].push({
+						...task,
+						startTime: setMinutes(setHours(day, hour), minute)
+					})
+				}
+			})
+		})
+
+		// Sort events within each day by time
+		for (const date in eventsByDate) {
+			eventsByDate[date].sort((a, b) => a.startTime - b.startTime)
 		}
+
+		return eventsByDate
+	}, [allTasks, currentMonth])
+
+	const refreshData = () => {
+		fetchMonthData(currentMonth)
 	}
 
 	return (
@@ -450,134 +203,388 @@ const JournalPage = () => {
 				setSidebarVisible={setSidebarVisible}
 			/>
 			<div className="flex-1 flex flex-col overflow-hidden">
-				<motion.header
-					className="flex items-center justify-between p-6 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)] shrink-0"
-					initial={{ opacity: 0, y: -20 }}
-					animate={{ opacity: 1, y: 0 }}
-					transition={{ duration: 0.3 }}
-				>
-					<motion.button
-						onClick={() => setSidebarVisible(true)}
-						className="text-[var(--color-text-primary)] md:hidden p-2 hover:bg-[var(--color-primary-surface)] rounded-[var(--radius-base)] transition-colors duration-150"
-						whileHover={{ scale: 1.05 }}
-						whileTap={{ scale: 0.95 }}
-					>
-						<IconMenu2 />
-					</motion.button>
-					<div className="flex items-center gap-6">
-						<motion.h1
-							className="text-2xl font-semibold text-[var(--color-text-primary)]"
-							initial={{ opacity: 0, x: -20 }}
-							animate={{ opacity: 1, x: 0 }}
-							transition={{ delay: 0.1 }}
-						>
-							Journal
-						</motion.h1>
-						<motion.div
-							className="flex items-center gap-1 bg-[var(--color-primary-surface)] rounded-full p-1 border border-[var(--color-primary-surface-elevated)]"
-							initial={{ opacity: 0, scale: 0.9 }}
-							animate={{ opacity: 1, scale: 1 }}
-							transition={{ delay: 0.2 }}
-						>
-							<motion.button
-								onClick={() => handleDateChange(-1)}
-								className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-primary-surface-elevated)] rounded-full transition-colors duration-150"
-								whileHover={{ scale: 1.1 }}
-								whileTap={{ scale: 0.9 }}
-							>
-								<IconChevronLeft size={18} />
-							</motion.button>
-							<motion.span
-								className="text-sm font-medium text-[var(--color-text-primary)] w-32 text-center"
-								key={currentDate.toDateString()}
-								initial={{ opacity: 0, y: 10 }}
-								animate={{ opacity: 1, y: 0 }}
-								transition={{ duration: 0.2 }}
-							>
-								{currentDate.toLocaleDateString(undefined, {
-									month: "long",
-									day: "numeric",
-									year: "numeric"
-								})}
-							</motion.span>
-							<motion.button
-								onClick={() => handleDateChange(1)}
-								className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-primary-surface-elevated)] rounded-full transition-colors duration-150"
-								whileHover={{ scale: 1.1 }}
-								whileTap={{ scale: 0.9 }}
-							>
-								<IconChevronRight size={18} />
-							</motion.button>
-						</motion.div>
-					</div>
-					<div></div>
-				</motion.header>
-				<main className="flex-1 flex flex-col overflow-y-auto p-6 custom-scrollbar">
-					<motion.div
-						className="w-full max-w-4xl mx-auto"
-						initial={{ opacity: 0, y: 20 }}
-						animate={{ opacity: 1, y: 0 }}
-						transition={{ delay: 0.3, duration: 0.4 }}
-					>
-						{isLoading ? (
-							<motion.div
-								className="flex justify-center py-20"
-								initial={{ opacity: 0 }}
-								animate={{ opacity: 1 }}
-							>
-								<motion.div
-									animate={{ rotate: 360 }}
-									transition={{
-										duration: 1,
-										repeat: Infinity,
-										ease: "linear"
-									}}
-								>
-									<IconLoader className="w-10 h-10 text-[var(--color-accent-blue)]" />
-								</motion.div>
-							</motion.div>
-						) : (
-							<AnimatePresence mode="popLayout">
-								{blocks.map((block) => (
-									<JournalBlock
-										key={block.block_id}
-										block={block}
-										onUpdate={handleUpdateBlock}
-										onDelete={handleDeleteBlock}
-									/>
-								))}
-							</AnimatePresence>
-						)}
-						<motion.div
-							className="flex items-start gap-3 p-4 rounded-[var(--radius-lg)] hover:bg-[var(--color-primary-surface)]/30 transition-colors duration-200 border border-transparent hover:border-[#3a3a3a]/30"
-							initial={{ opacity: 0, y: 20 }}
-							animate={{ opacity: 1, y: 0 }}
-							transition={{ delay: 0.4 }}
-						>
-							<motion.div
-								className="w-3 h-3 mt-2 bg-[var(--color-text-muted)] rounded-full flex-shrink-0"
-								whileHover={{
-									scale: 1.2,
-									backgroundColor: "var(--color-accent-blue)"
-								}}
-								transition={{ duration: 0.2 }}
-							></motion.div>
-							<textarea
-								ref={newBlockTextareaRef}
-								value={newBlockContent}
-								onChange={(e) =>
-									setNewBlockContent(e.target.value)
-								}
-								onKeyDown={handleKeyDownNewBlock}
-								placeholder="Write something... (Enter to save, Shift+Enter to send to AI)"
-								className="w-full bg-transparent text-[var(--color-text-primary)] resize-none focus:outline-none overflow-hidden placeholder-[var(--color-text-muted)] border-none focus:ring-2 focus:ring-[var(--color-accent-blue)]/30 rounded-[var(--radius-sm)] p-2 -m-2"
-								rows={1}
-							/>
-						</motion.div>
-					</motion.div>
+				<CalendarHeader
+					currentMonth={currentMonth}
+					onMonthChange={changeMonth}
+					onToday={() => setCurrentMonth(new Date())}
+					onToggleSidebar={() => setSidebarVisible(true)}
+				/>
+				<main className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+					{isLoading ? (
+						<div className="flex justify-center items-center h-full">
+							<IconLoader className="w-10 h-10 animate-spin text-[var(--color-accent-blue)]" />
+						</div>
+					) : (
+						<CalendarGrid
+							currentMonth={currentMonth}
+							onDateClick={handleDateClick}
+							entries={journalEntriesByDate}
+							events={calendarEvents}
+						/>
+					)}
 				</main>
 			</div>
+			<AnimatePresence>
+				{isPanelOpen && selectedDate && (
+					<EntrySidePanel
+						selectedDate={selectedDate}
+						onClose={handleClosePanel}
+						entries={
+							journalEntriesByDate[
+								format(selectedDate, "yyyy-MM-dd")
+							] || []
+						}
+						onDataChange={refreshData}
+					/>
+				)}
+			</AnimatePresence>
 		</div>
+	)
+}
+
+// Calendar Header Component
+const CalendarHeader = ({
+	currentMonth,
+	onMonthChange,
+	onToday,
+	onToggleSidebar
+}) => (
+	<header className="flex items-center justify-between p-4 border-b border-[var(--color-primary-surface)] shrink-0">
+		<div className="flex items-center gap-4">
+			<button
+				onClick={onToggleSidebar}
+				className="text-[var(--color-text-primary)] md:hidden p-2 hover:bg-[var(--color-primary-surface)] rounded-[var(--radius-base)] transition-colors"
+			>
+				<IconMenu2 />
+			</button>
+			<h1 className="text-xl font-semibold text-[var(--color-text-primary)]">
+				Journal
+			</h1>
+		</div>
+		<div className="flex items-center gap-4">
+			<button
+				onClick={onToday}
+				className="px-4 py-1.5 text-sm font-medium border border-[var(--color-primary-surface-elevated)] rounded-[var(--radius-base)] hover:bg-[var(--color-primary-surface)] transition-colors"
+			>
+				Today
+			</button>
+			<div className="flex items-center">
+				<button
+					onClick={() => onMonthChange(-1)}
+					className="p-2 rounded-full hover:bg-[var(--color-primary-surface)]"
+				>
+					<IconChevronLeft size={20} />
+				</button>
+				<h2 className="w-40 text-center text-lg font-semibold">
+					{format(currentMonth, "MMMM yyyy")}
+				</h2>
+				<button
+					onClick={() => onMonthChange(1)}
+					className="p-2 rounded-full hover:bg-[var(--color-primary-surface)]"
+				>
+					<IconChevronRight size={20} />
+				</button>
+			</div>
+		</div>
+	</header>
+)
+
+// Calendar Grid Component
+const CalendarGrid = ({ currentMonth, onDateClick, entries, events }) => {
+	const monthStart = startOfMonth(currentMonth)
+	const monthEnd = endOfMonth(currentMonth)
+	const startDate = startOfWeek(monthStart)
+	const endDate = endOfWeek(monthEnd)
+	const days = eachDayOfInterval({ start: startDate, end: endDate })
+
+	return (
+		<div className="grid grid-cols-7 flex-1">
+			{weekDays.map((day) => (
+				<div
+					key={day}
+					className="text-center font-medium text-xs text-[var(--color-text-muted)] py-2 border-b border-[var(--color-primary-surface)]"
+				>
+					{day}
+				</div>
+			))}
+			{days.map((day) => (
+				<DayCell
+					key={day.toString()}
+					day={day}
+					currentMonth={currentMonth}
+					onDateClick={onDateClick}
+					entriesForDay={entries[format(day, "yyyy-MM-dd")] || []}
+					eventsForDay={events[format(day, "yyyy-MM-dd")] || []}
+				/>
+			))}
+		</div>
+	)
+}
+
+// Day Cell Component
+const DayCell = ({
+	day,
+	currentMonth,
+	onDateClick,
+	entriesForDay,
+	eventsForDay
+}) => {
+	const isCurrentMonth = isSameMonth(day, currentMonth)
+	const isCurrentDay = isToday(day)
+
+	return (
+		<div
+			className={cn(
+				"relative flex flex-col min-h-[120px] border border-[var(--color-primary-surface)] p-2 transition-colors duration-200",
+				isCurrentMonth
+					? "bg-[var(--color-primary-background)] hover:bg-[var(--color-primary-surface)]/50"
+					: "bg-[var(--color-primary-surface)]/30 text-[var(--color-text-muted)] hover:bg-[var(--color-primary-surface)]/50",
+				"cursor-pointer"
+			)}
+			onClick={() => onDateClick(day)}
+		>
+			<div
+				className={cn(
+					"w-7 h-7 flex items-center justify-center text-sm rounded-full",
+					isCurrentDay &&
+						"bg-[var(--color-accent-blue)] text-white font-bold"
+				)}
+			>
+				{format(day, "d")}
+			</div>
+			{entriesForDay.length > 0 && (
+				<IconPointFilled className="absolute top-2 right-2 text-purple-400 w-4 h-4" />
+			)}
+			<div className="mt-1 space-y-1 overflow-hidden">
+				{eventsForDay.slice(0, 3).map((event) => (
+					<div
+						key={event.task_id}
+						className={cn(
+							"text-xs text-white rounded px-2 py-0.5 truncate border-l-2",
+							taskStatusColors[event.status] ||
+								taskStatusColors.default
+						)}
+						title={event.description}
+					>
+						<span className="font-bold">
+							{format(event.startTime, "ha")}
+						</span>{" "}
+						{event.description}
+					</div>
+				))}
+				{eventsForDay.length > 3 && (
+					<div className="text-xs text-[var(--color-text-muted)]">
+						+ {eventsForDay.length - 3} more
+					</div>
+				)}
+			</div>
+		</div>
+	)
+}
+
+// Side Panel for Entries
+const EntrySidePanel = ({ selectedDate, onClose, entries, onDataChange }) => {
+	const [newContent, setNewContent] = useState("")
+	const [editingBlock, setEditingBlock] = useState(null)
+	const [isSubmitting, setIsSubmitting] = useState(false)
+	const newEntryTextareaRef = useRef(null)
+
+	const handleCreateBlock = async (processWithAI) => {
+		if (!newContent.trim()) return
+		setIsSubmitting(true)
+
+		const newOrder =
+			entries.length > 0
+				? Math.max(...entries.map((b) => b.order)) + 1
+				: 0
+		try {
+			const response = await fetch("/api/journal", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					content: newContent,
+					page_date: format(selectedDate, "yyyy-MM-dd"),
+					order: newOrder,
+					processWithAI: processWithAI
+				})
+			})
+			if (!response.ok) throw new Error("Failed to create entry")
+			setNewContent("")
+			toast.success(
+				processWithAI
+					? "Entry sent to AI for processing."
+					: "Entry added."
+			)
+			onDataChange()
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsSubmitting(false)
+		}
+	}
+
+	const handleUpdateBlock = async (blockId, content) => {
+		setIsSubmitting(true)
+		try {
+			const response = await fetch(`/api/journal?blockId=${blockId}`, {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ content })
+			})
+			if (!response.ok) throw new Error("Failed to update block")
+			setEditingBlock(null)
+			toast.success("Entry updated.")
+			onDataChange()
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsSubmitting(false)
+		}
+	}
+
+	const handleDeleteBlock = async (blockId) => {
+		if (!window.confirm("Are you sure you want to delete this entry?"))
+			return
+
+		setIsSubmitting(true)
+		try {
+			const response = await fetch(`/api/journal?blockId=${blockId}`, {
+				method: "DELETE"
+			})
+			if (!response.ok) throw new Error("Failed to delete block")
+			toast.success("Entry deleted.")
+			onDataChange()
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsSubmitting(false)
+		}
+	}
+
+	return (
+		<motion.div
+			initial={{ x: "100%" }}
+			animate={{ x: 0 }}
+			exit={{ x: "100%" }}
+			transition={{ type: "spring", stiffness: 300, damping: 30 }}
+			className="fixed top-0 right-0 h-full w-full max-w-md bg-[var(--color-primary-surface)] shadow-lg z-50 flex flex-col border-l border-[var(--color-primary-surface-elevated)]"
+		>
+			<header className="flex items-center justify-between p-4 border-b border-[var(--color-primary-surface-elevated)]">
+				<h2 className="text-lg font-semibold">
+					{format(selectedDate, "eeee, MMMM d, yyyy")}
+				</h2>
+				<button
+					onClick={onClose}
+					className="p-1 rounded-full hover:bg-[var(--color-primary-surface-elevated)]"
+				>
+					<IconX size={20} />
+				</button>
+			</header>
+
+			<div className="flex-1 p-4 space-y-4 overflow-y-auto custom-scrollbar">
+				{entries.length === 0 ? (
+					<p className="text-center text-[var(--color-text-muted)] pt-10">
+						No entries for this day.
+					</p>
+				) : (
+					entries.map((block) => (
+						<div
+							key={block.block_id}
+							className="group relative bg-[var(--color-primary-background)] p-3 rounded-lg border border-transparent hover:border-[var(--color-primary-surface-elevated)]"
+						>
+							{editingBlock?.block_id === block.block_id ? (
+								<div>
+									<textarea
+										value={editingBlock.content}
+										onChange={(e) =>
+											setEditingBlock({
+												...editingBlock,
+												content: e.target.value
+											})
+										}
+										className="w-full bg-transparent resize-none focus:outline-none p-1"
+									/>
+									<div className="flex justify-end gap-2 mt-2">
+										<button
+											onClick={() =>
+												setEditingBlock(null)
+											}
+											className="text-xs px-2 py-1 rounded"
+										>
+											Cancel
+										</button>
+										<button
+											onClick={() =>
+												handleUpdateBlock(
+													editingBlock.block_id,
+													editingBlock.content
+												)
+											}
+											className="text-xs px-2 py-1 bg-[var(--color-accent-blue)] rounded text-white"
+										>
+											Save
+										</button>
+									</div>
+								</div>
+							) : (
+								<>
+									<p className="whitespace-pre-wrap">
+										{block.content}
+									</p>
+									<div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+										<button
+											onClick={() =>
+												setEditingBlock(block)
+											}
+											className="p-1 rounded text-[var(--color-text-muted)] hover:text-white"
+										>
+											<IconPencil size={14} />
+										</button>
+										<button
+											onClick={() =>
+												handleDeleteBlock(
+													block.block_id
+												)
+											}
+											className="p-1 rounded text-[var(--color-text-muted)] hover:text-red-400"
+										>
+											<IconTrash size={14} />
+										</button>
+									</div>
+								</>
+							)}
+						</div>
+					))
+				)}
+			</div>
+
+			<div className="p-4 border-t border-[var(--color-primary-surface-elevated)] space-y-2">
+				<textarea
+					ref={newEntryTextareaRef}
+					value={newContent}
+					onChange={(e) => setNewContent(e.target.value)}
+					placeholder="Write something..."
+					className="w-full bg-[var(--color-primary-background)] p-2 rounded-lg resize-none focus:outline-none placeholder:text-[var(--color-text-muted)]"
+					rows={4}
+				/>
+				<div className="flex justify-end gap-2">
+					<button
+						onClick={() => handleCreateBlock(true)}
+						disabled={isSubmitting || !newContent.trim()}
+						className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium bg-purple-600 hover:bg-purple-500 text-white rounded-md disabled:opacity-50"
+					>
+						<IconSparkles size={16} /> Process with AI
+					</button>
+					<button
+						onClick={() => handleCreateBlock(false)}
+						disabled={isSubmitting || !newContent.trim()}
+						className="px-4 py-1.5 text-sm font-medium bg-[var(--color-accent-blue)] hover:bg-blue-500 text-white rounded-md disabled:opacity-50"
+					>
+						Add Entry
+					</button>
+				</div>
+			</div>
+		</motion.div>
 	)
 }
 

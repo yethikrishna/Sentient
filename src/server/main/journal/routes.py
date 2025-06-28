@@ -2,7 +2,7 @@ import datetime
 import uuid
 import json
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from .models import CreateBlockRequest, UpdateBlockRequest
 from ..dependencies import mongo_manager
 from ..auth.utils import PermissionChecker
@@ -15,14 +15,25 @@ router = APIRouter(
 
 @router.get("/blocks", status_code=status.HTTP_200_OK)
 async def get_journal_blocks(
-    date: str, # YYYY-MM-DD format
+    date: Optional[str] = Query(None, description="A specific date in YYYY-MM-DD format."),
+    start_date: Optional[str] = Query(None, alias="startDate", description="Start date for a range query."),
+    end_date: Optional[str] = Query(None, alias="endDate", description="End date for a range query."),
     user_id: str = Depends(PermissionChecker(required_permissions=["read:journal"]))
 ):
-    """Fetches all journal blocks for a specific date."""
-    blocks_cursor = mongo_manager.journal_blocks_collection.find({
-        "user_id": user_id,
-        "page_date": date
-    }).sort("order", 1)
+    """
+    Fetches journal blocks.
+    - If 'date' is provided, fetches for a specific date.
+    - If 'startDate' and 'endDate' are provided, fetches for a date range.
+    """
+    query = {"user_id": user_id}
+    if date:
+        query["page_date"] = date
+    elif start_date and end_date:
+        query["page_date"] = {"$gte": start_date, "$lte": end_date}
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Either 'date' or both 'startDate' and 'endDate' must be provided.")
+
+    blocks_cursor = mongo_manager.journal_blocks_collection.find(query).sort("page_date", 1).sort("order", 1)
     
     blocks = await blocks_cursor.to_list(length=None)
     for block in blocks:

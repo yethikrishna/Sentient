@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useCallback } from "react"
+import React, { useState, useEffect, useRef, useCallback } from "react"
 import {
 	IconLoader,
 	IconPencil,
@@ -32,6 +32,7 @@ import toast from "react-hot-toast"
 import { Tooltip } from "react-tooltip"
 import "react-tooltip/dist/react-tooltip.css"
 import { cn } from "@utils/cn"
+import { useSmoothScroll } from "@hooks/useSmoothScroll"
 import { motion, AnimatePresence } from "framer-motion"
 import { useRouter } from "next/navigation"
 
@@ -127,6 +128,9 @@ const Tasks = () => {
 	const [availableTools, setAvailableTools] = useState([])
 	const [integrations, setIntegrations] = useState([])
 	const [loadingIntegrations, setLoadingIntegrations] = useState(true)
+	const scrollRef = useRef(null)
+
+	useSmoothScroll(scrollRef)
 
 	// --- Fetching Data ---
 	const fetchTasksData = useCallback(async () => {
@@ -599,7 +603,7 @@ const Tasks = () => {
 							placeholder="Search tasks..."
 							value={searchTerm}
 							onChange={(e) => setSearchTerm(e.target.value)}
-							className="bg-transparent text-white focus:outline-none w-full flex-grow px-2 placeholder-gray-500 text-base rounded-md py-1"
+							className="bg-transparent text-white focus:outline-none w-full flex-grow px-2 placeholder-gray-500 text-base rounded-md py-1 focus:ring-matteblack focus:ring-0"
 						/>
 						<div className="relative flex-shrink-0">
 							<IconFilter className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
@@ -652,13 +656,16 @@ const Tasks = () => {
 
 				{/* --- Task List Container --- */}
 				<main className="flex-1 w-full max-w-2xl mx-auto py-6 flex flex-col overflow-hidden">
-					<div className="flex-grow overflow-y-auto space-y-2 md:pr-2 custom-scrollbar">
+					<div
+						ref={scrollRef}
+						className="flex-grow overflow-y-auto space-y-2 md:pr-2 no-scrollbar"
+					>
 						{loading || loadingIntegrations ? (
 							<div className="flex justify-center items-center h-full">
 								<IconLoader className="w-10 h-10 animate-spin text-white" />
 							</div>
 						) : filteredTasks.length === 0 ? (
-							<p className="text-gray-500 text-center py-16">
+							<p className="text-gray-500 text-center py-20 mt-5">
 								No tasks found matching your criteria.
 							</p>
 						) : (

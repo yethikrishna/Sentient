@@ -14,6 +14,7 @@ import {
 import toast from "react-hot-toast"
 import { cn } from "@utils/cn"
 import { motion } from "framer-motion"
+import { useSmoothScroll } from "@hooks/useSmoothScroll"
 import ChatBubble from "@components/ChatBubble"
 
 // Simplified Switch component from old chat page
@@ -38,7 +39,7 @@ const Switch = ({ checked, onCheckedChange }) => (
 	</button>
 )
 
-const ChatOverlay = ({ isOpen, onClose }) => {
+const ChatOverlay = ({ onClose }) => {
 	const [messages, setMessages] = useState([])
 	const [input, setInput] = useState("")
 	const [thinking, setThinking] = useState(false)
@@ -50,18 +51,19 @@ const ChatOverlay = ({ isOpen, onClose }) => {
 	const textareaRef = useRef(null)
 	const chatEndRef = useRef(null)
 	const abortControllerRef = useRef(null)
+	const scrollRef = useRef(null)
+
+	useSmoothScroll(scrollRef)
 
 	// Reset state when overlay is closed
+	// This effect now correctly handles cleanup on unmount
 	useEffect(() => {
-		if (!isOpen) {
-			setMessages([])
-			setInput("")
-			setThinking(false)
+		return () => {
 			if (abortControllerRef.current) {
 				abortControllerRef.current.abort()
 			}
 		}
-	}, [isOpen])
+	}, [])
 
 	const handleInputChange = (e) => {
 		const value = e.target.value
@@ -198,18 +200,25 @@ const ChatOverlay = ({ isOpen, onClose }) => {
 		if (chatEndRef.current) {
 			chatEndRef.current.scrollIntoView({ behavior: "smooth" })
 		}
-	}, [messages])
+	}, [messages, thinking])
 
-	if (!isOpen) return null
+	const handleBackdropClick = (e) => {
+		if (e.target === e.currentTarget) {
+			onClose()
+		}
+	}
 
 	return (
-		<div className="fixed inset-0 bg-black/50 backdrop-blur-md z-50 flex items-center justify-center p-4">
+		<div
+			onClick={handleBackdropClick}
+			className="fixed inset-0 bg-black/50 backdrop-blur-md z-50 flex items-center justify-center p-4"
+		>
 			<motion.div
 				initial={{ opacity: 0, y: 50, scale: 0.9 }}
 				animate={{ opacity: 1, y: 0, scale: 1 }}
 				exit={{ opacity: 0, y: 50, scale: 0.9 }}
 				transition={{ duration: 0.3, ease: "easeInOut" }}
-				className="bg-[var(--color-primary-background)] border border-[var(--color-primary-surface-elevated)] rounded-2xl w-full max-w-2xl h-[85vh] flex flex-col shadow-2xl"
+				className="bg-[var(--color-primary-background)] border border-[var(--color-primary-surface-elevated)] rounded-2xl w-full max-w-3xl h-[85vh] flex flex-col shadow-2xl"
 			>
 				<header className="flex justify-between items-center p-4 border-b border-[var(--color-primary-surface)] flex-shrink-0">
 					<h2 className="text-xl font-semibold text-[var(--color-text-primary)]">
@@ -223,11 +232,14 @@ const ChatOverlay = ({ isOpen, onClose }) => {
 					</button>
 				</header>
 
-				<div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 no-scrollbar">
+				<div
+					ref={scrollRef}
+					className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 no-scrollbar"
+				>
 					{messages.length === 0 && !thinking ? (
 						<div className="flex-1 flex flex-col justify-center items-center text-gray-400">
 							<p className="text-3xl text-[var(--color-text-primary)] mb-4">
-								Ask me anything.
+								How can I help you today?
 							</p>
 						</div>
 					) : (
@@ -352,7 +364,7 @@ const ChatOverlay = ({ isOpen, onClose }) => {
 									sendMessage()
 								}
 							}}
-							className="flex-grow p-2 pr-28 rounded-lg bg-transparent text-base text-[var(--color-text-primary)] focus:outline-none resize-none no-scrollbar overflow-y-auto"
+							className="flex-grow p-2 pr-28 rounded-lg bg-transparent text-base text-[var(--color-text-primary)] focus:outline-none focus:ring-0 resize-none no-scrollbar overflow-y-auto"
 							placeholder="Type your message..."
 							style={{ maxHeight: "150px", minHeight: "24px" }}
 							rows={1}

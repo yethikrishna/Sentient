@@ -26,7 +26,7 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 		const credits = userData?.data?.proCredits || 0
 
 		const backendResponse = await fetch(
-			`${process.env.APP_SERVER_URL}/chat`,
+			`${process.env.APP_SERVER_URL}/chat/message`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },
@@ -74,7 +74,7 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 			}
 		})
 	} catch (error) {
-		console.error("API Error in /chat/send:", error)
+		console.error("API Error in /chat/message:", error)
 		return NextResponse.json(
 			{ message: "Internal Server Error", error: error.message },
 			{ status: 500 }

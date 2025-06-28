@@ -73,9 +73,7 @@ SUPPORTED_POLLING_SERVICES = ["gmail", "gcalendar"]
 INTEGRATIONS_CONFIG = {
     "github": {
         "display_name": "GitHub",
-        "description": (
-            "Connect to manage repositories, issues, and more. "
-            "Enables the agent to interact with your GitHub account."),
+        "description": "Connect to manage repositories, issues, and more. Enables the agent to search public and private repos, list your repos, view repository details, list issues, create new issues, and read file contents.",
         "auth_type": "oauth",
         "icon": "IconBrandGithub",
         "mcp_server_config": {
@@ -85,9 +83,7 @@ INTEGRATIONS_CONFIG = {
     },
     "gdrive": { # User-configurable OAuth
         "display_name": "Google Drive",
-        "description": (
-            "Access and manage files in your Google Drive. "
-            "Allows the agent to search and read your documents."),
+        "description": "Access and manage files in your Google Drive. Allows the agent to search for files by name or content and read the contents of various file types like documents and spreadsheets.",
         "auth_type": "oauth",
         "icon": "IconBrandGoogleDrive",
         "mcp_server_config": {
@@ -97,9 +93,7 @@ INTEGRATIONS_CONFIG = {
     },
     "gcalendar": { # User-configurable OAuth
         "display_name": "Google Calendar",
-        "description": (
-            "Read and manage events on your Google Calendar. "
-            "Enables the agent to check your schedule and create events."),
+        "description": "Read and manage events on your Google Calendar. Enables the agent to list upcoming events, add new events, search for specific events, update event details, and delete events.",
         "auth_type": "oauth",
         "icon": "IconCalendarEvent",
         "mcp_server_config": {
@@ -109,9 +103,7 @@ INTEGRATIONS_CONFIG = {
     },
     "gmail": { # User-configurable OAuth
         "display_name": "Gmail",
-        "description": (
-            "Read, send, and manage emails. "
-            "Lets the agent interact with your Gmail inbox."),
+        "description": "Read, send, and manage emails. The agent can search your inbox, send new emails, create drafts, reply to threads, forward messages, and manage emails by deleting them or marking them as read/unread.",
         "auth_type": "oauth",
         "icon": "IconMail",
         "mcp_server_config": {
@@ -121,9 +113,7 @@ INTEGRATIONS_CONFIG = {
     },
     "gdocs": {
         "display_name": "Google Docs",
-        "description": (
-            "Create and manage documents in your Google Docs. "
-            "Allows the agent to generate new documents for you."),
+        "description": "Create and manage documents in Google Docs. Allows the agent to generate new, multi-section documents with titles, headings, paragraphs, and bullet points.",
         "auth_type": "oauth",
         "icon": "IconFileText",
         "mcp_server_config": {
@@ -133,9 +123,7 @@ INTEGRATIONS_CONFIG = {
     },
     "gslides": {
         "display_name": "Google Slides",
-        "description": (
-            "Create and manage presentations in Google Slides. "
-            "The agent can build slide decks based on your requests."),
+        "description": "Create and manage presentations in Google Slides. The agent can build new slide decks with titles, content, images, and charts based on a structured outline you provide.",
         "auth_type": "oauth",
         "icon": "IconPresentation",
         "mcp_server_config": {
@@ -145,9 +133,7 @@ INTEGRATIONS_CONFIG = {
     },
     "gsheets": {
         "display_name": "Google Sheets",
-        "description": (
-            "Create and manage spreadsheets in Google Sheets. "
-            "The agent can help organize data into tables."),
+        "description": "Create and manage spreadsheets in Google Sheets. The agent can help organize data by creating new spreadsheets with one or more sheets, including headers and rows.",
         "auth_type": "oauth",
         "icon": "IconTable",
         "mcp_server_config": {
@@ -157,9 +143,7 @@ INTEGRATIONS_CONFIG = {
     },
     "gmaps": {
         "display_name": "Google Maps",
-        "description": (
-            "Search for places and get directions. "
-            "The agent can look up locations and routes for you."),
+        "description": "Search for places and get directions. The agent can look up addresses, points of interest, and find routes for driving, walking, bicycling, or transit.",
         "auth_type": "builtin",
         "icon": "IconMapPin",
         "mcp_server_config": {
@@ -169,9 +153,7 @@ INTEGRATIONS_CONFIG = {
     },
     "gshopping": {
         "display_name": "Google Shopping",
-        "description": (
-            "Search for products online. "
-            "The agent can help you find items to purchase."),
+        "description": "Search for products online. The agent can find items to purchase by searching Google Shopping and returning a list of products with titles, links, and prices.",
         "auth_type": "builtin",
         "icon": "IconShoppingCart",
         "mcp_server_config": {
@@ -181,9 +163,7 @@ INTEGRATIONS_CONFIG = {
     },
     "slack": { # User-configurable Manual
         "display_name": "Slack",
-        "description": (
-            "Connect to your Slack workspace to send messages and more. "
-            "Allows the agent to communicate in your Slack channels."),
+        "description": "Connect to your Slack workspace. Allows the agent to list channels, post messages, reply in threads, add reactions, read channel history, and get user information.",
         "auth_type": "manual",
         "icon": "IconBrandSlack",
         "manual_auth_info": {
@@ -205,9 +185,7 @@ INTEGRATIONS_CONFIG = {
     },
     "notion": {
         "display_name": "Notion",
-        "description": (
-            "Connect to your Notion workspace to search, create, and manage pages. "
-            "Lets the agent organize information in your Notion."),
+        "description": "Connect to your Notion workspace. The agent can search for pages and databases, read page content, create new pages, append content to existing pages, and query databases with filters.",
         "auth_type": "manual",
         "icon": "IconBrandNotion",
         "manual_auth_info": {
@@ -228,7 +206,7 @@ INTEGRATIONS_CONFIG = {
     },
     "news": { # Built-in
         "display_name": "News",
-        "description": "Fetches top headlines and news articles from around the world.",
+        "description": "Fetches top headlines and news articles from around the world. The agent can get top headlines by country or category, or search for articles on any topic.",
         "auth_type": "builtin",
         "icon": "IconNews",
         "mcp_server_config": {
@@ -238,7 +216,7 @@ INTEGRATIONS_CONFIG = {
     },
     "internet_search": { # Built-in
         "display_name": "Internet Search",
-        "description": "Allows the agent to search the web using Google Search.",
+        "description": "Allows the agent to search the web using Google Search to find real-time, factual information on any topic.",
         "auth_type": "builtin",
         "icon": "IconWorldSearch",
         "mcp_server_config": {
@@ -248,7 +226,7 @@ INTEGRATIONS_CONFIG = {
     },
     "accuweather": { # Built-in
         "display_name": "AccuWeather",
-        "description": "Provides current weather conditions and forecasts.",
+        "description": "Provides current weather conditions and daily forecasts. The agent can get the current weather for any location or a forecast for the next 1-5 days.",
         "auth_type": "builtin",
         "icon": "IconCloud", # Frontend needs to map this string to the icon component
         "mcp_server_config": {
@@ -258,7 +236,7 @@ INTEGRATIONS_CONFIG = {
     },
     "quickchart": { # Built-in
         "display_name": "QuickChart",
-        "description": "Generates charts and data visualizations on the fly.",
+        "description": "Generates charts and data visualizations on the fly. The agent can create bar charts, line charts, pie charts, and more, then provide a URL or download the image.",
         "auth_type": "builtin",
         "icon": "IconChartPie", # Frontend needs to map this
         "mcp_server_config": {
@@ -268,7 +246,7 @@ INTEGRATIONS_CONFIG = {
     },
     "progress_updater": { # Built-in tool for executor
         "display_name": "Progress Updater",
-        "description": "Allows an executor agent to update task progress.",
+        "description": "Internal tool for the system to provide real-time progress updates on long-running tasks.",
         "auth_type": "builtin",
         "icon": "IconActivity", # Will need to add this icon
         "mcp_server_config": {
@@ -278,7 +256,7 @@ INTEGRATIONS_CONFIG = {
     },
     "chat_tools": { # Built-in, for chat agent
         "display_name": "Chat Agent Tools",
-        "description": "Tools for the main conversational agent, like task handoff.",
+        "description": "Internal tools for the main conversational agent, such as handing off complex tasks to the planning system and checking task status.",
         "auth_type": "builtin",
         "icon": "IconMessage", # Frontend can map this
         "mcp_server_config": {
@@ -288,7 +266,7 @@ INTEGRATIONS_CONFIG = {
     },
     "journal": { # Built-in, for chat agent
         "display_name": "Journal Tools",
-        "description": "Tools for the managing the user's Journal.",
+        "description": "Tools for managing the user's Journal. The agent can add new entries, search existing entries by keyword, and get a summary for a specific day.",
         "auth_type": "builtin",
         "icon": "IconMessage", # Frontend can map this
         "mcp_server_config": {

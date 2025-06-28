@@ -166,20 +166,6 @@ async def get_role_from_claims_endpoint(payload: dict = Depends(auth_helper.get_
     user_role = payload.get(f"{CUSTOM_CLAIMS_NAMESPACE}role", "free")
     return JSONResponse(status_code=status.HTTP_200_OK, content={"role": user_role})
 
-@router.post("/utils/get-referral-code", summary="Get Referral Code from Token")
-async def get_referral_code_endpoint(payload: dict = Depends(auth_helper.get_decoded_payload_with_claims)):
-    if not AUTH0_AUDIENCE: raise HTTPException(status_code=500, detail="Server config error: AUTH0_AUDIENCE missing.")
-    CUSTOM_CLAIMS_NAMESPACE = f"{AUTH0_AUDIENCE}/" if not AUTH0_AUDIENCE.endswith('/') else AUTH0_AUDIENCE
-    referral_code = payload.get(f"{CUSTOM_CLAIMS_NAMESPACE}referralCode")
-    return JSONResponse(status_code=status.HTTP_200_OK, content={"referralCode": referral_code})
-
-@router.post("/utils/get-referrer-status", summary="Get Referrer Status from Token")
-async def get_referrer_status_endpoint(payload: dict = Depends(auth_helper.get_decoded_payload_with_claims)):
-    if not AUTH0_AUDIENCE: raise HTTPException(status_code=500, detail="Server config error: AUTH0_AUDIENCE missing.")
-    CUSTOM_CLAIMS_NAMESPACE = f"{AUTH0_AUDIENCE}/" if not AUTH0_AUDIENCE.endswith('/') else AUTH0_AUDIENCE
-    referrer_status = payload.get(f"{CUSTOM_CLAIMS_NAMESPACE}referrerStatus", False)
-    return JSONResponse(status_code=status.HTTP_200_OK, content={"referrerStatus": referrer_status})
-
 @router.post("/utils/authenticate-google", summary="Validate or Refresh Stored Google Token (Dummy)")
 async def authenticate_google_endpoint(user_id: str = Depends(PermissionChecker(required_permissions=["manage:google_auth"]))):
     user_profile = await mongo_manager.get_user_profile(user_id)

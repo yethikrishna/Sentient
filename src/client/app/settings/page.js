@@ -3,8 +3,6 @@
 import toast from "react-hot-toast"
 import ModalDialog from "@components/ModalDialog"
 import {
-	IconGift,
-	IconRocket,
 	IconMail,
 	IconCalendarEvent,
 	IconWorldSearch,
@@ -15,6 +13,7 @@ import {
 	IconBrandNotion,
 	IconPlugConnected,
 	IconPlugOff,
+	IconPlus,
 	IconCloud,
 	IconChartPie,
 	IconBrain,
@@ -31,12 +30,14 @@ import {
 	IconShoppingCart,
 	IconLink,
 	IconMenu2,
+	IconChevronDown,
 	IconFilterOff,
 	IconX
 } from "@tabler/icons-react"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import Sidebar from "@components/Sidebar"
 import React from "react"
+import { useSmoothScroll } from "@hooks/useSmoothScroll"
 import { cn } from "@utils/cn"
 
 const integrationIcons = {
@@ -290,9 +291,9 @@ const PrivacySettings = () => {
 					<button
 						onClick={handleAddFilter}
 						disabled={isLoading}
-						className="py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-blue-700 text-white font-medium transition-colors"
+						className="flex flex-row items-center py-2 px-4 rounded-md bg-darkblue hover:bg-lightblue text-white font-medium transition-colors"
 					>
-						Add
+						<IconPlus className="w-4 h-4 mr-2" /> Add
 					</button>
 				</div>
 				<div className="flex flex-wrap gap-2">
@@ -324,15 +325,14 @@ const PrivacySettings = () => {
 const Settings = () => {
 	const [userDetails, setUserDetails] = useState({})
 	const [isSidebarVisible, setSidebarVisible] = useState(false)
-	const [pricing, setPricing] = useState("free")
-	const [showReferralDialog, setShowReferralDialog] = useState(false)
-	const [referralCode, setReferralCode] = useState("DUMMY")
-	const [referrerStatus, setReferrerStatus] = useState(false)
 	const [userIntegrations, setUserIntegrations] = useState([])
 	const [defaultTools, setDefaultTools] = useState([])
 	const [loadingIntegrations, setLoadingIntegrations] = useState(true)
 	const [activeManualIntegration, setActiveManualIntegration] = useState(null)
 	const [processingIntegration, setProcessingIntegration] = useState(null)
+	const scrollRef = useRef(null)
+
+	useSmoothScroll(scrollRef)
 
 	// --- CORRECTED: Specific list of Google services ---
 	const googleServices = [
@@ -360,10 +360,10 @@ const Settings = () => {
 			}))
 
 			const hiddenTools = [
-				"internet_search",
 				"google_search",
-				"gmaps",
-				"gshopping"
+				"progress_updater",
+				"chat_tools",
+				"journal"
 			]
 
 			const userConnectable = integrationsWithIcons.filter(
@@ -490,30 +490,6 @@ const Settings = () => {
 		}
 	}, [])
 
-	const fetchPricingPlan = useCallback(async () => {
-		try {
-			const response = await fetch("/api/user/pricing")
-			if (!response.ok) throw new Error("Failed to fetch pricing plan")
-			const data = await response.json()
-			setPricing(data.pricing || "free")
-		} catch (error) {
-			toast.error(`Error fetching pricing plan: ${error.message}`)
-		}
-	}, [])
-
-	const fetchReferralDetails = useCallback(async () => {
-		try {
-			const response = await fetch("/api/user/referral")
-			if (!response.ok)
-				throw new Error("Failed to fetch referral details")
-			const data = await response.json()
-			setReferralCode(data.referralCode || "N/A")
-			setReferrerStatus(data.referrerStatus || false)
-		} catch (error) {
-			toast.error(`Error fetching referral details: ${error.message}`)
-		}
-	}, [])
-
 	const fetchData = useCallback(async () => {
 		console.log("Fetching user data...")
 		try {
@@ -536,8 +512,6 @@ const Settings = () => {
 	useEffect(() => {
 		fetchData()
 		fetchUserDetails()
-		fetchPricingPlan()
-		fetchReferralDetails()
 		fetchIntegrations()
 
 		const urlParams = new URLSearchParams(window.location.search)
@@ -551,13 +525,7 @@ const Settings = () => {
 			toast.error(`Connection failed: ${error}`)
 			window.history.replaceState({}, document.title, "/settings")
 		}
-	}, [
-		fetchData,
-		fetchUserDetails,
-		fetchPricingPlan,
-		fetchReferralDetails,
-		fetchIntegrations
-	])
+	}, [fetchData, fetchUserDetails, fetchIntegrations])
 
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)]">
@@ -579,39 +547,12 @@ const Settings = () => {
 							Settings
 						</h1>
 					</div>
-					<div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-end">
-						<button
-							onClick={() =>
-								window.open(
-									"https://existence-sentient.vercel.app/dashboard",
-									"_blank"
-								)
-							}
-							className="flex-1 sm:flex-none flex items-center justify-center gap-2 py-2 px-4 rounded-full bg-blue-900/50 hover:bg-[var(--color-accent-blue)] text-white text-xs sm:text-sm font-medium transition-colors shadow-md"
-							title={
-								pricing === "free"
-									? "Upgrade for more features"
-									: "Manage Subscription"
-							}
-						>
-							<IconRocket size={18} />
-							<span>
-								{pricing === "free"
-									? "Upgrade to Pro"
-									: "Manage Pro Plan"}
-							</span>
-						</button>
-						<button
-							onClick={() => setShowReferralDialog(true)}
-							className="flex-1 sm:flex-none flex items-center justify-center gap-2 py-2 px-4 rounded-full bg-[var(--color-primary-surface-elevated)] hover:bg-neutral-600 text-white text-xs sm:text-sm font-medium transition-colors shadow-md"
-							title="Refer a friend"
-						>
-							<IconGift size={18} />
-							<span>Refer Sentient</span>
-						</button>
-					</div>
+					<div></div>
 				</header>
-				<main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 custom-scrollbar">
+				<main
+					ref={scrollRef}
+					className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 no-scrollbar"
+				>
 					<div className="w-full max-w-5xl mx-auto space-y-10">
 						<PrivacySettings />
 						<section>
@@ -646,11 +587,24 @@ const Settings = () => {
 																	integration.display_name
 																}
 															</h3>
-															<p className="text-gray-400 text-xs sm:text-sm truncate">
-																{
-																	integration.description
-																}
-															</p>
+															<details className="mt-1 text-gray-400 text-xs sm:text-sm group">
+																<summary className="list-none flex items-center cursor-pointer hover:text-white transition-colors w-fit">
+																	<span>
+																		Details
+																	</span>
+																	<IconChevronDown
+																		size={
+																			14
+																		}
+																		className="ml-1 transition-transform duration-200 group-open:rotate-180"
+																	/>
+																</summary>
+																<p className="mt-2 pt-2 border-t border-neutral-700/50">
+																	{
+																		integration.description
+																	}
+																</p>
+															</details>
 														</div>
 													</div>
 													<div className="w-32 sm:w-40 text-right flex-shrink-0">
@@ -729,11 +683,24 @@ const Settings = () => {
 																	tool.display_name
 																}
 															</h3>
-															<p className="text-gray-400 text-xs sm:text-sm truncate">
-																{
-																	tool.description
-																}
-															</p>
+															<details className="mt-1 text-gray-400 text-xs sm:text-sm group">
+																<summary className="list-none flex items-center cursor-pointer hover:text-white transition-colors w-fit">
+																	<span>
+																		Details
+																	</span>
+																	<IconChevronDown
+																		size={
+																			14
+																		}
+																		className="ml-1 transition-transform duration-200 group-open:rotate-180"
+																	/>
+																</summary>
+																<p className="mt-2 pt-2 border-t border-neutral-700/50">
+																	{
+																		tool.description
+																	}
+																</p>
+															</details>
 														</div>
 													</div>
 												</div>
@@ -754,37 +721,6 @@ const Settings = () => {
 							integration={activeManualIntegration}
 							onClose={() => setActiveManualIntegration(null)}
 							onSuccess={() => fetchIntegrations()}
-						/>
-					)}
-
-					{showReferralDialog && (
-						<ModalDialog
-							title="Referral Code"
-							description={`Share this code with friends: ${
-								referralCode === "N/A" || !referralCode
-									? "Loading..."
-									: referralCode
-							}`}
-							extraContent={
-								referrerStatus ? (
-									<p className="text-sm text-green-400">
-										Your referral status is:{" "}
-										<span className="font-bold">
-											Active
-										</span>
-									</p>
-								) : (
-									<p className="text-sm text-yellow-400">
-										Your referral status is:{" "}
-										<span className="font-bold">
-											Inactive
-										</span>
-									</p>
-								)
-							}
-							onConfirm={() => setShowReferralDialog(false)}
-							confirmButtonText="Close"
-							cancelButton={false}
 						/>
 					)}
 				</main>

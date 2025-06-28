@@ -1,6 +1,6 @@
 "use client"
 import { useRouter, usePathname } from "next/navigation"
-import { useEffect, useState, useRef, useCallback } from "react"
+import React, { useEffect, useState, useRef } from "react"
 import {
 	IconAdjustments,
 	IconBell,
@@ -17,24 +17,14 @@ import {
 import toast from "react-hot-toast"
 import { AnimatePresence, motion } from "framer-motion"
 import { cn } from "@utils/cn"
+import { useSmoothScroll } from "@hooks/useSmoothScroll"
 
 const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 	const router = useRouter()
-	const [pricing, setPricing] = useState("free")
-	const wsRef = useRef(null)
-	// Removed chat list state and handlers
+	const wsRef = useRef(null) // Removed chat list state and handlers
+	const scrollRef = useRef(null)
 
-	const fetchPricingPlan = useCallback(async () => {
-		try {
-			const response = await fetch("/api/user/pricing")
-			if (!response.ok) throw new Error("Failed to fetch")
-			const data = await response.json()
-			setPricing(data.pricing || "free")
-		} catch (error) {
-			toast.error("Error fetching pricing plan.")
-		}
-	}, [])
-
+	useSmoothScroll(scrollRef)
 	const logout = () => {
 		router.push("/auth/logout")
 	}
@@ -46,8 +36,7 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 		if (!userDetails) {
 			return
 		}
-		fetchPricingPlan()
-	}, [userDetails, fetchPricingPlan])
+	}, [userDetails]) // Separate effect for fetching data, depends on userDetails
 
 	// Separate, dedicated effect for WebSocket lifecycle management
 	useEffect(() => {
@@ -192,22 +181,23 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 			<motion.button
 				onClick={() => router.push(href)}
 				whileHover={{
-					x: 4,
-					transition: { duration: 0.15 }
+					backgroundColor: "rgba(17, 24, 39, 0.5)" // Equivalent to bg-gray-900/50
 				}}
 				whileTap={{ scale: 0.98 }}
 				className={cn(
-					"flex items-center gap-3 w-full text-left px-3 py-2.5 rounded-[var(--radius-base)] text-sm font-medium transition-all duration-200 group",
+					"flex items-center gap-4 w-full text-left p-3.5 rounded-xl text-base font-semibold transition-all duration-200 group",
 					isActive
-						? "bg-[var(--color-accent-blue)]/15 text-[var(--color-text-primary)] shadow-sm"
-						: "text-[var(--color-text-secondary)] hover:bg-[var(--color-primary-surface-elevated)] hover:text-[var(--color-text-primary)]"
+						? "bg-darkblue text-white hover:bg-lightblue"
+						: "text-neutral-400 hover:text-white hover:bg-lightblue"
 				)}
 			>
 				<motion.div
-					whileHover={{ rotate: isActive ? 0 : -5, scale: 1.1 }}
-					transition={{ duration: 0.2 }}
+					className={cn(
+						"transition-colors",
+						isActive ? "text-lightblue" : "text-neutral-500"
+					)}
 				>
-					{icon}
+					{React.cloneElement(icon, { size: 24 })}
 				</motion.div>
 				<span className="group-hover:translate-x-0.5 transition-transform duration-150">
 					{label}
@@ -221,29 +211,87 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 	return (
 		<>
 			<motion.div
-				initial={{ x: -280 }}
-				animate={{ x: isSidebarVisible ? 0 : -281 }}
+				initial={{ x: -320 }}
+				animate={{ x: isSidebarVisible ? 0 : -321 }}
 				transition={{ type: "spring", stiffness: 300, damping: 30 }}
-				className="fixed flex flex-col inset-y-0 left-0 z-50 w-[280px] bg-[var(--color-primary-surface)] border-r border-[var(--color-primary-surface-elevated)]"
+				className="fixed flex flex-col inset-y-0 left-0 z-50 w-[320px] bg-matteblack border-r border-neutral-800/50 font-Poppins"
 				onMouseLeave={() =>
 					window.innerWidth > 768 && setSidebarVisible(false)
 				}
 			>
-				<div className="flex-1 flex flex-col p-4 overflow-y-auto custom-scrollbar">
+				<div
+					ref={scrollRef}
+					className="flex-1 flex flex-col p-5 overflow-y-auto no-scrollbar"
+				>
 					<motion.button
 						onClick={() => setSidebarVisible(false)}
-						className="absolute top-4 right-4 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] md:hidden p-1 hover:bg-[var(--color-primary-surface-elevated)] rounded-[var(--radius-base)] transition-colors duration-150"
+						className="absolute top-4 right-4 text-neutral-400 hover:text-white md:hidden p-1 hover:bg-lightblue rounded-lg transition-colors duration-150"
 						whileHover={{ scale: 1.1 }}
 						whileTap={{ scale: 0.9 }}
 					>
-						<IconX size={20} />
+						<IconX size={22} />
 					</motion.button>
 
-					{/* User Profile Dropdown */}
-					<div className="relative mb-6">
+					{/* Sentient Logo section */}
+					<div className="flex items-center gap-3 mb-10 px-2">
+						<img
+							src="/images/half-logo-dark.svg"
+							alt="Logo"
+							className="w-9 h-9 opacity-80"
+						/>
+						<span className="text-2xl font-bold text-neutral-200">
+							Sentient
+						</span>
+					</div>
+
+					{/* Primary Actions */}
+					<div className="flex items-center gap-3 mb-8 px-1">
+						<button
+							onClick={() => router.push("/tasks?action=add")}
+							className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-darkblue text-white text-base font-semibold hover:bg-lightblue transition-colors shadow-lg shadow-blue-900/20"
+						>
+							<IconPlus size={20} />
+							Add task
+						</button>
+						<button className="p-3 text-neutral-400 hover:bg-lightblue rounded-xl transition-colors">
+							<IconSearch size={22} />
+						</button>
+					</div>
+
+					{/* Main Navigation */}
+					<nav className="flex flex-col gap-2.5 mb-6">
+						<NavLink
+							href="/home"
+							icon={<IconHome />}
+							label="Home"
+						/>
+						<NavLink
+							href="/tasks"
+							icon={<IconChecklist />}
+							label="Tasks"
+						/>
+						<NavLink
+							href="/journal"
+							icon={<IconBook />}
+							label="Journal"
+						/>
+						<NavLink
+							href="/notifications"
+							icon={<IconBell />}
+							label="Notifications"
+						/>
+						<NavLink
+							href="/settings"
+							icon={<IconAdjustments />}
+							label="Settings"
+						/>
+					</nav>
+				</div>
+				<div className="p-3 border-t border-neutral-800/50">
+					<div className="relative">
 						<motion.button
 							onClick={() => setProfileOpen(!isProfileOpen)}
-							className="flex items-center w-full gap-3 p-3 rounded-[var(--radius-lg)] hover:bg-[var(--color-primary-surface-elevated)] transition-all duration-200 group"
+							className="flex items-center w-full gap-3 p-2 rounded-xl hover:bg-lightblue transition-all duration-200 group"
 							whileHover={{ scale: 1.02 }}
 							whileTap={{ scale: 0.98 }}
 						>
@@ -251,102 +299,47 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 								<motion.img
 									src={userDetails.picture}
 									alt="User"
-									className="w-9 h-9 rounded-full border-2 border-[var(--color-primary-surface-elevated)]"
+									className="w-10 h-10 rounded-full border-2 border-neutral-700"
 									whileHover={{ scale: 1.1 }}
 									transition={{ duration: 0.2 }}
 								/>
 							) : (
 								<motion.div
-									className="w-9 h-9 rounded-full bg-[var(--color-primary-surface-elevated)] flex items-center justify-center border-2 border-[var(--color-primary-surface-elevated)]"
+									className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center border-2 border-neutral-700"
 									whileHover={{ scale: 1.1 }}
 									transition={{ duration: 0.2 }}
 								>
-									<IconUser className="w-5 h-5 text-[var(--color-text-primary)]" />
+									<IconUser className="w-5 h-5 text-white" />
 								</motion.div>
 							)}
-							<span className="font-semibold text-[var(--color-text-primary)] text-sm flex-1 text-left group-hover:translate-x-0.5 transition-transform duration-150">
+							<span className="font-semibold text-white text-base flex-1 text-left group-hover:translate-x-0.5 transition-transform duration-150">
 								{userDetails?.given_name || "User"}
 							</span>
 							<motion.div
 								animate={{ rotate: isProfileOpen ? 180 : 0 }}
 								transition={{ duration: 0.2 }}
 							>
-								<IconChevronDown className="w-4 h-4 text-[var(--color-text-secondary)] transition-colors duration-150" />
+								<IconChevronDown className="w-5 h-5 text-neutral-400 transition-colors duration-150" />
 							</motion.div>
 						</motion.button>
 						<AnimatePresence>
 							{isProfileOpen && (
 								<motion.div
-									initial={{ opacity: 0, y: -10 }}
+									initial={{ opacity: 0, y: 10 }}
 									animate={{ opacity: 1, y: 0 }}
-									exit={{ opacity: 0, y: -10 }}
-									className="absolute top-full left-0 right-0 mt-3 bg-[var(--color-primary-surface-elevated)] rounded-[var(--radius-lg)] shadow-xl p-1 z-10"
+									exit={{ opacity: 0, y: 10 }}
+									className="absolute bottom-full left-0 right-0 mb-3 bg-neutral-800 rounded-xl shadow-xl p-1 z-10"
 								>
 									<motion.button
 										onClick={logout}
-										className="flex items-center gap-3 w-full text-left px-3 py-2.5 rounded-[var(--radius-base)] text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-primary-surface)] hover:text-[var(--color-text-primary)]"
+										className="flex items-center gap-3 w-full text-left px-3 py-2.5 rounded-lg text-base text-neutral-400 hover:bg-neutral-700 hover:text-white"
 									>
-										<IconLogout size={16} />
+										<IconLogout size={18} />
 										<span>Logout</span>
 									</motion.button>
 								</motion.div>
 							)}
 						</AnimatePresence>
-					</div>
-
-					{/* Primary Actions */}
-					<div className="flex items-center gap-2 mb-6 px-1">
-						<button
-							onClick={() => router.push("/tasks?action=add")}
-							className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-[var(--radius-base)] bg-[var(--color-accent-red)] text-white text-sm font-semibold hover:bg-red-500 transition-colors"
-						>
-							<IconPlus size={16} />
-							Add task
-						</button>
-						<button className="p-2.5 text-[var(--color-text-secondary)] hover:bg-[var(--color-primary-surface-elevated)] rounded-[var(--radius-base)] transition-colors">
-							<IconSearch size={20} />
-						</button>
-					</div>
-
-					{/* Main Navigation */}
-					<nav className="flex flex-col gap-1 mb-6">
-						<NavLink
-							href="/home"
-							icon={<IconHome size={20} />}
-							label="Home"
-						/>
-						<NavLink
-							href="/tasks"
-							icon={<IconChecklist size={20} />}
-							label="Today"
-						/>
-						<NavLink
-							href="/journal"
-							icon={<IconBook size={20} />}
-							label="Journal"
-						/>
-						<NavLink
-							href="/notifications"
-							icon={<IconBell size={20} />}
-							label="Notifications"
-						/>
-						<NavLink
-							href="/settings"
-							icon={<IconAdjustments size={20} />}
-							label="Settings"
-						/>
-					</nav>
-				</div>
-				<div className="p-4 border-t border-[var(--color-primary-surface-elevated)]">
-					<div className="flex items-center gap-2">
-						<img
-							src="/images/half-logo-dark.svg"
-							alt="Logo"
-							className="w-6 h-6 opacity-70"
-						/>
-						<span className="text-sm font-medium text-[var(--color-text-tertiary)]">
-							Sentient
-						</span>
 					</div>
 				</div>
 			</motion.div>

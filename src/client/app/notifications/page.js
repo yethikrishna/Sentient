@@ -1,6 +1,6 @@
 // src/client/app/notifications/page.js
 "use client"
-import React, { useState, useEffect, useCallback } from "react"
+import React, { useState, useEffect, useCallback, useRef } from "react"
 import {
 	IconLoader,
 	IconBell,
@@ -13,6 +13,7 @@ import toast from "react-hot-toast"
 import Sidebar from "@components/Sidebar"
 import { cn } from "@utils/cn"
 import { useRouter } from "next/navigation"
+import { useSmoothScroll } from "@hooks/useSmoothScroll"
 
 const Notifications = () => {
 	const [notifications, setNotifications] = useState([])
@@ -20,6 +21,9 @@ const Notifications = () => {
 	const [userDetails, setUserDetails] = useState({}) // Initialize to empty object
 	const [isSidebarVisible, setSidebarVisible] = useState(false)
 	const [error, setError] = useState(null) // State for storing fetch errors
+	const scrollRef = useRef(null)
+	useSmoothScroll(scrollRef)
+
 	const router = useRouter()
 
 	const fetchNotifications = useCallback(async () => {
@@ -194,7 +198,10 @@ const Notifications = () => {
 						</div>
 					) : (
 						// Display notification list
-						<div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+						<div
+							ref={scrollRef}
+							className="flex-1 overflow-y-auto space-y-3 pr-2 no-scrollbar"
+						>
 							{notifications.map((notif) => (
 								<div // eslint-disable-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
 									key={notif.id ?? Math.random()}

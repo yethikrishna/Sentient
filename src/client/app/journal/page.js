@@ -22,6 +22,7 @@ import toast from "react-hot-toast"
 import { AnimatePresence, motion } from "framer-motion"
 import { cn } from "@utils/cn"
 import { useRouter } from "next/navigation"
+import { useSmoothScroll } from "@hooks/useSmoothScroll"
 
 const TaskDetails = ({ task }) => {
 	const router = useRouter()
@@ -330,6 +331,9 @@ const JournalPage = () => {
 	const [currentDate, setCurrentDate] = useState(new Date())
 	const [newBlockContent, setNewBlockContent] = useState("")
 	const newBlockTextareaRef = useRef(null)
+	const scrollRef = useRef(null)
+
+	useSmoothScroll(scrollRef)
 
 	const fetchBlocks = useCallback(async (date) => {
 		setIsLoading(true)
@@ -512,7 +516,10 @@ const JournalPage = () => {
 					</div>
 					<div></div>
 				</motion.header>
-				<main className="flex-1 flex flex-col overflow-y-auto p-6 custom-scrollbar">
+				<main
+					ref={scrollRef}
+					className="flex-1 flex flex-col overflow-y-auto p-6 no-scrollbar"
+				>
 					<motion.div
 						className="w-full max-w-4xl mx-auto"
 						initial={{ opacity: 0, y: 20 }}

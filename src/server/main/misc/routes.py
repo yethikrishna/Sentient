@@ -64,12 +64,16 @@ async def save_onboarding_data_endpoint(
         personal_info = {}
         if "user-name" in onboarding_data and isinstance(onboarding_data["user-name"], str):
             personal_info["name"] = onboarding_data["user-name"]
-        
+
         if "timezone" in onboarding_data and isinstance(onboarding_data["timezone"], str):
              personal_info["timezone"] = onboarding_data["timezone"]
 
-        if "location" in onboarding_data and isinstance(onboarding_data["location"], dict):
-            personal_info["location"] = onboarding_data["location"]
+        if "location" in onboarding_data:
+            location_val = onboarding_data["location"]
+            if isinstance(location_val, dict) and location_val.get('latitude') is not None:
+                personal_info["location"] = location_val
+            elif isinstance(location_val, str) and location_val.strip():
+                personal_info["location"] = location_val.strip()
 
         if personal_info:
             user_data_to_set["personalInfo"] = personal_info
@@ -96,6 +100,7 @@ async def save_onboarding_data_endpoint(
             fact_templates = {
                 "user-name": "The user's name is {}.",
                 "location": "The user's location is at latitude {latitude}, longitude {longitude}.",
+                "timezone": "The user's timezone is {}.",
                 "professional-context": "Professionally, the user has shared: {}",
                 "personal-context": "Personally, the user is interested in: {}",
                 "communication-style": "The user prefers a {} communication style.",
@@ -105,16 +110,21 @@ async def save_onboarding_data_endpoint(
             for key, value in onboarding_data.items():
                 if not value or key not in fact_templates:
                     continue
-                
-                if key == "location" and isinstance(value, dict) and value.get('latitude'):
-                    fact = fact_templates[key].format(latitude=value.get('latitude'), longitude=value.get('longitude'))
+
+                fact = ""
+                if key == "location":
+                    if isinstance(value, dict) and value.get('latitude') is not None:
+                        fact = fact_templates[key].format(latitude=value.get('latitude'), longitude=value.get('longitude'))
+                    elif isinstance(value, str) and value.strip():
+                        # Use a different phrasing for manual location
+                        fact = f"The user's location is around '{value}'."
                 elif key == "core-priorities" and isinstance(value, list) and value:
                     fact = fact_templates[key].format(", ".join(value))
                 elif isinstance(value, str) and value.strip():
                     fact = fact_templates[key].format(value)
-                else:
-                    continue # Skip empty values
-                onboarding_facts.append(fact)
+
+                if fact:
+                    onboarding_facts.append(fact)
 
             for fact in onboarding_facts:
                 process_memory_item.delay(user_id, fact)

@@ -44,14 +44,14 @@ import { cn } from "@utils/cn"
 const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
 const taskStatusColors = {
-	pending: "bg-yellow-500/80 border-yellow-400",
-	processing: "bg-blue-500/80 border-blue-400",
-	completed: "bg-green-500/80 border-green-400",
-	error: "bg-red-500/80 border-red-400",
-	approval_pending: "bg-purple-500/80 border-purple-400",
-	active: "bg-green-500/80 border-green-400",
-	cancelled: "bg-gray-600/80 border-gray-500",
-	default: "bg-gray-500/80 border-gray-400"
+	pending: { bg: "bg-yellow-500/80", border: "border-yellow-400" },
+	processing: { bg: "bg-blue-500/80", border: "border-blue-400" },
+	completed: { bg: "bg-green-500/80", border: "border-green-400" },
+	error: { bg: "bg-red-500/80", border: "border-red-400" },
+	approval_pending: { bg: "bg-purple-500/80", border: "border-purple-400" },
+	active: { bg: "bg-green-500/80", border: "border-green-400" },
+	cancelled: { bg: "bg-gray-600/80", border: "border-gray-500" },
+	default: { bg: "bg-gray-500/80", border: "border-gray-400" }
 }
 
 // Main Journal Page Component
@@ -551,25 +551,28 @@ const EntryCard = ({
 	onDeleteEntry
 }) => {
 	const isJournal = item.type === "journal"
-	const taskStatus = linkedTask?.status
-	const statusInfo = taskStatusColors[taskStatus] || taskStatusColors.default
+	const taskStatus =
+		linkedTask?.status || (item.type === "task" ? item.status : null)
+	const statusInfo = taskStatus
+		? taskStatusColors[taskStatus] || taskStatusColors.default
+		: null
 
 	return (
 		<motion.div
 			initial={{ opacity: 0, x: -10 }}
 			animate={{ opacity: 1, x: 0 }}
 			whileHover={{
-				y: -3,
-				scale: 1.02,
+				y: taskStatus ? -3 : 0,
+				scale: taskStatus ? 1.02 : 1.0,
 				rotateX: 1,
 				rotateY: -1,
 				boxShadow:
-					"0 10px 15px -3px rgba(0, 178, 254, 0.1), 0 4px 6px -2px rgba(0, 178, 254, 0.05)"
+					"0 10px 15px -3px rgba(0, 178, 254, 0.05), 0 4px 6px -2px rgba(0, 178, 254, 0.03)"
 			}}
 			onClick={() => onViewEntry(item)}
 			className={cn(
 				"bg-gradient-to-br from-[var(--color-primary-background)] to-[var(--color-primary-surface)]/30 p-3 rounded-lg border cursor-pointer backdrop-blur-sm shadow-sm group",
-				isJournal ? "border-transparent" : `border-l-4 ${statusInfo}`
+				statusInfo ? `border-l-4 ${statusInfo.border}` : "border-transparent"
 			)}
 			style={{ transformStyle: "preserve-3d" }}
 		>
@@ -581,7 +584,7 @@ const EntryCard = ({
 				) : (
 					<div className="flex items-center gap-2">
 						<span
-							className={`w-2.5 h-2.5 rounded-full ${statusInfo}`}
+							className={`w-2.5 h-2.5 rounded-full ${statusInfo?.bg}`}
 						></span>
 						<p className="text-sm font-medium">{item.content}</p>
 					</div>

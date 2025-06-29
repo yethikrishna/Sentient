@@ -126,6 +126,14 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     await add_progress_update(db, task_id, user_id, "Executor has picked up the task and is starting execution.", block_id=block_id)
     
     user_profile = await db.user_profiles.find_one({"user_id": user_id})
+    personal_info = user_profile.get("userData", {}).get("personalInfo", {})
+    user_name = personal_info.get("name", "User")
+    user_location_raw = personal_info.get("location", "Not specified")
+    if isinstance(user_location_raw, dict):
+        user_location = f"latitude: {user_location_raw.get('latitude')}, longitude: {user_location_raw.get('longitude')}"
+    else:
+        user_location = user_location_raw
+
     supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id") if user_profile else None
     
     active_mcp_servers = {}
@@ -143,7 +151,7 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     tools_config = [{"mcpServers": active_mcp_servers}]
     logger.info(f"Task {task_id}: Executor configured with tools: {list(active_mcp_servers.keys())}")
 
-    user_timezone_str = user_profile.get("userData", {}).get("personalInfo", {}).get("timezone", "UTC")
+    user_timezone_str = personal_info.get("timezone", "UTC")
     try:
         user_timezone = ZoneInfo(user_timezone_str)
     except ZoneInfoNotFoundError:
@@ -158,17 +166,21 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     block_id_prompt = f"The block_id for this task is '{block_id}'. You MUST pass this ID to the 'update_progress' tool in the 'block_id' parameter." if block_id else "This task did not originate from a journal block."
 
     full_plan_prompt = (
-        f"You are an autonomous executor agent. The current date and time for the user is {current_user_time}.\n"
+        f"You are an autonomous executor agent. Your goal is to complete the user's request by following the provided plan.\n\n"
+        f"**User Context:**\n"
+        f"- **User's Name:** {user_name}\n"
+        f"- **User's Location:** {user_location}\n"
+        f"- **Current Date & Time:** {current_user_time}\n\n"
+        f"Use this context when executing tools. For example, if a tool requires a location and the plan doesn't specify one, use the user's default location.\n\n"
         f"Your task ID is '{task_id}'. {block_id_prompt}\n\n"
         f"The original context that triggered this plan is:\n---BEGIN CONTEXT---\n{original_context_str}\n---END CONTEXT---\n\n"
         f"**Main Goal:** '{plan_description}'.\n\n"
         f"The plan has the following steps:\n{plan_steps_str}\n\n"
         "**EXECUTION STRATEGY:**\n"
-        "1.  **Analyze and Adapt:** The provided plan is a guideline. Critically evaluate it. If a step seems wrong or if you gain new information, adapt the plan. Your goal is to achieve the main objective, not just to follow steps blindly.\n"
-        "2.  **Think Critically:** Before each action, think about its purpose and potential outcomes. What information do you need? What tool is best for the job? Is there a more efficient way? Reason through your choices.\n"
-        "3.  **Be Methodical:** Execute one step at a time. After each step, review the result. Did it succeed? Did it give you the information you needed for the next step? Your thought process should be clear.\n"
-        "4.  **Report Progress:** You MUST call the 'update_progress' tool to report your status to the user after each major step or when you encounter something unexpected. This is crucial for user visibility.\n"
-        "5.  **Handle Failures:** If a tool call fails, analyze the error. Do not give up immediately. Retry the step if it was a temporary issue, or try an alternative approach. If you are stuck, report the failure clearly using `update_progress`.\n"
+        "1.  **Analyze and Adapt:** The plan is a guideline. If a step seems wrong or you gain new information, adapt. Your goal is to achieve the main objective.\n"
+        "2.  **Think Critically:** Before each action, think about its purpose and potential outcomes. What information do you need? Which tool is best? Is there a more efficient way?\n"
+        "3.  **Report Progress:** You MUST call the 'update_progress' tool to report your status after each major step or when you encounter something unexpected. This is crucial for user visibility.\n"
+        "4.  **Handle Failures:** If a tool call fails, analyze the error. Do not give up. Retry if it was temporary, or try an alternative approach. Report failures clearly using `update_progress`.\n"
         "Now, begin your work. Think step-by-step and start executing the plan."
     )
     

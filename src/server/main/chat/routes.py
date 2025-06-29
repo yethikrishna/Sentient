@@ -1,6 +1,7 @@
 import datetime
 import uuid
 import json
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import asyncio
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -22,9 +23,19 @@ async def chat_endpoint(
     request_body: ChatMessageInput, 
     user_id: str = Depends(PermissionChecker(required_permissions=["read:chat", "write:chat"]))
 ):
+    # Fetch comprehensive user context
     user_profile = await mongo_manager.get_user_profile(user_id)
-    username = user_profile.get("userData", {}).get("personalInfo", {}).get("name", "User") if user_profile else "User"
-    
+    user_data = user_profile.get("userData", {}) if user_profile else {}
+    personal_info = user_data.get("personalInfo", {})
+    preferences = user_data.get("preferences", {})
+
+    user_context = {
+        "name": personal_info.get("name", "User"),
+        "timezone": personal_info.get("timezone", "UTC"),
+        "location": personal_info.get("location"),
+        "communication_style": preferences.get("communicationStyle", "friendly and professional")
+    }
+
     # The new stateless chat sends the entire message history.
     # We no longer save or retrieve history from the database here.
     
@@ -34,7 +45,7 @@ async def chat_endpoint(
             async for event in generate_chat_llm_stream(
                 user_id,
                 request_body.messages,
-                username,
+                user_context,
                 mongo_manager,
                 enable_internet=request_body.enable_internet,
                 enable_weather=request_body.enable_weather,

@@ -64,8 +64,8 @@ class PlannerMongoManager:
         logger.info(f"Saved new plan with task_id: {task_id} for user: {user_id}")
         
         # If the plan originated from a journal block, link it back
-        if original_context.get("service_name") == "journal_block":
-            block_id = original_context.get("event_id")
+        if original_context.get("source") == "journal_block":
+            block_id = original_context.get("block_id")
             if block_id:
                 await self.journal_blocks_collection.update_one(
                     {"block_id": block_id, "user_id": user_id},

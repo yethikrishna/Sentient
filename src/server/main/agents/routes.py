@@ -225,8 +225,11 @@ async def generate_plan(
         available_tools = get_all_mcp_descriptions()
         if not available_tools:
             raise HTTPException(status_code=503, detail="No tools available for planning.")
+        
+        # FIX: The planner agent requires the current time for context. This was the missing argument.
+        current_time_str = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S %Z')
+        agent = get_planner_agent(available_tools, current_time_str)
 
-        agent = get_planner_agent(available_tools)
         user_prompt = f"Please create a plan for the following goal: {request.prompt}"
         messages = [{'role': 'user', 'content': user_prompt}]
 

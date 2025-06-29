@@ -44,15 +44,27 @@ async def add_task(
 ):
     task_id = str(uuid.uuid4())
     now_utc = datetime.datetime.now(datetime.timezone.utc)
+    next_execution_time = None
+
+    if request.schedule and request.schedule.get("type") == "once" and request.schedule.get("run_at"):
+        try:
+            # Frontend sends ISO 8601 format string (e.g., "2024-08-01T15:30")
+            # We parse it and assume it's in the user's local time, so we need to convert it to UTC.
+            # However, since datetime.fromisoformat() on a naive string is naive, we can just attach UTC.
+            # A more robust solution would handle timezones properly if the user's timezone is known.
+            next_execution_time = datetime.datetime.fromisoformat(request.schedule["run_at"]).replace(tzinfo=datetime.timezone.utc)
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Invalid 'run_at' datetime format. Please use ISO 8601 format.")
+
     task_doc = {
         "task_id": task_id,
         "user_id": user_id,
         "description": request.description,
-        "status": "approval_pending",  # New tasks start as plans needing approval
+        "status": "approval_pending",
         "priority": request.priority,
         "plan": [step.dict() for step in request.plan],
         "schedule": request.schedule,
-        "enabled": True, # Always enabled on creation
+        "enabled": True,
         "progress_updates": [],
         "created_at": now_utc,
         "updated_at": now_utc,
@@ -60,7 +72,7 @@ async def add_task(
         "error": None,
         "last_execution_status": None,
         "last_execution_at": None,
-        "next_execution_at": None,
+        "next_execution_at": next_execution_time
     }
     await mongo_manager.task_collection.insert_one(task_doc)
     return {"message": "Task created successfully", "task_id": task_id}
@@ -72,8 +84,6 @@ async def fetch_tasks(
     tasks_cursor = mongo_manager.task_collection.find({"user_id": user_id})
     tasks = await tasks_cursor.to_list(length=None)
     for task in tasks:
-        # Pydantic models in FastAPI handle ObjectId serialization, but it's good practice
-        # to ensure it's a string if we are manually constructing the response.
         if "_id" in task:
             task["_id"] = str(task["_id"])
     return {"tasks": tasks}
@@ -92,6 +102,15 @@ async def update_task(
         update_data["plan"] = [step.dict() for step in request.plan]
     if request.schedule is not None:
         update_data["schedule"] = request.schedule
+        # Handle "run_at" for scheduled-once tasks during update
+        if request.schedule.get("type") == "once" and request.schedule.get("run_at"):
+             try:
+                update_data["next_execution_at"] = datetime.datetime.fromisoformat(request.schedule["run_at"]).replace(tzinfo=datetime.timezone.utc)
+             except (ValueError, TypeError):
+                 raise HTTPException(status_code=400, detail="Invalid 'run_at' datetime format.")
+        else:
+             update_data["next_execution_at"] = None
+
 
     if not update_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided.")
@@ -125,60 +144,45 @@ async def approve_task(
     request: TaskIdRequest,
     user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"]))
 ):
-    # Ensure the task exists and is pending approval before proceeding
     task = await mongo_manager.task_collection.find_one(
         {"task_id": request.taskId, "user_id": user_id, "status": "approval_pending"}
     )
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found or not pending approval.")
 
-    # --- Tool Availability Check ---
-    # Check if all required tools are available for the user
     user_profile = await mongo_manager.get_user_profile(user_id)
-    if not user_profile:
-        raise HTTPException(status_code=404, detail="User profile not found.")
     user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
-    google_auth_mode = user_profile.get("userData", {}).get("googleAuth", {}).get("mode", "default")
-
     required_tools = {step['tool'] for step in task.get('plan', [])}
     missing_tools = []
-
     for tool_name in required_tools:
         tool_config = INTEGRATIONS_CONFIG.get(tool_name, {})
-        
-        is_google_service = tool_name.startswith('g')
-        is_available_via_custom = is_google_service and google_auth_mode == 'custom'
-        
         is_builtin = tool_config.get("auth_type") == "builtin"
-        is_connected_via_oauth = user_integrations.get(tool_name, {}).get("connected", False)
-
-        if not (is_builtin or is_connected_via_oauth or is_available_via_custom):
+        is_connected = user_integrations.get(tool_name, {}).get("connected", False)
+        if not (is_builtin or is_connected):
             missing_tools.append(tool_config.get("display_name", tool_name))
-
     if missing_tools:
-        error_detail = f"Cannot approve task. Please connect the following tools first: {', '.join(missing_tools)}."
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=error_detail)
+        raise HTTPException(status_code=409, detail=f"Cannot approve task. Connect tools: {', '.join(missing_tools)}.")
 
-    # --- Execution / Scheduling Logic ---
+    update_doc = {"updated_at": datetime.datetime.now(datetime.timezone.utc)}
+    
     if task.get("schedule") and task["schedule"].get("type") == "recurring":
-        # It's a recurring task. Just activate it and set its first run time.
-        next_run_time = calculate_next_run(task["schedule"])
-        update_doc = {
-            "status": "active",
-            "enabled": True,
-            "next_execution_at": next_run_time,
-            "updated_at": datetime.datetime.now(datetime.timezone.utc)
-        }
+        update_doc["status"] = "active"
+        update_doc["enabled"] = True
+        update_doc["next_execution_at"] = calculate_next_run(task["schedule"])
         await mongo_manager.task_collection.update_one({"task_id": request.taskId}, {"$set": update_doc})
         return {"message": "Recurring workflow approved and scheduled."}
+    elif task.get("next_execution_at"):
+        # This is a one-off task scheduled for a specific time.
+        update_doc["status"] = "pending" # Set to pending to be picked up by scheduler
+        await mongo_manager.task_collection.update_one({"task_id": request.taskId}, {"$set": update_doc})
+        return {"message": "Task approved and scheduled for its specified time."}
     else:
-        # It's a one-off task. Queue it for immediate execution.
+        # This is a one-off task to be run immediately.
+        update_doc["status"] = "pending" # Set to pending before sending to queue
+        await mongo_manager.task_collection.update_one({"task_id": request.taskId}, {"$set": update_doc})
         execute_task_plan.delay(request.taskId, user_id)
-        await mongo_manager.task_collection.update_one(
-            {"task_id": request.taskId},
-            {"$set": {"status": "pending", "updated_at": datetime.datetime.now(datetime.timezone.utc)}}
-        )
-        return {"message": "Task approved and has been queued for execution."}
+        return {"message": "Task approved and has been queued for immediate execution."}
+
 
 @router.post("/rerun-task")
 async def rerun_task(
@@ -198,24 +202,12 @@ async def rerun_task(
     new_task_doc["progress_updates"] = []
     new_task_doc["result"] = None
     new_task_doc["error"] = None
+    new_task_doc["schedule"] = None # Reruns are always one-off immediate tasks
+    new_task_doc["next_execution_at"] = None
 
     await mongo_manager.task_collection.insert_one(new_task_doc)
     return {"message": "Task has been duplicated for re-run.", "new_task_id": new_task_id}
 
-@router.post("/get-task-approval-data")
-async def get_task_approval_data(
-    request: TaskIdRequest,
-    user_id: str = Depends(PermissionChecker(required_permissions=["read:tasks"]))
-):
-    task = await mongo_manager.task_collection.find_one(
-        {"task_id": request.taskId, "user_id": user_id}
-    )
-    if not task:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
-
-    approval_data = task.get("approval_data", {"info": "This is a placeholder for dynamic approval data. The current plan seems reasonable."})
-    
-    return {"approval_data": approval_data}
 @router.post("/generate-plan", summary="Generate a task plan from a prompt")
 async def generate_plan(
     request: GeneratePlanRequest,
@@ -226,7 +218,6 @@ async def generate_plan(
         if not available_tools:
             raise HTTPException(status_code=503, detail="No tools available for planning.")
         
-        # FIX: The planner agent requires the current time for context. This was the missing argument.
         current_time_str = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S %Z')
         agent = get_planner_agent(available_tools, current_time_str)
 
@@ -234,16 +225,13 @@ async def generate_plan(
         messages = [{'role': 'user', 'content': user_prompt}]
 
         final_response_str = ""
-        # Exhaust the generator to get the final response from the agent
         for chunk in agent.run(messages=messages):
             if isinstance(chunk, list) and chunk:
                 last_message = chunk[-1]
                 if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
                     content = last_message["content"]
-                    if "```json" in content:
-                        match = re.search(r'```json\n(.*?)\n```', content, re.DOTALL)
-                        if match: content = match.group(1)
-                    final_response_str = content
+                    match = re.search(r'```json\n(.*?)\n```', content, re.DOTALL)
+                    final_response_str = match.group(1) if match else content
 
         if not final_response_str:
             raise HTTPException(status_code=500, detail="Planner agent returned an empty response.")

@@ -352,18 +352,20 @@ def calculate_next_run(schedule: Dict[str, Any], last_run: Optional[datetime.dat
         logger.error(f"Error calculating next run time for schedule {schedule}: {e}")
     return None
 
-@celery_app.task(name="check_scheduled_tasks")
-def check_scheduled_tasks():
-    """Celery Beat task to check for and queue user-defined scheduled tasks."""
+@celery_app.task(name="run_due_tasks")
+def run_due_tasks():
+    """Celery Beat task to check for and queue user-defined tasks (recurring and scheduled-once)."""
     logger.info("Scheduler: Checking for due user-defined tasks...")
-    run_async(async_check_scheduled_tasks())
+    run_async(async_run_due_tasks())
 
-async def async_check_scheduled_tasks():
+async def async_run_due_tasks():
     db_manager = PlannerMongoManager()
     try:
         now = datetime.datetime.now(datetime.timezone.utc)
+        # Fetch tasks that are due and are either 'active' (recurring) or 'pending' (scheduled-once)
         query = {
-            "status": "active", "enabled": True, "schedule.type": "recurring",
+            "status": {"$in": ["active", "pending"]},
+            "enabled": True,
             "next_execution_at": {"$lte": now}
         }
         due_tasks_cursor = db_manager.tasks_collection.find(query)
@@ -378,12 +380,26 @@ async def async_check_scheduled_tasks():
             logger.info(f"Scheduler: Queuing user-defined task {task['task_id']} for execution.")
             execute_task_plan.delay(task['task_id'], task['user_id'])
             
-            next_run_time = calculate_next_run(task['schedule'], last_run=now)
+            # For recurring tasks, calculate the next run time.
+            # For one-off tasks, this will effectively be cleared.
+            next_run_time = None
+            if task.get('schedule', {}).get('type') == 'recurring':
+                next_run_time = calculate_next_run(task['schedule'], last_run=now)
+
+            update_fields = {
+                "last_execution_at": now,
+                "next_execution_at": next_run_time
+            }
+            # One-off tasks have their next_execution_at set to None, so they won't run again.
+            # Their status will be updated to 'processing' -> 'completed'/'error' by the executor.
+            
             await db_manager.tasks_collection.update_one(
                 {"_id": task["_id"]},
-                {"$set": {"last_execution_at": now, "next_execution_at": next_run_time}}
+                {"$set": update_fields}
             )
-            logger.info(f"Scheduler: Rescheduled user-defined task {task['task_id']} for {next_run_time}.")
+            if next_run_time:
+                 logger.info(f"Scheduler: Rescheduled user-defined task {task['task_id']} for {next_run_time}.")
+
     except Exception as e:
         logger.error(f"Scheduler: An error occurred checking user-defined tasks: {e}", exc_info=True)
     finally:

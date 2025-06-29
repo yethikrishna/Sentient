@@ -119,6 +119,7 @@ const Tasks = () => {
 	const [newTaskPlan, setNewTaskPlan] = useState([])
 	const [newSchedule, setNewSchedule] = useState({
 		type: "once",
+		run_at: null,
 		frequency: "daily",
 		time: "09:00",
 		days: []
@@ -258,12 +259,19 @@ const Tasks = () => {
 			)
 		setIsAdding(true)
 		try {
+			// Clean up schedule object before sending
+			const schedulePayload =
+				newSchedule.type === "once"
+					? { type: "once", run_at: newSchedule.run_at || null }
+					: newSchedule
+
 			const taskData = {
 				description: newTaskDescription,
 				priority: newTaskPriority,
 				plan: newTaskPlan,
-				schedule: newSchedule.type === "once" ? null : newSchedule
+				schedule: schedulePayload
 			}
+
 			const response = await fetch("/api/tasks/add", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
@@ -280,6 +288,7 @@ const Tasks = () => {
 			setNewTaskPlan([])
 			setNewSchedule({
 				type: "once",
+				run_at: null,
 				frequency: "daily",
 				time: "09:00",
 				days: []
@@ -307,6 +316,13 @@ const Tasks = () => {
 		}
 
 		try {
+			const schedulePayload =
+				editingTask.schedule?.type === "once"
+					? {
+							type: "once",
+							run_at: editingTask.schedule.run_at || null
+						}
+					: editingTask.schedule
 			const response = await fetch("/api/tasks/update", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
@@ -315,7 +331,7 @@ const Tasks = () => {
 					description: editingTask.description,
 					priority: editingTask.priority,
 					plan: editingTask.plan,
-					schedule: editingTask.schedule
+					schedule: schedulePayload
 				})
 			})
 			if (!response.ok) throw new Error((await response.json()).error)
@@ -625,7 +641,7 @@ const Tasks = () => {
 													className="py-2.5 px-6 rounded-lg bg-[#4a9eff] hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
 												>
 													{isAdding && (
-														<IconLoader className="h-5 w-5 animate-spin" />
+														<IconLoader className="h-5 h-5 animate-spin" />
 													)}
 													Save New Plan
 												</button>
@@ -819,6 +835,7 @@ const EditTaskModal = ({
 	allTools,
 	integrations
 }) => {
+	const safeSchedule = task.schedule || { type: "once", run_at: null }
 	return (
 		<motion.div
 			initial={{ opacity: 0 }}
@@ -845,7 +862,7 @@ const EditTaskModal = ({
 						}
 						plan={task.plan}
 						setPlan={(val) => setTask({ ...task, plan: val })}
-						schedule={task.schedule || { type: "once" }}
+						schedule={safeSchedule}
 						setSchedule={(val) =>
 							setTask({ ...task, schedule: val })
 						}
@@ -960,9 +977,23 @@ const TaskCard = ({
 		})
 	}
 
-	const scheduleText = task.schedule
-		? `Repeats ${task.schedule.frequency}`
-		: null
+	const getScheduleText = () => {
+		if (!task.schedule) return null
+		const { type, run_at, frequency, time, days } = task.schedule
+		if (type === "once" && run_at) {
+			return `Scheduled for: ${new Date(run_at).toLocaleString()}`
+		}
+		if (type === "recurring") {
+			let scheduleText = `Repeats ${frequency}`
+			if (time) scheduleText += ` at ${time}`
+			if (frequency === "weekly" && days?.length > 0) {
+				scheduleText += ` on ${days.join(", ")}`
+			}
+			return scheduleText
+		}
+		return null
+	}
+	const scheduleText = getScheduleText()
 
 	const renderTaskSource = () => {
 		if (!task.original_context) return null
@@ -1324,6 +1355,18 @@ const TaskDetailsModal = ({ task, onClose, onApprove, integrations }) => {
 }
 
 const ScheduleEditor = ({ schedule, setSchedule }) => {
+	const handleTypeChange = (type) => {
+		const baseSchedule = { ...schedule, type }
+		if (type === "once") {
+			delete baseSchedule.frequency
+			delete baseSchedule.days
+			delete baseSchedule.time
+		} else {
+			delete baseSchedule.run_at
+		}
+		setSchedule(baseSchedule)
+	}
+
 	const handleDayToggle = (day) => {
 		const currentDays = schedule.days || []
 		const newDays = currentDays.includes(day)
@@ -1331,6 +1374,7 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 			: [...currentDays, day]
 		setSchedule({ ...schedule, days: newDays })
 	}
+
 	return (
 		<div className="bg-neutral-700/50 p-4 rounded-lg space-y-4">
 			<div className="flex items-center gap-2">
@@ -1340,9 +1384,7 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 				].map(({ label, value }) => (
 					<button
 						key={value}
-						onClick={() =>
-							setSchedule({ ...schedule, type: value })
-						}
+						onClick={() => handleTypeChange(value)}
 						className={cn(
 							"px-4 py-1.5 rounded-full text-sm",
 							schedule.type === value
@@ -1354,6 +1396,27 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 					</button>
 				))}
 			</div>
+
+			{schedule.type === "once" && (
+				<div>
+					<label className="text-xs text-gray-400 block mb-1">
+						Run At (optional, local time)
+					</label>
+					<input
+						type="datetime-local"
+						value={schedule.run_at || ""}
+						onChange={(e) =>
+							setSchedule({ ...schedule, run_at: e.target.value })
+						}
+						className="w-full p-2 bg-neutral-600/80 border border-neutral-600 rounded-md"
+					/>
+					<p className="text-xs text-gray-500 mt-1">
+						If left blank, the task will run immediately after
+						approval.
+					</p>
+				</div>
+			)}
+
 			{schedule.type === "recurring" && (
 				<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 					<div>

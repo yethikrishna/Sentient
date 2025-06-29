@@ -24,8 +24,8 @@ celery_app = Celery(
 celery_app.conf.update(
     task_track_started=True,
     beat_schedule = {
-        'check-scheduled-tasks-every-minute': {
-            'task': 'check_scheduled_tasks',
+        'run-due-tasks-every-minute': {
+            'task': 'run_due_tasks',
             'schedule': 60.0,
         },
         'schedule-polling-tasks-every-minute': {

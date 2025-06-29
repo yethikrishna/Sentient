@@ -1,0 +1,198 @@
+"use client"
+import React, { useState, useEffect, useRef } from "react"
+import { useRouter, usePathname } from "next/navigation"
+import { FloatingDock } from "@components/ui/floating-dock"
+import {
+	IconAdjustments,
+	IconBell,
+	IconBook,
+	IconChecklist,
+	IconHome,
+	IconLogout,
+	IconUser
+} from "@tabler/icons-react"
+import toast from "react-hot-toast"
+
+export default function FloatingNav() {
+	const router = useRouter()
+	const pathname = usePathname()
+	const [userDetails, setUserDetails] = useState(null)
+	const wsRef = useRef(null)
+
+	useEffect(() => {
+		fetch("/api/user/profile")
+			.then((res) => {
+				if (res.ok) return res.json()
+				return null
+			})
+			.then((data) => setUserDetails(data))
+			.catch((err) => console.error("Failed to fetch user profile", err))
+	}, [])
+
+	// WebSocket logic for notifications from old sidebar
+	useEffect(() => {
+		if (!userDetails?.sub) {
+			return
+		}
+
+		const connectWebSocket = async () => {
+			if (wsRef.current && wsRef.current.readyState < 2) {
+				return
+			}
+			try {
+				const tokenResponse = await fetch("/api/auth/token")
+				if (!tokenResponse.ok) {
+					setTimeout(connectWebSocket, 5000)
+					return
+				}
+				const { accessToken } = await tokenResponse.json()
+				const wsProtocol =
+					window.location.protocol === "https:" ? "wss" : "ws"
+				const serverUrlHttp =
+					process.env.NEXT_PUBLIC_APP_SERVER_URL ||
+					"http://localhost:5000"
+				const serverUrlWs = serverUrlHttp.replace(/^http/, "ws")
+				const wsUrl = `${serverUrlWs}/api/ws/notifications`
+				const ws = new WebSocket(wsUrl)
+				ws.isCleaningUp = false
+				wsRef.current = ws
+				ws.onopen = () => {
+					ws.send(
+						JSON.stringify({ type: "auth", token: accessToken })
+					)
+				}
+				ws.onmessage = (event) => {
+					const data = JSON.parse(event.data)
+					if (data.type === "new_notification" && data.notification) {
+						toast.custom(
+							(t) => (
+								<div
+									className={`${t.visible ? "animate-enter" : "animate-leave"} max-w-md w-full bg-neutral-800 shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5 border border-neutral-700`}
+								>
+									<div className="flex-1 w-0 p-4">
+										<div className="flex items-start">
+											<div className="flex-shrink-0 pt-0.5">
+												<IconBell className="h-6 w-6 text-lightblue" />
+											</div>
+											<div className="ml-3 flex-1">
+												<p className="text-sm font-medium text-white">
+													New Notification
+												</p>
+												<p className="mt-1 text-sm text-gray-400">
+													{data.notification.message}
+												</p>
+											</div>
+										</div>
+									</div>
+									<div className="flex border-l border-neutral-700">
+										<button
+											onClick={() => {
+												router.push("/tasks")
+												toast.dismiss(t.id)
+											}}
+											className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-sm font-medium text-lightblue hover:text-blue-400 focus:outline-none focus:ring-2 focus:ring-lightblue"
+										>
+											View
+										</button>
+									</div>
+								</div>
+							),
+							{ duration: 10000 }
+						)
+					}
+				}
+				ws.onclose = () => {
+					if (!ws.isCleaningUp) {
+						wsRef.current = null
+						setTimeout(connectWebSocket, 5000)
+					}
+				}
+				ws.onerror = (error) => {
+					ws.close()
+				}
+			} catch (error) {
+				setTimeout(connectWebSocket, 5000)
+			}
+		}
+		connectWebSocket()
+		return () => {
+			if (wsRef.current) {
+				wsRef.current.isCleaningUp = true
+				wsRef.current.close()
+			}
+		}
+	}, [userDetails?.sub, router])
+
+	const navLinks = [
+		{
+			title: "Sentient",
+			href: "/home",
+			icon: (
+				<img
+					src="/images/half-logo-dark.svg"
+					alt="Logo"
+					className="w-full h-full opacity-80"
+				/>
+			)
+		},
+		{
+			title: "Home",
+			href: "/home",
+			icon: (
+				<IconHome className="h-full w-full text-neutral-500 dark:text-neutral-300" />
+			)
+		},
+		{
+			title: "Tasks",
+			href: "/tasks",
+			icon: (
+				<IconChecklist className="h-full w-full text-neutral-500 dark:text-neutral-300" />
+			)
+		},
+		{
+			title: "Journal",
+			href: "/journal",
+			icon: (
+				<IconBook className="h-full w-full text-neutral-500 dark:text-neutral-300" />
+			)
+		},
+		{
+			title: "Notifications",
+			href: "/notifications",
+			icon: (
+				<IconBell className="h-full w-full text-neutral-500 dark:text-neutral-300" />
+			)
+		},
+		{
+			title: "Settings",
+			href: "/settings",
+			icon: (
+				<IconAdjustments className="h-full w-full text-neutral-500 dark:text-neutral-300" />
+			)
+		}
+	]
+
+	const allLinks = [...navLinks]
+
+	if (userDetails) {
+		allLinks.push({
+			title: `Logout (${userDetails.given_name || "User"})`,
+			href: "/api/auth/logout",
+			icon: userDetails.picture ? (
+				<img
+					src={userDetails.picture}
+					alt={userDetails.given_name || "User"}
+					className="h-full w-full rounded-full object-cover"
+				/>
+			) : (
+				<IconUser className="h-full w-full text-neutral-500 dark:text-neutral-300" />
+			)
+		})
+	}
+
+	if (pathname === "/onboarding" || pathname === "/") {
+		return null
+	}
+
+	return <FloatingDock items={allLinks} />
+}

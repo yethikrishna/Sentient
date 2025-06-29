@@ -1,4 +1,3 @@
-// src/client/app/notifications/page.js
 "use client"
 import React, { useState, useEffect, useCallback, useRef } from "react"
 import {
@@ -6,11 +5,9 @@ import {
 	IconBell,
 	IconAlertCircle,
 	IconArrowRight,
-	IconX,
-	IconMenu2
+	IconX
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
-import Sidebar from "@components/Sidebar"
 import { cn } from "@utils/cn"
 import { useRouter } from "next/navigation"
 import { useSmoothScroll } from "@hooks/useSmoothScroll"
@@ -18,8 +15,6 @@ import { useSmoothScroll } from "@hooks/useSmoothScroll"
 const Notifications = () => {
 	const [notifications, setNotifications] = useState([])
 	const [isLoading, setIsLoading] = useState(true) // Start loading initially
-	const [userDetails, setUserDetails] = useState({}) // Initialize to empty object
-	const [isSidebarVisible, setSidebarVisible] = useState(false)
 	const [error, setError] = useState(null) // State for storing fetch errors
 	const scrollRef = useRef(null)
 	useSmoothScroll(scrollRef)
@@ -74,24 +69,7 @@ const Notifications = () => {
 		}
 	}, [])
 
-	// Function to fetch user details
-	const fetchUserDetails = async () => {
-		try {
-			const response = await fetch("/api/user/profile")
-			if (!response.ok) {
-				throw new Error("Failed to fetch user profile")
-			}
-			const data = await response.json()
-			setUserDetails(data || {})
-		} catch (error) {
-			toast.error("Error fetching user details for sidebar.")
-			console.error("Error fetching user details for sidebar:", error)
-			setUserDetails({})
-		}
-	}
-
 	useEffect(() => {
-		fetchUserDetails()
 		fetchNotifications() // Call fetch on initial mount
 
 		const intervalId = setInterval(fetchNotifications, 120000) // Refresh every 2 minutes
@@ -143,21 +121,9 @@ const Notifications = () => {
 	// --- Render Logic ---
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)]">
-			<Sidebar
-				userDetails={userDetails}
-				isSidebarVisible={isSidebarVisible}
-				setSidebarVisible={setSidebarVisible}
-			/>
-
 			<div className="flex-1 flex flex-col overflow-hidden">
 				<header className="flex items-center justify-between p-4 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)] md:flex-row md:items-center">
-					<button
-						onClick={() => setSidebarVisible(true)}
-						className="text-[var(--color-text-primary)] md:hidden"
-					>
-						<IconMenu2 />
-					</button>
-					<h1 className="text-2xl sm:text-3xl font-light text-[var(--color-text-primary)] flex-grow text-center md:text-left md:flex-grow-0">
+					<h1 className="text-2xl sm:text-3xl font-light text-[var(--color-text-primary)] flex-grow text-center md:text-left">
 						Notifications
 					</h1>
 				</header>

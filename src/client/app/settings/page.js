@@ -19,26 +19,17 @@ import {
 	IconBrain,
 	IconBrandGithub,
 	IconNews,
-	IconBrandGoogle,
-	IconUser,
 	IconFileText,
-	IconLock,
-	IconLockOpen,
 	IconPresentation,
 	IconTable,
 	IconMapPin,
 	IconShoppingCart,
-	IconLink,
-	IconMenu2,
 	IconChevronDown,
-	IconFilterOff,
 	IconX
 } from "@tabler/icons-react"
 import { useState, useEffect, useCallback, useRef } from "react"
-import Sidebar from "@components/Sidebar"
 import React from "react"
 import { useSmoothScroll } from "@hooks/useSmoothScroll"
-import { cn } from "@utils/cn"
 
 const integrationIcons = {
 	gmail: IconMail,
@@ -323,8 +314,6 @@ const PrivacySettings = () => {
 }
 
 const Settings = () => {
-	const [userDetails, setUserDetails] = useState({})
-	const [isSidebarVisible, setSidebarVisible] = useState(false)
 	const [userIntegrations, setUserIntegrations] = useState([])
 	const [defaultTools, setDefaultTools] = useState([])
 	const [loadingIntegrations, setLoadingIntegrations] = useState(true)
@@ -479,17 +468,6 @@ const Settings = () => {
 		}
 	}
 
-	const fetchUserDetails = useCallback(async () => {
-		try {
-			const response = await fetch("/api/user/profile")
-			if (!response.ok) throw new Error("Failed to fetch user profile")
-			const data = await response.json()
-			setUserDetails(data || {})
-		} catch (error) {
-			toast.error(`Error fetching user details: ${error.message}`)
-		}
-	}, [])
-
 	const fetchData = useCallback(async () => {
 		console.log("Fetching user data...")
 		try {
@@ -511,7 +489,6 @@ const Settings = () => {
 
 	useEffect(() => {
 		fetchData()
-		fetchUserDetails()
 		fetchIntegrations()
 
 		const urlParams = new URLSearchParams(window.location.search)
@@ -525,24 +502,13 @@ const Settings = () => {
 			toast.error(`Connection failed: ${error}`)
 			window.history.replaceState({}, document.title, "/settings")
 		}
-	}, [fetchData, fetchUserDetails, fetchIntegrations])
+	}, [fetchData, fetchIntegrations])
 
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)]">
-			<Sidebar
-				userDetails={userDetails}
-				isSidebarVisible={isSidebarVisible}
-				setSidebarVisible={setSidebarVisible}
-			/>
 			<div className="flex-1 flex flex-col overflow-hidden">
 				<header className="flex flex-col sm:flex-row items-center justify-between p-4 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)] gap-4">
 					<div className="flex items-center gap-4 w-full sm:w-auto">
-						<button
-							onClick={() => setSidebarVisible(true)}
-							className="text-[var(--color-text-primary)] md:hidden"
-						>
-							<IconMenu2 />
-						</button>
 						<h1 className="font-Poppins text-[var(--color-text-primary)] text-2xl sm:text-3xl font-light">
 							Settings
 						</h1>

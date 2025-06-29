@@ -1,10 +1,8 @@
 "use client"
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
-import Sidebar from "@components/Sidebar"
 import toast from "react-hot-toast"
 import {
-	IconMenu2,
 	IconChevronLeft,
 	IconChevronRight,
 	IconLoader,
@@ -48,21 +46,12 @@ const taskStatusColors = {
 
 // Main Journal Page Component
 const JournalPage = () => {
-	const [userDetails, setUserDetails] = useState(null)
-	const [isSidebarVisible, setSidebarVisible] = useState(false)
 	const [currentMonth, setCurrentMonth] = useState(new Date())
 	const [selectedDate, setSelectedDate] = useState(null)
 	const [isPanelOpen, setPanelOpen] = useState(false)
 	const [allJournalEntries, setAllJournalEntries] = useState([])
 	const [allTasks, setAllTasks] = useState([])
 	const [isLoading, setIsLoading] = useState(true)
-
-	// Fetch user details for the sidebar
-	useEffect(() => {
-		fetch("/api/user/profile")
-			.then((res) => res.json())
-			.then((data) => setUserDetails(data))
-	}, [])
 
 	// Fetch journal entries and tasks for the current month
 	const fetchMonthData = useCallback(async (month) => {
@@ -192,17 +181,11 @@ const JournalPage = () => {
 
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)]">
-			<Sidebar
-				userDetails={userDetails}
-				isSidebarVisible={isSidebarVisible}
-				setSidebarVisible={setSidebarVisible}
-			/>
 			<div className="flex-1 flex flex-col overflow-hidden">
 				<CalendarHeader
 					currentMonth={currentMonth}
 					onMonthChange={changeMonth}
 					onToday={() => setCurrentMonth(new Date())}
-					onToggleSidebar={() => setSidebarVisible(true)}
 				/>
 				<main className="flex-1 overflow-y-auto p-4 custom-scrollbar">
 					{isLoading ? (
@@ -238,20 +221,9 @@ const JournalPage = () => {
 }
 
 // Calendar Header Component
-const CalendarHeader = ({
-	currentMonth,
-	onMonthChange,
-	onToday,
-	onToggleSidebar
-}) => (
+const CalendarHeader = ({ currentMonth, onMonthChange, onToday }) => (
 	<header className="flex items-center justify-between p-4 border-b border-[var(--color-primary-surface)] shrink-0">
 		<div className="flex items-center gap-4">
-			<button
-				onClick={onToggleSidebar}
-				className="text-[var(--color-text-primary)] md:hidden p-2 hover:bg-[var(--color-primary-surface)] rounded-[var(--radius-base)] transition-colors"
-			>
-				<IconMenu2 />
-			</button>
 			<h1 className="text-xl font-semibold text-[var(--color-text-primary)]">
 				Journal
 			</h1>

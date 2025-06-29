@@ -3,10 +3,8 @@
 import React, { useState, useEffect, useCallback, useRef } from "react"
 import "react-tooltip/dist/react-tooltip.css"
 import { useRouter } from "next/navigation"
-import Sidebar from "@components/Sidebar"
 import {
 	IconChecklist,
-	IconMenu2,
 	IconSparkles,
 	IconCircleCheck,
 	IconPencil,
@@ -312,7 +310,6 @@ const TaskCard = ({ task, integrations, onApproveTask, onDeleteTask }) => {
 
 const HomePage = () => {
 	const [userDetails, setUserDetails] = useState(null)
-	const [isSidebarVisible, setSidebarVisible] = useState(false)
 	const [tasks, setTasks] = useState([])
 	const [integrations, setIntegrations] = useState([])
 	const [loading, setLoading] = useState(true)
@@ -413,20 +410,7 @@ const HomePage = () => {
 
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)]">
-			<Sidebar
-				userDetails={userDetails}
-				isSidebarVisible={isSidebarVisible}
-				setSidebarVisible={setSidebarVisible}
-			/>
 			<div className="flex-1 flex flex-col overflow-hidden">
-				<header className="flex items-center justify-between p-4 border-b border-[var(--color-primary-surface)] md:hidden">
-					<button
-						onClick={() => setSidebarVisible(true)}
-						className="text-[var(--color-text-primary)] hover:text-[var(--color-accent-blue)] transition-colors duration-150"
-					>
-						<IconMenu2 />
-					</button>
-				</header>
 				<main
 					ref={scrollRef}
 					className="flex-1 overflow-y-auto p-4 lg:p-8 no-scrollbar flex items-center justify-center"

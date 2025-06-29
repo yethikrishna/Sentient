@@ -18,7 +18,6 @@ import {
 	IconFilter,
 	IconChevronUp,
 	IconPlus,
-	IconMenu2,
 	IconGripVertical,
 	IconBrain,
 	IconBook,
@@ -27,7 +26,6 @@ import {
 	IconMessage,
 	IconArrowRight
 } from "@tabler/icons-react"
-import Sidebar from "@components/Sidebar"
 import toast from "react-hot-toast"
 import { Tooltip } from "react-tooltip"
 import "react-tooltip/dist/react-tooltip.css"
@@ -97,8 +95,6 @@ const Tasks = () => {
 	const [tasks, setTasks] = useState([])
 	const [loading, setLoading] = useState(true)
 	const [error, setError] = useState(null)
-	const [userDetails, setUserDetails] = useState({})
-	const [isSidebarVisible, setSidebarVisible] = useState(false)
 	const [editingTask, setEditingTask] = useState(null)
 	const [filterStatus, setFilterStatus] = useState("all")
 	const [isGeneratingPlan, setIsGeneratingPlan] = useState(false)
@@ -178,16 +174,6 @@ const Tasks = () => {
 		}
 	}, [])
 
-	const fetchUserDetails = async () => {
-		try {
-			const response = await fetch("/api/user/profile")
-			if (!response.ok) throw new Error("Failed to fetch user profile")
-			setUserDetails(await response.json())
-		} catch (error) {
-			toast.error("Error fetching user details for sidebar.")
-		}
-	}
-
 	const fetchAllToolsAndIntegrations = async () => {
 		setLoadingIntegrations(true)
 		try {
@@ -212,7 +198,6 @@ const Tasks = () => {
 	}
 
 	useEffect(() => {
-		fetchUserDetails()
 		fetchTasksData()
 		fetchAllToolsAndIntegrations()
 		const intervalId = setInterval(fetchTasksData, 60000)
@@ -427,17 +412,7 @@ const Tasks = () => {
 
 	return (
 		<div className="h-screen bg-[var(--color-primary-background)] flex relative overflow-hidden dark">
-			<Sidebar
-				userDetails={userDetails}
-				isSidebarVisible={isSidebarVisible}
-				setSidebarVisible={setSidebarVisible}
-			/>
 			<div className="flex-1 flex flex-col h-full bg-[var(--color-primary-background)] text-white relative overflow-hidden">
-				<header className="flex items-center justify-between p-4 bg-[var(--color-primary-background)] border-b border-neutral-800 md:hidden">
-					<button onClick={() => setSidebarVisible(true)}>
-						<IconMenu2 />
-					</button>
-				</header>
 				<div className="flex-shrink-0 p-4 pt-6 flex justify-center z-30">
 					<div className="w-full max-w-3xl flex items-center space-x-3 bg-neutral-800/80 backdrop-blur-sm rounded-full p-2 shadow-lg border border-neutral-700">
 						<IconSearch className="h-6 w-6 text-gray-400 ml-2 flex-shrink-0" />

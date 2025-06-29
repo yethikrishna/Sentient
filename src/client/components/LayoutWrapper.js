@@ -1,6 +1,7 @@
 "use client"
 import React, { useState } from "react"
 import ChatOverlay from "@components/ChatOverlay"
+import FloatingNav from "@components/FloatingNav"
 import { IconMessage } from "@tabler/icons-react"
 import { usePathname } from "next/navigation"
 import { AnimatePresence } from "framer-motion"
@@ -9,10 +10,11 @@ export default function LayoutWrapper({ children }) {
 	const [isChatOpen, setChatOpen] = useState(false)
 	const pathname = usePathname()
 
-	const showChatButton = pathname !== "/onboarding"
+	const showChatButton = pathname !== "/onboarding" && pathname !== "/"
 
 	return (
 		<>
+			<FloatingNav />
 			{children}
 			<AnimatePresence>
 				{isChatOpen && (

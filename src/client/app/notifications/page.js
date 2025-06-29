@@ -8,6 +8,7 @@ import {
 	IconX
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
+import { Tooltip } from "react-tooltip"
 import { cn } from "@utils/cn"
 import { useRouter } from "next/navigation"
 import { useSmoothScroll } from "@hooks/useSmoothScroll"
@@ -121,6 +122,7 @@ const Notifications = () => {
 	// --- Render Logic ---
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)]">
+			<Tooltip id="notifications-tooltip" />
 			<div className="flex-1 flex flex-col overflow-hidden">
 				<header className="flex items-center justify-between p-4 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)] md:flex-row md:items-center">
 					<h1 className="text-2xl sm:text-3xl font-light text-[var(--color-text-primary)] flex-grow text-center md:text-left">
@@ -192,11 +194,16 @@ const Notifications = () => {
 												handleDelete(e, notif.id)
 											}
 											className="p-1.5 text-[var(--color-text-muted)] rounded-full opacity-0 group-hover:opacity-100 hover:bg-neutral-600 hover:text-[var(--color-accent-red)] transition-all duration-200"
-											title="Dismiss notification"
+											data-tooltip-id="notifications-tooltip"
+											data-tooltip-content="Dismiss notification"
 										>
 											<IconX size={16} />
 										</button>
-										<IconArrowRight className="w-5 h-5 text-gray-500 transition-transform duration-300 group-hover:translate-x-1 group-hover:text-white" />
+										<IconArrowRight
+											className="w-5 h-5 text-gray-500 transition-transform duration-300 group-hover:translate-x-1 group-hover:text-white"
+											data-tooltip-id="notifications-tooltip"
+											data-tooltip-content="View associated tasks"
+										/>
 									</div>
 								</div>
 							))}

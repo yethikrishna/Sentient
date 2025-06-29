@@ -13,6 +13,7 @@ import {
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import { cn } from "@utils/cn"
+import { Tooltip } from "react-tooltip"
 import { motion } from "framer-motion"
 import { useSmoothScroll } from "@hooks/useSmoothScroll"
 import ChatBubble from "@components/ChatBubble"
@@ -220,6 +221,7 @@ const ChatOverlay = ({ onClose }) => {
 				transition={{ duration: 0.3, ease: "easeInOut" }}
 				className="bg-[var(--color-primary-background)] border border-[var(--color-primary-surface-elevated)] rounded-2xl w-full max-w-3xl h-[85vh] flex flex-col shadow-2xl"
 			>
+				<Tooltip id="chat-overlay-tooltip" />
 				<header className="flex justify-between items-center p-4 border-b border-[var(--color-primary-surface)] flex-shrink-0">
 					<h2 className="text-xl font-semibold text-[var(--color-text-primary)]">
 						Chat with Sentient
@@ -277,7 +279,11 @@ const ChatOverlay = ({ onClose }) => {
 				<div className="p-4 border-t border-[var(--color-primary-surface)]">
 					<div className="flex items-center flex-wrap justify-center gap-4 mb-3 text-xs text-[var(--color-text-secondary)]">
 						{/* Tool Toggles Here */}
-						<label className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors">
+						<label
+							className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
+							data-tooltip-id="chat-overlay-tooltip"
+							data-tooltip-content="Allows the AI to search the web for real-time information."
+						>
 							<IconWorldSearch
 								size={16}
 								className={
@@ -292,7 +298,11 @@ const ChatOverlay = ({ onClose }) => {
 								onCheckedChange={setInternetEnabled}
 							/>
 						</label>
-						<label className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors">
+						<label
+							className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
+							data-tooltip-id="chat-overlay-tooltip"
+							data-tooltip-content="Enables weather forecasts for any location."
+						>
 							<IconCloud
 								size={16}
 								className={
@@ -307,7 +317,11 @@ const ChatOverlay = ({ onClose }) => {
 								onCheckedChange={setWeatherEnabled}
 							/>
 						</label>
-						<label className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors">
+						<label
+							className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
+							data-tooltip-id="chat-overlay-tooltip"
+							data-tooltip-content="Enables fetching the latest news headlines."
+						>
 							<IconNews
 								size={16}
 								className={
@@ -322,7 +336,11 @@ const ChatOverlay = ({ onClose }) => {
 								onCheckedChange={setNewsEnabled}
 							/>
 						</label>
-						<label className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors">
+						<label
+							className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
+							data-tooltip-id="chat-overlay-tooltip"
+							data-tooltip-content="Enables location-based information and directions."
+						>
 							<IconMap
 								size={16}
 								className={
@@ -337,7 +355,11 @@ const ChatOverlay = ({ onClose }) => {
 								onCheckedChange={setMapsEnabled}
 							/>
 						</label>
-						<label className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors">
+						<label
+							className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
+							data-tooltip-id="chat-overlay-tooltip"
+							data-tooltip-content="Enables product search and price comparisons."
+						>
 							<IconShoppingCart
 								size={16}
 								className={
@@ -374,7 +396,8 @@ const ChatOverlay = ({ onClose }) => {
 								<button
 									onClick={handleStopStreaming}
 									className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-white bg-red-600 hover:bg-red-500"
-									title="Stop Generation"
+									data-tooltip-id="chat-overlay-tooltip"
+									data-tooltip-content="Stop Generation"
 								>
 									<IconPlayerStopFilled className="w-4 h-4 text-[var(--color-text-primary)]" />
 								</button>
@@ -383,7 +406,8 @@ const ChatOverlay = ({ onClose }) => {
 									onClick={sendMessage}
 									disabled={input.trim() === ""}
 									className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-[var(--color-text-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
-									title="Send Message"
+									data-tooltip-id="chat-overlay-tooltip"
+									data-tooltip-content="Send Message"
 								>
 									<IconSend className="w-4 h-4 text-white" />
 								</button>

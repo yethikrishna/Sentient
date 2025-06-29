@@ -11,7 +11,8 @@ import {
 	IconTrash,
 	IconPointFilled,
 	IconSparkles
-} from "@tabler/icons-react"
+} from "@tabler/icons-react";
+import { Tooltip } from "react-tooltip";
 import { AnimatePresence, motion } from "framer-motion"
 import { cn } from "@utils/cn"
 import {
@@ -181,6 +182,7 @@ const JournalPage = () => {
 
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)]">
+			<Tooltip id="journal-tooltip" />
 			<div className="flex-1 flex flex-col overflow-hidden">
 				<CalendarHeader
 					currentMonth={currentMonth}
@@ -331,7 +333,8 @@ const DayCell = ({
 							taskStatusColors[event.status] ||
 								taskStatusColors.default
 						)}
-						title={event.description}
+						data-tooltip-id="journal-tooltip"
+						data-tooltip-content={event.description}
 					>
 						<span className="font-bold">
 							{format(event.startTime, "ha")}
@@ -500,6 +503,8 @@ const EntrySidePanel = ({ selectedDate, onClose, entries, onDataChange }) => {
 												setEditingBlock(block)
 											}
 											className="p-1 rounded text-[var(--color-text-muted)] hover:text-white"
+											data-tooltip-id="journal-tooltip"
+											data-tooltip-content="Edit entry"
 										>
 											<IconPencil size={14} />
 										</button>
@@ -510,6 +515,8 @@ const EntrySidePanel = ({ selectedDate, onClose, entries, onDataChange }) => {
 												)
 											}
 											className="p-1 rounded text-[var(--color-text-muted)] hover:text-red-400"
+											data-tooltip-id="journal-tooltip"
+											data-tooltip-content="Delete entry"
 										>
 											<IconTrash size={14} />
 										</button>
@@ -535,6 +542,8 @@ const EntrySidePanel = ({ selectedDate, onClose, entries, onDataChange }) => {
 						onClick={handleCreateBlock}
 						disabled={isSubmitting || !newContent.trim()}
 						className="px-4 py-1.5 text-sm font-medium bg-[var(--color-accent-blue)] hover:bg-blue-500 text-white rounded-md disabled:opacity-50"
+						data-tooltip-id="journal-tooltip"
+						data-tooltip-content="Save entry. Your text will be analyzed by AI to find tasks and insights."
 					>
 						Save
 					</button>

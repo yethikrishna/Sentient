@@ -411,6 +411,7 @@ const Tasks = () => {
 		setOpenSections((prev) => ({ ...prev, [section]: !prev[section] }))
 
 	return (
+		<div>
 		<div className="h-screen bg-[var(--color-primary-background)] flex relative overflow-hidden dark">
 			<div className="flex-1 flex flex-col h-full bg-[var(--color-primary-background)] text-white relative overflow-hidden">
 				<div className="flex-shrink-0 p-4 pt-6 flex justify-center z-30">
@@ -447,6 +448,8 @@ const Tasks = () => {
 						<button
 							onClick={() => fetchTasksData()}
 							className="p-2 rounded-full hover:bg-neutral-700 transition-colors text-gray-300"
+							data-tooltip-id="tasks-tooltip"
+							data-tooltip-content="Refresh task list"
 							disabled={loading && tasks.length > 0}
 						>
 							{loading && tasks.length > 0 ? (
@@ -649,6 +652,8 @@ const Tasks = () => {
 					/>
 				)}
 			</div>
+		</div>
+		<Tooltip id="tasks-tooltip" />
 		</div>
 	)
 }
@@ -1078,7 +1083,8 @@ const TaskCard = ({
 							onApproveTask(task.task_id)
 						}}
 						className="p-1.5 rounded-md text-green-400 hover:bg-neutral-900/50 disabled:text-gray-600 disabled:cursor-not-allowed"
-						title="Approve Plan"
+						data-tooltip-id="tasks-tooltip"
+						data-tooltip-content="Approve this plan for execution"
 						disabled={missingTools.length > 0}
 					>
 						<IconCircleCheck className="h-5 w-5" />
@@ -1091,7 +1097,8 @@ const TaskCard = ({
 							onEditTask(task)
 						}}
 						className="p-1.5 rounded-md text-yellow-400 hover:bg-neutral-900/50"
-						title="Edit"
+						data-tooltip-id="tasks-tooltip"
+						data-tooltip-content="Edit this task's plan and properties"
 					>
 						<IconPencil className="h-5 w-5" />
 					</button>
@@ -1103,7 +1110,8 @@ const TaskCard = ({
 							onReRunTask(task.task_id)
 						}}
 						className="p-1.5 rounded-md text-blue-400 hover:bg-neutral-900/50"
-						title="Re-run Task"
+						data-tooltip-id="tasks-tooltip"
+						data-tooltip-content="Create a new copy of this task to run again"
 					>
 						<IconRefresh className="h-5 w-5" />
 					</button>
@@ -1115,7 +1123,8 @@ const TaskCard = ({
 							onDeleteTask(task.task_id)
 						}}
 						className="p-1.5 rounded-md text-red-400 hover:bg-neutral-900/50"
-						title="Delete"
+						data-tooltip-id="tasks-tooltip"
+						data-tooltip-content="Delete this task permanently"
 					>
 						<IconTrash className="h-5 w-5" />
 					</button>
@@ -1166,6 +1175,7 @@ const TaskDetailsModal = ({ task, onClose, onApprove, integrations }) => {
 			exit={{ opacity: 0 }}
 			className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 p-4"
 		>
+			<Tooltip id="task-details-tooltip" />
 			<div className="bg-neutral-800 p-8 rounded-lg shadow-xl w-full max-w-3xl mx-auto max-h-[90vh] flex flex-col">
 				<div className="flex justify-between items-center mb-6">
 					<h3 className="text-2xl font-semibold text-white truncate">
@@ -1267,7 +1277,11 @@ const TaskDetailsModal = ({ task, onClose, onApprove, integrations }) => {
 								<div className="space-y-4 text-gray-300">
 									{thoughts && (
 										<details className="bg-neutral-900/50 rounded-lg p-3 border border-neutral-700">
-											<summary className="cursor-pointer text-sm text-gray-400 font-semibold hover:text-white flex items-center gap-2">
+											<summary
+												className="cursor-pointer text-sm text-gray-400 font-semibold hover:text-white flex items-center gap-2"
+												data-tooltip-id="task-details-tooltip"
+												data-tooltip-content="See the step-by-step reasoning the agent used to produce the result."
+											>
 												<IconBrain size={16} /> View
 												Agent's Thoughts
 											</summary>
@@ -1416,6 +1430,9 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 						<label className="text-xs text-gray-400 block mb-1">
 							Time (UTC)
 						</label>
+						<label className="text-xs text-gray-400 block mb-1" data-tooltip-id="tasks-tooltip" data-tooltip-content="Tasks are scheduled in Coordinated Universal Time (UTC) to ensure consistency across timezones.">
+							Time (UTC)
+						</label>
 						<input
 							type="time"
 							value={schedule.time || "09:00"}
@@ -1466,3 +1483,4 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 }
 
 export default Tasks
+

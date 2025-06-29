@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@utils/cn"
 import toast from "react-hot-toast"
 import { useRouter } from "next/navigation"
+import { Tooltip } from "react-tooltip"
 import { IconLoader, IconMapPin, IconMapPinFilled } from "@tabler/icons-react"
 
 const CheckIcon = ({ className }) => (
@@ -212,6 +213,7 @@ const OnboardingForm = () => {
 
 	return (
 		<div className="min-h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] p-4 sm:p-6 flex items-center justify-center">
+			<Tooltip id="onboarding-tooltip" />
 			<motion.div
 				initial={{ opacity: 0, y: 20 }}
 				animate={{ opacity: 1, y: 0 }}
@@ -231,7 +233,19 @@ const OnboardingForm = () => {
 					{questions.map((q) => {
 						return (
 							<div key={q.id}>
-								<label className="block text-lg sm:text-xl font-Poppins font-semibold mb-2 text-[var(--color-text-primary)]">
+								<label
+									className="block text-lg sm:text-xl font-Poppins font-semibold mb-2 text-[var(--color-text-primary)]"
+									data-tooltip-id={
+										q.id === "timezone"
+											? "onboarding-tooltip"
+											: ""
+									}
+									data-tooltip-content={
+										q.id === "timezone"
+											? "Your timezone is used to schedule tasks and reminders accurately."
+											: ""
+									}
+								>
 									{q.question}
 								</label>
 								{q.description && (
@@ -299,6 +313,8 @@ const OnboardingForm = () => {
 											onClick={handleGetLocation}
 											disabled={locationState.loading}
 											className="flex items-center gap-2 px-5 py-3 rounded-lg bg-[var(--color-primary-surface-elevated)] text-[var(--color-text-primary)] hover:bg-neutral-600 transition-colors"
+											data-tooltip-id="onboarding-tooltip"
+											data-tooltip-content="Your location helps provide relevant info like local weather. This is optional."
 										>
 											<IconMapPin size={20} />
 											<span>

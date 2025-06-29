@@ -28,6 +28,7 @@ import {
 	IconX
 } from "@tabler/icons-react"
 import { useState, useEffect, useCallback, useRef } from "react"
+import { Tooltip } from "react-tooltip"
 import React from "react"
 import { useSmoothScroll } from "@hooks/useSmoothScroll"
 
@@ -506,6 +507,7 @@ const Settings = () => {
 
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)]">
+			<Tooltip id="settings-tooltip" />
 			<div className="flex-1 flex flex-col overflow-hidden">
 				<header className="flex flex-col sm:flex-row items-center justify-between p-4 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)] gap-4">
 					<div className="flex items-center gap-4 w-full sm:w-auto">
@@ -553,7 +555,11 @@ const Settings = () => {
 																	integration.display_name
 																}
 															</h3>
-															<details className="mt-1 text-gray-400 text-xs sm:text-sm group">
+															<details
+																className="mt-1 text-gray-400 text-xs sm:text-sm group"
+																data-tooltip-id="settings-tooltip"
+																data-tooltip-content="Click to see what this integration does"
+															>
 																<summary className="list-none flex items-center cursor-pointer hover:text-white transition-colors w-fit">
 																	<span>
 																		Details
@@ -623,7 +629,11 @@ const Settings = () => {
 						</section>
 
 						<section>
-							<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2">
+							<h2
+								className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2"
+								data-tooltip-id="settings-tooltip"
+								data-tooltip-content="These tools are core to Sentient and are always enabled."
+							>
 								Default System Tools
 							</h2>
 							<div className="bg-[var(--color-primary-surface)]/50 p-2 md:p-4 rounded-lg border border-[var(--color-primary-surface-elevated)]">
@@ -649,7 +659,11 @@ const Settings = () => {
 																	tool.display_name
 																}
 															</h3>
-															<details className="mt-1 text-gray-400 text-xs sm:text-sm group">
+															<details
+																className="mt-1 text-gray-400 text-xs sm:text-sm group"
+																data-tooltip-id="settings-tooltip"
+																data-tooltip-content="Click to see what this tool does"
+															>
 																<summary className="list-none flex items-center cursor-pointer hover:text-white transition-colors w-fit">
 																	<span>
 																		Details

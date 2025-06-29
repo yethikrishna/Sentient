@@ -281,7 +281,8 @@ const TaskCard = ({ task, integrations, onApproveTask, onDeleteTask }) => {
 					onClick={() => onApproveTask(task.task_id)}
 					disabled={missingTools.length > 0}
 					className="p-2 rounded-md text-green-400 hover:bg-[var(--color-primary-surface-elevated)] disabled:text-gray-600 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-					title={
+					data-tooltip-id="home-tooltip"
+					data-tooltip-content={
 						missingTools.length
 							? `Connect: ${missingTools.join(", ")}`
 							: "Approve Plan"
@@ -292,14 +293,16 @@ const TaskCard = ({ task, integrations, onApproveTask, onDeleteTask }) => {
 				<button
 					onClick={onEditTask}
 					className="p-2 rounded-md text-yellow-400 hover:bg-[var(--color-primary-surface-elevated)]"
-					title="Edit Plan"
+					data-tooltip-id="home-tooltip"
+					data-tooltip-content="Edit Plan"
 				>
 					<IconPencil className="h-5 w-5" />
 				</button>
 				<button
 					onClick={() => onDeleteTask(task.task_id)}
 					className="p-2 rounded-md text-red-400 hover:bg-[var(--color-primary-surface-elevated)]"
-					title="Delete Plan"
+					data-tooltip-id="home-tooltip"
+					data-tooltip-content="Delete Plan"
 				>
 					<IconTrash className="h-5 w-5" />
 				</button>
@@ -410,6 +413,7 @@ const HomePage = () => {
 
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)]">
+			<Tooltip id="home-tooltip" />
 			<div className="flex-1 flex flex-col overflow-hidden">
 				<main
 					ref={scrollRef}

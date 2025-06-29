@@ -50,46 +50,70 @@ async def save_onboarding_data_endpoint(
             "confidential", "do not share", "ssn", "social security"
         ]
 
+        onboarding_data = request_body.data
+
+        # --- Prepare data for MongoDB ---
         user_data_to_set: Dict[str, Any] = {
-            "onboardingAnswers": request_body.data,
+            "onboardingAnswers": onboarding_data,
             "onboardingComplete": True,
             "supermemory_user_id": supermemory_user_id,
             "privacyFilters": default_privacy_filters,
         }
+
+        # Parse specific answers into structured fields
         personal_info = {}
-        if "user-name" in request_body.data and isinstance(request_body.data["user-name"], str):
-            personal_info["name"] = request_body.data["user-name"]
+        if "user-name" in onboarding_data and isinstance(onboarding_data["user-name"], str):
+            personal_info["name"] = onboarding_data["user-name"]
         
-        if "timezone" in request_body.data and isinstance(request_body.data["timezone"], str):
-             personal_info["timezone"] = request_body.data["timezone"]
-        
+        if "timezone" in onboarding_data and isinstance(onboarding_data["timezone"], str):
+             personal_info["timezone"] = onboarding_data["timezone"]
+
+        if "location" in onboarding_data and isinstance(onboarding_data["location"], dict):
+            personal_info["location"] = onboarding_data["location"]
+
         if personal_info:
             user_data_to_set["personalInfo"] = personal_info
 
+        preferences = {}
+        if "communication-style" in onboarding_data:
+            preferences["communicationStyle"] = onboarding_data["communication-style"]
+        if "core-priorities" in onboarding_data and isinstance(onboarding_data["core-priorities"], list):
+            preferences["corePriorities"] = onboarding_data["core-priorities"]
 
+        if preferences:
+            user_data_to_set["preferences"] = preferences
+
+        # Create the final update payload for MongoDB
         update_payload = {f"userData.{key}": value for key, value in user_data_to_set.items()}
+        
+        # Save to DB
         success = await mongo_manager.update_user_profile(user_id, update_payload)
         if not success:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to save onboarding data.")
 
-        # After successful save, dispatch facts to Celery worker to be added to Supermemory
+        # --- Dispatch facts to Supermemory ---
         try:
             fact_templates = {
                 "user-name": "The user's name is {}.",
-                "timezone": "The user's timezone is {}.",
                 "location": "The user's location is at latitude {latitude}, longitude {longitude}.",
-                "professional-context": "The user has provided the following professional context: {}",
-                "personal-context": "The user has provided the following personal context: {}"
+                "professional-context": "Professionally, the user has shared: {}",
+                "personal-context": "Personally, the user is interested in: {}",
+                "communication-style": "The user prefers a {} communication style.",
+                "core-priorities": "The user's current life priorities are: {}."
             }
             onboarding_facts = []
-            for key, value in request_body.data.items():
+            for key, value in onboarding_data.items():
                 if not value or key not in fact_templates:
                     continue
                 
-                if key == "location" and isinstance(value, dict):
+                if key == "location" and isinstance(value, dict) and value.get('latitude'):
                     fact = fact_templates[key].format(latitude=value.get('latitude'), longitude=value.get('longitude'))
+                elif key == "core-priorities" and isinstance(value, list) and value:
+                    fact = fact_templates[key].format(", ".join(value))
+                elif isinstance(value, str) and value.strip():
+                    fact = fact_templates[key].format(value)
                 else:
-                    fact = fact_templates[key].format(str(value))
+                    continue # Skip empty values
                 onboarding_facts.append(fact)
 
             for fact in onboarding_facts:

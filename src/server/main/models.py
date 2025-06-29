@@ -1,39 +1,36 @@
-from pydantic import BaseModel, Field, validator
-from typing import Dict, Any, Optional, List, Union
+from pydantic import BaseModel, Field
+from typing import Dict, Any, Optional, List
 import datetime
 
-# --- Integration Models ---
 class IntegrationData(BaseModel):
-    encrypted_token: str
+    encrypted_token: Optional[str] = None
     connected_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc))
+    credentials: Optional[str] = None
+    connected: bool = False
+    auth_type: Optional[str] = None
 
-# --- User Profile Models (Core) ---
+class UserPreferences(BaseModel):
+    communicationStyle: Optional[str] = None
+    corePriorities: List[str] = Field(default_factory=list)
+
 class UserProfileData(BaseModel):
-    onboardingAnswers: Optional[Dict[str, Any]] = Field(default_factory=dict)
-    onboardingComplete: Optional[bool] = False
-    personalInfo: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    onboardingAnswers: Dict[str, Any] = Field(default_factory=dict)
+    onboardingComplete: bool = False
+    personalInfo: Dict[str, Any] = Field(default_factory=dict)
+    preferences: UserPreferences = Field(default_factory=UserPreferences)
     active_chat_id: Optional[str] = None
     last_active_timestamp: Optional[datetime.datetime] = None
-    integrations: Optional[Dict[str, IntegrationData]] = Field(default_factory=dict)
+    integrations: Dict[str, IntegrationData] = Field(default_factory=dict)
     encrypted_refresh_token: Optional[str] = None
     supermemory_user_id: Optional[str] = None
+    privacyFilters: List[str] = Field(default_factory=list)
+    googleAuth: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 class UserProfile(BaseModel):
     user_id: str = Field(..., description="The Auth0 user ID (sub claim)")
     userData: UserProfileData = Field(default_factory=UserProfileData)
     createdAt: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc))
     last_updated: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc))
-
-    @validator('createdAt', 'last_updated', pre=True, always=True)
-    def ensure_datetime_objects(cls, v):
-        if isinstance(v, str):
-            try:
-                return datetime.datetime.fromisoformat(v.replace('Z', '+00:00'))
-            except ValueError:
-                raise ValueError(f"Invalid datetime string format: {v}")
-        if isinstance(v, datetime.datetime):
-            return v
-        return datetime.datetime.now(datetime.timezone.utc)
 
 class OnboardingRequest(BaseModel):
     data: Dict[str, Any]

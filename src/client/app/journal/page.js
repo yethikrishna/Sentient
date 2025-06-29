@@ -12,8 +12,6 @@ import {
 	IconPencil,
 	IconTrash,
 	IconPointFilled,
-	IconClock,
-	IconPlus,
 	IconSparkles
 } from "@tabler/icons-react"
 import { AnimatePresence, motion } from "framer-motion"
@@ -31,11 +29,8 @@ import {
 	subMonths,
 	getDay,
 	isToday,
-	parseISO,
 	setHours,
-	setMinutes,
-	isWithinInterval,
-	addDays
+	setMinutes
 } from "date-fns"
 
 const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
@@ -140,9 +135,9 @@ const JournalPage = () => {
 
 		allTasks.forEach((task) => {
 			if (!task.schedule || task.schedule.type !== "recurring") {
-				// Handle one-off tasks if they have a date (not implemented in current data model)
 				return
 			}
+			if (task.enabled === false) return // Skip disabled tasks
 
 			const [hour, minute] = task.schedule.time
 				?.split(":")
@@ -389,7 +384,7 @@ const EntrySidePanel = ({ selectedDate, onClose, entries, onDataChange }) => {
 	const [isSubmitting, setIsSubmitting] = useState(false)
 	const newEntryTextareaRef = useRef(null)
 
-	const handleCreateBlock = async (processWithAI) => {
+	const handleCreateBlock = async () => {
 		if (!newContent.trim()) return
 		setIsSubmitting(true)
 
@@ -405,16 +400,12 @@ const EntrySidePanel = ({ selectedDate, onClose, entries, onDataChange }) => {
 					content: newContent,
 					page_date: format(selectedDate, "yyyy-MM-dd"),
 					order: newOrder,
-					processWithAI: processWithAI
+					processWithAI: true // Always process with AI now
 				})
 			})
 			if (!response.ok) throw new Error("Failed to create entry")
 			setNewContent("")
-			toast.success(
-				processWithAI
-					? "Entry sent to AI for processing."
-					: "Entry added."
-			)
+			toast.success("Entry saved and sent for processing.")
 			onDataChange()
 		} catch (error) {
 			toast.error(error.message)
@@ -567,20 +558,13 @@ const EntrySidePanel = ({ selectedDate, onClose, entries, onDataChange }) => {
 					className="w-full bg-[var(--color-primary-background)] p-2 rounded-lg resize-none focus:outline-none placeholder:text-[var(--color-text-muted)]"
 					rows={4}
 				/>
-				<div className="flex justify-end gap-2">
+				<div className="flex justify-end">
 					<button
-						onClick={() => handleCreateBlock(true)}
-						disabled={isSubmitting || !newContent.trim()}
-						className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium bg-purple-600 hover:bg-purple-500 text-white rounded-md disabled:opacity-50"
-					>
-						<IconSparkles size={16} /> Process with AI
-					</button>
-					<button
-						onClick={() => handleCreateBlock(false)}
+						onClick={handleCreateBlock}
 						disabled={isSubmitting || !newContent.trim()}
 						className="px-4 py-1.5 text-sm font-medium bg-[var(--color-accent-blue)] hover:bg-blue-500 text-white rounded-md disabled:opacity-50"
 					>
-						Add Entry
+						Save
 					</button>
 				</div>
 			</div>

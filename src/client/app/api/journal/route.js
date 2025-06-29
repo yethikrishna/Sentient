@@ -14,7 +14,8 @@ export const GET = withAuth(async function GET(request, { authHeader }) {
 	if (date) {
 		queryString = `date=${date}`
 	} else if (startDate && endDate) {
-		queryString = `start_date=${startDate}&end_date=${endDate}`
+		// FIX: The backend FastAPI endpoint uses 'startDate' and 'endDate' as aliases for the query parameters.
+		queryString = `startDate=${startDate}&endDate=${endDate}`
 	} else {
 		return NextResponse.json(
 			{

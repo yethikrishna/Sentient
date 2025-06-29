@@ -56,6 +56,9 @@ if AES_IV_HEX:
 else:
     print(f"[{datetime.datetime.now()}] [MainServer_Config_WARNING] AES_IV is not set. Encryption/Decryption will fail.")
 
+# WAHA Configuration
+WAHA_URL = os.getenv("WAHA_URL", "http://localhost:3000")
+WAHA_API_KEY = os.getenv("WAHA_API_KEY")
 
 # Google API Config (mainly for token storage path if server handles auth code exchange)
 _SERVER_DIR_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..")) # main -> server

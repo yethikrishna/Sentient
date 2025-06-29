@@ -13,11 +13,13 @@ import {
 	IconMessage
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
+import { motion } from "framer-motion"
 
 export default function FloatingNav({ onChatOpen }) {
 	const router = useRouter()
 	const pathname = usePathname()
 	const [userDetails, setUserDetails] = useState(null)
+	const [unreadCount, setUnreadCount] = useState(0)
 	const wsRef = useRef(null)
 
 	useEffect(() => {
@@ -30,7 +32,6 @@ export default function FloatingNav({ onChatOpen }) {
 			.catch((err) => console.error("Failed to fetch user profile", err))
 	}, [])
 
-	// WebSocket logic for notifications from old sidebar
 	useEffect(() => {
 		if (!userDetails?.sub) {
 			return
@@ -65,6 +66,7 @@ export default function FloatingNav({ onChatOpen }) {
 				ws.onmessage = (event) => {
 					const data = JSON.parse(event.data)
 					if (data.type === "new_notification" && data.notification) {
+						setUnreadCount((prev) => prev + 1)
 						toast.custom(
 							(t) => (
 								<div
@@ -124,9 +126,22 @@ export default function FloatingNav({ onChatOpen }) {
 		}
 	}, [userDetails?.sub, router])
 
+	const NotificationIcon = () => (
+		<div className="relative h-full w-full flex items-center justify-center">
+			<IconBell className="h-full w-full text-neutral-500 dark:text-neutral-300" />
+			{unreadCount > 0 && (
+				<motion.div
+					initial={{ scale: 0 }}
+					animate={{ scale: 1 }}
+					className="absolute top-0 right-0 h-3 w-3 bg-red-500 rounded-full border-2 border-[var(--color-primary-surface)]"
+				/>
+			)}
+		</div>
+	)
+
 	const navLinks = [
 		{
-			title: "Sentient",
+			title: "Home",
 			href: "/home",
 			icon: (
 				<IconHome className="h-full w-full text-neutral-500 dark:text-neutral-300" />
@@ -149,9 +164,11 @@ export default function FloatingNav({ onChatOpen }) {
 		{
 			title: "Notifications",
 			href: "/notifications",
-			icon: (
-				<IconBell className="h-full w-full text-neutral-500 dark:text-neutral-300" />
-			)
+			icon: <NotificationIcon />,
+			onClick: () => {
+				setUnreadCount(0)
+				router.push("/notifications")
+			}
 		},
 		{
 			title: "Settings",
@@ -180,7 +197,7 @@ export default function FloatingNav({ onChatOpen }) {
 			href: "/auth/logout",
 			icon: userDetails?.picture ? (
 				<img
-					src={userDetails?.picture}
+					src={userDetails.picture}
 					alt={userDetails.given_name || "User"}
 					className="h-full w-full rounded-full object-cover"
 				/>

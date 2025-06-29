@@ -19,6 +19,7 @@ from .integrations.routes import router as integrations_router
 from .misc.routes import router as misc_router
 from .agents.routes import router as agents_router
 from .journal.routes import router as journal_router
+from .settings.routes import router as settings_router # Import the new router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__) 
@@ -51,6 +52,7 @@ app.include_router(integrations_router)
 app.include_router(misc_router)
 app.include_router(agents_router)
 app.include_router(journal_router)
+app.include_router(settings_router) # Add the new router
 
 @app.get("/", tags=["General"])
 async def root():

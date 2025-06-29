@@ -13,7 +13,8 @@ import {
 	IconTie,
 	IconArrowRight,
 	IconSparkles,
-	IconCheck
+	IconCheck,
+	IconBrandWhatsapp
 } from "@tabler/icons-react"
 
 const CheckFilled = ({ className }) => (
@@ -77,6 +78,16 @@ const questions = [
 			{ value: "Asia/Singapore", label: "Singapore (SGT)" },
 			{ value: "UTC", label: "Coordinated Universal Time (UTC)" }
 		],
+		section: "essentials"
+	},
+	{
+		id: "whatsapp_number",
+		question: "WhatsApp Number (Optional)",
+		description:
+			"Enter your number with country code (e.g., 14155552671) to receive notifications. You can change this later in Settings.",
+		type: "text-input",
+		required: false,
+		placeholder: "e.g., 14155552671",
 		section: "essentials"
 	},
 	{
@@ -219,11 +230,17 @@ const OnboardingForm = () => {
 	const handleSubmit = async (e) => {
 		e.preventDefault()
 		setIsSubmitting(true)
+
+		// Separate WhatsApp logic to run after main onboarding
+		const whatsappNumber = answers["whatsapp_number"]
+		const mainOnboardingData = { ...answers }
+		delete mainOnboardingData["whatsapp_number"]
+
 		try {
 			const response = await fetch("/api/onboarding", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ data: answers })
+				body: JSON.stringify({ data: mainOnboardingData })
 			})
 			const result = await response.json()
 			if (!response.ok) {
@@ -231,6 +248,31 @@ const OnboardingForm = () => {
 					result.message || "Failed to save onboarding data"
 				)
 			}
+
+			// After main onboarding succeeds, try to set WhatsApp number if provided
+			if (whatsappNumber && whatsappNumber.trim()) {
+				try {
+					const waResponse = await fetch("/api/settings/whatsapp", {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({
+							whatsapp_number: whatsappNumber
+						})
+					})
+					if (!waResponse.ok) {
+						const waError = await waResponse.json()
+						// Show a non-blocking error for WhatsApp setup
+						toast.error(
+							`Onboarding saved, but WhatsApp setup failed: ${waError.error}`
+						)
+					}
+				} catch (waError) {
+					toast.error(
+						`Onboarding saved, but could not set WhatsApp number: ${waError.message}`
+					)
+				}
+			}
+
 			setSubmissionComplete(true)
 			setTimeout(() => router.push("/home"), 2000)
 		} catch (error) {
@@ -248,7 +290,7 @@ const OnboardingForm = () => {
 					answers[q.id] &&
 					(Array.isArray(answers[q.id])
 						? answers[q.id].length > 0
-						: true)
+						: answers[q.id].trim() !== "")
 			)
 	}
 
@@ -330,33 +372,50 @@ const OnboardingForm = () => {
 														switch (q.type) {
 															case "text-input":
 																return (
-																	<input
-																		type="text"
-																		value={
-																			answers[
-																				q
-																					.id
-																			] ||
-																			""
-																		}
-																		onChange={(
-																			e
-																		) =>
-																			handleAnswer(
-																				q.id,
+																	<div className="relative">
+																		{q.id ===
+																			"whatsapp_number" && (
+																			<IconBrandWhatsapp
+																				className="absolute left-3 top-1/2 -translate-y-1/2 text-green-500"
+																				size={
+																					20
+																				}
+																			/>
+																		)}
+																		<input
+																			type="text"
+																			value={
+																				answers[
+																					q
+																						.id
+																				] ||
+																				""
+																			}
+																			onChange={(
 																				e
-																					.target
-																					.value
-																			)
-																		}
-																		className="w-full px-4 py-3 rounded-lg bg-[var(--color-primary-surface)] text-[var(--color-text-primary)] border border-[var(--color-primary-surface-elevated)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)] placeholder:text-[var(--color-text-muted)]"
-																		placeholder={
-																			q.placeholder
-																		}
-																		required={
-																			q.required
-																		}
-																	/>
+																			) =>
+																				handleAnswer(
+																					q.id,
+																					e
+																						.target
+																						.value
+																				)
+																			}
+																			className={cn(
+																				"w-full py-3 rounded-lg bg-[var(--color-primary-surface)] text-[var(--color-text-primary)] border border-[var(--color-primary-surface-elevated)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)] placeholder:text-[var(--color-text-muted)]",
+																				q.id ===
+																					"whatsapp_number"
+																					? "pl-10 pr-4"
+																					: "px-4"
+																			)}
+																			placeholder={
+																				q.placeholder
+																			}
+																			required={
+																				q.required
+																			}
+																		/>
+																	</div>
 																)
 															case "select":
 																return (

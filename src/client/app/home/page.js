@@ -1,8 +1,9 @@
 "use client"
 
-import React, { useState, useEffect, useCallback, useRef } from "react"
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import "react-tooltip/dist/react-tooltip.css"
 import { useRouter } from "next/navigation"
+import { format, getDay, isSameDay, parseISO } from "date-fns"
 import {
 	IconChecklist,
 	IconSparkles,
@@ -21,7 +22,8 @@ import {
 	IconBook,
 	IconMail,
 	IconCalendarEvent,
-	IconMessage
+	IconMessage,
+	IconChevronUp
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import { motion, useMotionValue, useTransform, useSpring } from "framer-motion"
@@ -29,114 +31,57 @@ import { Tooltip } from "react-tooltip"
 import { cn } from "@utils/cn"
 import { useSmoothScroll } from "@hooks/useSmoothScroll"
 
-const ActionCard = ({
+const PreviewColumn = ({
 	title,
-	description,
-	icon,
-	href,
-	accentColor = "blue"
+	items,
+	renderItem,
+	viewAllLink,
+	emptyMessage,
+	icon
 }) => {
 	const router = useRouter()
-	const ref = useRef(null)
-
-	const x = useMotionValue(0)
-	const y = useMotionValue(0)
-
-	const mouseXSpring = useSpring(x)
-	const mouseYSpring = useSpring(y)
-
-	const rotateX = useTransform(mouseYSpring, [-0.5, 0.5], ["6deg", "-6deg"])
-	const rotateY = useTransform(mouseXSpring, [-0.5, 0.5], ["-6deg", "6deg"])
-
-	const accentColors = {
-		blue: "#4a9eff",
-		green: "#00c851",
-		purple: "#9c27b0",
-		orange: "#ff8800"
-	}
-
-	const handleMouseMove = (e) => {
-		if (!ref.current) return
-
-		const rect = ref.current.getBoundingClientRect()
-		const width = rect.width
-		const height = rect.height
-		const mouseX = e.clientX - rect.left
-		const mouseY = e.clientY - rect.top
-		const xPct = mouseX / width - 0.5
-		const yPct = mouseY / height - 0.5
-
-		x.set(xPct)
-		y.set(yPct)
-	}
-
-	const handleMouseLeave = () => {
-		x.set(0)
-		y.set(0)
-	}
-
 	return (
-		<motion.div
-			ref={ref}
-			onMouseMove={handleMouseMove}
-			onMouseLeave={handleMouseLeave}
-			onClick={() => router.push(href)}
-			whileHover={{ scale: 1.02 }}
-			whileTap={{ scale: 0.98 }}
-			style={{
-				rotateY,
-				rotateX,
-				transformStyle: "preserve-3d"
-			}}
-			className="bg-[var(--color-primary-surface)] rounded-lg border border-[var(--color-primary-surface-elevated)] p-6 lg:p-8 cursor-pointer hover:border-[var(--accent-color)] transition-all duration-300 relative group"
-		>
-			{/* Subtle glow effect on hover */}
-			<div
-				className="absolute inset-0 rounded-lg opacity-0 group-hover:opacity-20 transition-opacity duration-300 bg-gradient-to-r from-transparent via-[var(--accent-color)] to-transparent"
-				style={{ "--accent-color": accentColors[accentColor] }}
-			/>
-
-			<div
-				style={{
-					transform: "translateZ(30px)",
-					transformStyle: "preserve-3d"
-				}}
-				className="flex flex-col items-start text-left relative z-10"
-			>
-				<div className="mb-4 p-3 rounded-lg bg-[var(--color-primary-surface-elevated)] group-hover:bg-[var(--accent-color)] group-hover:bg-opacity-10 transition-colors duration-300">
-					{React.cloneElement(icon, {
-						className: `w-6 h-6 text-[var(--accent-color)]`,
-						style: { "--accent-color": accentColors[accentColor] }
-					})}
-				</div>
-				<h2 className="text-xl lg:text-2xl font-semibold text-[var(--color-text-primary)] mb-3">
+		<motion.div className="bg-gradient-to-br from-[var(--color-primary-surface)]/50 to-transparent p-6 rounded-2xl border border-[var(--color-primary-surface-elevated)] h-full flex flex-col">
+			<div className="flex justify-between items-center mb-6">
+				<h2 className="text-xl font-semibold text-[var(--color-text-primary)] flex items-center gap-3">
+					{icon}
 					{title}
 				</h2>
-				<p className="text-[#b0b0b0] text-sm lg:text-base leading-relaxed">
-					{description}
-				</p>
-
-				{/* Action indicator */}
-				<div
-					className="mt-4 flex items-center text-[var(--accent-color)] text-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-					style={{ "--accent-color": accentColors[accentColor] }}
+				<button
+					onClick={() => router.push(viewAllLink)}
+					className="text-sm text-blue-400 hover:underline"
 				>
-					<span>Get started</span>
-					<svg
-						className="w-4 h-4 ml-2 transform group-hover:translate-x-1 transition-transform duration-300"
-						fill="none"
-						stroke="currentColor"
-						viewBox="0 0 24 24"
-					>
-						<path
-							strokeLinecap="round"
-							strokeLinejoin="round"
-							strokeWidth={2}
-							d="M9 5l7 7-7 7"
-						/>
-					</svg>
-				</div>
+					View all
+				</button>
 			</div>
+			<div className="space-y-3 overflow-y-auto custom-scrollbar flex-1 pr-2">
+				{items.length > 0 ? (
+					items.map((item, index) => renderItem(item, index))
+				) : (
+					<p className="text-center text-[var(--color-text-secondary)] py-10">
+						{emptyMessage}
+					</p>
+				)}
+			</div>
+		</motion.div>
+	)
+}
+
+const TaskPreviewCard = ({ task, ...props }) => {
+	const router = useRouter()
+	const statusInfo = statusMap[task.status] || statusMap.default
+	return (
+		<motion.div
+			onClick={() => router.push("/tasks")}
+			className="flex items-center gap-3 p-3 rounded-lg bg-[var(--color-primary-surface)]/40 hover:bg-[var(--color-primary-surface)] transition-colors cursor-pointer"
+			{...props}
+		>
+			<statusInfo.icon
+				className={cn("h-5 w-5 flex-shrink-0", statusInfo.color)}
+			/>
+			<p className="text-sm text-[var(--color-text-secondary)] truncate">
+				{task.description}
+			</p>
 		</motion.div>
 	)
 }
@@ -230,14 +175,17 @@ const TaskCard = ({ task, integrations, onApproveTask, onDeleteTask }) => {
 			animate={{ opacity: 1, y: 0 }}
 			exit={{ opacity: 0, y: -20 }}
 			className={cn(
-				"flex items-center gap-4 bg-neutral-800 p-4 rounded-lg shadow hover:bg-neutral-700/60 transition-colors duration-150",
-				"border-l-4 relative group",
-				statusInfo.borderColor,
+				"flex items-start gap-3 sm:gap-4 bg-gradient-to-br from-[var(--color-primary-surface)] to-neutral-800/60 p-4 rounded-xl shadow-lg transition-all duration-200 border border-transparent hover:border-blue-500/30",
+				"relative group",
 				!missingTools.length && "cursor-pointer"
 			)}
-			onClick={() => !missingTools.length && onViewDetails(task)}
+			onClick={(e) => {
+				if (e.target.closest("button")) return
+				if (missingTools.length > 0) return
+				onViewDetails(task)
+			}}
 		>
-			<div className="flex flex-col items-center w-20 flex-shrink-0">
+			<div className="flex flex-col items-center w-16 text-center md:w-20 flex-shrink-0">
 				<statusInfo.icon className={cn("h-7 w-7", statusInfo.color)} />
 				<span
 					className={cn(
@@ -274,13 +222,13 @@ const TaskCard = ({ task, integrations, onApproveTask, onDeleteTask }) => {
 			</div>
 
 			<div
-				className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+				className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity z-10"
 				onClick={(e) => e.stopPropagation()}
 			>
 				<button
 					onClick={() => onApproveTask(task.task_id)}
 					disabled={missingTools.length > 0}
-					className="p-2 rounded-md text-green-400 hover:bg-[var(--color-primary-surface-elevated)] disabled:text-gray-600 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+					className="p-2 rounded-md text-green-400 hover:bg-green-500/20 disabled:text-gray-600 disabled:cursor-not-allowed disabled:hover:bg-transparent"
 					data-tooltip-id="home-tooltip"
 					data-tooltip-content={
 						missingTools.length
@@ -292,7 +240,7 @@ const TaskCard = ({ task, integrations, onApproveTask, onDeleteTask }) => {
 				</button>
 				<button
 					onClick={onEditTask}
-					className="p-2 rounded-md text-yellow-400 hover:bg-[var(--color-primary-surface-elevated)]"
+					className="p-2 rounded-md text-yellow-400 hover:bg-yellow-500/20"
 					data-tooltip-id="home-tooltip"
 					data-tooltip-content="Edit Plan"
 				>
@@ -300,7 +248,7 @@ const TaskCard = ({ task, integrations, onApproveTask, onDeleteTask }) => {
 				</button>
 				<button
 					onClick={() => onDeleteTask(task.task_id)}
-					className="p-2 rounded-md text-red-400 hover:bg-[var(--color-primary-surface-elevated)]"
+					className="p-2 rounded-md text-red-400 hover:bg-red-500/20"
 					data-tooltip-id="home-tooltip"
 					data-tooltip-content="Delete Plan"
 				>
@@ -311,11 +259,32 @@ const TaskCard = ({ task, integrations, onApproveTask, onDeleteTask }) => {
 	)
 }
 
+const JournalPreviewCard = ({ entry, ...props }) => {
+	const router = useRouter()
+	return (
+		<motion.div
+			onClick={() => router.push(`/journal?date=${entry.page_date}`)}
+			className="flex items-center gap-3 p-3 rounded-lg bg-[var(--color-primary-surface)]/40 hover:bg-[var(--color-primary-surface)] transition-colors cursor-pointer"
+			{...props}
+		>
+			<IconBook className="h-5 w-5 flex-shrink-0 text-purple-400" />
+			<p className="text-sm text-[var(--color-text-secondary)] truncate">
+				{entry.content}
+			</p>
+		</motion.div>
+	)
+}
+
 const HomePage = () => {
 	const [userDetails, setUserDetails] = useState(null)
 	const [tasks, setTasks] = useState([])
 	const [integrations, setIntegrations] = useState([])
+	const [todaysJournal, setTodaysJournal] = useState([])
 	const [loading, setLoading] = useState(true)
+	const [openSections, setOpenSections] = useState({
+		pendingApproval: true
+	})
+
 	const scrollRef = useRef(null)
 
 	useSmoothScroll(scrollRef)
@@ -332,23 +301,32 @@ const HomePage = () => {
 
 	const fetchData = useCallback(async () => {
 		setLoading(true)
+		const today = format(new Date(), "yyyy-MM-dd")
 		try {
-			const [tasksResponse, integrationsResponse] = await Promise.all([
-				fetch("/api/tasks"),
-				fetch("/api/settings/integrations")
-			])
+			const [tasksResponse, integrationsResponse, journalResponse] =
+				await Promise.all([
+					fetch("/api/tasks"),
+					fetch("/api/settings/integrations"),
+					fetch(`/api/journal?date=${today}`)
+				])
 			if (!tasksResponse.ok) throw new Error("Failed to fetch tasks")
 			if (!integrationsResponse.ok)
 				throw new Error("Failed to fetch integrations")
+			if (!journalResponse.ok)
+				throw new Error("Failed to fetch today's journal entries")
 
 			const tasksData = await tasksResponse.json()
 			const integrationsData = await integrationsResponse.json()
+			const journalData = await journalResponse.json()
 
 			if (Array.isArray(tasksData.tasks)) {
 				setTasks(tasksData.tasks)
 			}
 			if (Array.isArray(integrationsData.integrations)) {
 				setIntegrations(integrationsData.integrations)
+			}
+			if (Array.isArray(journalData.blocks)) {
+				setTodaysJournal(journalData.blocks)
 			}
 		} catch (error) {
 			toast.error(`Error fetching data: ${error.message}`)
@@ -407,9 +385,53 @@ const HomePage = () => {
 		return "Good evening"
 	}
 
-	const pendingApprovalTasks = tasks.filter(
-		(t) => t.status === "approval_pending"
+	const pendingApprovalTasks = useMemo(
+		() => tasks.filter((t) => t.status === "approval_pending"),
+		[tasks]
 	)
+
+	const todaysTasks = useMemo(() => {
+		const today = new Date()
+		const todaysEvents = []
+
+		tasks.forEach((task) => {
+			if (task.enabled === false) return
+
+			if (task.schedule?.type === "recurring") {
+				const dayOfWeek = getDay(today) // Sunday is 0
+				const dayName = [
+					"Sunday",
+					"Monday",
+					"Tuesday",
+					"Wednesday",
+					"Thursday",
+					"Friday",
+					"Saturday"
+				][dayOfWeek]
+
+				let shouldRun = false
+				if (task.schedule.frequency === "daily") {
+					shouldRun = true
+				} else if (
+					task.schedule.frequency === "weekly" &&
+					task.schedule.days.includes(dayName)
+				) {
+					shouldRun = true
+				}
+
+				if (shouldRun) {
+					todaysEvents.push(task)
+				}
+			}
+
+			if (task.schedule?.type === "once" && task.schedule.run_at) {
+				if (isSameDay(parseISO(task.schedule.run_at), today)) {
+					todaysEvents.push(task)
+				}
+			}
+		})
+		return todaysEvents
+	}, [tasks])
 
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)]">
@@ -417,9 +439,9 @@ const HomePage = () => {
 			<div className="flex-1 flex flex-col overflow-hidden">
 				<main
 					ref={scrollRef}
-					className="flex-1 overflow-y-auto p-4 lg:p-8 no-scrollbar flex items-center justify-center"
+					className="flex-1 overflow-y-auto p-4 lg:p-8 custom-scrollbar flex items-center justify-center"
 				>
-					<div className="max-w-6xl w-full">
+					<div className="max-w-7xl w-full">
 						{/* Header Section */}
 						<div className="mb-8 lg:mb-12">
 							<motion.div
@@ -451,55 +473,77 @@ const HomePage = () => {
 							transition={{ duration: 0.5, delay: 0.2 }}
 							className="mb-8 lg:mb-12"
 						>
-							<h2 className="text-xl font-semibold text-[var(--color-text-primary)] mb-6">
-								Pending Approval
-							</h2>
-							<div className="space-y-4">
-								{loading ? (
-									<div className="flex justify-center items-center p-8">
-										<IconLoader className="w-8 h-8 animate-spin text-[var(--color-accent-blue)]" />
-									</div>
-								) : pendingApprovalTasks.length > 0 ? (
-									pendingApprovalTasks.map((task) => (
-										<TaskCard
-											key={task.task_id}
-											task={task}
-											integrations={integrations}
-											onApproveTask={handleApproveTask}
-											onDeleteTask={handleDeleteTask}
-										/>
-									))
-								) : (
-									<p className="text-center text-[var(--color-text-secondary)] py-8">
-										You have no tasks pending approval.
-									</p>
-								)}
-							</div>
+							<button
+								onClick={() =>
+									setOpenSections((p) => ({
+										...p,
+										pendingApproval: !p.pendingApproval
+									}))
+								}
+								className="w-full flex justify-between items-center py-3 px-2 text-left hover:bg-neutral-800/30 rounded-lg transition-colors"
+							>
+								<h2 className="text-xl font-semibold text-[var(--color-text-primary)]">
+									Pending Approval (
+									{pendingApprovalTasks.length})
+								</h2>
+								<IconChevronUp
+									className={cn(
+										"transform transition-transform duration-200",
+										!openSections.pendingApproval &&
+											"rotate-180"
+									)}
+								/>
+							</button>
+							{openSections.pendingApproval && (
+								<div className="space-y-4 mt-4">
+									{loading ? (
+										<div className="flex justify-center items-center p-8">
+											<IconLoader className="w-8 h-8 animate-spin text-[var(--color-accent-blue)]" />
+										</div>
+									) : pendingApprovalTasks.length > 0 ? (
+										pendingApprovalTasks.map((task) => (
+											<TaskCard
+												key={task.task_id}
+												task={task}
+												integrations={integrations}
+												onApproveTask={
+													handleApproveTask
+												}
+												onDeleteTask={handleDeleteTask}
+											/>
+										))
+									) : (
+										<p className="text-center text-[var(--color-text-secondary)] py-8">
+											You have no tasks pending approval.
+										</p>
+									)}
+								</div>
+							)}
 						</motion.div>
 
-						{/* Main Actions */}
-						<motion.div
-							initial={{ opacity: 0, y: 20 }}
-							animate={{ opacity: 1, y: 0 }}
-							transition={{ duration: 0.5, delay: 0.3 }}
-							className="mb-8"
-						>
-							<h2 className="text-xl font-semibold text-[var(--color-text-primary)] mb-6">
-								Quick Actions
-							</h2>
-							<div
-								className="max-w-lg mx-auto"
-								style={{ perspective: "1000px" }}
-							>
-								<ActionCard
-									title="Tasks"
-									description="Organize your workflow, manage projects, and stay on top of your daily commitments."
-									icon={<IconChecklist />}
-									href="/tasks"
-									accentColor="blue"
-								/>
-							</div>
-						</motion.div>
+						{/* Today's Previews */}
+						<div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+							<PreviewColumn
+								title="Today's Agenda"
+								items={todaysTasks}
+								renderItem={(item, i) => (
+									<TaskPreviewCard key={i} task={item} />
+								)}
+								viewAllLink="/tasks"
+								emptyMessage="No tasks scheduled for today."
+								icon={<IconChecklist />}
+							/>
+							<PreviewColumn
+								title="Today's Journal"
+								items={todaysJournal}
+								renderItem={(item, i) => (
+									<JournalPreviewCard key={i} entry={item} />
+								)}
+								viewAllLink="/journal"
+								emptyMessage="No journal entries for today."
+								icon={<IconBook />}
+							/>
+						</div>
 					</div>
 				</main>
 			</div>

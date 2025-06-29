@@ -240,7 +240,7 @@ const ChatOverlay = ({ onClose }) => {
 				>
 					{messages.length === 0 && !thinking ? (
 						<div className="flex-1 flex flex-col justify-center items-center text-gray-400">
-							<p className="text-3xl text-[var(--color-text-primary)] mb-4">
+							<p className="text-3xl text-[var(--color-text-primary)] mb-4 font-Inter text-center">
 								How can I help you today?
 							</p>
 						</div>

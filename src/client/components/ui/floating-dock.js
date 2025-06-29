@@ -24,7 +24,7 @@ const FloatingDockMobile = ({ items, className }) => {
 	return (
 		<div
 			className={cn(
-				"fixed top-1/2 left-4 -translate-y-1/2 block md:hidden z-50",
+				"fixed top-1/2 left-4 -translate-y-1/2 block md:hidden z-50 select-none",
 				className
 			)}
 		>
@@ -32,7 +32,7 @@ const FloatingDockMobile = ({ items, className }) => {
 				{open && (
 					<motion.div
 						layoutId="nav-mobile"
-						className="absolute left-full ml-2 flex flex-col gap-2"
+						className="absolute left-full ml-3 flex flex-col gap-2"
 						initial={{ opacity: 0, x: -10 }}
 						animate={{ opacity: 1, x: 0 }}
 						exit={{ opacity: 0, x: -10 }}
@@ -63,7 +63,7 @@ const FloatingDockMobile = ({ items, className }) => {
 										}
 									}}
 									key={item.title}
-									className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-50 dark:bg-neutral-900"
+									className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-primary-surface)] border border-[var(--color-primary-surface-elevated)] shadow-lg backdrop-blur-sm hover:bg-[var(--color-primary-surface-elevated)] transition-all duration-200"
 								>
 									<div className="h-5 w-5">{item.icon}</div>
 								</a>
@@ -74,9 +74,9 @@ const FloatingDockMobile = ({ items, className }) => {
 			</AnimatePresence>
 			<button
 				onClick={() => setOpen(!open)}
-				className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-50 dark:bg-neutral-800"
+				className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-primary-surface)] border border-[var(--color-primary-surface-elevated)] shadow-lg backdrop-blur-sm hover:bg-[var(--color-primary-surface-elevated)] transition-all duration-200"
 			>
-				<IconLayoutNavbarCollapse className="h-6 w-6 text-neutral-500 dark:text-neutral-400" />
+				<IconLayoutNavbarCollapse className="h-5 w-5 text-[var(--color-text-primary)]" />
 			</button>
 		</div>
 	)
@@ -89,7 +89,7 @@ const FloatingDockDesktop = ({ items, className }) => {
 			onMouseMove={(e) => mouseY.set(e.pageY)}
 			onMouseLeave={() => mouseY.set(Infinity)}
 			className={cn(
-				"fixed top-1/2 left-4 -translate-y-1/2 hidden flex-col items-center gap-4 rounded-2xl bg-gray-50/50 dark:bg-neutral-900/50 backdrop-blur-md p-4 md:flex z-50",
+				"fixed top-1/2 left-4 -translate-y-1/2 hidden flex-col items-center gap-3 rounded-2xl bg-[var(--color-primary-surface)]/80 backdrop-blur-xl border border-[var(--color-primary-surface-elevated)] shadow-xl p-3 md:flex z-50 select-none",
 				className
 			)}
 		>
@@ -161,7 +161,7 @@ function IconContainer({ mouseY, title, icon, href, onClick }) {
 				style={{ width, height }}
 				onMouseEnter={() => setHovered(true)}
 				onMouseLeave={() => setHovered(false)}
-				className="relative flex aspect-square items-center justify-center rounded-full bg-gray-200 dark:bg-neutral-800"
+				className="relative flex aspect-square items-center justify-center rounded-full bg-[var(--color-primary-surface-elevated)] hover:bg-[var(--color-accent-blue)]/20 transition-all duration-200 border border-[var(--color-primary-surface-elevated)] shadow-md hover:shadow-lg"
 			>
 				<AnimatePresence>
 					{hovered && (
@@ -169,7 +169,7 @@ function IconContainer({ mouseY, title, icon, href, onClick }) {
 							initial={{ opacity: 0, x: 10, y: "-50%" }}
 							animate={{ opacity: 1, x: 0, y: "-50%" }}
 							exit={{ opacity: 0, x: 5, y: "-50%" }}
-							className="absolute left-full ml-4 top-1/2 w-fit rounded-md border border-gray-200 bg-gray-100 px-2 py-0.5 text-xs whitespace-pre text-neutral-700 dark:border-neutral-900 dark:bg-neutral-800 dark:text-white"
+							className="absolute left-full ml-4 top-1/2 w-fit rounded-lg border border-[var(--color-primary-surface-elevated)] bg-[var(--color-primary-surface)] backdrop-blur-sm px-3 py-1.5 text-sm whitespace-pre text-[var(--color-text-primary)] shadow-lg z-10"
 						>
 							{title}
 						</motion.div>

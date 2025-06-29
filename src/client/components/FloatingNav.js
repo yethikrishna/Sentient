@@ -9,11 +9,12 @@ import {
 	IconChecklist,
 	IconHome,
 	IconLogout,
-	IconUser
+	IconUser,
+	IconMessage
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 
-export default function FloatingNav() {
+export default function FloatingNav({ onChatOpen }) {
 	const router = useRouter()
 	const pathname = usePathname()
 	const [userDetails, setUserDetails] = useState(null)
@@ -128,17 +129,6 @@ export default function FloatingNav() {
 			title: "Sentient",
 			href: "/home",
 			icon: (
-				<img
-					src="/images/half-logo-dark.svg"
-					alt="Logo"
-					className="w-full h-full opacity-80"
-				/>
-			)
-		},
-		{
-			title: "Home",
-			href: "/home",
-			icon: (
 				<IconHome className="h-full w-full text-neutral-500 dark:text-neutral-300" />
 			)
 		},
@@ -172,15 +162,25 @@ export default function FloatingNav() {
 		}
 	]
 
-	const allLinks = [...navLinks]
+	const actionLinks = [
+		{
+			title: "Chat",
+			href: "#",
+			onClick: onChatOpen,
+			icon: (
+				<IconMessage className="h-full w-full text-neutral-500 dark:text-neutral-300" />
+			)
+		}
+	]
+	const allLinks = [...navLinks, ...actionLinks]
 
 	if (userDetails) {
 		allLinks.push({
 			title: `Logout (${userDetails.given_name || "User"})`,
-			href: "/api/auth/logout",
-			icon: userDetails.picture ? (
+			href: "/auth/logout",
+			icon: userDetails?.picture ? (
 				<img
-					src={userDetails.picture}
+					src={userDetails?.picture}
 					alt={userDetails.given_name || "User"}
 					className="h-full w-full rounded-full object-cover"
 				/>

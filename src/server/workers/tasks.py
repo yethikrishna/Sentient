@@ -159,7 +159,8 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
                     original_context_with_block = {
                         "source": "journal_block",
                         "block_id": event_id,
-                        "original_content": event_data.get('content', '')
+            "original_content": event_data.get('content', ''),
+            "page_date": event_data.get('page_date')
                     }
                     process_action_item.delay(user_id, action_items, event_id, original_context_with_block)
                 else:

@@ -24,7 +24,8 @@ import {
 	IconMail,
 	IconCalendarEvent,
 	IconMessage,
-	IconArrowRight
+	IconArrowRight,
+	IconPlugConnected
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import { Tooltip } from "react-tooltip"
@@ -412,248 +413,271 @@ const Tasks = () => {
 
 	return (
 		<div>
-		<div className="h-screen bg-[var(--color-primary-background)] flex relative overflow-hidden dark">
-			<div className="flex-1 flex flex-col h-full bg-[var(--color-primary-background)] text-white relative overflow-hidden">
-				<div className="flex-shrink-0 p-4 pt-6 flex justify-center z-30">
-					<div className="w-full max-w-3xl flex items-center space-x-3 bg-neutral-800/80 backdrop-blur-sm rounded-full p-2 shadow-lg border border-neutral-700">
-						<IconSearch className="h-6 w-6 text-gray-400 ml-2 flex-shrink-0" />
-						<input
-							type="text"
-							placeholder="Search tasks by description..."
-							value={searchTerm}
-							onChange={(e) => setSearchTerm(e.target.value)}
-							className="bg-transparent text-white focus:outline-none w-full px-2 text-base"
-						/>
-						<div className="relative flex-shrink-0">
-							<select
-								value={filterStatus}
-								onChange={(e) =>
-									setFilterStatus(e.target.value)
-								}
-								className="appearance-none bg-neutral-700 border border-neutral-600 text-white text-sm rounded-full pl-4 pr-8 py-2 focus:outline-none focus:border-lightblue cursor-pointer"
-							>
-								<option value="all">All</option>
-								<option value="active">Active</option>
-								<option value="pending">Pending</option>
-								<option value="processing">Processing</option>
-								<option value="approval_pending">
-									Approval
-								</option>
-								<option value="completed">Completed</option>
-								<option value="error">Error</option>
-								<option value="cancelled">Cancelled</option>
-							</select>
-							<IconFilter className="absolute right-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-						</div>
-						<button
-							onClick={() => fetchTasksData()}
-							className="p-2 rounded-full hover:bg-neutral-700 transition-colors text-gray-300"
-							data-tooltip-id="tasks-tooltip"
-							data-tooltip-content="Refresh task list"
-							disabled={loading && tasks.length > 0}
-						>
-							{loading && tasks.length > 0 ? (
-								<IconLoader className="h-6 w-6 animate-spin" />
-							) : (
-								<IconRefresh className="h-6 w-6" />
-							)}
-						</button>
-					</div>
-				</div>
-
-				<main
-					ref={scrollRef}
-					className="flex-1 w-full max-w-3xl mx-auto flex flex-col overflow-hidden px-4"
-				>
-					<div className="flex-grow overflow-y-auto space-y-2 no-scrollbar pb-36">
-						{loading || loadingIntegrations ? (
-							<div className="flex justify-center items-center h-full">
-								<IconLoader className="w-10 h-10 animate-spin" />
-							</div>
-						) : error ? (
-							<div className="text-red-400 text-center py-20">
-								{error}
-							</div>
-						) : filteredTasks.length === 0 ? (
-							<p className="text-gray-500 text-center py-20 mt-5">
-								No tasks found. Create a new plan below!
-							</p>
-						) : (
-							<>
-								<CollapsibleSection
-									title="Active"
-									tasks={groupedTasks.active}
-									isOpen={openSections.active}
-									toggleOpen={() => toggleSection("active")}
-									onViewDetails={setViewingTask}
-									onEditTask={handleEditTask}
-									onDeleteTask={handleDeleteTask}
-								/>
-								<CollapsibleSection
-									title="Pending Approval"
-									tasks={groupedTasks.approval_pending}
-									isOpen={openSections.approval_pending}
-									toggleOpen={() =>
-										toggleSection("approval_pending")
-									}
-									onViewDetails={setViewingTask}
-									onEditTask={handleEditTask}
-									onDeleteTask={handleDeleteTask}
-									onApproveTask={handleApproveTask}
-									integrations={integrations}
-								/>
-								<CollapsibleSection
-									title="Processing"
-									tasks={groupedTasks.processing}
-									isOpen={openSections.processing}
-									toggleOpen={() =>
-										toggleSection("processing")
-									}
-									onViewDetails={setViewingTask}
-								/>
-								<CollapsibleSection
-									title="Completed"
-									tasks={groupedTasks.completed}
-									isOpen={openSections.completed}
-									toggleOpen={() =>
-										toggleSection("completed")
-									}
-									onViewDetails={setViewingTask}
-									onDeleteTask={handleDeleteTask}
-									onReRunTask={handleReRunTask}
-								/>
-							</>
-						)}
-					</div>
-				</main>
-
-				<div className="absolute bottom-0 left-0 right-0 p-4 bg-[#1a1a1a]/80 backdrop-blur-sm border-t border-[#2a2a2a] z-40">
-					<div className="max-w-3xl mx-auto">
-						<div
-							onClick={() => setCreatePlanOpen(!isCreatePlanOpen)}
-							className="flex justify-between items-center cursor-pointer"
-						>
-							<h3 className="text-lg font-semibold text-white">
-								Create a New Plan
-							</h3>
-							<IconChevronUp
-								className={cn(
-									"transform transition-transform duration-200",
-									!isCreatePlanOpen && "rotate-180"
-								)}
+			<div className="h-screen bg-gradient-to-br from-[var(--color-primary-background)] via-[var(--color-primary-background)] to-[var(--color-primary-surface)]/20 text-[var(--color-text-primary)] flex relative overflow-hidden">
+				<div className="flex-1 flex flex-col h-full text-white relative overflow-hidden">
+					<motion.header
+						initial={{ y: -20, opacity: 0 }}
+						animate={{ y: 0, opacity: 1 }}
+						transition={{ duration: 0.6, ease: "easeOut" }}
+						className="flex flex-col md:flex-row items-center justify-between p-4 gap-4 md:gap-0 md:px-6 md:py-4 border-b border-[var(--color-primary-surface)]/50 backdrop-blur-md bg-[var(--color-primary-background)]/90 shrink-0 z-20"
+					>
+						<h1 className="text-2xl font-bold font-Inter text-lightblue">
+							Tasks
+						</h1>
+						<div className="w-full md:max-w-lg flex items-center space-x-2 sm:space-x-3 bg-neutral-800/80 backdrop-blur-sm rounded-full p-2 shadow-lg border border-neutral-700">
+							<IconSearch className="h-5 w-5 text-gray-400 ml-2 flex-shrink-0" />
+							<input
+								type="text"
+								placeholder="Search tasks by description..."
+								value={searchTerm}
+								onChange={(e) => setSearchTerm(e.target.value)}
+								className="bg-transparent text-white focus:outline-none w-full px-1 sm:px-2 text-sm"
 							/>
-						</div>
-						<AnimatePresence>
-							{isCreatePlanOpen && (
-								<motion.div
-									key="create-plan-panel"
-									initial={{ height: 0, opacity: 0 }}
-									animate={{ height: "auto", opacity: 1 }}
-									exit={{ height: 0, opacity: 0 }}
-									className="overflow-hidden"
+							<div className="relative flex-shrink-0">
+								<select
+									value={filterStatus}
+									onChange={(e) =>
+										setFilterStatus(e.target.value)
+									}
+									className="appearance-none bg-neutral-700 border border-neutral-600 text-white text-xs rounded-full pl-3 pr-8 py-1.5 focus:outline-none focus:border-lightblue cursor-pointer"
 								>
-									{createStep === "generate" ? (
-										<div className="space-y-4 pt-4">
-											<label className="text-sm font-medium text-gray-300 mb-1 block">
-												What is your goal?
-											</label>
-											<textarea
-												placeholder="e.g., Send a daily summary of my calendar to my boss"
-												value={generationPrompt}
-												onChange={(e) =>
-													setGenerationPrompt(
-														e.target.value
-													)
-												}
-												rows={3}
-												className="w-full p-3 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#4a9eff]"
-											/>
-											<div className="flex justify-end">
-												<button
-													onClick={handleGeneratePlan}
-													disabled={isGeneratingPlan}
-													className="p-3 px-6 bg-[#4a9eff] hover:bg-blue-500 rounded-lg text-white font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
-												>
-													{isGeneratingPlan ? (
-														<IconLoader className="w-5 h-5 animate-spin" />
-													) : (
-														<>
-															Next: Review Plan{" "}
-															<IconArrowRight className="w-4 h-4" />
-														</>
-													)}
-												</button>
-											</div>
-										</div>
-									) : (
-										// REVIEW STEP
-										<div className="space-y-6 pt-4">
-											<PlanEditor
-												description={newTaskDescription}
-												setDescription={
-													setNewTaskDescription
-												}
-												priority={newTaskPriority}
-												setPriority={setNewTaskPriority}
-												plan={newTaskPlan}
-												setPlan={setNewTaskPlan}
-												schedule={newSchedule}
-												setSchedule={setNewSchedule}
-												allTools={allTools}
-												integrations={integrations}
-											/>
-											<div className="flex justify-between items-center">
-												<button
-													onClick={() =>
-														setCreateStep(
-															"generate"
+									<option value="all">All</option>
+									<option value="active">Active</option>
+									<option value="pending">Pending</option>
+									<option value="processing">
+										Processing
+									</option>
+									<option value="approval_pending">
+										Approval
+									</option>
+									<option value="completed">Completed</option>
+									<option value="error">Error</option>
+									<option value="cancelled">Cancelled</option>
+								</select>
+								<IconFilter className="absolute right-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+							</div>
+							<button
+								onClick={() => fetchTasksData()}
+								className="p-1.5 rounded-full hover:bg-neutral-700 transition-colors text-gray-300"
+								data-tooltip-id="tasks-tooltip"
+								data-tooltip-content="Refresh task list"
+								disabled={loading && tasks.length > 0}
+							>
+								{loading && tasks.length > 0 ? (
+									<IconLoader className="h-5 w-5 animate-spin" />
+								) : (
+									<IconRefresh className="h-5 w-5" />
+								)}
+							</button>
+						</div>
+					</motion.header>
+
+					<main
+						ref={scrollRef}
+						className="flex-1 w-full max-w-3xl mx-auto flex flex-col overflow-hidden px-4"
+					>
+						<div className="flex-grow overflow-y-auto space-y-2 custom-scrollbar pb-36">
+							{loading || loadingIntegrations ? (
+								<div className="flex justify-center items-center h-full">
+									<IconLoader className="w-10 h-10 animate-spin text-[var(--color-accent-blue)]" />
+								</div>
+							) : error ? (
+								<div className="text-red-400 text-center py-20">
+									{error}
+								</div>
+							) : filteredTasks.length === 0 ? (
+								<p className="text-gray-500 text-center py-20 mt-5">
+									No tasks found. Create a new plan below!
+								</p>
+							) : (
+								<>
+									<CollapsibleSection
+										title="Active"
+										tasks={groupedTasks.active}
+										isOpen={openSections.active}
+										toggleOpen={() =>
+											toggleSection("active")
+										}
+										onViewDetails={setViewingTask}
+										onEditTask={handleEditTask}
+										onDeleteTask={handleDeleteTask}
+									/>
+									<CollapsibleSection
+										title="Pending Approval"
+										tasks={groupedTasks.approval_pending}
+										isOpen={openSections.approval_pending}
+										toggleOpen={() =>
+											toggleSection("approval_pending")
+										}
+										onViewDetails={setViewingTask}
+										onEditTask={handleEditTask}
+										onDeleteTask={handleDeleteTask}
+										onApproveTask={handleApproveTask}
+										integrations={integrations}
+									/>
+									<CollapsibleSection
+										title="Processing"
+										tasks={groupedTasks.processing}
+										isOpen={openSections.processing}
+										toggleOpen={() =>
+											toggleSection("processing")
+										}
+										onViewDetails={setViewingTask}
+									/>
+									<CollapsibleSection
+										title="Completed"
+										tasks={groupedTasks.completed}
+										isOpen={openSections.completed}
+										toggleOpen={() =>
+											toggleSection("completed")
+										}
+										onViewDetails={setViewingTask}
+										onDeleteTask={handleDeleteTask}
+										onReRunTask={handleReRunTask}
+									/>
+								</>
+							)}
+						</div>
+					</main>
+
+					<div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/50 via-neutral-900/80 to-transparent backdrop-blur-sm border-t border-neutral-700/50 z-20">
+						<div className="max-w-3xl mx-auto">
+							<div
+								onClick={() =>
+									setCreatePlanOpen(!isCreatePlanOpen)
+								}
+								className="flex justify-between items-center cursor-pointer"
+							>
+								<h3 className="text-lg font-semibold text-white">
+									Create a New Plan
+								</h3>
+								<IconChevronUp
+									className={cn(
+										"transform transition-transform duration-200",
+										!isCreatePlanOpen && "rotate-180"
+									)}
+								/>
+							</div>
+							<AnimatePresence>
+								{isCreatePlanOpen && (
+									<motion.div
+										key="create-plan-panel"
+										initial={{ height: 0, opacity: 0 }}
+										animate={{ height: "auto", opacity: 1 }}
+										exit={{ height: 0, opacity: 0 }}
+										className="overflow-hidden"
+									>
+										{createStep === "generate" ? (
+											<div className="space-y-4 pt-4">
+												<label className="text-sm font-medium text-gray-300 mb-1 block">
+													What is your goal?
+												</label>
+												<textarea
+													placeholder="e.g., Send a daily summary of my calendar to my boss"
+													value={generationPrompt}
+													onChange={(e) =>
+														setGenerationPrompt(
+															e.target.value
 														)
 													}
-													className="py-2.5 px-6 rounded-lg bg-neutral-600 hover:bg-neutral-500 text-white text-sm font-semibold"
-												>
-													Back
-												</button>
-												<button
-													onClick={handleAddTask}
-													disabled={isAdding}
-													className="py-2.5 px-6 rounded-lg bg-[#4a9eff] hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
-												>
-													{isAdding && (
-														<IconLoader className="h-5 h-5 animate-spin" />
-													)}
-													Save New Plan
-												</button>
+													rows={3}
+													className="w-full p-3 bg-neutral-800/50 border border-neutral-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 backdrop-blur-sm transition-colors"
+												/>
+												<div className="flex justify-end">
+													<button
+														onClick={
+															handleGeneratePlan
+														}
+														disabled={
+															isGeneratingPlan
+														}
+														className="p-3 px-6 bg-[#4a9eff] hover:bg-blue-500 rounded-lg text-white font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
+													>
+														{isGeneratingPlan ? (
+															<IconLoader className="w-5 h-5 animate-spin" />
+														) : (
+															<>
+																Next: Review
+																Plan{" "}
+																<IconArrowRight className="w-4 h-4" />
+															</>
+														)}
+													</button>
+												</div>
 											</div>
-										</div>
-									)}
-								</motion.div>
-							)}
-						</AnimatePresence>
+										) : (
+											// REVIEW STEP
+											<div className="space-y-6 pt-4">
+												<PlanEditor
+													description={
+														newTaskDescription
+													}
+													setDescription={
+														setNewTaskDescription
+													}
+													priority={newTaskPriority}
+													setPriority={
+														setNewTaskPriority
+													}
+													plan={newTaskPlan}
+													setPlan={setNewTaskPlan}
+													schedule={newSchedule}
+													setSchedule={setNewSchedule}
+													allTools={allTools}
+													integrations={integrations}
+												/>
+												<div className="flex justify-between items-center">
+													<button
+														onClick={() =>
+															setCreateStep(
+																"generate"
+															)
+														}
+														className="py-2.5 px-6 rounded-lg bg-neutral-600 hover:bg-neutral-500 text-white text-sm font-semibold"
+													>
+														Back
+													</button>
+													<button
+														onClick={handleAddTask}
+														disabled={isAdding}
+														className="py-2.5 px-6 rounded-lg bg-[#4a9eff] hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
+													>
+														{isAdding && (
+															<IconLoader className="h-5 h-5 animate-spin" />
+														)}
+														Save New Plan
+													</button>
+												</div>
+											</div>
+										)}
+									</motion.div>
+								)}
+							</AnimatePresence>
+						</div>
 					</div>
+
+					{viewingTask && (
+						<TaskDetailsModal
+							task={viewingTask}
+							onClose={() => setViewingTask(null)}
+							onApprove={handleApproveTask}
+							integrations={integrations}
+						/>
+					)}
+
+					{editingTask && (
+						<EditTaskModal
+							task={editingTask}
+							onClose={() => setEditingTask(null)}
+							onSave={handleUpdateTask}
+							setTask={setEditingTask}
+							allTools={allTools}
+							integrations={integrations}
+						/>
+					)}
 				</div>
-
-				{viewingTask && (
-					<TaskDetailsModal
-						task={viewingTask}
-						onClose={() => setViewingTask(null)}
-						onApprove={handleApproveTask}
-						integrations={integrations}
-					/>
-				)}
-
-				{editingTask && (
-					<EditTaskModal
-						task={editingTask}
-						onClose={() => setEditingTask(null)}
-						onSave={handleUpdateTask}
-						setTask={setEditingTask}
-						allTools={allTools}
-						integrations={integrations}
-					/>
-				)}
 			</div>
-		</div>
-		<Tooltip id="tasks-tooltip" />
+			<Tooltip id="tasks-tooltip" />
 		</div>
 	)
 }
@@ -692,12 +716,12 @@ const PlanEditor = ({
 						placeholder="Describe the overall goal..."
 						value={description}
 						onChange={(e) => setDescription(e.target.value)}
-						className="md:col-span-2 p-3 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg"
+						className="md:col-span-2 p-3 bg-neutral-800/50 border border-neutral-700 rounded-lg transition-colors focus:border-blue-500"
 					/>
 					<select
 						value={priority}
 						onChange={(e) => setPriority(Number(e.target.value))}
-						className="p-3 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg appearance-none"
+						className="p-3 bg-neutral-800/50 border border-neutral-700 rounded-lg appearance-none transition-colors focus:border-blue-500"
 					>
 						<option value={0}>High Priority</option>
 						<option value={1}>Medium Priority</option>
@@ -717,11 +741,11 @@ const PlanEditor = ({
 							initial={{ opacity: 0, y: -10 }}
 							animate={{ opacity: 1, y: 0 }}
 							exit={{ opacity: 0, x: -20 }}
-							className="flex items-center gap-3"
+							className="flex items-start gap-2 sm:gap-3"
 						>
 							<IconGripVertical className="h-5 w-5 text-gray-500 flex-shrink-0" />
 							<div className="flex-grow flex flex-col gap-2">
-								<div className="flex items-center gap-2">
+								<div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
 									<select
 										value={step.tool || ""}
 										onChange={(e) =>
@@ -731,7 +755,7 @@ const PlanEditor = ({
 												e.target.value
 											)
 										}
-										className="w-2/5 p-2 bg-[#2a2a2a] border border-[#3a3a3a] rounded-md text-sm"
+										className="w-full sm:w-2/5 p-2 bg-neutral-800/50 border border-neutral-700 rounded-md text-sm transition-colors focus:border-blue-500"
 									>
 										<option value="">
 											Select a tool...
@@ -767,7 +791,7 @@ const PlanEditor = ({
 												e.target.value
 											)
 										}
-										className="flex-grow p-2 bg-[#2a2a2a] border border-[#3a3a3a] rounded-md text-sm"
+										className="flex-grow p-2 bg-neutral-800/50 border border-neutral-700 rounded-md text-sm transition-colors focus:border-blue-500"
 									/>
 									<button
 										onClick={() => handleRemoveStep(index)}
@@ -792,7 +816,7 @@ const PlanEditor = ({
 				</AnimatePresence>
 				<button
 					onClick={handleAddStep}
-					className="flex items-center gap-1.5 py-1.5 px-3 rounded-full bg-[#3a3a3a] hover:bg-[#4a4a4a] text-xs"
+					className="flex items-center gap-1.5 py-1.5 px-3 rounded-full bg-neutral-700 hover:bg-neutral-600 text-xs"
 				>
 					<IconPlus className="h-4 w-4" /> Add Step
 				</button>
@@ -823,14 +847,19 @@ const EditTaskModal = ({
 			exit={{ opacity: 0 }}
 			className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 p-4"
 		>
-			<div className="bg-neutral-800 p-8 rounded-lg shadow-xl w-full max-w-3xl mx-auto max-h-[90vh] flex flex-col">
+			<motion.div
+				initial={{ scale: 0.9, y: 20 }}
+				animate={{ scale: 1, y: 0 }}
+				exit={{ scale: 0.9, y: 20 }}
+				className="bg-gradient-to-br from-[var(--color-primary-surface)] to-[var(--color-primary-background)] p-6 rounded-2xl shadow-xl w-full max-w-3xl border border-[var(--color-primary-surface-elevated)] max-h-[90vh] flex flex-col"
+			>
 				<div className="flex justify-between items-center mb-6">
 					<h3 className="text-xl font-semibold">Edit Task</h3>
 					<button onClick={onClose} className="hover:text-white">
 						<IconX />
 					</button>
 				</div>
-				<div className="overflow-y-auto custom-scrollbar pr-4 space-y-6">
+				<div className="overflow-y-auto custom-scrollbar pr-2 space-y-6">
 					<PlanEditor
 						description={task.description}
 						setDescription={(val) =>
@@ -859,12 +888,12 @@ const EditTaskModal = ({
 					</button>
 					<button
 						onClick={onSave}
-						className="py-2.5 px-5 rounded bg-green-600 hover:bg-green-500 text-sm"
+						className="py-2.5 px-5 rounded-lg bg-green-600 hover:bg-green-500 text-sm"
 					>
 						Save Changes
 					</button>
 				</div>
-			</div>
+			</motion.div>
 		</motion.div>
 	)
 }
@@ -874,9 +903,10 @@ const ConnectToolButton = ({ toolName }) => {
 	return (
 		<button
 			onClick={() => router.push(`/settings?connect=${toolName}`)}
-			className="text-xs self-start bg-yellow-600/80 text-white font-semibold py-1 px-3 rounded-md hover:bg-yellow-500 transition-colors whitespace-nowrap"
+			className="text-xs self-start bg-yellow-500/20 text-yellow-300 font-semibold py-1 px-2 rounded-full hover:bg-yellow-500/40 transition-colors whitespace-nowrap flex items-center gap-1"
 		>
-			Connect {toolName} in Settings
+			<IconPlugConnected size={12} />
+			Connect {toolName}
 		</button>
 	)
 }
@@ -893,7 +923,7 @@ const CollapsibleSection = ({
 		<div>
 			<button
 				onClick={toggleOpen}
-				className="w-full flex justify-between items-center py-3 px-2 text-left"
+				className="w-full flex justify-between items-center py-3 px-2 text-left hover:bg-neutral-800/30 rounded-lg transition-colors"
 			>
 				<h2 className="text-xl font-semibold text-gray-300 flex items-center gap-2">
 					{title} ({tasks.length})
@@ -913,7 +943,7 @@ const CollapsibleSection = ({
 						exit={{ height: 0, opacity: 0 }}
 						className="overflow-hidden"
 					>
-						<div className="space-y-3 pt-2 pb-4">
+						<motion.div layout className="space-y-3 pt-2 pb-4">
 							{tasks.map((task) => (
 								<TaskCard
 									key={task.task_id}
@@ -921,7 +951,7 @@ const CollapsibleSection = ({
 									{...handlers}
 								/>
 							))}
-						</div>
+						</motion.div>
 					</motion.div>
 				)}
 			</AnimatePresence>
@@ -1029,14 +1059,24 @@ const TaskCard = ({
 			initial={{ opacity: 0, y: 10 }}
 			animate={{ opacity: 1, y: 0 }}
 			exit={{ opacity: 0, y: -10 }}
+			whileHover={{
+				y: -2,
+				boxShadow:
+					"0 10px 15px -3px rgba(0, 178, 254, 0.05), 0 4px 6px -2px rgba(0, 178, 254, 0.03)"
+			}}
+			style={{ transformStyle: "preserve-3d" }}
 			className={cn(
-				"group flex items-start gap-4 bg-neutral-800 p-4 rounded-lg shadow-md hover:bg-neutral-700/60 transition-colors duration-150 border-l-4",
+				"group flex items-start gap-4 bg-gradient-to-br from-[var(--color-primary-surface)] to-neutral-800/60 p-4 rounded-xl shadow-lg transition-all duration-200 border border-transparent",
 				task.enabled === false
-					? "border-gray-600 opacity-60"
-					: statusInfo.borderColor,
+					? "border-l-4 border-gray-600 opacity-60"
+					: "hover:border-blue-500/30",
 				!missingTools.length && "cursor-pointer"
 			)}
-			onClick={() => !missingTools.length && onViewDetails(task)}
+			onClick={(e) =>
+				!e.target.closest("button, a") &&
+				!missingTools.length &&
+				onViewDetails(task)
+			}
 		>
 			<div className="flex flex-col items-center w-20 flex-shrink-0 text-center">
 				<statusInfo.icon className={cn("h-7 w-7", statusInfo.color)} />
@@ -1050,6 +1090,14 @@ const TaskCard = ({
 				</span>
 			</div>
 			<div className="flex-grow min-w-0">
+				<div
+					className={cn(
+						"absolute top-2 right-2 h-2 w-2 rounded-full",
+						task.enabled === false
+							? "bg-gray-500"
+							: statusInfo.color.replace("text-", "bg-")
+					)}
+				></div>
 				<p className="font-semibold text-white">{task.description}</p>
 				{renderTaskSource()}
 				{scheduleText && (
@@ -1064,12 +1112,18 @@ const TaskCard = ({
 					</p>
 				)}
 				{missingTools.length > 0 && (
-					<div className="flex items-center gap-2 mt-2 text-yellow-400 text-xs">
-						<IconAlertTriangle size={14} />
-						<span>Requires: {missingTools.join(", ")}</span>
+					<div className="flex flex-wrap items-center gap-2 mt-2 text-yellow-400 text-xs">
+						<div
+							data-tooltip-id={`missing-tools-tooltip-${task.task_id}`}
+							data-tooltip-content="Please connect these tools in Settings to approve this task."
+							className="flex items-center gap-2"
+						>
+							<IconAlertTriangle size={14} />
+							<span>Requires: {missingTools.join(", ")}</span>
+						</div>
+						<ConnectToolButton toolName={missingTools[0]} />
 						<Tooltip
 							id={`missing-tools-tooltip-${task.task_id}`}
-							content="Please connect these tools in Settings to approve this task."
 							place="bottom"
 						/>
 					</div>
@@ -1082,7 +1136,7 @@ const TaskCard = ({
 							e.stopPropagation()
 							onApproveTask(task.task_id)
 						}}
-						className="p-1.5 rounded-md text-green-400 hover:bg-neutral-900/50 disabled:text-gray-600 disabled:cursor-not-allowed"
+						className="p-1.5 rounded-md text-green-400 hover:bg-[var(--color-primary-surface-elevated)] disabled:text-gray-600 disabled:cursor-not-allowed"
 						data-tooltip-id="tasks-tooltip"
 						data-tooltip-content="Approve this plan for execution"
 						disabled={missingTools.length > 0}
@@ -1096,7 +1150,7 @@ const TaskCard = ({
 							e.stopPropagation()
 							onEditTask(task)
 						}}
-						className="p-1.5 rounded-md text-yellow-400 hover:bg-neutral-900/50"
+						className="p-1.5 rounded-md text-yellow-400 hover:bg-[var(--color-primary-surface-elevated)]"
 						data-tooltip-id="tasks-tooltip"
 						data-tooltip-content="Edit this task's plan and properties"
 					>
@@ -1109,7 +1163,7 @@ const TaskCard = ({
 							e.stopPropagation()
 							onReRunTask(task.task_id)
 						}}
-						className="p-1.5 rounded-md text-blue-400 hover:bg-neutral-900/50"
+						className="p-1.5 rounded-md text-blue-400 hover:bg-[var(--color-primary-surface-elevated)]"
 						data-tooltip-id="tasks-tooltip"
 						data-tooltip-content="Create a new copy of this task to run again"
 					>
@@ -1122,7 +1176,7 @@ const TaskCard = ({
 							e.stopPropagation()
 							onDeleteTask(task.task_id)
 						}}
-						className="p-1.5 rounded-md text-red-400 hover:bg-neutral-900/50"
+						className="p-1.5 rounded-md text-red-400 hover:bg-[var(--color-primary-surface-elevated)]"
 						data-tooltip-id="tasks-tooltip"
 						data-tooltip-content="Delete this task permanently"
 					>
@@ -1176,7 +1230,12 @@ const TaskDetailsModal = ({ task, onClose, onApprove, integrations }) => {
 			className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 p-4"
 		>
 			<Tooltip id="task-details-tooltip" />
-			<div className="bg-neutral-800 p-8 rounded-lg shadow-xl w-full max-w-3xl mx-auto max-h-[90vh] flex flex-col">
+			<motion.div
+				initial={{ scale: 0.9, y: 20 }}
+				animate={{ scale: 1, y: 0 }}
+				exit={{ scale: 0.9, y: 20 }}
+				className="bg-gradient-to-br from-[var(--color-primary-surface)] to-[var(--color-primary-background)] p-6 rounded-2xl shadow-xl w-full max-w-3xl border border-[var(--color-primary-surface-elevated)] max-h-[90vh] flex flex-col"
+			>
 				<div className="flex justify-between items-center mb-6">
 					<h3 className="text-2xl font-semibold text-white truncate">
 						{task.description}
@@ -1185,7 +1244,7 @@ const TaskDetailsModal = ({ task, onClose, onApprove, integrations }) => {
 						<IconX />
 					</button>
 				</div>
-				<div className="overflow-y-auto custom-scrollbar pr-4 space-y-8">
+				<div className="overflow-y-auto custom-scrollbar pr-2 space-y-6">
 					<div className="flex items-center gap-4 text-sm">
 						<span className="text-gray-400">Status:</span>
 						<span
@@ -1338,7 +1397,7 @@ const TaskDetailsModal = ({ task, onClose, onApprove, integrations }) => {
 						</button>
 					)}
 				</div>
-			</div>
+			</motion.div>
 		</motion.div>
 	)
 }
@@ -1365,7 +1424,7 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 	}
 
 	return (
-		<div className="bg-neutral-700/50 p-4 rounded-lg space-y-4">
+		<div className="bg-neutral-800/50 p-4 rounded-lg space-y-4 border border-neutral-700/80">
 			<div className="flex items-center gap-2">
 				{[
 					{ label: "Run Once", value: "once" },
@@ -1376,7 +1435,7 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 						onClick={() => handleTypeChange(value)}
 						className={cn(
 							"px-4 py-1.5 rounded-full text-sm",
-							schedule.type === value
+							(schedule.type || "once") === value
 								? "bg-lightblue text-white"
 								: "bg-neutral-600 hover:bg-neutral-500"
 						)}
@@ -1386,7 +1445,7 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 				))}
 			</div>
 
-			{schedule.type === "once" && (
+			{(schedule.type === "once" || !schedule.type) && (
 				<div>
 					<label className="text-xs text-gray-400 block mb-1">
 						Run At (optional, local time)
@@ -1397,7 +1456,7 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 						onChange={(e) =>
 							setSchedule({ ...schedule, run_at: e.target.value })
 						}
-						className="w-full p-2 bg-neutral-600/80 border border-neutral-600 rounded-md"
+						className="w-full p-2 bg-neutral-600/80 border border-neutral-600 rounded-md focus:border-blue-500"
 					/>
 					<p className="text-xs text-gray-500 mt-1">
 						If left blank, the task will run immediately after
@@ -1420,7 +1479,7 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 									frequency: e.target.value
 								})
 							}
-							className="w-full p-2 bg-neutral-600/80 border border-neutral-600 rounded-md"
+							className="w-full p-2 bg-neutral-600/80 border border-neutral-600 rounded-md focus:border-blue-500"
 						>
 							<option value="daily">Daily</option>
 							<option value="weekly">Weekly</option>
@@ -1430,7 +1489,11 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 						<label className="text-xs text-gray-400 block mb-1">
 							Time (UTC)
 						</label>
-						<label className="text-xs text-gray-400 block mb-1" data-tooltip-id="tasks-tooltip" data-tooltip-content="Tasks are scheduled in Coordinated Universal Time (UTC) to ensure consistency across timezones.">
+						<label
+							className="text-xs text-gray-400 block mb-1"
+							data-tooltip-id="tasks-tooltip"
+							data-tooltip-content="Tasks are scheduled in Coordinated Universal Time (UTC) to ensure consistency across timezones."
+						>
 							Time (UTC)
 						</label>
 						<input
@@ -1442,7 +1505,7 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 									time: e.target.value
 								})
 							}
-							className="w-full p-2 bg-neutral-600/80 border border-neutral-600 rounded-md"
+							className="w-full p-2 bg-neutral-600/80 border border-neutral-600 rounded-md focus:border-blue-500"
 						/>
 					</div>
 					{schedule.frequency === "weekly" && (
@@ -1483,4 +1546,3 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 }
 
 export default Tasks
-

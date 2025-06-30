@@ -9,17 +9,28 @@ import {
 } from "framer-motion"
 
 import { useRef, useState } from "react"
+import { usePathname } from "next/navigation"
+import React from "react"
 
 export const FloatingDock = ({ items, desktopClassName, mobileClassName }) => {
+	const pathname = usePathname()
 	return (
 		<>
-			<FloatingDockDesktop items={items} className={desktopClassName} />
-			<FloatingDockMobile items={items} className={mobileClassName} />
+			<FloatingDockDesktop
+				items={items}
+				className={desktopClassName}
+				pathname={pathname}
+			/>
+			<FloatingDockMobile
+				items={items}
+				className={mobileClassName}
+				pathname={pathname}
+			/>
 		</>
 	)
 }
 
-const FloatingDockMobile = ({ items, className }) => {
+const FloatingDockMobile = ({ items, className, pathname }) => {
 	const [open, setOpen] = useState(false)
 	return (
 		<div
@@ -37,38 +48,48 @@ const FloatingDockMobile = ({ items, className }) => {
 						animate={{ opacity: 1, x: 0 }}
 						exit={{ opacity: 0, x: -10 }}
 					>
-						{items.map((item, idx) => (
-							<motion.div
-								key={item.title}
-								initial={{ opacity: 0, x: -10 }}
-								animate={{
-									opacity: 1,
-									x: 0,
-									transition: { delay: idx * 0.05 }
-								}}
-								exit={{
-									opacity: 0,
-									x: -10,
-									transition: {
-										delay: (items.length - 1 - idx) * 0.05
-									}
-								}}
-							>
-								<a
-									href={item.href}
-									onClick={(e) => {
-										if (item.onClick) {
-											e.preventDefault()
-											item.onClick()
+						{items.map((item, idx) => {
+							const isActive = item.href === pathname
+							const newIcon = React.cloneElement(item.icon, {
+								className: cn(
+									item.icon.props.className,
+									isActive && "text-white"
+								)
+							})
+							return (
+								<motion.div
+									key={item.title}
+									initial={{ opacity: 0, x: -10 }}
+									animate={{
+										opacity: 1,
+										x: 0,
+										transition: { delay: idx * 0.05 }
+									}}
+									exit={{
+										opacity: 0,
+										x: -10,
+										transition: {
+											delay:
+												(items.length - 1 - idx) * 0.05
 										}
 									}}
-									key={item.title}
-									className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-primary-surface)] border border-[var(--color-primary-surface-elevated)] shadow-lg backdrop-blur-sm hover:bg-[var(--color-primary-surface-elevated)] transition-all duration-200"
 								>
-									<div className="h-5 w-5">{item.icon}</div>
-								</a>
-							</motion.div>
-						))}
+									<a
+										href={item.href}
+										onClick={(e) => {
+											if (item.onClick) {
+												e.preventDefault()
+												item.onClick()
+											}
+										}}
+										key={item.title}
+										className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-primary-surface)] border border-[var(--color-primary-surface-elevated)] shadow-lg backdrop-blur-sm hover:bg-[var(--color-primary-surface-elevated)] transition-all duration-200"
+									>
+										<div className="h-5 w-5">{newIcon}</div>
+									</a>
+								</motion.div>
+							)
+						})}
 					</motion.div>
 				)}
 			</AnimatePresence>
@@ -82,7 +103,7 @@ const FloatingDockMobile = ({ items, className }) => {
 	)
 }
 
-const FloatingDockDesktop = ({ items, className }) => {
+const FloatingDockDesktop = ({ items, className, pathname }) => {
 	let mouseY = useMotionValue(Infinity)
 	return (
 		<motion.div
@@ -94,13 +115,18 @@ const FloatingDockDesktop = ({ items, className }) => {
 			)}
 		>
 			{items.map((item) => (
-				<IconContainer mouseY={mouseY} key={item.title} {...item} />
+				<IconContainer
+					mouseY={mouseY}
+					key={item.title}
+					{...item}
+					pathname={pathname}
+				/>
 			))}
 		</motion.div>
 	)
 }
 
-function IconContainer({ mouseY, title, icon, href, onClick }) {
+function IconContainer({ mouseY, title, icon, href, onClick, pathname }) {
 	let ref = useRef(null)
 
 	let distance = useTransform(mouseY, (val) => {
@@ -145,6 +171,14 @@ function IconContainer({ mouseY, title, icon, href, onClick }) {
 	})
 
 	const [hovered, setHovered] = useState(false)
+	const isActive = href === pathname
+
+	const newIcon = React.cloneElement(icon, {
+		className: cn(
+			icon.props.className,
+			isActive && "text-white"
+		)
+	})
 
 	return (
 		<a
@@ -179,9 +213,10 @@ function IconContainer({ mouseY, title, icon, href, onClick }) {
 					style={{ width: widthIcon, height: heightIcon }}
 					className="flex items-center justify-center"
 				>
-					{icon}
+					{newIcon}
 				</motion.div>
 			</motion.div>
 		</a>
 	)
 }
+

@@ -14,6 +14,7 @@ import {
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import { motion } from "framer-motion"
+import { cn } from "@utils/cn"
 
 export default function FloatingNav({ onChatOpen }) {
 	const router = useRouter()
@@ -126,9 +127,14 @@ export default function FloatingNav({ onChatOpen }) {
 		}
 	}, [userDetails?.sub, router])
 
-	const NotificationIcon = () => (
+	const NotificationIcon = ({ className }) => (
 		<div className="relative h-full w-full flex items-center justify-center">
-			<IconBell className="h-full w-full text-neutral-500 dark:text-neutral-300" />
+			<IconBell
+				className={cn(
+					"h-full w-full text-neutral-500 dark:text-neutral-300",
+					className
+				)}
+			/>
 			{unreadCount > 0 && (
 				<motion.div
 					initial={{ scale: 0 }}

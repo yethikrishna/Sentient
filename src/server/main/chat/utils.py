@@ -3,6 +3,7 @@ import uuid
 import os
 import json
 import asyncio
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import threading
 import logging
 from typing import List, Dict, Any, Tuple, AsyncGenerator, Optional
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 async def generate_chat_llm_stream(
     user_id: str,
     messages: List[Dict[str, Any]], # This is now the history from the client
-    username: str,
+    user_context: Dict[str, Any],
     db_manager: MongoManager,
     enable_internet: bool = False,
     enable_weather: bool = False,
@@ -27,6 +28,27 @@ async def generate_chat_llm_stream(
     assistant_message_id = str(uuid.uuid4())
 
     try:
+        # --- Construct detailed system prompt from user context ---
+        username = user_context.get("name", "User")
+        timezone_str = user_context.get("timezone", "UTC")
+        comm_style = user_context.get("communication_style", "friendly and professional")
+        location_raw = user_context.get("location")
+
+        if isinstance(location_raw, dict) and 'latitude' in location_raw:
+            location = f"latitude: {location_raw.get('latitude')}, longitude: {location_raw.get('longitude')}"
+        elif isinstance(location_raw, str):
+            location = location_raw
+        else:
+            location = "Not specified"
+
+        try:
+            user_timezone = ZoneInfo(timezone_str)
+        except ZoneInfoNotFoundError:
+            logger.warning(f"Invalid timezone '{timezone_str}' for user {user_id}. Defaulting to UTC.")
+            user_timezone = ZoneInfo("UTC")
+
+        current_user_time = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
+
         user_profile = await db_manager.get_user_profile(user_id)
         supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id") if user_profile else None
         
@@ -70,29 +92,28 @@ async def generate_chat_llm_stream(
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue[Optional[Any]] = asyncio.Queue()
 
-    qwen_formatted_history = []
-    for msg in messages:
-        qwen_formatted_history.append({"role": msg["role"], "content": msg["content"]})
-
     stream_interrupted = False
     try:
         def worker():
             try:
-                # ADDED: Updated system prompt
-                system_prompt = ( # noqa
-                    f"You are Sentient, a helpful AI assistant. The user's name is {username}. Today's date is {datetime.datetime.now().strftime('%Y-%m-%d')}.\n\n"
-                    "**Core Directives:**\n"
-                    "1.  **Think Step-by-Step**: Before responding, break down the user's request into smaller parts. Consider the context of the conversation and the available tools.\n"
-                    "2.  **Be Proactive**: If a user's request implies a complex task (e.g., 'plan my trip', 'research this topic and write a summary'), use the `create_task_from_description` tool to delegate it to your planning system. This is your primary way to perform complex actions.\n"
-                    "3.  **Utilize Your Memory**: Your memory is powered by Supermemory - a long-term knowledge base. To remember new facts about the user or the world, use `supermemory-addToSupermemory`. To recall information, use `supermemory-search`. Always check your memory first before asking the user for information they've already provided. Use the memory tools as much as possible, including where it may not be explicitly required. Use the memory system wherever you can to personalize responses by retrieving important facts about the user or saving newly learned facts, preferences, opinions or any other similar personal, long-term information about the user.\n"
-                    "4.  **Interact with the Journal**: You have access to the user's journal. You can search it with `search_journal(query='...')`, get a summary for a day with `summarize_day(date='YYYY-MM-DD')`, or add new entries with `add_journal_entry(content='...', date='YYYY-MM-DD')`.\n"
-                    "5.  **Be Thorough and Clear**: Provide comprehensive and well-reasoned answers. If you use a tool, explain the outcome to the user in a clear, narrative format. Don't just show raw data.\n\n"
-                    "**Example Thought Process:**\n"
-                    "User: 'Remember that I'm learning to play the guitar.'\n"
-                    "Your Thought: 'This is a long-term fact about the user. I should use Supermemory to store it.' -> Call `supermemory-addToSupermemory(memory='The user is learning to play the guitar.')`\n"
-                    "User: 'Can you help me plan my marketing campaign for next quarter?'\n"
-                    "Your Thought: 'This is a complex task that requires multiple steps like research, content creation, etc. I should hand this off to the planning system.' -> Call `create_task_from_description(task_description='Plan marketing campaign for next quarter')`"
+                system_prompt = (
+                    f"You are Sentient, a helpful AI assistant. Your primary goal is to assist the user by providing accurate information and executing tasks using the available tools.\n\n"
+                    f"**Your Persona:**\n"
+                    f"- Your personality must be '{comm_style}'. Adapt your language and tone to match this style in all your responses.\n\n"
+                    f"**User Context:**\n"
+                    f"- User's Name: {username}\n"
+                    f"- User's Location: {location}\n"
+                    f"- Current Date & Time: {current_user_time}\n\n"
+                    f"**Core Directives:**\n"
+                    f"1. **Be Proactive & Plan**: If a user's request implies a complex task (e.g., 'plan my trip', 'research and summarize'), use the `create_task_from_description` tool to delegate it. This is your primary way to perform complex actions.\n"
+                    f"2. **Utilize Your Memory**: Use `supermemory-search` to recall information and `supermemory-addToSupermemory` to save new long-term facts about the user.\n"
+                    f"3. **Use the Journal**: Interact with the user's journal via `search_journal`, `summarize_day`, or `add_journal_entry`.\n"
+                    f"4. **Use Context for Tools**: When a tool needs a location or time, use the user's context unless they specify otherwise (e.g., for weather or maps).\n"
+                    f"5. **Be Clear**: Explain tool outcomes in a clear, narrative format. Don't just show raw data."
                 )
+
+                qwen_formatted_history = [{"role": msg["role"], "content": msg["content"]} for msg in messages]
+
                 qwen_assistant = get_qwen_assistant(system_message=system_prompt, function_list=tools)
                 for new_history_step in qwen_assistant.run(messages=qwen_formatted_history):
                     loop.call_soon_threadsafe(queue.put_nowait, new_history_step)

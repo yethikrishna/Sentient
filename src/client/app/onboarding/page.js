@@ -1,20 +1,30 @@
 "use client"
-import React, { useState, useEffect } from "react"
-import { motion } from "framer-motion"
+import React, { useState, useEffect, useRef } from "react"
+import { motion, useSpring, useTransform, useMotionValue } from "framer-motion"
 import { cn } from "@utils/cn"
 import toast from "react-hot-toast"
 import { useRouter } from "next/navigation"
 import { Tooltip } from "react-tooltip"
+import { useSmoothScroll } from "@hooks/useSmoothScroll" // Assuming this hook exists
 import {
 	IconLoader,
 	IconMapPin,
 	IconMapPinFilled,
 	IconMoodHappy,
-	IconTie,
-	IconArrowRight,
-	IconSparkles,
+	IconBriefcase,
+	IconHeart,
+	IconUser,
+	IconClock,
+	IconWorld,
+	IconDeviceLaptop,
+	IconPalette,
+	IconListCheck,
+	IconArrowLeft,
+	IconRefresh,
 	IconCheck,
-	IconBrandWhatsapp
+	IconBrandWhatsapp,
+	IconArrowRight,
+	IconSparkles
 } from "@tabler/icons-react"
 
 const CheckFilled = ({ className }) => (
@@ -35,31 +45,35 @@ const CheckFilled = ({ className }) => (
 const questionSections = {
 	essentials: {
 		title: "The Essentials",
-		description: "Let's start with the basics to get you set up."
+		description: "Let's start with the basics to get you set up.",
+		icon: <IconDeviceLaptop />
 	},
 	context: {
 		title: "A Bit About You",
 		description:
-			"Help me understand your world to provide better assistance."
+			"Help me understand your world to provide better assistance.",
+		icon: <IconWorld />
 	},
 	personality: {
 		title: "How We'll Vibe",
-		description: "Let's fine-tune how we'll interact with each other."
+		description: "Let's fine-tune how we'll interact with each other.",
+		icon: <IconPalette />
 	}
 }
 
 const questions = [
 	{
 		id: "user-name",
-		question: "First, what should I call you?",
+		question: "What should I call you?",
 		type: "text-input",
 		required: true,
 		placeholder: "e.g., Alex",
-		section: "essentials"
+		section: "essentials",
+		icon: <IconUser />
 	},
 	{
 		id: "timezone",
-		question: "And what's your timezone?",
+		question: "What's your timezone?",
 		description: "This helps me get timings right for you.",
 		type: "select",
 		required: true,
@@ -78,43 +92,46 @@ const questions = [
 			{ value: "Asia/Singapore", label: "Singapore (SGT)" },
 			{ value: "UTC", label: "Coordinated Universal Time (UTC)" }
 		],
-		section: "essentials"
+		section: "essentials",
+		icon: <IconClock />
 	},
 	{
 		id: "whatsapp_number",
 		question: "WhatsApp Number (Optional)",
 		description:
-			"Enter your number with country code (e.g., 14155552671) to receive notifications. You can change this later in Settings.",
+			"Enter your number with country code (e.g., +14155552671) to receive notifications. You can change this later in Settings.",
 		type: "text-input",
 		required: false,
-		placeholder: "e.g., 14155552671",
-		section: "essentials"
+		placeholder: "e.g., +14155552671",
+		section: "essentials",
+		icon: <IconBrandWhatsapp />
 	},
 	{
 		id: "location",
 		question: "Where are you located?",
 		description:
-			"Optionally, share your location for local info like weather and places. You can skip this if you're not comfortable sharing.",
-		type: "location-input",
-		section: "context"
+			"Share your location for local info like weather and places, or manually enter a city or address.",
+		type: "location",
+		section: "context",
+		icon: <IconMapPin />
 	},
 	{
 		id: "professional-context",
-		question:
-			"To help me assist you better, what's your professional world like?",
+		question: "What's your professional world like?",
 		type: "textarea",
 		placeholder:
 			"e.g., I'm a software developer at a startup, aiming to become a team lead. I'm focused on improving my project management skills.",
-		section: "context"
+		section: "context",
+		icon: <IconBriefcase />
 	},
 	{
 		id: "personal-context",
-		question:
-			"And what about your personal life? What are some of your hobbies or interests?",
+		question: "What about your personal life and hobbies?",
 		type: "textarea",
 		placeholder:
 			"e.g., I enjoy hiking on weekends, I'm learning to play the guitar, and I follow European soccer.",
-		section: "context"
+		section: "context",
+		icon: <IconHeart />
 	},
 	{
 		id: "communication-style",
@@ -128,7 +145,8 @@ const questions = [
 			"Concise & To-the-point",
 			"Enthusiastic & Witty"
 		],
-		section: "personality"
+		section: "personality",
+		icon: <IconMoodHappy />
 	},
 	{
 		id: "core-priorities",
@@ -145,9 +163,47 @@ const questions = [
 			"Financial Stability",
 			"Hobbies & Leisure"
 		],
-		section: "personality"
+		section: "personality",
+		icon: <IconListCheck />
 	}
 ]
+
+const GlitchTitle = ({ text }) => {
+	const [animatedText, setAnimatedText] = useState(text)
+	const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+	useEffect(() => {
+		let interval = null
+		let iteration = 0
+
+		interval = setInterval(() => {
+			setAnimatedText(
+				text
+					.split("")
+					.map((letter, index) => {
+						if (index < iteration) {
+							return text[index]
+						}
+						return letters[Math.floor(Math.random() * 26)]
+					})
+					.join("")
+			)
+
+			if (iteration >= text.length) {
+				clearInterval(interval)
+			}
+			iteration += 1 / 3
+		}, 40)
+
+		return () => clearInterval(interval)
+	}, [text])
+
+	return (
+		<h1 className="text-3xl sm:text-4xl font-bold mb-3 font-mono tracking-wide">
+			{animatedText}
+		</h1>
+	)
+}
 
 const OnboardingForm = () => {
 	const [answers, setAnswers] = useState({})
@@ -155,6 +211,9 @@ const OnboardingForm = () => {
 	const [submissionComplete, setSubmissionComplete] = useState(false)
 	const router = useRouter()
 	const [isLoading, setIsLoading] = useState(true)
+	const scrollRef = useRef(null)
+	useSmoothScroll(scrollRef)
+
 	const [locationState, setLocationState] = useState({
 		loading: false,
 		data: null,
@@ -162,6 +221,17 @@ const OnboardingForm = () => {
 	})
 
 	useEffect(() => {
+		// Pre-set timezone if possible
+		try {
+			const userTimezone =
+				Intl.DateTimeFormat().resolvedOptions().timeZone
+			if (userTimezone) {
+				handleAnswer("timezone", userTimezone)
+			}
+		} catch (e) {
+			console.warn("Could not detect user timezone.")
+		}
+
 		const checkOnboardingStatus = async () => {
 			try {
 				const response = await fetch("/api/user/data")
@@ -179,6 +249,11 @@ const OnboardingForm = () => {
 		}
 		checkOnboardingStatus()
 	}, [router])
+
+	const handleManualLocationInput = (value) => {
+		handleAnswer("location", value)
+		setLocationState({ loading: false, data: null, error: null }) // Clear auto-location state
+	}
 
 	const handleAnswer = (questionId, answer) => {
 		setAnswers((prev) => ({ ...prev, [questionId]: answer }))
@@ -290,7 +365,9 @@ const OnboardingForm = () => {
 					answers[q.id] &&
 					(Array.isArray(answers[q.id])
 						? answers[q.id].length > 0
-						: answers[q.id].trim() !== "")
+						: typeof answers[q.id] === "string"
+							? answers[q.id].trim() !== ""
+							: true) // For location object, just check if it exists
 			)
 	}
 
@@ -326,28 +403,32 @@ const OnboardingForm = () => {
 	}
 
 	return (
-		<div className="min-h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] p-4 sm:p-6 flex items-center justify-center">
+		<div
+			ref={scrollRef}
+			className="min-h-screen w-full bg-gradient-to-br from-[var(--color-primary-background)] via-[var(--color-primary-background)] to-[var(--color-primary-surface)]/20 text-[var(--color-text-primary)] p-4 sm:p-6 flex flex-col items-center justify-start overflow-y-auto custom-scrollbar"
+		>
 			<Tooltip id="onboarding-tooltip" />
 			<motion.div
 				initial={{ opacity: 0, y: 20 }}
 				animate={{ opacity: 1, y: 0 }}
 				transition={{ duration: 0.5 }}
-				className="w-full max-w-2xl mx-auto"
+				className="w-full max-w-3xl mx-auto"
 			>
-				<div className="text-center mb-12">
-					<h1 className="text-3xl sm:text-4xl font-bold mb-3">
-						Welcome to Sentient
-					</h1>
+				<div className="text-center my-12 md:my-16">
+					<GlitchTitle text="Welcome to Sentient" />
 					<p className="text-lg text-[var(--color-text-secondary)]">
 						A few questions to personalize your experience.
 					</p>
 				</div>
 
-				<form onSubmit={handleSubmit} className="space-y-12">
+				<form onSubmit={handleSubmit} className="space-y-16">
 					{Object.entries(questionSections).map(
 						([key, { title, description }]) => (
 							<section key={key}>
-								<h2 className="text-2xl font-semibold border-b border-[var(--color-primary-surface-elevated)] pb-3 mb-1">
+								<h2 className="text-2xl font-semibold border-b border-[var(--color-primary-surface-elevated)] pb-4 mb-2 flex items-center gap-3">
+									<span className="text-blue-400">
+										{questionSections[key].icon}
+									</span>
 									{title}
 								</h2>
 								<p className="text-base text-[var(--color-text-secondary)] mb-8">
@@ -356,9 +437,27 @@ const OnboardingForm = () => {
 								<div className="space-y-8">
 									{questions
 										.filter((q) => q.section === key)
-										.map((q) => (
-											<div key={q.id}>
-												<label className="block text-lg font-semibold mb-2">
+										.map((q, q_idx) => (
+											<motion.div
+												key={q.id}
+												initial={{ opacity: 0, x: -20 }}
+												whileInView={{
+													opacity: 1,
+													x: 0
+												}}
+												viewport={{
+													once: true,
+													amount: 0.3
+												}}
+												transition={{
+													duration: 0.5,
+													delay: q_idx * 0.1
+												}}
+											>
+												<label className="block text-lg font-semibold mb-2 flex items-center gap-3">
+													<span className="text-gray-500">
+														{q.icon}
+													</span>
 													{q.question}
 												</label>
 												{q.description && (
@@ -372,7 +471,7 @@ const OnboardingForm = () => {
 														switch (q.type) {
 															case "text-input":
 																return (
-																	<div className="relative">
+																	<div className="relative w-full">
 																		{q.id ===
 																			"whatsapp_number" && (
 																			<IconBrandWhatsapp
@@ -402,7 +501,7 @@ const OnboardingForm = () => {
 																				)
 																			}
 																			className={cn(
-																				"w-full py-3 rounded-lg bg-[var(--color-primary-surface)] text-[var(--color-text-primary)] border border-[var(--color-primary-surface-elevated)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)] placeholder:text-[var(--color-text-muted)]",
+																				"w-full py-3 rounded-xl bg-gradient-to-br from-[var(--color-primary-background)] to-[var(--color-primary-surface)]/30 text-[var(--color-text-primary)] border border-[var(--color-primary-surface-elevated)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]/50 placeholder:text-[var(--color-text-muted)] transition-all",
 																				q.id ===
 																					"whatsapp_number"
 																					? "pl-10 pr-4"
@@ -437,7 +536,7 @@ const OnboardingForm = () => {
 																					.value
 																			)
 																		}
-																		className="w-full px-4 py-3 rounded-lg bg-[var(--color-primary-surface)] text-[var(--color-text-primary)] border border-[var(--color-primary-surface-elevated)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)] appearance-none"
+																		className="w-full px-4 py-3 rounded-xl bg-gradient-to-br from-[var(--color-primary-background)] to-[var(--color-primary-surface)]/30 bg-matteblack text-white border border-[var(--color-primary-surface-elevated)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]/50 appearance-none"
 																		required={
 																			q.required
 																		}
@@ -485,15 +584,15 @@ const OnboardingForm = () => {
 																					.value
 																			)
 																		}
-																		className="w-full px-4 py-3 rounded-lg bg-[var(--color-primary-surface)] text-[var(--color-text-primary)] border border-[var(--color-primary-surface-elevated)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)] placeholder:text-[var(--color-text-muted)] min-h-[120px] resize-y"
+																		className="w-full px-4 py-3 rounded-xl bg-gradient-to-br from-[var(--color-primary-background)] to-[var(--color-primary-surface)]/30 text-[var(--color-text-primary)] border border-[var(--color-primary-surface-elevated)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]/50 placeholder:text-[var(--color-text-muted)] min-h-[120px] resize-y"
 																		placeholder={
 																			q.placeholder
 																		}
 																	/>
 																)
-															case "location-input":
+															case "location":
 																return (
-																	<div className="flex items-center gap-4">
+																	<div className="flex flex-col sm:flex-row items-center gap-4">
 																		<button
 																			type="button"
 																			onClick={
@@ -502,37 +601,76 @@ const OnboardingForm = () => {
 																			disabled={
 																				locationState.loading
 																			}
-																			className="flex items-center gap-2 px-5 py-3 rounded-lg bg-[var(--color-primary-surface-elevated)] text-[var(--color-text-primary)] hover:bg-neutral-600 transition-colors disabled:opacity-50"
+																			className="flex items-center gap-2 px-3 py-3 rounded-xl bg-[var(--color-primary-surface-elevated)] text-[var(--color-text-primary)] hover:bg-neutral-700 transition-colors disabled:opacity-50 min-w-1/3 sm:w-auto"
 																		>
-																			<IconMapPin
-																				size={
-																					20
-																				}
-																			/>
+																			{locationState.loading ? (
+																				<IconLoader
+																					className="animate-spin"
+																					size={
+																						20
+																					}
+																				/>
+																			) : (
+																				<IconMapPin
+																					size={
+																						20
+																					}
+																				/>
+																			)}
 																			<span>
 																				{locationState.loading
 																					? "Getting Location..."
 																					: "Share Current Location"}
 																			</span>
 																		</button>
-																		{locationState.data && (
-																			<div className="flex items-center gap-2 text-[var(--color-accent-green)]">
-																				<IconMapPinFilled
-																					size={
-																						20
-																					}
-																				/>
-																				<span>
-																					Location
-																					captured!
-																				</span>
-																			</div>
-																		)}
+																		<span className="hidden sm:inline text-neutral-500 text-sm">
+																			OR
+																		</span>
+																		<input
+																			type="text"
+																			placeholder="Enter Locality, City, State, Country."
+																			value={
+																				typeof answers[
+																					q
+																						.id
+																				] ===
+																				"string"
+																					? answers[
+																							q
+																								.id
+																						]
+																					: ""
+																			}
+																			onChange={(
+																				e
+																			) =>
+																				handleManualLocationInput(
+																					e
+																						.target
+																						.value
+																				)
+																			}
+																			className="w-full py-3 px-4 rounded-xl bg-gradient-to-br from-[var(--color-primary-background)] to-[var(--color-primary-surface)]/30 text-[var(--color-text-primary)] border border-[var(--color-primary-surface-elevated)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]/50 placeholder:text-[var(--color-text-muted)] transition-all"
+																		/>
+																		{locationState.data &&
+																			!locationState.loading && (
+																				<div className="flex items-center gap-2 text-[var(--color-accent-green)]">
+																					<IconMapPinFilled
+																						size={
+																							20
+																						}
+																					/>
+																					<span>
+																						Location
+																						captured!
+																					</span>
+																				</div>
+																			)}
 																	</div>
 																)
 															case "single-choice":
 																return (
-																	<div className="grid grid-cols-2 gap-3">
+																	<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 																		{q.options.map(
 																			(
 																				option
@@ -549,14 +687,14 @@ const OnboardingForm = () => {
 																						)
 																					}
 																					className={cn(
-																						"p-4 rounded-lg border-2 text-center font-semibold transition-all duration-200",
+																						"p-4 rounded-xl border-2 text-center font-semibold transition-all duration-200",
 																						answers[
 																							q
 																								.id
 																						] ===
 																							option
 																							? "bg-[var(--color-accent-blue)] border-[var(--color-accent-blue)] text-white"
-																							: "bg-transparent border-[var(--color-primary-surface-elevated)] hover:border-neutral-500"
+																							: "bg-gradient-to-br from-[var(--color-primary-background)] to-[var(--color-primary-surface)]/30 border-[var(--color-primary-surface-elevated)] hover:border-blue-500/30"
 																					)}
 																				>
 																					{
@@ -569,7 +707,7 @@ const OnboardingForm = () => {
 																)
 															case "multi-choice":
 																return (
-																	<div className="grid grid-cols-2 gap-3">
+																	<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 																		{q.options.map(
 																			(
 																				option
@@ -586,7 +724,7 @@ const OnboardingForm = () => {
 																						)
 																					}
 																					className={cn(
-																						"p-4 rounded-lg border-2 text-center font-semibold transition-all duration-200 flex items-center justify-center gap-2",
+																						"p-4 rounded-xl border-2 text-center font-semibold transition-all duration-200 flex items-center justify-center gap-2",
 																						(
 																							answers[
 																								q
@@ -597,7 +735,7 @@ const OnboardingForm = () => {
 																							option
 																						)
 																							? "bg-[var(--color-accent-blue)] border-[var(--color-accent-blue)] text-white"
-																							: "bg-transparent border-[var(--color-primary-surface-elevated)] hover:border-neutral-500"
+																							: "bg-gradient-to-br from-[var(--color-primary-background)] to-[var(--color-primary-surface)]/30 border-[var(--color-primary-surface-elevated)] hover:border-blue-500/30"
 																					)}
 																				>
 																					{(
@@ -628,18 +766,18 @@ const OnboardingForm = () => {
 														}
 													})()
 												}
-											</div>
+											</motion.div>
 										))}
 								</div>
 							</section>
 						)
 					)}
 
-					<div className="flex justify-end pt-6 border-t border-[var(--color-primary-surface-elevated)]">
+					<div className="flex justify-end pt-8 border-t border-[var(--color-primary-surface-elevated)]">
 						<button
 							type="submit"
 							disabled={!isFormValid() || isSubmitting}
-							className="w-full sm:w-auto px-8 py-3 rounded-lg text-lg font-semibold transition-colors duration-300 bg-[var(--color-accent-blue)] hover:bg-blue-700 text-white disabled:bg-neutral-600 disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed"
+							className="w-full sm:w-auto px-8 py-4 rounded-xl text-lg font-semibold transition-all duration-300 bg-[var(--color-accent-blue)] hover:bg-blue-500 text-white disabled:bg-neutral-700 disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed flex items-center justify-center gap-3 shadow-lg shadow-blue-500/10 hover:shadow-blue-500/20"
 						>
 							{isSubmitting ? "Saving..." : "Save & Finish"}
 						</button>

@@ -1,5 +1,6 @@
 import logging
 from typing import Optional
+import datetime
 
 from ..dependencies import mongo_manager, websocket_manager
 from .whatsapp_client import send_whatsapp_message # Import the new client
@@ -22,6 +23,10 @@ async def create_and_push_notification(user_id: str, message: str, task_id: Opti
         if not new_notification:
             logger.error(f"Failed to save notification to DB for user {user_id}")
             return
+
+        # Convert datetime to string for JSON serialization before pushing
+        if isinstance(new_notification.get("timestamp"), datetime.datetime):
+            new_notification["timestamp"] = new_notification["timestamp"].isoformat()
         
         # 2. Push via WebSocket to UI
         push_payload = {

@@ -221,12 +221,20 @@ def process_action_item(user_id: str, action_items: list, source_event_id: str, 
     async def async_main():
         db_manager = PlannerMongoManager()
         try:
-            # Fetch user's timezone to provide current time context to the planner
-            user_profile = await db_manager.user_profiles_collection.find_one({"user_id": user_id})
-            user_timezone_str = "UTC"
-            if user_profile and user_profile.get("userData", {}).get("personalInfo", {}).get("timezone"):
-                user_timezone_str = user_profile["userData"]["personalInfo"]["timezone"]
+            # Fetch user's info to provide context to the planner
+            user_profile = await db_manager.user_profiles_collection.find_one(
+                {"user_id": user_id},
+                {"userData.personalInfo": 1} # Projection to get only necessary data
+            )
+            personal_info = user_profile.get("userData", {}).get("personalInfo", {})
+            user_name = personal_info.get("name", "User")
+            user_location_raw = personal_info.get("location", "Not specified")
+            if isinstance(user_location_raw, dict):
+                user_location = f"latitude: {user_location_raw.get('latitude')}, longitude: {user_location_raw.get('longitude')}"
+            else:
+                user_location = user_location_raw
             
+            user_timezone_str = personal_info.get("timezone", "UTC")
             try:
                 user_timezone = ZoneInfo(user_timezone_str)
             except ZoneInfoNotFoundError:
@@ -240,7 +248,7 @@ def process_action_item(user_id: str, action_items: list, source_event_id: str, 
                 logger.warning(f"No tools available for planner task for user {user_id}.")
                 return
 
-            agent = get_planner_agent(available_tools, current_user_time)
+            agent = get_planner_agent(available_tools, current_user_time, user_name, user_location)
             user_prompt_content = "Please create a plan for the following action items:\n- " + "\n- ".join(action_items)
             messages = [{'role': 'user', 'content': user_prompt_content}]
 

@@ -126,7 +126,7 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     await add_progress_update(db, task_id, user_id, "Executor has picked up the task and is starting execution.", block_id=block_id)
     
     user_profile = await db.user_profiles.find_one({"user_id": user_id})
-    personal_info = user_profile.get("userData", {}).get("personalInfo", {})
+    personal_info = user_profile.get("userData", {}).get("personalInfo", {}) if user_profile else {}
     user_name = personal_info.get("name", "User")
     user_location_raw = personal_info.get("location", "Not specified")
     if isinstance(user_location_raw, dict):
@@ -137,10 +137,12 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id") if user_profile else None
     
     active_mcp_servers = {}
-    for config in INTEGRATIONS_CONFIG.values():
+    for service_name, config in INTEGRATIONS_CONFIG.items():
         mcp_config = config.get("mcp_server_config")
-        if mcp_config:
-            active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
+        # For supermemory, the url is None in the config, but we still want its description available.
+        # It's handled specially below. For others, they must have a URL.
+        if mcp_config and mcp_config.get("url"):
+            active_mcp_servers[service_name] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
 
     if supermemory_user_id:
         active_mcp_servers["supermemory"] = {
@@ -166,21 +168,21 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     block_id_prompt = f"The block_id for this task is '{block_id}'. You MUST pass this ID to the 'update_progress' tool in the 'block_id' parameter." if block_id else "This task did not originate from a journal block."
 
     full_plan_prompt = (
-        f"You are an autonomous executor agent. Your goal is to complete the user's request by following the provided plan.\n\n"
+        f"You are a resourceful and autonomous executor agent. Your goal is to complete the user's request by intelligently following the provided plan.\n\n"
         f"**User Context:**\n"
         f"- **User's Name:** {user_name}\n"
         f"- **User's Location:** {user_location}\n"
         f"- **Current Date & Time:** {current_user_time}\n\n"
-        f"Use this context when executing tools. For example, if a tool requires a location and the plan doesn't specify one, use the user's default location.\n\n"
         f"Your task ID is '{task_id}'. {block_id_prompt}\n\n"
         f"The original context that triggered this plan is:\n---BEGIN CONTEXT---\n{original_context_str}\n---END CONTEXT---\n\n"
-        f"**Main Goal:** '{plan_description}'.\n\n"
-        f"The plan has the following steps:\n{plan_steps_str}\n\n"
+        f"**Primary Objective:** '{plan_description}'.\n\n"
+        f"**The Plan to Execute:**\n" +
+        "\n".join([f"- Step {i+1}: Use the '{step['tool']}' tool to '{step['description']}'" for i, step in enumerate(task.get("plan", []))]) + "\n\n"
         "**EXECUTION STRATEGY:**\n"
-        "1.  **Analyze and Adapt:** The plan is a guideline. If a step seems wrong or you gain new information, adapt. Your goal is to achieve the main objective.\n"
-        "2.  **Think Critically:** Before each action, think about its purpose and potential outcomes. What information do you need? Which tool is best? Is there a more efficient way?\n"
-        "3.  **Report Progress:** You MUST call the 'update_progress' tool to report your status after each major step or when you encounter something unexpected. This is crucial for user visibility.\n"
-        "4.  **Handle Failures:** If a tool call fails, analyze the error. Do not give up. Retry if it was temporary, or try an alternative approach. Report failures clearly using `update_progress`.\n"
+        "1.  **Map Plan to Tools:** The plan provides a high-level tool name (e.g., 'gmail', 'gdrive'). You must map this to the specific functions available to you (e.g., `gmail-send_email`, `gdrive-gdrive_search`).\n"
+        "2.  **Be Resourceful & Fill Gaps:** The plan is a guideline. If a step is missing information (e.g., an email address for a manager, a document name), your first action for that step MUST be to use the `supermemory-search` tool to find the missing information. Do not proceed with incomplete information.\n"
+        "3.  **Remember New Information:** If you discover a new, permanent fact about the user during your execution (e.g., you find their manager's email is 'boss@example.com'), you MUST use `supermemory-addToSupermemory` to save it.\n"
+        "4.  **Report Progress & Failures:** You MUST call the `progress_updater-update_progress` tool to report your status after each major step or when you encounter an error. If a tool fails, analyze the error, report it, and try an alternative approach to achieve the objective. Do not give up easily.\n"
         "Now, begin your work. Think step-by-step and start executing the plan."
     )
     

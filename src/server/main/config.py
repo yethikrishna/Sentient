@@ -277,6 +277,17 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("JOURNAL_MCP_SERVER_URL", "http://localhost:9018/sse")
         }
     },
+    "supermemory": {
+        "display_name": "Long-Term Memory",
+        "description": "The agent's long-term memory about the user. Use 'search' to recall facts, relationships, and preferences. Use 'addToSupermemory' to save new, permanent information about the user. This is critical for personalization.",
+        "auth_type": "builtin",
+        "icon": "IconBrain",
+        "mcp_server_config": {
+            "name": "supermemory",
+            # URL is constructed dynamically based on user's supermemory_user_id
+            "url": None
+        }
+    }
 }
 
 # --- Service Provider Configuration ---

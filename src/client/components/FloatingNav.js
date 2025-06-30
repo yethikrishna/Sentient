@@ -76,7 +76,8 @@ export default function FloatingNav({ onChatOpen }) {
 									<div className="flex-1 w-0 p-4">
 										<div className="flex items-start">
 											<div className="flex-shrink-0 pt-0.5">
-												<IconBell className="h-6 w-6 text-lightblue" />
+												{" "}
+												<IconBell className="h-6 w-6 text-[var(--color-accent-blue)]" />{" "}
 											</div>
 											<div className="ml-3 flex-1">
 												<p className="text-sm font-medium text-white">
@@ -94,7 +95,7 @@ export default function FloatingNav({ onChatOpen }) {
 												router.push("/tasks")
 												toast.dismiss(t.id)
 											}}
-											className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-sm font-medium text-lightblue hover:text-blue-400 focus:outline-none focus:ring-2 focus:ring-lightblue"
+											className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-sm font-medium text-[var(--color-accent-blue)] hover:text-[var(--color-accent-blue-hover)] focus:outline-none"
 										>
 											View
 										</button>
@@ -139,7 +140,7 @@ export default function FloatingNav({ onChatOpen }) {
 				<motion.div
 					initial={{ scale: 0 }}
 					animate={{ scale: 1 }}
-					className="absolute top-0 right-0 h-3 w-3 bg-red-500 rounded-full border-2 border-[var(--color-primary-surface)]"
+					className="absolute top-0 right-0 h-3 w-3 bg-[var(--color-accent-red)] rounded-full border-2 border-[var(--color-primary-surface)]"
 				/>
 			)}
 		</div>

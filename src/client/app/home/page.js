@@ -49,7 +49,7 @@ const PreviewColumn = ({
 				</h2>
 				<button
 					onClick={() => router.push(viewAllLink)}
-					className="text-sm text-blue-400 hover:underline"
+					className="text-sm text-[var(--color-accent-blue)] hover:underline"
 				>
 					View all
 				</button>
@@ -89,59 +89,59 @@ const TaskPreviewCard = ({ task, ...props }) => {
 const statusMap = {
 	pending: {
 		icon: IconClock,
-		color: "text-yellow-500",
-		borderColor: "border-yellow-500",
+		color: "text-[var(--color-status-pending)]",
+		borderColor: "border-[var(--color-status-pending)]",
 		label: "Pending"
 	},
 	processing: {
 		icon: IconPlayerPlay,
-		color: "text-blue-500",
-		borderColor: "border-blue-500",
+		color: "text-[var(--color-accent-blue)]",
+		borderColor: "border-[var(--color-accent-blue)]",
 		label: "Processing"
 	},
 	completed: {
 		icon: IconCircleCheck,
-		color: "text-green-500",
-		borderColor: "border-green-500",
+		color: "text-[var(--color-accent-green)]",
+		borderColor: "border-[var(--color-accent-green)]",
 		label: "Completed"
 	},
 	error: {
 		icon: IconAlertCircle,
-		color: "text-red-500",
-		borderColor: "border-red-500",
+		color: "text-[var(--color-accent-red)]",
+		borderColor: "border-[var(--color-accent-red)]",
 		label: "Error"
 	},
 	approval_pending: {
 		icon: IconMailQuestion,
-		color: "text-purple-500",
-		borderColor: "border-purple-500",
+		color: "text-[var(--color-accent-purple)]",
+		borderColor: "border-[var(--color-accent-purple)]",
 		label: "Approval Pending"
 	},
 	active: {
 		// New status for recurring tasks
 		icon: IconRefresh,
-		color: "text-green-500",
+		color: "text-[var(--color-accent-green)]",
 		label: "Active"
 	},
 	cancelled: {
 		icon: IconX,
-		color: "text-gray-500",
-		borderColor: "border-gray-500",
+		color: "text-[var(--color-text-muted)]",
+		borderColor: "border-[var(--color-text-muted)]",
 		label: "Cancelled"
 	},
 	default: {
 		icon: IconHelpCircle,
-		color: "text-gray-400",
-		borderColor: "border-gray-400",
+		color: "text-[var(--color-text-secondary)]",
+		borderColor: "border-[var(--color-text-secondary)]",
 		label: "Unknown"
 	}
 }
 
 const priorityMap = {
-	0: { label: "High", color: "text-red-400" },
-	1: { label: "Medium", color: "text-yellow-400" },
-	2: { label: "Low", color: "text-green-400" },
-	default: { label: "Unknown", color: "text-gray-400" }
+	0: { label: "High", color: "text-[var(--color-accent-red)]" },
+	1: { label: "Medium", color: "text-[var(--color-accent-orange)]" },
+	2: { label: "Low", color: "text-[var(--color-accent-green)]" },
+	default: { label: "Unknown", color: "text-[var(--color-text-muted)]" }
 }
 
 const TaskCard = ({ task, integrations, onApproveTask, onDeleteTask }) => {
@@ -175,7 +175,7 @@ const TaskCard = ({ task, integrations, onApproveTask, onDeleteTask }) => {
 			animate={{ opacity: 1, y: 0 }}
 			exit={{ opacity: 0, y: -20 }}
 			className={cn(
-				"flex items-start gap-3 sm:gap-4 bg-gradient-to-br from-[var(--color-primary-surface)] to-neutral-800/60 p-4 rounded-xl shadow-lg transition-all duration-200 border border-transparent hover:border-blue-500/30",
+				"flex items-start gap-3 sm:gap-4 bg-gradient-to-br from-[var(--color-primary-surface)] to-neutral-800/60 p-4 rounded-xl shadow-lg transition-all duration-200 border border-transparent hover:border-[var(--color-accent-blue)]/30",
 				"relative group",
 				!missingTools.length && "cursor-pointer"
 			)}
@@ -207,7 +207,7 @@ const TaskCard = ({ task, integrations, onApproveTask, onDeleteTask }) => {
 
 				{missingTools.length > 0 && (
 					<div
-						className="flex items-center gap-2 mt-2 text-yellow-400 text-xs"
+						className="flex items-center gap-2 mt-2 text-[var(--color-accent-orange)] text-xs"
 						data-tooltip-id={`missing-tools-tooltip-${task.task_id}`}
 					>
 						<IconAlertTriangle size={14} />
@@ -228,7 +228,7 @@ const TaskCard = ({ task, integrations, onApproveTask, onDeleteTask }) => {
 				<button
 					onClick={() => onApproveTask(task.task_id)}
 					disabled={missingTools.length > 0}
-					className="p-2 rounded-md text-green-400 hover:bg-green-500/20 disabled:text-gray-600 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+					className="p-2 rounded-md text-[var(--color-accent-green)] hover:bg-[var(--color-accent-green)]/20 disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed disabled:hover:bg-transparent"
 					data-tooltip-id="home-tooltip"
 					data-tooltip-content={
 						missingTools.length
@@ -240,7 +240,7 @@ const TaskCard = ({ task, integrations, onApproveTask, onDeleteTask }) => {
 				</button>
 				<button
 					onClick={onEditTask}
-					className="p-2 rounded-md text-yellow-400 hover:bg-yellow-500/20"
+					className="p-2 rounded-md text-[var(--color-accent-orange)] hover:bg-[var(--color-accent-orange)]/20"
 					data-tooltip-id="home-tooltip"
 					data-tooltip-content="Edit Plan"
 				>
@@ -248,7 +248,7 @@ const TaskCard = ({ task, integrations, onApproveTask, onDeleteTask }) => {
 				</button>
 				<button
 					onClick={() => onDeleteTask(task.task_id)}
-					className="p-2 rounded-md text-red-400 hover:bg-red-500/20"
+					className="p-2 rounded-md text-[var(--color-accent-red)] hover:bg-[var(--color-accent-red)]/20"
 					data-tooltip-id="home-tooltip"
 					data-tooltip-content="Delete Plan"
 				>
@@ -267,7 +267,7 @@ const JournalPreviewCard = ({ entry, ...props }) => {
 			className="flex items-center gap-3 p-3 rounded-lg bg-[var(--color-primary-surface)]/40 hover:bg-[var(--color-primary-surface)] transition-colors cursor-pointer"
 			{...props}
 		>
-			<IconBook className="h-5 w-5 flex-shrink-0 text-purple-400" />
+			<IconBook className="h-5 w-5 flex-shrink-0 text-[var(--color-accent-purple)]" />
 			<p className="text-sm text-[var(--color-text-secondary)] truncate">
 				{entry.content}
 			</p>
@@ -434,9 +434,9 @@ const HomePage = () => {
 	}, [tasks])
 
 	return (
-		<div className="flex h-screen bg-[var(--color-primary-background)]">
+		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
 			<Tooltip id="home-tooltip" />
-			<div className="flex-1 flex flex-col overflow-hidden">
+			<div className="flex-1 flex flex-col overflow-hidden h-screen">
 				<main
 					ref={scrollRef}
 					className="flex-1 overflow-y-auto p-4 lg:p-8 custom-scrollbar flex items-center justify-center"
@@ -480,9 +480,10 @@ const HomePage = () => {
 										pendingApproval: !p.pendingApproval
 									}))
 								}
-								className="w-full flex justify-between items-center py-3 px-2 text-left hover:bg-neutral-800/30 rounded-lg transition-colors"
+								className="w-full flex justify-between items-center py-3 px-2 text-left hover:bg-[var(--color-primary-surface)]/50 rounded-lg transition-colors"
 							>
-								<h2 className="text-xl font-semibold text-[var(--color-text-primary)]">
+								<h2 className="text-xl font-semibold text-[var(--color-text-primary)] flex items-center gap-3">
+									<IconMailQuestion className="text-[var(--color-accent-purple)]" />
 									Pending Approval (
 									{pendingApprovalTasks.length})
 								</h2>

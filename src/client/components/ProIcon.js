@@ -18,8 +18,7 @@ const ProIcon = () => (
 		<span
 			data-tooltip-id="pro-feature" // Unique ID for the tooltip, used to associate Tooltip component
 			data-tooltip-content="This feature is only available for Pro users. You can upgrade anytime from the Settings page."
-			// Content of the tooltip, explaining Pro feature availability and upgrade instructions
-			className="text-yellow-400 ml-2 cursor-pointer"
+			className="text-[var(--color-accent-orange)] ml-2 cursor-pointer"
 			// Styling for the span element: yellow-400 text color, margin left for spacing, cursor pointer to indicate interactivity
 		>
 			<IconStar />{" "}

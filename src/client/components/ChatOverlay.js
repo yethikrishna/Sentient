@@ -26,7 +26,8 @@ const Switch = ({ checked, onCheckedChange }) => (
 		aria-checked={checked}
 		onClick={() => onCheckedChange(!checked)}
 		className={cn(
-			"relative inline-flex h-[18px] w-[34px] flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-lightblue focus:ring-offset-2 focus:ring-offset-matteblack",
+			// Removed focus ring overrides to use global style
+			"relative inline-flex h-[18px] w-[34px] flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out",
 			checked ? "bg-[var(--color-accent-blue)]" : "bg-neutral-600"
 		)}
 	>
@@ -395,17 +396,17 @@ const ChatOverlay = ({ onClose }) => {
 							{thinking ? (
 								<button
 									onClick={handleStopStreaming}
-									className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-white bg-red-600 hover:bg-red-500"
+									className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-white bg-[var(--color-accent-red)] hover:bg-[var(--color-accent-red-hover)]"
 									data-tooltip-id="chat-overlay-tooltip"
 									data-tooltip-content="Stop Generation"
 								>
-									<IconPlayerStopFilled className="w-4 h-4 text-[var(--color-text-primary)]" />
+									<IconPlayerStopFilled className="w-4 h-4 text-white" />
 								</button>
 							) : (
 								<button
 									onClick={sendMessage}
 									disabled={input.trim() === ""}
-									className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-[var(--color-text-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
+									className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-white disabled:opacity-50 disabled:cursor-not-allowed bg-[var(--color-accent-blue)]"
 									data-tooltip-id="chat-overlay-tooltip"
 									data-tooltip-content="Send Message"
 								>

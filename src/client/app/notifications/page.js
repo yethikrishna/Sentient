@@ -121,11 +121,11 @@ const Notifications = () => {
 
 	// --- Render Logic ---
 	return (
-		<div className="flex h-screen bg-[var(--color-primary-background)]">
+		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
 			<Tooltip id="notifications-tooltip" />
-			<div className="flex-1 flex flex-col overflow-hidden">
-				<header className="flex items-center justify-between p-4 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)] md:flex-row md:items-center">
-					<h1 className="text-2xl sm:text-3xl font-light text-[var(--color-text-primary)] flex-grow text-center md:text-left">
+			<div className="flex-1 flex flex-col overflow-hidden h-screen">
+				<header className="flex items-center justify-between p-4 md:px-8 md:py-6 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)]">
+					<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)] flex items-center gap-3">
 						Notifications
 					</h1>
 				</header>
@@ -149,18 +149,18 @@ const Notifications = () => {
 							</p>
 							<button
 								onClick={fetchNotifications} // Allow retry
-								className="py-2 px-5 rounded bg-[var(--color-accent-blue)] hover:bg-blue-700 text-white text-sm font-medium transition-colors"
+								className="py-2 px-5 rounded-lg bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white text-sm font-medium transition-colors"
 							>
 								Retry
 							</button>
 						</div>
 					) : notifications.length === 0 ? ( // Display empty state if no error and not loading
 						<div className="flex-grow flex flex-col justify-center items-center text-center p-10">
-							<IconBell className="w-16 h-16 text-neutral-700 mb-4" />
-							<p className="text-gray-500 text-xl">
+							<IconBell className="w-16 h-16 text-[var(--color-text-muted)] mb-4" />
+							<p className="text-[var(--color-text-secondary)] text-xl">
 								No new notifications
 							</p>
-							<p className="text-gray-600 text-sm mt-2">
+							<p className="text-[var(--color-text-muted)] text-sm mt-2">
 								Check back later for updates.
 							</p>
 						</div>
@@ -193,14 +193,14 @@ const Notifications = () => {
 											onClick={(e) =>
 												handleDelete(e, notif.id)
 											}
-											className="p-1.5 text-[var(--color-text-muted)] rounded-full opacity-0 group-hover:opacity-100 hover:bg-neutral-600 hover:text-[var(--color-accent-red)] transition-all duration-200"
+											className="p-1.5 text-[var(--color-text-muted)] rounded-full opacity-0 group-hover:opacity-100 hover:bg-[var(--color-primary-surface-elevated)] hover:text-[var(--color-accent-red)] transition-all duration-200"
 											data-tooltip-id="notifications-tooltip"
 											data-tooltip-content="Dismiss notification"
 										>
 											<IconX size={16} />
 										</button>
 										<IconArrowRight
-											className="w-5 h-5 text-gray-500 transition-transform duration-300 group-hover:translate-x-1 group-hover:text-white"
+											className="w-5 h-5 text-[var(--color-text-muted)] transition-transform duration-300 group-hover:translate-x-1 group-hover:text-white"
 											data-tooltip-id="notifications-tooltip"
 											data-tooltip-content="View associated tasks"
 										/>

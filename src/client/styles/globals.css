@@ -11,9 +11,12 @@
 		--color-text-secondary: #b0b0b0;
 		--color-text-muted: #808080;
 		--color-accent-blue: #4a9eff;
+		--color-accent-blue-hover: #3a8eff;
 		--color-accent-green: #00c851;
+		--color-accent-green-hover: #00b041;
 		--color-accent-orange: #ff8800;
 		--color-accent-red: #ff4444;
+		--color-accent-red-hover: #ff2222;
 		--color-accent-purple: #9c27b0;
 		--color-status-active: #00c851;
 		--color-status-pending: #ff8800;

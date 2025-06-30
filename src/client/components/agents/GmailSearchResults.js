@@ -47,20 +47,20 @@ const EmailItem = ({ email }) => {
 					{/* Subject line with email icon */}
 					<div className="flex items-center space-x-2">
 						<IconMail className="w-5 h-5 text-[var(--color-accent-blue)]" />
-						<span className="font-Quicksand text-[var(--color-text-primary)] font-semibold">
+						<span className="text-[var(--color-text-primary)] font-semibold">
 							{email.subject}
 						</span>
 					</div>
 					{/* Sender info with user icon */}
 					<div className="flex items-center space-x-2 mt-1">
 						<IconUser className="w-4 h-4 text-[var(--color-text-secondary)]" />
-						<span className="font-Quicksand text-[var(--color-text-secondary)] text-sm">
+						<span className="text-[var(--color-text-secondary)] text-sm">
 							From: {email.from}
 						</span>
 					</div>
 					{/* Email snippet (preview) */}
 					<div className="mt-1">
-						<p className="font-Quicksand text-[var(--color-text-secondary)] text-sm line-clamp-2">
+						<p className="text-[var(--color-text-secondary)] text-sm line-clamp-2">
 							{email.snippet}
 						</p>
 					</div>
@@ -84,7 +84,7 @@ const EmailItem = ({ email }) => {
 			{/* Expanded email body section, conditionally rendered based on 'expanded' state */}
 			{expanded && (
 				<div className="mt-3 border-t border-[var(--color-primary-surface-elevated)] pt-3">
-					<p className="font-Quicksand text-[var(--color-text-primary)] text-sm whitespace-pre-wrap">
+					<p className="text-[var(--color-text-primary)] text-sm whitespace-pre-wrap">
 						{email.body}
 					</p>
 				</div>
@@ -128,7 +128,7 @@ const GmailSearchResults = ({ emails, gmailSearchUrl }) => {
 			{/* Header section of the Gmail Search Results card */}
 			<div className="flex items-center gap-2 mb-4">
 				<IconMail className="w-6 h-6 text-[var(--color-accent-blue)]" />
-				<h3 className="text-xl font-Poppins font-semibold text-[var(--color-text-primary)]">
+				<h3 className="text-xl font-semibold text-[var(--color-text-primary)]">
 					Gmail Search Results
 				</h3>
 			</div>
@@ -136,12 +136,10 @@ const GmailSearchResults = ({ emails, gmailSearchUrl }) => {
 			<div className="mb-4">
 				<button
 					onClick={openSearchInGmail} // Call openSearchInGmail function on button click
-					className="flex items-center gap-2 px-3 py-2 bg-[var(--color-accent-blue)] text-black rounded-sm hover:bg-blue-400 transition-colors"
+					className="flex items-center gap-2 px-3 py-2 bg-[var(--color-accent-blue)] text-white rounded-md hover:bg-[var(--color-accent-blue-hover)] transition-colors"
 				>
 					<IconExternalLink className="w-5 h-5" />
-					<span className="font-Quicksand text-sm">
-						Open search in Gmail
-					</span>
+					<span className="text-sm">Open search in Gmail</span>
 				</button>
 			</div>
 			{/* Conditional rendering of email list or "No emails found" message */}
@@ -154,7 +152,7 @@ const GmailSearchResults = ({ emails, gmailSearchUrl }) => {
 				</ul>
 			) : (
 				// Displayed when no emails are found
-				<div className="text-[var(--color-text-primary)] font-Quicksand">
+				<div className="text-[var(--color-text-primary)]">
 					No emails found.
 				</div>
 			)}

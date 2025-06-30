@@ -25,7 +25,9 @@ import {
 	IconCalendarEvent,
 	IconMessage,
 	IconArrowRight,
-	IconPlugConnected
+	IconPlugConnected,
+	IconChevronDown,
+	IconChecklist
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import { Tooltip } from "react-tooltip"
@@ -412,19 +414,19 @@ const Tasks = () => {
 		setOpenSections((prev) => ({ ...prev, [section]: !prev[section] }))
 
 	return (
-		<div>
-			<div className="h-screen bg-gradient-to-br from-[var(--color-primary-background)] via-[var(--color-primary-background)] to-[var(--color-primary-surface)]/20 text-[var(--color-text-primary)] flex relative overflow-hidden">
-				<div className="flex-1 flex flex-col h-full text-white relative overflow-hidden">
+		<div className="flex h-screen bg-gradient-to-br from-[var(--color-primary-background)] via-[var(--color-primary-background)] to-[var(--color-primary-surface)]/20 text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
+			<Tooltip id="tasks-tooltip" />
+			<div className="flex-1 flex flex-col overflow-hidden h-screen">
 					<motion.header
 						initial={{ y: -20, opacity: 0 }}
 						animate={{ y: 0, opacity: 1 }}
 						transition={{ duration: 0.6, ease: "easeOut" }}
-						className="flex flex-col md:flex-row items-center justify-between p-4 gap-4 md:gap-0 md:px-6 md:py-4 border-b border-[var(--color-primary-surface)]/50 backdrop-blur-md bg-[var(--color-primary-background)]/90 shrink-0 z-20"
+						className="flex items-center justify-between p-4 md:px-8 md:py-6 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)]"
 					>
-						<h1 className="text-2xl font-bold font-Inter text-lightblue">
+						<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)] flex items-center gap-3">
 							Tasks
 						</h1>
-						<div className="w-full md:max-w-lg flex items-center space-x-2 sm:space-x-3 bg-neutral-800/80 backdrop-blur-sm rounded-full p-2 shadow-lg border border-neutral-700">
+						<div className="w-full md:max-w-lg flex items-center space-x-2 sm:space-x-3 bg-[var(--color-primary-surface)]/80 backdrop-blur-sm rounded-full p-2 shadow-lg border border-[var(--color-primary-surface-elevated)]">
 							<IconSearch className="h-5 w-5 text-gray-400 ml-2 flex-shrink-0" />
 							<input
 								type="text"
@@ -439,7 +441,7 @@ const Tasks = () => {
 									onChange={(e) =>
 										setFilterStatus(e.target.value)
 									}
-									className="appearance-none bg-neutral-700 border border-neutral-600 text-white text-xs rounded-full pl-3 pr-8 py-1.5 focus:outline-none focus:border-lightblue cursor-pointer"
+									className="appearance-none bg-[var(--color-primary-surface-elevated)] border border-[var(--color-primary-surface-elevated)] text-white text-xs rounded-full pl-3 pr-8 py-1.5 focus:outline-none focus:border-[var(--color-accent-blue)] cursor-pointer"
 								>
 									<option value="all">All</option>
 									<option value="active">Active</option>
@@ -458,7 +460,7 @@ const Tasks = () => {
 							</div>
 							<button
 								onClick={() => fetchTasksData()}
-								className="p-1.5 rounded-full hover:bg-neutral-700 transition-colors text-gray-300"
+								className="p-1.5 rounded-full hover:bg-[var(--color-primary-surface-elevated)] transition-colors text-gray-300"
 								data-tooltip-id="tasks-tooltip"
 								data-tooltip-content="Refresh task list"
 								disabled={loading && tasks.length > 0}
@@ -474,12 +476,12 @@ const Tasks = () => {
 
 					<main
 						ref={scrollRef}
-						className="flex-1 w-full max-w-3xl mx-auto flex flex-col overflow-hidden px-4"
+						className="flex-1 w-full max-w-3xl mx-auto flex flex-col overflow-y-auto custom-scrollbar px-4"
 					>
-						<div className="flex-grow overflow-y-auto space-y-2 custom-scrollbar pb-36">
+						<div className="space-y-2 pt-6 pb-36">
 							{loading || loadingIntegrations ? (
 								<div className="flex justify-center items-center h-full">
-									<IconLoader className="w-10 h-10 animate-spin text-[var(--color-accent-blue)]" />
+									<IconLoader className="w-12 h-12 animate-spin text-[var(--color-accent-blue)]" />
 								</div>
 							) : error ? (
 								<div className="text-red-400 text-center py-20">
@@ -551,7 +553,7 @@ const Tasks = () => {
 								<h3 className="text-lg font-semibold text-white">
 									Create a New Plan
 								</h3>
-								<IconChevronUp
+								<IconChevronDown
 									className={cn(
 										"transform transition-transform duration-200",
 										!isCreatePlanOpen && "rotate-180"
@@ -591,7 +593,7 @@ const Tasks = () => {
 														disabled={
 															isGeneratingPlan
 														}
-														className="p-3 px-6 bg-[#4a9eff] hover:bg-blue-500 rounded-lg text-white font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
+														className="p-3 px-6 bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] rounded-lg text-white font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
 													>
 														{isGeneratingPlan ? (
 															<IconLoader className="w-5 h-5 animate-spin" />
@@ -633,14 +635,14 @@ const Tasks = () => {
 																"generate"
 															)
 														}
-														className="py-2.5 px-6 rounded-lg bg-neutral-600 hover:bg-neutral-500 text-white text-sm font-semibold"
+														className="py-2.5 px-6 rounded-lg bg-[var(--color-primary-surface-elevated)] hover:bg-[var(--color-primary-surface)] text-white text-sm font-semibold"
 													>
 														Back
 													</button>
 													<button
 														onClick={handleAddTask}
 														disabled={isAdding}
-														className="py-2.5 px-6 rounded-lg bg-[#4a9eff] hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
+														className="py-2.5 px-6 rounded-lg bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
 													>
 														{isAdding && (
 															<IconLoader className="h-5 h-5 animate-spin" />
@@ -655,29 +657,25 @@ const Tasks = () => {
 							</AnimatePresence>
 						</div>
 					</div>
-
-					{viewingTask && (
-						<TaskDetailsModal
-							task={viewingTask}
-							onClose={() => setViewingTask(null)}
-							onApprove={handleApproveTask}
-							integrations={integrations}
-						/>
-					)}
-
-					{editingTask && (
-						<EditTaskModal
-							task={editingTask}
-							onClose={() => setEditingTask(null)}
-							onSave={handleUpdateTask}
-							setTask={setEditingTask}
-							allTools={allTools}
-							integrations={integrations}
-						/>
-					)}
-				</div>
 			</div>
-			<Tooltip id="tasks-tooltip" />
+			{viewingTask && (
+				<TaskDetailsModal
+					task={viewingTask}
+					onClose={() => setViewingTask(null)}
+					onApprove={handleApproveTask}
+					integrations={integrations}
+				/>
+			)}
+			{editingTask && (
+				<EditTaskModal
+					task={editingTask}
+					onClose={() => setEditingTask(null)}
+					onSave={handleUpdateTask}
+					setTask={setEditingTask}
+					allTools={allTools}
+					integrations={integrations}
+				/>
+			)}
 		</div>
 	)
 }
@@ -716,12 +714,12 @@ const PlanEditor = ({
 						placeholder="Describe the overall goal..."
 						value={description}
 						onChange={(e) => setDescription(e.target.value)}
-						className="md:col-span-2 p-3 bg-neutral-800/50 border border-neutral-700 rounded-lg transition-colors focus:border-blue-500"
+						className="md:col-span-2 p-3 bg-neutral-800/50 border border-neutral-700 rounded-lg transition-colors focus:border-[var(--color-accent-blue)]"
 					/>
 					<select
 						value={priority}
 						onChange={(e) => setPriority(Number(e.target.value))}
-						className="p-3 bg-neutral-800/50 border border-neutral-700 rounded-lg appearance-none transition-colors focus:border-blue-500"
+						className="p-3 bg-neutral-800/50 border border-neutral-700 rounded-lg appearance-none transition-colors focus:border-[var(--color-accent-blue)]"
 					>
 						<option value={0}>High Priority</option>
 						<option value={1}>Medium Priority</option>
@@ -755,7 +753,7 @@ const PlanEditor = ({
 												e.target.value
 											)
 										}
-										className="w-full sm:w-2/5 p-2 bg-neutral-800/50 border border-neutral-700 rounded-md text-sm transition-colors focus:border-blue-500"
+										className="w-full sm:w-2/5 p-2 bg-neutral-800/50 border border-neutral-700 rounded-md text-sm transition-colors focus:border-[var(--color-accent-blue)]"
 									>
 										<option value="">
 											Select a tool...
@@ -791,11 +789,11 @@ const PlanEditor = ({
 												e.target.value
 											)
 										}
-										className="flex-grow p-2 bg-neutral-800/50 border border-neutral-700 rounded-md text-sm transition-colors focus:border-blue-500"
+										className="flex-grow p-2 bg-neutral-800/50 border border-neutral-700 rounded-md text-sm transition-colors focus:border-[var(--color-accent-blue)]"
 									/>
 									<button
 										onClick={() => handleRemoveStep(index)}
-										className="p-2 text-red-400 hover:bg-neutral-700 rounded-full"
+										className="p-2 text-[var(--color-accent-red)] hover:bg-neutral-700 rounded-full"
 									>
 										<IconX className="h-4 w-4" />
 									</button>
@@ -816,7 +814,7 @@ const PlanEditor = ({
 				</AnimatePresence>
 				<button
 					onClick={handleAddStep}
-					className="flex items-center gap-1.5 py-1.5 px-3 rounded-full bg-neutral-700 hover:bg-neutral-600 text-xs"
+					className="flex items-center gap-1.5 py-1.5 px-3 rounded-full bg-[var(--color-primary-surface-elevated)] hover:bg-[var(--color-primary-surface)] text-xs"
 				>
 					<IconPlus className="h-4 w-4" /> Add Step
 				</button>
@@ -882,13 +880,13 @@ const EditTaskModal = ({
 				<div className="flex justify-end gap-4 mt-6 pt-4 border-t border-neutral-700">
 					<button
 						onClick={onClose}
-						className="py-2.5 px-5 rounded bg-neutral-600 hover:bg-neutral-500 text-sm"
+						className="py-2.5 px-5 rounded-lg bg-[var(--color-primary-surface-elevated)] hover:bg-[var(--color-primary-surface)] text-sm"
 					>
 						Cancel
 					</button>
 					<button
 						onClick={onSave}
-						className="py-2.5 px-5 rounded-lg bg-green-600 hover:bg-green-500 text-sm"
+						className="py-2.5 px-5 rounded-lg bg-[var(--color-accent-green)] hover:bg-[var(--color-accent-green-hover)] text-sm transition-colors"
 					>
 						Save Changes
 					</button>
@@ -902,7 +900,7 @@ const ConnectToolButton = ({ toolName }) => {
 	const router = useRouter()
 	return (
 		<button
-			onClick={() => router.push(`/settings?connect=${toolName}`)}
+			onClick={() => router.push(`/settings`)}
 			className="text-xs self-start bg-yellow-500/20 text-yellow-300 font-semibold py-1 px-2 rounded-full hover:bg-yellow-500/40 transition-colors whitespace-nowrap flex items-center gap-1"
 		>
 			<IconPlugConnected size={12} />
@@ -923,9 +921,9 @@ const CollapsibleSection = ({
 		<div>
 			<button
 				onClick={toggleOpen}
-				className="w-full flex justify-between items-center py-3 px-2 text-left hover:bg-neutral-800/30 rounded-lg transition-colors"
+				className="w-full flex justify-between items-center py-3 px-2 text-left hover:bg-[var(--color-primary-surface)]/50 rounded-lg transition-colors"
 			>
-				<h2 className="text-xl font-semibold text-gray-300 flex items-center gap-2">
+				<h2 className="text-xl font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
 					{title} ({tasks.length})
 				</h2>
 				<IconChevronUp
@@ -1066,7 +1064,7 @@ const TaskCard = ({
 			}}
 			style={{ transformStyle: "preserve-3d" }}
 			className={cn(
-				"group flex items-start gap-4 bg-gradient-to-br from-[var(--color-primary-surface)] to-neutral-800/60 p-4 rounded-xl shadow-lg transition-all duration-200 border border-transparent",
+				"group flex items-start gap-4 bg-gradient-to-br from-[var(--color-primary-surface)] to-neutral-800/60 p-4 rounded-xl shadow-lg transition-all duration-200 border border-transparent hover:border-transparent",
 				task.enabled === false
 					? "border-l-4 border-gray-600 opacity-60"
 					: "hover:border-blue-500/30",
@@ -1101,12 +1099,12 @@ const TaskCard = ({
 				<p className="font-semibold text-white">{task.description}</p>
 				{renderTaskSource()}
 				{scheduleText && (
-					<p className="text-xs text-blue-400 mt-1 flex items-center gap-1.5">
+					<p className="text-xs text-[var(--color-accent-blue)] mt-1 flex items-center gap-1.5">
 						<IconRefresh size={14} />
 						<span>{scheduleText}</span>
 						{!task.enabled && (
 							<span className="font-bold text-yellow-400">
-								(Disabled)
+								(Paused)
 							</span>
 						)}
 					</p>
@@ -1136,7 +1134,7 @@ const TaskCard = ({
 							e.stopPropagation()
 							onApproveTask(task.task_id)
 						}}
-						className="p-1.5 rounded-md text-green-400 hover:bg-[var(--color-primary-surface-elevated)] disabled:text-gray-600 disabled:cursor-not-allowed"
+						className="p-1.5 rounded-md text-[var(--color-accent-green)] hover:bg-[var(--color-primary-surface-elevated)] disabled:text-gray-600 disabled:cursor-not-allowed"
 						data-tooltip-id="tasks-tooltip"
 						data-tooltip-content="Approve this plan for execution"
 						disabled={missingTools.length > 0}
@@ -1150,7 +1148,7 @@ const TaskCard = ({
 							e.stopPropagation()
 							onEditTask(task)
 						}}
-						className="p-1.5 rounded-md text-yellow-400 hover:bg-[var(--color-primary-surface-elevated)]"
+						className="p-1.5 rounded-md text-[var(--color-accent-orange)] hover:bg-[var(--color-primary-surface-elevated)]"
 						data-tooltip-id="tasks-tooltip"
 						data-tooltip-content="Edit this task's plan and properties"
 					>
@@ -1163,7 +1161,7 @@ const TaskCard = ({
 							e.stopPropagation()
 							onReRunTask(task.task_id)
 						}}
-						className="p-1.5 rounded-md text-blue-400 hover:bg-[var(--color-primary-surface-elevated)]"
+						className="p-1.5 rounded-md text-[var(--color-accent-blue)] hover:bg-[var(--color-primary-surface-elevated)]"
 						data-tooltip-id="tasks-tooltip"
 						data-tooltip-content="Create a new copy of this task to run again"
 					>
@@ -1176,7 +1174,7 @@ const TaskCard = ({
 							e.stopPropagation()
 							onDeleteTask(task.task_id)
 						}}
-						className="p-1.5 rounded-md text-red-400 hover:bg-[var(--color-primary-surface-elevated)]"
+						className="p-1.5 rounded-md text-[var(--color-accent-red)] hover:bg-[var(--color-primary-surface-elevated)]"
 						data-tooltip-id="tasks-tooltip"
 						data-tooltip-content="Delete this task permanently"
 					>
@@ -1246,7 +1244,7 @@ const TaskDetailsModal = ({ task, onClose, onApprove, integrations }) => {
 				</div>
 				<div className="overflow-y-auto custom-scrollbar pr-2 space-y-6">
 					<div className="flex items-center gap-4 text-sm">
-						<span className="text-gray-400">Status:</span>
+						<span className="text-[var(--color-text-secondary)]">Status:</span>
 						<span
 							className={cn(
 								"font-semibold py-0.5 px-2 rounded-full text-xs",
@@ -1259,8 +1257,8 @@ const TaskDetailsModal = ({ task, onClose, onApprove, integrations }) => {
 						>
 							{statusInfo.label}
 						</span>
-						<div className="w-px h-4 bg-neutral-600"></div>
-						<span className="text-gray-400">Priority:</span>
+						<div className="w-px h-4 bg-[var(--color-primary-surface-elevated)]"></div>
+						<span className="text-[var(--color-text-secondary)]">Priority:</span>
 						<span
 							className={cn("font-semibold", priorityInfo.color)}
 						>
@@ -1268,23 +1266,23 @@ const TaskDetailsModal = ({ task, onClose, onApprove, integrations }) => {
 						</span>
 					</div>
 					<div>
-						<h4 className="text-lg font-semibold text-gray-300 mb-3">
+						<h4 className="text-lg font-semibold text-white mb-3">
 							Plan
 						</h4>
 						<div className="space-y-2">
 							{task.plan.map((step, index) => (
 								<div
 									key={index}
-									className="flex items-start gap-3 bg-neutral-700/50 p-3 rounded-md"
+									className="flex items-start gap-3 bg-[var(--color-primary-surface)]/70 p-3 rounded-md"
 								>
-									<div className="flex-shrink-0 text-blue-400 font-bold mt-0.5">
+									<div className="flex-shrink-0 text-[var(--color-accent-blue)] font-bold mt-0.5">
 										{index + 1}.
 									</div>
 									<div>
-										<p className="font-semibold text-gray-200">
+										<p className="font-semibold text-white">
 											{step.tool}
 										</p>
-										<p className="text-sm text-gray-400">
+										<p className="text-sm text-[var(--color-text-secondary)]">
 											{step.description}
 										</p>
 									</div>
@@ -1294,7 +1292,7 @@ const TaskDetailsModal = ({ task, onClose, onApprove, integrations }) => {
 					</div>
 					{task.progress_updates?.length > 0 && (
 						<div>
-							<h4 className="text-lg font-semibold text-gray-300 mb-4">
+							<h4 className="text-lg font-semibold text-white mb-4">
 								Progress
 							</h4>
 							<div className="space-y-4">
@@ -1305,14 +1303,14 @@ const TaskDetailsModal = ({ task, onClose, onApprove, integrations }) => {
 											{index <
 												task.progress_updates.length -
 													1 && (
-												<div className="w-0.5 flex-grow bg-neutral-700"></div>
+												<div className="w-0.5 flex-grow bg-[var(--color-primary-surface-elevated)]"></div>
 											)}
 										</div>
 										<div>
-											<p className="text-sm text-gray-300 -mt-1">
+											<p className="text-sm text-white -mt-1">
 												{update.message}
 											</p>
-											<p className="text-xs text-gray-500 mt-1.5">
+											<p className="text-xs text-[var(--color-text-muted)] mt-1.5">
 												{new Date(
 													update.timestamp
 												).toLocaleString()}
@@ -1324,24 +1322,24 @@ const TaskDetailsModal = ({ task, onClose, onApprove, integrations }) => {
 						</div>
 					)}
 					{(task.result || task.error) && (
-						<div className="pt-4 border-t border-neutral-700/50">
-							<h4 className="text-lg font-semibold text-gray-200 mb-4">
+						<div className="pt-4 border-t border-[var(--color-primary-surface-elevated)]">
+							<h4 className="text-lg font-semibold text-white mb-4">
 								Outcome
 							</h4>
 							{task.error ? (
-								<pre className="text-sm bg-red-900/30 p-4 rounded-md text-red-300 whitespace-pre-wrap font-mono border border-red-500/50">
+								<pre className="text-sm bg-red-900/30 p-4 rounded-md text-red-300 whitespace-pre-wrap font-mono border border-[var(--color-accent-red)]/50">
 									{task.error}
 								</pre>
 							) : (
 								<div className="space-y-4 text-gray-300">
 									{thoughts && (
-										<details className="bg-neutral-900/50 rounded-lg p-3 border border-neutral-700">
+										<details className="bg-[var(--color-primary-surface)]/50 rounded-lg p-3 border border-[var(--color-primary-surface-elevated)]">
 											<summary
-												className="cursor-pointer text-sm text-gray-400 font-semibold hover:text-white flex items-center gap-2"
+												className="cursor-pointer text-sm text-[var(--color-text-secondary)] font-semibold hover:text-white flex items-center gap-2"
 												data-tooltip-id="task-details-tooltip"
 												data-tooltip-content="See the step-by-step reasoning the agent used to produce the result."
 											>
-												<IconBrain size={16} /> View
+												<IconBrain size={16} className="text-yellow-400" /> View
 												Agent's Thoughts
 											</summary>
 											<pre className="mt-3 text-xs text-gray-400 whitespace-pre-wrap font-mono">
@@ -1349,7 +1347,7 @@ const TaskDetailsModal = ({ task, onClose, onApprove, integrations }) => {
 											</pre>
 										</details>
 									)}
-									{mainContent && (
+									{mainContent && typeof mainContent === 'string' && (
 										<div
 											dangerouslySetInnerHTML={{
 												__html: mainContent.replace(
@@ -1360,8 +1358,8 @@ const TaskDetailsModal = ({ task, onClose, onApprove, integrations }) => {
 										/>
 									)}
 									{finalAnswer && (
-										<div className="mt-2 p-4 bg-green-900/30 border border-green-500/50 rounded-lg">
-											<p className="text-sm font-semibold text-green-300 mb-1">
+										<div className="mt-2 p-4 bg-green-900/30 border border-[var(--color-accent-green)]/50 rounded-lg">
+											<p className="text-sm font-semibold text-green-300 mb-2">
 												Final Answer
 											</p>
 											<div
@@ -1379,17 +1377,17 @@ const TaskDetailsModal = ({ task, onClose, onApprove, integrations }) => {
 						</div>
 					)}
 				</div>
-				<div className="flex justify-end mt-6 pt-4 border-t border-neutral-700 gap-4">
+				<div className="flex justify-end mt-6 pt-4 border-t border-[var(--color-primary-surface-elevated)] gap-4">
 					<button
 						onClick={onClose}
-						className="py-2.5 px-6 rounded bg-neutral-600 hover:bg-neutral-500 text-sm"
+						className="py-2.5 px-6 rounded-lg bg-[var(--color-primary-surface-elevated)] hover:bg-[var(--color-primary-surface)] text-sm transition-colors"
 					>
 						Close
 					</button>
 					{task.status === "approval_pending" && (
 						<button
 							onClick={() => onApprove(task.task_id)}
-							className="py-2.5 px-6 rounded bg-green-600 hover:bg-green-500 text-sm flex items-center gap-2 disabled:opacity-50"
+							className="py-2.5 px-6 rounded-lg bg-[var(--color-accent-green)] hover:bg-[var(--color-accent-green-hover)] text-sm flex items-center gap-2 disabled:opacity-50 transition-colors"
 							disabled={missingTools.length > 0}
 						>
 							<IconCircleCheck className="w-5 h-5" />
@@ -1406,20 +1404,20 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 	const handleTypeChange = (type) => {
 		const baseSchedule = { ...schedule, type }
 		if (type === "once") {
-			delete baseSchedule.frequency
+			delete baseSchedule.frequency // This is fine
 			delete baseSchedule.days
 			delete baseSchedule.time
 		} else {
-			delete baseSchedule.run_at
+			delete baseSchedule.run_at // This is fine
 		}
 		setSchedule(baseSchedule)
 	}
 
 	const handleDayToggle = (day) => {
 		const currentDays = schedule.days || []
-		const newDays = currentDays.includes(day)
-			? currentDays.filter((d) => d !== day)
-			: [...currentDays, day]
+		const newDays = currentDays.includes(day) ?
+			currentDays.filter((d) => d !== day) :
+			[...currentDays, day]
 		setSchedule({ ...schedule, days: newDays })
 	}
 
@@ -1435,9 +1433,9 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 						onClick={() => handleTypeChange(value)}
 						className={cn(
 							"px-4 py-1.5 rounded-full text-sm",
-							(schedule.type || "once") === value
-								? "bg-lightblue text-white"
-								: "bg-neutral-600 hover:bg-neutral-500"
+							(schedule.type || "once") === value ?
+							"bg-[var(--color-accent-blue)] text-white" :
+							"bg-neutral-600 hover:bg-neutral-500"
 						)}
 					>
 						{label}
@@ -1456,7 +1454,7 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 						onChange={(e) =>
 							setSchedule({ ...schedule, run_at: e.target.value })
 						}
-						className="w-full p-2 bg-neutral-600/80 border border-neutral-600 rounded-md focus:border-blue-500"
+						className="w-full p-2 bg-neutral-600/80 border border-neutral-600 rounded-md focus:border-[var(--color-accent-blue)]"
 					/>
 					<p className="text-xs text-gray-500 mt-1">
 						If left blank, the task will run immediately after
@@ -1479,7 +1477,7 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 									frequency: e.target.value
 								})
 							}
-							className="w-full p-2 bg-neutral-600/80 border border-neutral-600 rounded-md focus:border-blue-500"
+							className="w-full p-2 bg-neutral-600/80 border border-neutral-600 rounded-md focus:border-[var(--color-accent-blue)]"
 						>
 							<option value="daily">Daily</option>
 							<option value="weekly">Weekly</option>
@@ -1505,7 +1503,7 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 									time: e.target.value
 								})
 							}
-							className="w-full p-2 bg-neutral-600/80 border border-neutral-600 rounded-md focus:border-blue-500"
+							className="w-full p-2 bg-neutral-600/80 border border-neutral-600 rounded-md focus:border-[var(--color-accent-blue)]"
 						/>
 					</div>
 					{schedule.frequency === "weekly" && (
@@ -1528,9 +1526,9 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 										onClick={() => handleDayToggle(day)}
 										className={cn(
 											"px-3 py-1.5 rounded-full text-xs font-semibold",
-											(schedule.days || []).includes(day)
-												? "bg-lightblue text-white"
-												: "bg-neutral-600 hover:bg-neutral-500"
+											(schedule.days || []).includes(day) ?
+											"bg-[var(--color-accent-blue)] text-white" :
+											"bg-neutral-600 hover:bg-neutral-500"
 										)}
 									>
 										{day.substring(0, 3)}

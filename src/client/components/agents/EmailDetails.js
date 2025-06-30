@@ -50,7 +50,7 @@ const EmailDetails = ({ email }) => {
 			{/* Header section of the Email Details card */}
 			<div className="flex items-center gap-2 mb-4">
 				<IconMail className="w-6 h-6 text-[var(--color-accent-blue)]" />
-				<h3 className="text-xl font-Poppins font-semibold text-[var(--color-text-primary)]">
+				<h3 className="text-xl font-semibold text-[var(--color-text-primary)]">
 					Email Details
 				</h3>
 			</div>
@@ -58,38 +58,38 @@ const EmailDetails = ({ email }) => {
 			<div className="p-4 bg-[var(--color-primary-background)] rounded-md border border-[var(--color-primary-surface-elevated)]">
 				{/* Display email Subject */}
 				<div className="mb-2">
-					<span className="font-Quicksand text-sm text-[var(--color-text-secondary)]">
+					<span className="text-sm text-[var(--color-text-secondary)]">
 						Subject:{" "}
 					</span>
-					<span className="font-Quicksand text-[var(--color-text-primary)]">
+					<span className="text-[var(--color-text-primary)]">
 						{email.subject}
 					</span>
 				</div>
 				{/* Display email Sender */}
 				<div className="mb-2">
-					<span className="font-Quicksand text-sm text-[var(--color-text-secondary)]">
+					<span className="text-sm text-[var(--color-text-secondary)]">
 						From:{" "}
 					</span>
-					<span className="font-Quicksand text-[var(--color-text-primary)]">
+					<span className="text-[var(--color-text-primary)]">
 						{email.from}
 					</span>
 				</div>
 				{/* Display email Snippet */}
 				<div className="mb-2">
-					<span className="font-Quicksand text-sm text-[var(--color-text-secondary)]">
+					<span className="text-sm text-[var(--color-text-secondary)]">
 						Snippet:{" "}
 					</span>
-					<span className="font-Quicksand text-[var(--color-text-primary)]">
+					<span className="text-[var(--color-text-primary)]">
 						{email.snippet}
 					</span>
 				</div>
 				{/* Display email Body */}
 				<div className="mb-2">
-					<span className="font-Quicksand text-sm text-[var(--color-text-secondary)]">
+					<span className="text-sm text-[var(--color-text-secondary)]">
 						Body:{" "}
 					</span>
 					{/* Email body content, whitespace-pre-wrap to maintain formatting */}
-					<p className="font-Quicksand text-[var(--color-text-primary)] whitespace-pre-wrap">
+					<p className="text-[var(--color-text-primary)] whitespace-pre-wrap">
 						{email.body}
 					</p>
 				</div>
@@ -105,9 +105,7 @@ const EmailDetails = ({ email }) => {
 						) : (
 							<IconCopy className="w-5 h-5 mr-1" /> // Show copy icon if copied is false
 						)}
-						<span className="font-Quicksand text-sm">
-							Copy Email Body
-						</span>
+						<span className="text-sm">Copy Email Body</span>
 					</button>
 				</div>
 			</div>

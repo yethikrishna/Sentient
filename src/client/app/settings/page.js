@@ -302,7 +302,7 @@ const WhatsAppSettings = () => {
 							<button
 								onClick={handleSave}
 								disabled={isSaving}
-								className="flex items-center py-2 px-4 rounded-md bg-darkblue hover:bg-lightblue text-white font-medium transition-colors"
+								className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors"
 							>
 								{isSaving ? (
 									<IconLoader className="w-4 h-4 mr-2 animate-spin" />
@@ -315,7 +315,7 @@ const WhatsAppSettings = () => {
 								<button
 									onClick={handleRemove}
 									disabled={isSaving}
-									className="flex items-center py-2 px-4 rounded-md bg-red-600/80 hover:bg-red-500 text-white font-medium transition-colors"
+									className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-red)]/80 hover:bg-[var(--color-accent-red)] text-white font-medium transition-colors"
 								>
 									<IconX className="w-4 h-4 mr-2" /> Remove
 								</button>
@@ -408,7 +408,7 @@ const PrivacySettings = () => {
 					<button
 						onClick={handleAddFilter}
 						disabled={isLoading}
-						className="flex flex-row items-center py-2 px-4 rounded-md bg-darkblue hover:bg-lightblue text-white font-medium transition-colors"
+						className="flex flex-row items-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors"
 					>
 						<IconPlus className="w-4 h-4 mr-2" /> Add
 					</button>
@@ -631,20 +631,17 @@ const Settings = () => {
 	}, [fetchData, fetchIntegrations])
 
 	return (
-		<div className="flex h-screen bg-[var(--color-primary-background)]">
+		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
 			<Tooltip id="settings-tooltip" />
-			<div className="flex-1 flex flex-col overflow-hidden">
-				<header className="flex flex-col sm:flex-row items-center justify-between p-4 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)] gap-4">
-					<div className="flex items-center gap-4 w-full sm:w-auto">
-						<h1 className="font-Poppins text-[var(--color-text-primary)] text-2xl sm:text-3xl font-light">
-							Settings
-						</h1>
-					</div>
-					<div></div>
+			<div className="flex-1 flex flex-col overflow-hidden h-screen">
+				<header className="flex items-center justify-between p-4 md:px-8 md:py-6 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)]">
+					<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)] flex items-center gap-3">
+						Settings
+					</h1>
 				</header>
 				<main
 					ref={scrollRef}
-					className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 no-scrollbar"
+					className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 custom-scrollbar"
 				>
 					<div className="w-full max-w-5xl mx-auto space-y-10">
 						<WhatsAppSettings />
@@ -715,7 +712,7 @@ const Settings = () => {
 																		integration.name
 																	)
 																}
-																className="flex items-center justify-center gap-1 sm:gap-2 w-full py-2 px-3 rounded-md bg-[var(--color-accent-red)]/20 hover:bg-[var(--color-accent-red)]/40 text-red-400 text-sm font-medium transition-colors"
+																className="flex items-center justify-center gap-1 sm:gap-2 w-full py-2 px-3 rounded-md bg-[var(--color-accent-red)]/20 hover:bg-[var(--color-accent-red)]/40 text-[var(--color-accent-red)] text-sm font-medium transition-colors"
 															>
 																<IconPlugOff
 																	size={16}
@@ -731,7 +728,7 @@ const Settings = () => {
 																		integration
 																	)
 																}
-																className="flex items-center justify-center gap-1 sm:gap-2 w-full py-2 px-3 rounded-md bg-[var(--color-accent-blue)]/50 hover:bg-[var(--color-accent-blue)]/70 text-white text-sm font-medium transition-colors"
+																className="flex items-center justify-center gap-1 sm:gap-2 w-full py-2 px-3 rounded-md bg-[var(--color-accent-blue)]/80 hover:bg-[var(--color-accent-blue)] text-white text-sm font-medium transition-colors"
 															>
 																<IconPlugConnected
 																	size={16}

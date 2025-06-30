@@ -81,12 +81,6 @@ module.exports = {
 				Quicksand: ["Quicksand", "sans-serif"],
 				Inter: ["Inter", "sans-serif"]
 			},
-			colors: {
-				lightblue: "#00B2FE",
-				darkblue: "#005CFE",
-				matteblack: "#212121",
-				smokeblack: "#1A1A1A"
-			},
 			screens: {
 				xs: "128px",
 				"2xs": "430px",

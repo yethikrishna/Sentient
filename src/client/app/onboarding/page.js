@@ -536,7 +536,7 @@ const OnboardingForm = () => {
 																					.value
 																			)
 																		}
-																		className="w-full px-4 py-3 rounded-xl bg-gradient-to-br from-[var(--color-primary-background)] to-[var(--color-primary-surface)]/30 bg-matteblack text-white border border-[var(--color-primary-surface-elevated)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]/50 appearance-none"
+																		className="w-full px-4 py-3 rounded-xl bg-gradient-to-br from-[var(--color-primary-background)] to-[var(--color-primary-surface)]/30 text-[var(--color-text-primary)] border border-[var(--color-primary-surface-elevated)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]/50 appearance-none"
 																		required={
 																			q.required
 																		}
@@ -601,7 +601,7 @@ const OnboardingForm = () => {
 																			disabled={
 																				locationState.loading
 																			}
-																			className="flex items-center gap-2 px-3 py-3 rounded-xl bg-[var(--color-primary-surface-elevated)] text-[var(--color-text-primary)] hover:bg-neutral-700 transition-colors disabled:opacity-50 min-w-1/3 sm:w-auto"
+																			className="flex items-center gap-2 px-3 py-3 rounded-xl bg-[var(--color-primary-surface-elevated)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary-surface)] transition-colors disabled:opacity-50 min-w-1/3 sm:w-auto"
 																		>
 																			{locationState.loading ? (
 																				<IconLoader
@@ -623,7 +623,7 @@ const OnboardingForm = () => {
 																					: "Share Current Location"}
 																			</span>
 																		</button>
-																		<span className="hidden sm:inline text-neutral-500 text-sm">
+																		<span className="hidden sm:inline text-[var(--color-text-muted)] text-sm">
 																			OR
 																		</span>
 																		<input
@@ -777,7 +777,7 @@ const OnboardingForm = () => {
 						<button
 							type="submit"
 							disabled={!isFormValid() || isSubmitting}
-							className="w-full sm:w-auto px-8 py-4 rounded-xl text-lg font-semibold transition-all duration-300 bg-[var(--color-accent-blue)] hover:bg-blue-500 text-white disabled:bg-neutral-700 disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed flex items-center justify-center gap-3 shadow-lg shadow-blue-500/10 hover:shadow-blue-500/20"
+							className="w-full sm:w-auto px-8 py-4 rounded-xl text-lg font-semibold transition-all duration-300 bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white disabled:bg-neutral-700 disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed flex items-center justify-center gap-3 shadow-lg shadow-[var(--color-accent-blue)]/10 hover:shadow-[var(--color-accent-blue)]/20"
 						>
 							{isSubmitting ? "Saving..." : "Save & Finish"}
 						</button>

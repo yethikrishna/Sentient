@@ -103,13 +103,12 @@ const LinkButton = ({ href, children }) => {
 
 	return (
 		<span
-			onClick={() => window.open(href, "_blank", "noopener noreferrer")} // Open URL in new tab on click
-			className="bg-white text-black border-2 border-black hover:border-lightblue py-1 px-2 rounded-md items-center cursor-pointer inline-flex"
+			onClick={() => window.open(href, "_blank", "noopener noreferrer")}
+			className="bg-[var(--color-primary-surface)] text-[var(--color-text-primary)] border border-[var(--color-primary-surface-elevated)] hover:border-[var(--color-accent-blue)] py-1 px-2 rounded-md items-center cursor-pointer inline-flex"
 			// Styling for the link button: background, text color, border, padding, rounded corners, cursor, inline-flex display
 			style={{
 				display: "inline-flex", // Ensure inline-flex for proper alignment
-				verticalAlign: "middle", // Vertical alignment to middle
-				margin: "0 4px" // Margin for spacing between link buttons
+				verticalAlign: "middle" // Vertical alignment to middle
 			}}
 		>
 			{icon} {/* Render the icon determined by getToolDetails */}
@@ -301,9 +300,9 @@ const ChatBubble = ({
 		<div
 			className={`p-4 rounded-lg ${
 				isUser
-					? "bg-white text-black text-base sm:text-lg font-semibold self-end max-w-[80%] sm:max-w-md lg:max-w-lg mt-5 mb-5"
-					: "bg-transparent text-lg text-white self-start w-full"
-			} mb-2 relative font-Inter`}
+					? "bg-[var(--color-accent-blue)] text-white text-base font-medium self-end max-w-[80%] sm:max-w-md lg:max-w-lg"
+					: "bg-transparent text-base text-white self-start w-full"
+			} mb-2 relative`}
 			style={{ wordBreak: "break-word" }}
 		>
 			{renderMessageContent()}
@@ -324,7 +323,7 @@ const ChatBubble = ({
 						<span
 							data-tooltip-id="chat-bubble-tooltip"
 							data-tooltip-content="Agents were used to process this response"
-							className="flex items-center text-gray-400"
+							className="flex items-center text-[var(--color-text-secondary)]"
 						>
 							<IconSettings size={18} />
 						</span>
@@ -333,14 +332,14 @@ const ChatBubble = ({
 						<span
 							data-tooltip-id="chat-bubble-tooltip"
 							data-tooltip-content="Internet was used to gather information for this response"
-							className="flex items-center text-gray-400"
+							className="flex items-center text-[var(--color-text-secondary)]"
 						>
 							<IconGlobe size={18} />
 						</span>
 					)}
 					<button
 						onClick={handleCopyToClipboard}
-						className="flex items-center text-gray-400 hover:text-green-500 transition-colors"
+						className="flex items-center text-[var(--color-text-secondary)] hover:text-[var(--color-accent-green)] transition-colors"
 						data-tooltip-id="chat-bubble-tooltip"
 						data-tooltip-content={
 							copied ? "Copied!" : "Copy response"

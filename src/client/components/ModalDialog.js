@@ -29,7 +29,7 @@ const ModalDialog = ({
 				return "bg-green-600 hover:bg-green-500"
 			case "primary":
 			default:
-				return "bg-lightblue hover:bg-blue-700"
+				return "bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)]"
 		}
 	}
 
@@ -62,8 +62,7 @@ const ModalDialog = ({
 						placeholder={inputPlaceholder}
 						value={inputValue}
 						onChange={(e) => onInputChange(e.target.value)}
-						// MODIFIED: Input styling
-						className="w-full border border-neutral-600 text-white rounded-md p-2.5 bg-neutral-700 focus:outline-none focus:border-lightblue text-sm" // Improved input styling
+						className="w-full border border-neutral-600 text-white rounded-md p-2.5 bg-neutral-700 focus:outline-none focus:border-[var(--color-accent-blue)] text-sm"
 					/>
 				)}
 				{extraContent && <div className="mt-4">{extraContent}</div>}

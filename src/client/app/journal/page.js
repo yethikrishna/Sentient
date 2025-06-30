@@ -44,14 +44,38 @@ import { cn } from "@utils/cn"
 const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
 const taskStatusColors = {
-	pending: { bg: "bg-yellow-500/80", border: "border-yellow-400" },
-	processing: { bg: "bg-blue-500/80", border: "border-blue-400" },
-	completed: { bg: "bg-green-500/80", border: "border-green-400" },
-	error: { bg: "bg-red-500/80", border: "border-red-400" },
-	approval_pending: { bg: "bg-purple-500/80", border: "border-purple-400" },
-	active: { bg: "bg-green-500/80", border: "border-green-400" },
-	cancelled: { bg: "bg-gray-600/80", border: "border-gray-500" },
-	default: { bg: "bg-gray-500/80", border: "border-gray-400" }
+	pending: {
+		bg: "bg-[var(--color-status-pending)]/80",
+		border: "border-[var(--color-status-pending)]"
+	},
+	processing: {
+		bg: "bg-[var(--color-accent-blue)]/80",
+		border: "border-[var(--color-accent-blue)]"
+	},
+	completed: {
+		bg: "bg-[var(--color-accent-green)]/80",
+		border: "border-[var(--color-accent-green)]"
+	},
+	error: {
+		bg: "bg-[var(--color-accent-red)]/80",
+		border: "border-[var(--color-accent-red)]"
+	},
+	approval_pending: {
+		bg: "bg-[var(--color-accent-purple)]/80",
+		border: "border-[var(--color-accent-purple)]"
+	},
+	active: {
+		bg: "bg-[var(--color-accent-green)]/80",
+		border: "border-[var(--color-accent-green)]"
+	},
+	cancelled: {
+		bg: "bg-gray-600/80",
+		border: "border-[var(--color-text-muted)]"
+	},
+	default: {
+		bg: "bg-gray-500/80",
+		border: "border-[var(--color-text-secondary)]"
+	}
 }
 
 // Main Journal Page Component
@@ -328,7 +352,7 @@ const CalendarHeader = ({
 				whileHover={{ scale: 1.02 }}
 				transition={{ type: "spring", stiffness: 400, damping: 17 }}
 			>
-				<h1 className="text-2xl font-bold font-Inter text-lightblue">
+				<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)] flex items-center gap-3">
 					Journal
 				</h1>
 			</motion.div>
@@ -572,7 +596,9 @@ const EntryCard = ({
 			onClick={() => onViewEntry(item)}
 			className={cn(
 				"bg-gradient-to-br from-[var(--color-primary-background)] to-[var(--color-primary-surface)]/30 p-3 rounded-lg border cursor-pointer backdrop-blur-sm shadow-sm group",
-				statusInfo ? `border-l-4 ${statusInfo.border}` : "border-transparent"
+				statusInfo
+					? `border-l-4 ${statusInfo.border}`
+					: "border-transparent"
 			)}
 			style={{ transformStyle: "preserve-3d" }}
 		>
@@ -622,9 +648,9 @@ const EntryCard = ({
 								whileTap={{ scale: 0.9 }}
 								onClick={(e) => {
 									e.stopPropagation()
-									onDeleteEntry(item)
+									onDeleteEntry(item) // Opens confirmation modal
 								}}
-								className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-all"
+								className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-accent-red)] hover:bg-[var(--color-accent-red)]/10 transition-all"
 								data-tooltip-id="journal-tooltip"
 								data-tooltip-content="Delete"
 							>
@@ -717,7 +743,7 @@ const RightSideCalendar = ({
 						>
 							{format(day, "d")}
 							{hasEntry && (
-								<span className="absolute bottom-1.5 h-1 w-1 bg-purple-400 rounded-full"></span>
+								<span className="absolute bottom-1.5 h-1 w-1 bg-[var(--color-accent-purple)] rounded-full"></span>
 							)}
 						</button>
 					)
@@ -726,7 +752,7 @@ const RightSideCalendar = ({
 			<div className="mt-auto pt-6 text-sm text-gray-500">
 				<p className="font-semibold text-gray-400 mb-2">Legend:</p>
 				<div className="flex items-center gap-2 mb-1">
-					<span className="h-2 w-2 rounded-full bg-purple-400"></span>{" "}
+					<span className="h-2 w-2 rounded-full bg-[var(--color-accent-purple)]"></span>{" "}
 					Has Entries
 				</div>
 				<div className="flex items-center gap-2 mb-1">
@@ -815,7 +841,7 @@ const AddEntryModal = ({ day, onClose, onDataChange }) => {
 					<button
 						onClick={handleCreate}
 						disabled={isSubmitting || !content.trim()}
-						className="px-6 py-2 text-sm font-medium bg-gradient-to-r from-[var(--color-accent-blue)] to-blue-600 text-white rounded-xl disabled:opacity-50 shadow-lg shadow-[var(--color-accent-blue)]/20"
+						className="px-6 py-2 text-sm font-medium bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white rounded-xl disabled:opacity-50 shadow-lg shadow-[var(--color-accent-blue)]/20 transition-colors"
 					>
 						{isSubmitting ? "Saving..." : "Save"}
 					</button>
@@ -875,7 +901,7 @@ const DeleteConfirmationModal = ({ block, onClose, onDataChange }) => {
 					<button
 						onClick={handleConfirmDelete}
 						disabled={isSubmitting}
-						className="px-6 py-2 text-sm font-medium bg-red-600 hover:bg-red-500 text-white rounded-xl disabled:opacity-50 shadow-lg shadow-red-500/20"
+						className="px-6 py-2 text-sm font-medium bg-[var(--color-accent-red)] hover:bg-[var(--color-accent-red-hover)] text-white rounded-xl disabled:opacity-50 shadow-lg shadow-red-500/20 transition-colors"
 					>
 						{isSubmitting ? "Deleting..." : "Delete"}
 					</button>
@@ -966,7 +992,7 @@ const EntryDetailsModal = ({
 				className="bg-gradient-to-br from-[var(--color-primary-surface)] to-[var(--color-primary-background)] p-6 rounded-2xl shadow-xl w-full max-w-2xl border border-[var(--color-primary-surface-elevated)] max-h-[90vh] flex flex-col"
 			>
 				<div className="flex justify-between items-center mb-4 flex-shrink-0">
-					<h2 className="text-xl font-bold text-lightblue">
+					<h2 className="text-xl font-bold text-[var(--color-accent-blue)]">
 						Journal Entry Details
 					</h2>
 					<motion.button
@@ -1001,7 +1027,7 @@ const EntryDetailsModal = ({
 								</button>
 								<button
 									onClick={() => onDeleteRequest(block)}
-									className="text-xs p-1.5 rounded-md hover:bg-red-500/20 hover:text-red-400"
+									className="text-xs p-1.5 rounded-md hover:bg-[var(--color-accent-red)]/20 hover:text-[var(--color-accent-red)]"
 									data-tooltip-id="journal-tooltip"
 									data-tooltip-content="Delete"
 								>
@@ -1045,9 +1071,13 @@ const EntryDetailsModal = ({
 								className="font-semibold text-lg mb-3 flex items-center justify-between gap-2"
 								onClick={() => router.push("/tasks")}
 							>
-								<IconSparkles size={18} /> Linked Task
+								<IconSparkles
+									size={18}
+									className="text-[var(--color-accent-blue)]"
+								/>{" "}
+								Linked Task
 								<button
-									className="text-xs text-blue-400 hover:underline"
+									className="text-xs text-[var(--color-accent-blue)] hover:underline"
 									onClick={() => router.push("/tasks")}
 								>
 									View in Tasks
@@ -1055,13 +1085,13 @@ const EntryDetailsModal = ({
 							</h3>
 							<div className="space-y-4">
 								<div>
-									<strong className="text-gray-400">
+									<strong className="text-[var(--color-text-secondary)]">
 										Description:
 									</strong>{" "}
 									{linkedTask.description}
 								</div>
 								<div>
-									<strong className="text-gray-400">
+									<strong className="text-[var(--color-text-secondary)]">
 										Status:
 									</strong>{" "}
 									<span className="capitalize font-semibold">
@@ -1070,7 +1100,7 @@ const EntryDetailsModal = ({
 								</div>
 
 								<div>
-									<strong className="text-gray-400">
+									<strong className="text-[var(--color-text-secondary)]">
 										Plan:
 									</strong>
 									<ul className="list-decimal list-inside mt-1 space-y-1 text-sm text-[var(--color-text-secondary)]">
@@ -1085,7 +1115,7 @@ const EntryDetailsModal = ({
 
 								{block.task_progress?.length > 0 && (
 									<div>
-										<strong className="text-gray-400">
+										<strong className="text-[var(--color-text-secondary)]">
 											Progress:
 										</strong>
 										<ul className="mt-1 space-y-2 text-sm text-[var(--color-text-secondary)]">
@@ -1095,7 +1125,7 @@ const EntryDetailsModal = ({
 														key={i}
 														className="flex gap-2"
 													>
-														<span className="text-gray-500">
+														<span className="text-[var(--color-text-muted)]">
 															{format(
 																parseISO(
 																	update.timestamp
@@ -1116,7 +1146,7 @@ const EntryDetailsModal = ({
 
 								{block.task_result && (
 									<div>
-										<strong className="text-gray-400">
+										<strong className="text-[var(--color-text-secondary)]">
 											Outcome:
 										</strong>
 										<pre className="mt-1 p-3 bg-black/20 rounded-md text-xs whitespace-pre-wrap font-mono">
@@ -1140,7 +1170,7 @@ const EntryDetailsModal = ({
 						<button
 							onClick={handleApproveTask}
 							disabled={isSubmitting}
-							className="px-6 py-2 text-sm font-medium bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl disabled:opacity-50 shadow-lg shadow-green-500/20"
+							className="px-6 py-2 text-sm font-medium bg-[var(--color-accent-green)] hover:bg-[var(--color-accent-green-hover)] text-white rounded-xl disabled:opacity-50 shadow-lg shadow-[var(--color-accent-green)]/20 transition-colors"
 						>
 							{isSubmitting ? "Approving..." : "Approve Plan"}
 						</button>

@@ -1,6 +1,5 @@
 fastmcp
 python-dotenv
-notion-client
 motor
 cryptography
-httpx
+notion-client

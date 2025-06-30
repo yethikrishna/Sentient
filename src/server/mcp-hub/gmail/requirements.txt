@@ -1,10 +1,9 @@
 fastmcp
 python-dotenv
-google-api-python-client
-google-auth-httplib2
-google-auth-oauthlib
 motor
 cryptography
+google-api-python-client
+google-auth-oauthlib
 httpx
 sentence-transformers
 torch

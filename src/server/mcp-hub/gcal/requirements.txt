@@ -1,8 +1,6 @@
 fastmcp
 python-dotenv
-google-api-python-client
-google-auth-httplib2
-google-auth-oauthlib
 motor
 cryptography
-httpx
+google-api-python-client
+google-auth-oauthlib

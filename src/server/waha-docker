@@ -1,0 +1,7 @@
+# Use the base image from Docker Hub
+FROM devlikeapro/waha:noweb
+
+ENV WHATSAPP_DEFAULT_ENGINE=GOWS
+ENV WAHA_API_KEY=admin
+ENV WAHA_DASHBOARD_USERNAME=admin
+ENV WAHA_DASHBOARD_PASSWORD=admin

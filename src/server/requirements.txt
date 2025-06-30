@@ -1,13 +1,11 @@
-# src/server/requirements.txt
-# This is the master requirements file for the entire Python backend.
-# It includes dependencies for the main FastAPI server, all MCP servers, and all Celery workers.
+# This is the master requirements file for the Docker image and Celery workers.
+# It includes dependencies for all services that run within this context.
 
 # --- Core Framework & Web Server ---
 fastapi
-uvicorn[standard]  # Includes standard dependencies like websockets
+uvicorn[standard]
 
 # --- Data Validation & Config ---
-pydantic
 python-dotenv
 
 # --- Authentication & Security ---
@@ -16,28 +14,23 @@ cryptography
 
 # --- Asynchronous & HTTP Clients ---
 httpx
-nest_asyncio
 requests
-json5
 
 # --- Database & Caching ---
-motor           # Async MongoDB driver
-pymongo
-neo4j
+motor
 redis
 
 # --- AI & Machine Learning ---
 qwen-agent
 sentence-transformers
 torch
-numpy
 
 # --- Background Task Queue ---
 celery
+python-dateutil # For rrule in scheduler
 
 # --- Google API Clients ---
 google-api-python-client
-google-auth-httplib2
 google-auth-oauthlib
 
 # --- Other 3rd Party API Clients ---

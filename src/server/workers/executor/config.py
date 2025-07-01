@@ -1,32 +1,27 @@
+# src/server/workers/executor/config.py
 import os
 from dotenv import load_dotenv
-import logging
 
-# Load .env file from the current directory or fallback to main server .env
 dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
 if os.path.exists(dotenv_path):
     load_dotenv(dotenv_path=dotenv_path)
 else:
-    load_dotenv()  # Load from default .env if not found
-    logging.info(f"Loaded planner worker .env config from {dotenv_path}")
+    load_dotenv()
 
-# LLM Configuration
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_dev_db")
+
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "OLLAMA")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL_NAME = os.getenv("OLLAMA_MODEL_NAME", "qwen3:4b")
 NOVITA_API_KEY = os.getenv("NOVITA_API_KEY")
 NOVITA_MODEL_NAME = os.getenv("NOVITA_MODEL_NAME", "qwen/qwen3-4b-fp8")
 
-# Kafka Configuration
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092").split(',')
-ACTION_ITEMS_TOPIC = os.getenv("ACTION_ITEMS_TOPIC", "action_items")
-KAFKA_CONSUMER_GROUP_ID = os.getenv("KAFKA_CONSUMER_GROUP_ID", "planner_worker_group")
+SUPERMEMORY_MCP_BASE_URL = os.getenv("SUPERMEMORY_MCP_BASE_URL", "https://mcp.supermemory.ai/")
+SUPERMEMORY_MCP_ENDPOINT_SUFFIX = os.getenv("SUPERMEMORY_MCP_ENDPOINT_SUFFIX", "/sse")
 
-# MongoDB Configuration
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
-MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_db")
-
-# This is a replication of the logic from main/config.py to make the worker self-contained.
+# The executor needs to know about all possible tools.
+# This is a replication of the logic from main/config.py
 INTEGRATIONS_CONFIG = {
     "github": {
         "display_name": "GitHub",
@@ -162,7 +157,7 @@ INTEGRATIONS_CONFIG = {
         "display_name": "AccuWeather",
         "description": "Provides current weather conditions and daily forecasts. The agent can get the current weather for any location or a forecast for the next 1-5 days.",
         "auth_type": "builtin",
-        "icon": "IconCloud", # Frontend needs to map this string to the icon component
+        "icon": "IconCloud",
         "mcp_server_config": {
             "name": "weather_server",
             "url": os.getenv("ACCUWEATHER_MCP_SERVER_URL", "http://localhost:9007/sse")
@@ -172,7 +167,7 @@ INTEGRATIONS_CONFIG = {
         "display_name": "QuickChart",
         "description": "Generates charts and data visualizations on the fly. The agent can create bar charts, line charts, pie charts, and more, then provide a URL or download the image.",
         "auth_type": "builtin",
-        "icon": "IconChartPie", # Frontend needs to map this
+        "icon": "IconChartPie",
         "mcp_server_config": {
             "name": "quickchart_server",
             "url": os.getenv("QUICKCHART_MCP_SERVER_URL", "http://localhost:9008/sse")
@@ -182,7 +177,7 @@ INTEGRATIONS_CONFIG = {
         "display_name": "Progress Updater",
         "description": "Internal tool for the system to provide real-time progress updates on long-running tasks.",
         "auth_type": "builtin",
-        "icon": "IconActivity", # Will need to add this icon
+        "icon": "IconActivity",
         "mcp_server_config": {
             "name": "progress_updater_server",
             "url": os.getenv("PROGRESS_UPDATER_MCP_SERVER_URL", "http://localhost:9011/sse")
@@ -192,7 +187,7 @@ INTEGRATIONS_CONFIG = {
         "display_name": "Chat Agent Tools",
         "description": "Internal tools for the main conversational agent, such as handing off complex tasks to the planning system and checking task status.",
         "auth_type": "builtin",
-        "icon": "IconMessage", # Frontend can map this
+        "icon": "IconMessage",
         "mcp_server_config": {
             "name": "chat_tools_server",
             "url": os.getenv("CHAT_TOOLS_MCP_SERVER_URL", "http://localhost:9013/sse")
@@ -202,7 +197,7 @@ INTEGRATIONS_CONFIG = {
         "display_name": "Journal Tools",
         "description": "Tools for managing the user's Journal. The agent can add new entries, search existing entries by keyword, and get a summary for a specific day.",
         "auth_type": "builtin",
-        "icon": "IconMessage", # Frontend can map this
+        "icon": "IconMessage",
         "mcp_server_config": {
             "name": "journal_server",
             "url": os.getenv("JOURNAL_MCP_SERVER_URL", "http://localhost:9018/sse")
@@ -215,11 +210,7 @@ INTEGRATIONS_CONFIG = {
         "icon": "IconBrain",
         "mcp_server_config": {
             "name": "supermemory",
-            # URL is constructed dynamically based on user's supermemory_user_id
             "url": None
         }
     }
 }
-
-
-logging.info(f"Planner Worker configured. Input Topic: {ACTION_ITEMS_TOPIC}")

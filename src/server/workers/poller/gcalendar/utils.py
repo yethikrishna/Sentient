@@ -1,36 +1,15 @@
 import os
 import datetime
 import json
-import base64
 from datetime import timezone
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives import padding
-from cryptography.hazmat.backends import default_backend
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-from workers.poller.gcalendar.config import AES_SECRET_KEY, AES_IV
+from workers.utils.crypto import aes_decrypt, aes_encrypt
 from workers.poller.gcalendar.db import PollerMongoManager
 from typing import Optional, List, Dict, Tuple
-
-def aes_decrypt(encrypted_data_b64: str) -> str:
-    if not AES_SECRET_KEY or not AES_IV:
-        print(f"[{datetime.datetime.now()}] [GCalendarPoller_AES_ERROR] AES keys not configured.")
-        raise ValueError("AES encryption keys not configured in poller.")
-    try:
-        backend = default_backend()
-        cipher = Cipher(algorithms.AES(AES_SECRET_KEY), modes.CBC(AES_IV), backend=backend)
-        decryptor = cipher.decryptor()
-        encrypted_bytes = base64.b64decode(encrypted_data_b64)
-        decrypted_padded = decryptor.update(encrypted_bytes) + decryptor.finalize()
-        unpadder = padding.PKCS7(algorithms.AES.block_size).unpadder()
-        unpadded_data = unpadder.update(decrypted_padded) + unpadder.finalize()
-        return unpadded_data.decode('utf-8')
-    except Exception as e:
-        print(f"[{datetime.datetime.now()}] [GCalendarPoller_AES_ERROR] Decryption failed: {str(e)}")
-        raise ValueError(f"Decryption failed: {str(e)}")
 
 async def get_gcalendar_credentials(user_id: str, db_manager: PollerMongoManager) -> Optional[Credentials]:
     import asyncio
@@ -52,8 +31,6 @@ async def get_gcalendar_credentials(user_id: str, db_manager: PollerMongoManager
             await loop.run_in_executor(None, creds.refresh, GoogleAuthRequest())
             
             refreshed_token_info = json.loads(creds.to_json())
-            # AES encrypt function needs to be available or imported
-            from main.auth.utils import aes_encrypt
             encrypted_refreshed_creds = aes_encrypt(json.dumps(refreshed_token_info))
             await db_manager.user_profiles_collection.update_one(
                 {"user_id": user_id},

@@ -13,15 +13,6 @@ else:
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_agent_db")
 
-# AES Encryption Keys (for decrypting Google tokens stored by main server)
-AES_SECRET_KEY_HEX = os.getenv("AES_SECRET_KEY")
-AES_IV_HEX = os.getenv("AES_IV")
-AES_SECRET_KEY = bytes.fromhex(AES_SECRET_KEY_HEX) if AES_SECRET_KEY_HEX and len(AES_SECRET_KEY_HEX) == 64 else None
-AES_IV = bytes.fromhex(AES_IV_HEX) if AES_IV_HEX and len(AES_IV_HEX) == 32 else None
-
-if not AES_SECRET_KEY or not AES_IV:
-    print(f"[{datetime.datetime.now()}] [GmailPoller_Config_WARNING] AES keys for token decryption are missing or invalid.")
-
 # Google API Config (Poller specific, if it handles its own auth entirely)
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID_POLLER")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET_POLLER")

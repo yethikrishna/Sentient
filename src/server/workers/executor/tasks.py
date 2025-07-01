@@ -11,8 +11,8 @@ from qwen_agent.agents import Assistant
 from workers.celery_app import celery_app
 from workers.utils.api_client import notify_user
 
-# Load environment variables for the worker
-from main.config import (
+# Load environment variables for the worker from its own config
+from workers.executor.config import (
     MONGO_URI, MONGO_DB_NAME, INTEGRATIONS_CONFIG, LLM_PROVIDER,
     OLLAMA_BASE_URL, OLLAMA_MODEL_NAME, SUPERMEMORY_MCP_BASE_URL,
     SUPERMEMORY_MCP_ENDPOINT_SUFFIX
@@ -29,7 +29,7 @@ if LLM_PROVIDER == "OLLAMA":
         'api_key': 'ollama', # Ollama doesn't require a key
     }
 elif LLM_PROVIDER == "NOVITA":
-    from main.config import NOVITA_API_KEY, NOVITA_MODEL_NAME
+    from workers.executor.config import NOVITA_API_KEY, NOVITA_MODEL_NAME
     llm_cfg = {
         "model": NOVITA_MODEL_NAME,
         "api_key": NOVITA_API_KEY,

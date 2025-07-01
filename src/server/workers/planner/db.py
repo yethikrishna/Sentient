@@ -6,7 +6,7 @@ from typing import List, Dict, Any
 import json
 
 from workers.planner.config import MONGO_URI, MONGO_DB_NAME, INTEGRATIONS_CONFIG
-from main.auth.utils import aes_decrypt
+from workers.utils.crypto import aes_decrypt
 
 logger = logging.getLogger(__name__)
 

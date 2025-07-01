@@ -11,15 +11,6 @@ else:
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_agent_db")
 
-# AES Encryption Keys (for decrypting Google tokens stored by main server)
-AES_SECRET_KEY_HEX = os.getenv("AES_SECRET_KEY")
-AES_IV_HEX = os.getenv("AES_IV")
-AES_SECRET_KEY = bytes.fromhex(AES_SECRET_KEY_HEX) if AES_SECRET_KEY_HEX and len(AES_SECRET_KEY_HEX) == 64 else None
-AES_IV = bytes.fromhex(AES_IV_HEX) if AES_IV_HEX and len(AES_IV_HEX) == 32 else None
-
-if not AES_SECRET_KEY or not AES_IV:
-    print(f"[{datetime.datetime.now()}] [GCalendarPoller_Config_WARNING] AES keys for token decryption are missing or invalid.")
-
 # Polling intervals (can be fine-tuned for the poller specifically)
 POLLING_INTERVALS_WORKER = {
     "ACTIVE_USER_SECONDS": int(os.getenv("WORKER_POLL_ACTIVE_SECONDS", 5 * 60)),

@@ -37,8 +37,8 @@ services:
       name: mcp-memory-dev
       runtime: python
       branch: dev
-      buildCommand: pip install -r mcp-hub/memory/requirements.txt
-      startCommand: python -m mcp-hub.memory.main
+      buildCommand: pip install -r mcp_hub/memory/requirements.txt
+      startCommand: python -m mcp_hub.memory.main
       envVars:
           - key: PYTHON_VERSION
             value: "3.11.5"
@@ -50,8 +50,8 @@ services:
       name: mcp-gmail-dev
       runtime: python
       branch: dev
-      buildCommand: pip install -r mcp-hub/gmail/requirements.txt
-      startCommand: python -m mcp-hub.gmail.main
+      buildCommand: pip install -r mcp_hub/gmail/requirements.txt
+      startCommand: python -m mcp_hub.gmail.main
       envVars:
           - key: PYTHON_VERSION
             value: "3.11.5"
@@ -63,8 +63,8 @@ services:
       name: mcp-gcal-dev
       runtime: python
       branch: dev
-      buildCommand: pip install -r mcp-hub/gcal/requirements.txt
-      startCommand: python -m mcp-hub.gcal.main
+      buildCommand: pip install -r mcp_hub/gcal/requirements.txt
+      startCommand: python -m mcp_hub.gcal.main
       envVars:
           - key: PYTHON_VERSION
             value: "3.11.5"
@@ -76,8 +76,8 @@ services:
       name: mcp-gdrive-dev
       runtime: python
       branch: dev
-      buildCommand: pip install -r mcp-hub/gdrive/requirements.txt
-      startCommand: python -m mcp-hub.gdrive.main
+      buildCommand: pip install -r mcp_hub/gdrive/requirements.txt
+      startCommand: python -m mcp_hub.gdrive.main
       envVars:
           - key: PYTHON_VERSION
             value: "3.11.5"
@@ -89,8 +89,8 @@ services:
       name: mcp-gdocs-dev
       runtime: python
       branch: dev
-      buildCommand: pip install -r mcp-hub/gdocs/requirements.txt
-      startCommand: python -m mcp-hub.gdocs.main
+      buildCommand: pip install -r mcp_hub/gdocs/requirements.txt
+      startCommand: python -m mcp_hub.gdocs.main
       envVars:
           - key: PYTHON_VERSION
             value: "3.11.5"
@@ -102,8 +102,8 @@ services:
       name: mcp-google-search-dev
       runtime: python
       branch: dev
-      buildCommand: pip install -r mcp-hub/google_search/requirements.txt
-      startCommand: python -m mcp-hub.google_search.main
+      buildCommand: pip install -r mcp_hub/google_search/requirements.txt
+      startCommand: python -m mcp_hub.google_search.main
       envVars:
           - key: PYTHON_VERSION
             value: "3.11.5"
@@ -115,8 +115,8 @@ services:
       name: mcp-slack-dev
       runtime: python
       branch: dev
-      buildCommand: pip install -r mcp-hub/slack/requirements.txt
-      startCommand: python -m mcp-hub.slack.main
+      buildCommand: pip install -r mcp_hub/slack/requirements.txt
+      startCommand: python -m mcp_hub.slack.main
       envVars:
           - key: PYTHON_VERSION
             value: "3.11.5"
@@ -128,8 +128,8 @@ services:
       name: mcp-accuweather-dev
       runtime: python
       branch: dev
-      buildCommand: pip install -r mcp-hub/accuweather/requirements.txt
-      startCommand: python -m mcp-hub.accuweather.main
+      buildCommand: pip install -r mcp_hub/accuweather/requirements.txt
+      startCommand: python -m mcp_hub.accuweather.main
       envVars:
           - key: PYTHON_VERSION
             value: "3.11.5"
@@ -141,8 +141,8 @@ services:
       name: mcp-quickchart-dev
       runtime: python
       branch: dev
-      buildCommand: pip install -r mcp-hub/quickchart/requirements.txt
-      startCommand: python -m mcp-hub.quickchart.main
+      buildCommand: pip install -r mcp_hub/quickchart/requirements.txt
+      startCommand: python -m mcp_hub.quickchart.main
       envVars:
           - key: PYTHON_VERSION
             value: "3.11.5"
@@ -154,8 +154,8 @@ services:
       name: mcp-notion-dev
       runtime: python
       branch: dev
-      buildCommand: pip install -r mcp-hub/notion/requirements.txt
-      startCommand: python -m mcp-hub.notion.main
+      buildCommand: pip install -r mcp_hub/notion/requirements.txt
+      startCommand: python -m mcp_hub.notion.main
       envVars:
           - key: PYTHON_VERSION
             value: "3.11.5"
@@ -167,8 +167,8 @@ services:
       name: mcp-github-dev
       runtime: python
       branch: dev
-      buildCommand: pip install -r mcp-hub/github/requirements.txt
-      startCommand: python -m mcp-hub.github.main
+      buildCommand: pip install -r mcp_hub/github/requirements.txt
+      startCommand: python -m mcp_hub.github.main
       envVars:
           - key: PYTHON_VERSION
             value: "3.11.5"
@@ -180,8 +180,8 @@ services:
       name: mcp-progress-updater-dev
       runtime: python
       branch: dev
-      buildCommand: pip install -r mcp-hub/progress_updater/requirements.txt
-      startCommand: python -m mcp-hub.progress_updater.main
+      buildCommand: pip install -r mcp_hub/progress_updater/requirements.txt
+      startCommand: python -m mcp_hub.progress_updater.main
       envVars:
           - key: PYTHON_VERSION
             value: "3.11.5"
@@ -193,8 +193,8 @@ services:
       name: mcp-news-dev
       runtime: python
       branch: dev
-      buildCommand: pip install -r mcp-hub/news/requirements.txt
-      startCommand: python -m mcp-hub.news.main
+      buildCommand: pip install -r mcp_hub/news/requirements.txt
+      startCommand: python -m mcp_hub.news.main
       envVars:
           - key: PYTHON_VERSION
             value: "3.11.5"
@@ -206,8 +206,8 @@ services:
       name: mcp-chat-tools-dev
       runtime: python
       branch: dev
-      buildCommand: pip install -r mcp-hub/chat_tools/requirements.txt
-      startCommand: python -m mcp-hub.chat_tools.main
+      buildCommand: pip install -r mcp_hub/chat_tools/requirements.txt
+      startCommand: python -m mcp_hub.chat_tools.main
       envVars:
           - key: PYTHON_VERSION
             value: "3.11.5"
@@ -219,8 +219,8 @@ services:
       name: mcp-gslides-dev
       runtime: python
       branch: dev
-      buildCommand: pip install -r mcp-hub/gslides/requirements.txt
-      startCommand: python -m mcp-hub.gslides.main
+      buildCommand: pip install -r mcp_hub/gslides/requirements.txt
+      startCommand: python -m mcp_hub.gslides.main
       envVars:
           - key: PYTHON_VERSION
             value: "3.11.5"
@@ -232,8 +232,8 @@ services:
       name: mcp-gsheets-dev
       runtime: python
       branch: dev
-      buildCommand: pip install -r mcp-hub/gsheets/requirements.txt
-      startCommand: python -m mcp-hub.gsheets.main
+      buildCommand: pip install -r mcp_hub/gsheets/requirements.txt
+      startCommand: python -m mcp_hub.gsheets.main
       envVars:
           - key: PYTHON_VERSION
             value: "3.11.5"
@@ -245,8 +245,8 @@ services:
       name: mcp-gmaps-dev
       runtime: python
       branch: dev
-      buildCommand: pip install -r mcp-hub/gmaps/requirements.txt
-      startCommand: python -m mcp-hub.gmaps.main
+      buildCommand: pip install -r mcp_hub/gmaps/requirements.txt
+      startCommand: python -m mcp_hub.gmaps.main
       envVars:
           - key: PYTHON_VERSION
             value: "3.11.5"
@@ -258,8 +258,8 @@ services:
       name: mcp-gshopping-dev
       runtime: python
       branch: dev
-      buildCommand: pip install -r mcp-hub/gshopping/requirements.txt
-      startCommand: python -m mcp-hub.gshopping.main
+      buildCommand: pip install -r mcp_hub/gshopping/requirements.txt
+      startCommand: python -m mcp_hub.gshopping.main
       envVars:
           - key: PYTHON_VERSION
             value: "3.11.5"
@@ -271,8 +271,8 @@ services:
       name: mcp-journal-dev
       runtime: python
       branch: dev
-      buildCommand: pip install -r mcp-hub/journal/requirements.txt
-      startCommand: python -m mcp-hub.journal.main
+      buildCommand: pip install -r mcp_hub/journal/requirements.txt
+      startCommand: python -m mcp_hub.journal.main
       envVars:
           - key: PYTHON_VERSION
             value: "3.11.5"

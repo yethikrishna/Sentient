@@ -38,13 +38,13 @@ try {
     # Define key paths
     $srcPath = Join-Path -Path $projectRoot -ChildPath "src"
     $clientPath = Join-Path -Path $srcPath -ChildPath "client"
-    $mcpHubPath = Join-Path -Path $srcPath -ChildPath "server\mcp-hub"
+    $mcpHubPath = Join-Path -Path $srcPath -ChildPath "server\mcp_hub"
     $venvActivatePath = Join-Path -Path $srcPath -ChildPath "server\venv\Scripts\activate.ps1"
 
     # --- Path Validation ---
     if (-not (Test-Path -Path $srcPath)) { throw "The 'src' directory was not found. Please run this script from the project root." }
     if (-not (Test-Path -Path $clientPath)) { throw "The 'src/client' directory was not found." }
-    if (-not (Test-Path -Path $mcpHubPath)) { throw "The 'src/server/mcp-hub' directory was not found." }
+    if (-not (Test-Path -Path $mcpHubPath)) { throw "The 'src/server/mcp_hub' directory was not found." }
     if (-not (Test-Path -Path $venvActivatePath)) { throw "The venv activation script was not found at '$venvActivatePath'." }
 
     # Helper function to start a process in a new terminal window
@@ -93,7 +93,7 @@ try {
 
     foreach ($serverName in $mcpServers) {
         $windowTitle = "MCP - $($serverName.ToUpper())"
-        $pythonModule = "server.mcp-hub.$serverName.main"
+        $pythonModule = "server.mcp_hub.$serverName.main"
         $commandToRun = "& '$venvActivatePath'; python -m '$pythonModule'"
         Write-Host "🚀 Launching $windowTitle..." -ForegroundColor Yellow
         Start-NewTerminal -WindowTitle $windowTitle -Command $commandToRun -WorkDir $srcPath

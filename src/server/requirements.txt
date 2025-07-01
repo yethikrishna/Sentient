@@ -22,8 +22,7 @@ redis
 
 # --- AI & Machine Learning ---
 qwen-agent
-sentence-transformers
-torch
+google-genai
 
 # --- Background Task Queue ---
 celery

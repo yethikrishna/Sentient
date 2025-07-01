@@ -1,121 +1,118 @@
 # server/mcp-hub/gmail/helpers.py
 
+import os
 import base64
 from email.mime.text import MIMEText
 from typing import Dict, Any, List
-import httpx
-from sentence_transformers import SentenceTransformer, util
-from urllib.parse import quote
+
+from google import genai
+from google.genai import types
+import numpy as np
+from dotenv import load_dotenv
 from googleapiclient.discovery import Resource
 from googleapiclient.errors import HttpError
+
+# Load API key
+load_dotenv()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+# Initialize the Gemini client
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 
 def extract_email_body(payload: Dict[str, Any]) -> str:
     """
     Recursively extracts the body of an email from its payload.
-    It prioritizes 'text/plain', then 'text/html'.
-
-    Args:
-        payload (Dict[str, Any]): The payload of a Gmail message.
-
-    Returns:
-        str: The decoded email body.
+    Prefers 'text/plain' over 'text/html'.
     """
     if "parts" in payload:
-        # It's a multipart message, iterate through parts
-        text_plain_content = ""
-        text_html_content = ""
+        text_plain, text_html = "", ""
         for part in payload["parts"]:
+            data = part.get("body", {}).get("data")
+            if not data:
+                continue
+            decoded = base64.urlsafe_b64decode(data).decode("utf-8")
             if part["mimeType"] == "text/plain":
-                text_plain_content += base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
+                text_plain += decoded
             elif part["mimeType"] == "text/html":
-                text_html_content += base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
-        
-        # Prefer plain text over HTML
-        return text_plain_content if text_plain_content else text_html_content
-    elif "body" in payload and "data" in payload["body"]:
-        # Single part message
+                text_html += decoded
+        return text_plain or text_html
+
+    if payload.get("body", {}).get("data"):
         return base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8")
-    
+
     return ""
 
 
 async def create_message(to: str, subject: str, message: str) -> str:
     """
-    Creates a MIME message for an email and encodes it.
-
-    Args:
-        to (str): Recipient email address.
-        subject (str): Email subject.
-        message (str): Email body text.
-
-    Returns:
-        str: Raw, URL-safe base64 encoded MIME message.
+    Creates and base64-encodes a MIME email.
     """
-    try:
-        # The external elaborator service call can be added back here if needed
-        # For now, we use the message directly for simplicity.
-        
-        # Elaborator call example (if you run the service):
-        # async with httpx.AsyncClient() as client:
-        #     response = await client.post("http://localhost:5000/elaborator", json={...})
-        #     elaborated_message = response.json().get("message", message)
-        
-        msg = MIMEText(message)
-        msg["To"] = to
-        msg["Subject"] = subject
-        return base64.urlsafe_b64encode(msg.as_bytes()).decode()
-    except Exception as error:
-        raise Exception(f"Error creating message: {error}")
+    msg = MIMEText(message)
+    msg["To"] = to
+    msg["Subject"] = subject
+    return base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
 
 
 async def find_best_matching_email(service: Resource, query: str) -> Dict[str, Any]:
     """
-    Searches inbox and finds the best matching email based on semantic similarity.
-
-    Args:
-        service (Resource): Authenticated Gmail API service.
-        query (str): The query string to compare against email content.
-
-    Returns:
-        Dict[str, Any]: A dictionary containing the status and details of the best match.
+    Searches the user's inbox and returns the email whose subject+body
+    is most semantically similar to the provided query, using Gemini embeddings.
     """
     try:
-        results = service.users().messages().list(userId="me", q="in:inbox").execute()
-        messages = results.get("messages", [])
+        # 1) List recent messages
+        resp = service.users().messages().list(userId="me", q="in:inbox").execute()
+        msgs = resp.get("messages", [])
+        if not msgs:
+            return {"status": "failure", "error": "No emails found in inbox."}
 
-        if not messages:
-            return {"status": "failure", "error": "No recent emails found in inbox."}
-
+        # 2) Fetch full details for up to 20 messages
         email_data: List[Dict[str, Any]] = []
-        for message in messages[:20]: # Search more messages for better matching
-            msg = service.users().messages().get(userId="me", id=message["id"], format="full").execute()
-            headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
-            email_body = extract_email_body(msg.get("payload", {}))
-
+        for m in msgs[:20]:
+            msg = service.users().messages().get(
+                userId="me", id=m["id"], format="full"
+            ).execute()
+            headers = {h["name"]: h["value"] for h in msg["payload"].get("headers", [])}
+            body = extract_email_body(msg["payload"])
             email_data.append({
-                "id": message["id"],
+                "id": m["id"],
                 "threadId": msg.get("threadId"),
-                "subject": headers.get("Subject", "No Subject"),
-                "from": headers.get("From", "Unknown Sender"),
+                "subject": headers.get("Subject", ""),
+                "from": headers.get("From", ""),
                 "to": headers.get("To"),
-                "reply_to": headers.get("Reply-To"),
-                "message_id_header": headers.get("Message-ID"),
-                "snippet": msg.get("snippet", ""),
-                "body": email_body,
+                "body": body,
             })
 
-        model = SentenceTransformer("all-MiniLM-L6-v2")
-        query_embedding = model.encode(query, convert_to_tensor=True)
-        email_embeddings = model.encode([e["subject"] + " " + e["body"] for e in email_data], convert_to_tensor=True)
+        # 3) Prepare the texts to embed: query + each email's subject+body
+        docs = [f'{e["subject"]} {e["body"]}' for e in email_data]
 
-        scores = util.pytorch_cos_sim(query_embedding, email_embeddings)[0]
-        best_match_index = scores.argmax().item()
-        best_email = email_data[best_match_index]
+        # 4) Call Gemini embed_content in a single batch for all texts
+        #    This returns a list of ContentEmbedding objects in resp.embeddings
+        #    We extract the .values list from each one.
+        all_texts = [query] + docs
+        resp = client.models.embed_content(
+            model="gemini-embedding-exp-03-07",
+            contents=all_texts,
+            config=types.EmbedContentConfig(task_type="SEMANTIC_SIMILARITY")
+        )
+        embeddings = [ce.values for ce in resp.embeddings]
 
-        return {"status": "success", "email_details": best_email}
+        # 5) Separate query embedding and doc embeddings
+        q_emb = np.array(embeddings[0])
+        doc_embs = np.array(embeddings[1:])
 
-    except HttpError as error:
-        return {"status": "failure", "error": f"Google API Error: {error}"}
-    except Exception as error:
-        return {"status": "failure", "error": str(error)}
+        # 6) Compute cosine similarities
+        norms = np.linalg.norm(doc_embs, axis=1) * np.linalg.norm(q_emb)
+        scores = (doc_embs @ q_emb) / norms
+        best_idx = int(np.argmax(scores))
+
+        # 7) Return the best matching email
+        return {
+            "status": "success",
+            "email_details": email_data[best_idx]
+        }
+
+    except HttpError as e:
+        return {"status": "failure", "error": f"Google API Error: {e}"}
+    except Exception as e:
+        return {"status": "failure", "error": str(e)}

@@ -5,5 +5,5 @@ cryptography
 google-api-python-client
 google-auth-oauthlib
 httpx
-sentence-transformers
-torch
+google-genai
+python-dotenv

@@ -1,6 +1,5 @@
-// src/client/app/notifications/page.js
 "use client"
-import React, { useState, useEffect, useCallback } from "react"
+import React, { useState, useEffect, useCallback, useRef } from "react"
 import {
 	IconLoader,
 	IconBell,
@@ -9,16 +8,18 @@ import {
 	IconX
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
-import Sidebar from "@components/Sidebar"
+import { Tooltip } from "react-tooltip"
 import { cn } from "@utils/cn"
 import { useRouter } from "next/navigation"
+import { useSmoothScroll } from "@hooks/useSmoothScroll"
 
 const Notifications = () => {
 	const [notifications, setNotifications] = useState([])
 	const [isLoading, setIsLoading] = useState(true) // Start loading initially
-	const [userDetails, setUserDetails] = useState({}) // Initialize to empty object
-	const [isSidebarVisible, setSidebarVisible] = useState(false)
 	const [error, setError] = useState(null) // State for storing fetch errors
+	const scrollRef = useRef(null)
+	useSmoothScroll(scrollRef)
+
 	const router = useRouter()
 
 	const fetchNotifications = useCallback(async () => {
@@ -69,24 +70,7 @@ const Notifications = () => {
 		}
 	}, [])
 
-	// Function to fetch user details
-	const fetchUserDetails = async () => {
-		try {
-			const response = await fetch("/api/user/profile")
-			if (!response.ok) {
-				throw new Error("Failed to fetch user profile")
-			}
-			const data = await response.json()
-			setUserDetails(data || {})
-		} catch (error) {
-			toast.error("Error fetching user details for sidebar.")
-			console.error("Error fetching user details for sidebar:", error)
-			setUserDetails({})
-		}
-	}
-
 	useEffect(() => {
-		fetchUserDetails()
 		fetchNotifications() // Call fetch on initial mount
 
 		const intervalId = setInterval(fetchNotifications, 120000) // Refresh every 2 minutes
@@ -137,70 +121,70 @@ const Notifications = () => {
 
 	// --- Render Logic ---
 	return (
-		<div className="h-screen bg-matteblack flex relative overflow-hidden dark">
-			<Sidebar
-				userDetails={userDetails}
-				isSidebarVisible={isSidebarVisible}
-				setSidebarVisible={setSidebarVisible}
-			/>
+		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
+			<Tooltip id="notifications-tooltip" />
+			<div className="flex-1 flex flex-col overflow-hidden h-screen">
+				<header className="flex items-center justify-between p-4 md:px-8 md:py-6 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)]">
+					<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)] flex items-center gap-3">
+						Notifications
+					</h1>
+				</header>
 
-			<div className="flex-grow flex flex-col h-full bg-matteblack text-white relative overflow-hidden p-6 md:p-8">
-				<h1 className="text-3xl md:text-4xl font-light text-white mb-6 md:mb-8 px-4 text-center md:text-left">
-					Notifications
-				</h1>
-
-				<div className="w-full max-w-3xl mx-auto flex-grow overflow-hidden flex flex-col">
+				<main className="flex-1 w-full max-w-3xl mx-auto flex flex-col overflow-hidden p-4 sm:p-6">
 					{isLoading ? ( // Handle loading state first
 						<div className="flex-grow flex flex-col justify-center items-center text-center p-10">
-							<IconLoader className="w-10 h-10 text-lightblue animate-spin" />
-							<span className="ml-3 text-gray-400 text-lg mt-4">
+							<IconLoader className="w-10 h-10 text-[var(--color-accent-blue)] animate-spin" />
+							<span className="ml-3 text-[var(--color-text-secondary)] text-lg mt-4">
 								Loading Notifications...
 							</span>
 						</div>
 					) : error ? ( // Display error message if error state is set
 						<div className="flex-grow flex flex-col justify-center items-center text-center p-10">
-							<IconAlertCircle className="w-12 h-12 text-red-500 mb-4" />
-							<p className="text-red-400 text-lg mb-4">
+							<IconAlertCircle className="w-12 h-12 text-[var(--color-accent-red)] mb-4" />
+							<p className="text-[var(--color-accent-red)] text-lg mb-4">
 								Could not load notifications
 							</p>
-							<p className="text-gray-500 text-sm mb-6">
+							<p className="text-[var(--color-text-muted)] text-sm mb-6">
 								{error}
 							</p>
 							<button
 								onClick={fetchNotifications} // Allow retry
-								className="py-2 px-5 rounded bg-lightblue hover:bg-blue-700 text-white text-sm font-medium transition-colors"
+								className="py-2 px-5 rounded-lg bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white text-sm font-medium transition-colors"
 							>
 								Retry
 							</button>
 						</div>
 					) : notifications.length === 0 ? ( // Display empty state if no error and not loading
 						<div className="flex-grow flex flex-col justify-center items-center text-center p-10">
-							<IconBell className="w-16 h-16 text-neutral-700 mb-4" />
-							<p className="text-gray-500 text-xl">
+							<IconBell className="w-16 h-16 text-[var(--color-text-muted)] mb-4" />
+							<p className="text-[var(--color-text-secondary)] text-xl">
 								No new notifications
 							</p>
-							<p className="text-gray-600 text-sm mt-2">
+							<p className="text-[var(--color-text-muted)] text-sm mt-2">
 								Check back later for updates.
 							</p>
 						</div>
 					) : (
 						// Display notification list
-						<div className="flex-grow overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+						<div
+							ref={scrollRef}
+							className="flex-1 overflow-y-auto space-y-3 pr-2 no-scrollbar"
+						>
 							{notifications.map((notif) => (
 								<div // eslint-disable-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
 									key={notif.id ?? Math.random()}
 									onClick={() => router.push("/tasks")}
-									className="flex items-center gap-4 bg-neutral-800 p-4 rounded-lg border border-neutral-700/50 shadow-sm cursor-pointer hover:bg-neutral-700/70 transition-colors group"
+									className="flex items-center gap-4 bg-[var(--color-primary-surface)] p-4 rounded-lg border border-[var(--color-primary-surface-elevated)]/50 shadow-sm cursor-pointer hover:bg-[var(--color-primary-surface-elevated)]/70 transition-colors group"
 								>
 									<div className="flex-shrink-0 pt-1">
-										<IconBell className="w-5 h-5 text-lightblue" />
+										<IconBell className="w-5 h-5 text-[var(--color-accent-blue)]" />
 									</div>
 									<div className="flex-grow">
-										<p className="text-white text-sm leading-relaxed mb-1">
+										<p className="text-[var(--color-text-primary)] text-sm leading-relaxed mb-1">
 											{notif.message ||
 												"No message content."}
 										</p>
-										<p className="text-gray-500 text-xs">
+										<p className="text-[var(--color-text-muted)] text-xs">
 											{formatTimestamp(notif.timestamp)}
 										</p>
 									</div>
@@ -209,18 +193,23 @@ const Notifications = () => {
 											onClick={(e) =>
 												handleDelete(e, notif.id)
 											}
-											className="p-1.5 text-gray-500 rounded-full opacity-0 group-hover:opacity-100 hover:bg-neutral-600 hover:text-red-400 transition-all duration-200"
-											title="Dismiss notification"
+											className="p-1.5 text-[var(--color-text-muted)] rounded-full opacity-0 group-hover:opacity-100 hover:bg-[var(--color-primary-surface-elevated)] hover:text-[var(--color-accent-red)] transition-all duration-200"
+											data-tooltip-id="notifications-tooltip"
+											data-tooltip-content="Dismiss notification"
 										>
 											<IconX size={16} />
 										</button>
-										<IconArrowRight className="w-5 h-5 text-gray-500 transition-transform duration-300 group-hover:translate-x-1 group-hover:text-white" />
+										<IconArrowRight
+											className="w-5 h-5 text-[var(--color-text-muted)] transition-transform duration-300 group-hover:translate-x-1 group-hover:text-white"
+											data-tooltip-id="notifications-tooltip"
+											data-tooltip-content="View associated tasks"
+										/>
 									</div>
 								</div>
 							))}
 						</div>
 					)}
-				</div>
+				</main>
 			</div>
 		</div>
 	)

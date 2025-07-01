@@ -3,8 +3,6 @@
 import toast from "react-hot-toast"
 import ModalDialog from "@components/ModalDialog"
 import {
-	IconGift,
-	IconRocket,
 	IconMail,
 	IconCalendarEvent,
 	IconWorldSearch,
@@ -15,25 +13,25 @@ import {
 	IconBrandNotion,
 	IconPlugConnected,
 	IconPlugOff,
+	IconPlus,
 	IconCloud,
 	IconChartPie,
 	IconBrain,
 	IconBrandGithub,
 	IconNews,
-	IconBrandGoogle,
-	IconUser,
 	IconFileText,
-	IconLock,
-	IconLockOpen,
 	IconPresentation,
 	IconTable,
 	IconMapPin,
-	IconShoppingCart
+	IconShoppingCart,
+	IconChevronDown,
+	IconX,
+	IconBrandWhatsapp
 } from "@tabler/icons-react"
-import { useState, useEffect, useCallback } from "react"
-import Sidebar from "@components/Sidebar"
+import { useState, useEffect, useCallback, useRef } from "react"
+import { Tooltip } from "react-tooltip"
 import React from "react"
-import { cn } from "@utils/cn"
+import { useSmoothScroll } from "@hooks/useSmoothScroll"
 
 const integrationIcons = {
 	gmail: IconMail,
@@ -71,11 +69,11 @@ const MANUAL_INTEGRATION_CONFIGS = {
 	},
 	notion: {
 		instructions: [
-			"1. Go to notion.so/my-integrations to create a new integration.",
-			"2. Give it a name and associate it with a workspace.",
-			"3. On the next screen, copy the 'Internal Integration Token'.",
-			"4. Go to the Notion pages or databases you want Sentient to access.",
-			"5. Click the '...' menu, find 'Add connections', and select your new integration."
+			"Go to notion.so/my-integrations to create a new integration.",
+			"Give it a name and associate it with a workspace.",
+			"On the next screen, copy the 'Internal Integration Token'.",
+			"Go to the Notion pages or databases you want Sentient to access.",
+			"Click the '...' menu, find 'Add connections', and select your new integration."
 		],
 		fields: [
 			{
@@ -176,7 +174,7 @@ const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {
 							htmlFor={field.id}
 							className="block text-sm font-medium text-gray-300 mb-1"
 						>
-							{field.label}
+							Enter {field.label}
 						</label>
 						<input
 							type={field.type}
@@ -184,7 +182,7 @@ const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {
 							id={field.id}
 							onChange={handleChange}
 							value={credentials[field.id] || ""}
-							className="w-full bg-neutral-700 border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-lightblue"
+							className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
 							autoComplete="off"
 						/>
 					</div>
@@ -206,227 +204,260 @@ const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {
 	)
 }
 
-const GoogleAuthSettings = ({ mode, onModeChange, onSaveSuccess }) => {
-	const [credentials, setCredentials] = useState("")
+const WhatsAppSettings = () => {
+	const [whatsappNumber, setWhatsappNumber] = useState("")
+	const [isLoading, setIsLoading] = useState(true)
 	const [isSaving, setIsSaving] = useState(false)
 
-	const handleSave = async () => {
-		if (mode === "custom") {
-			try {
-				JSON.parse(credentials)
-			} catch (e) {
-				toast.error(
-					"Invalid JSON. Please paste the entire content of your Service Account key file."
-				)
-				return
-			}
+	const fetchWhatsAppNumber = useCallback(async () => {
+		setIsLoading(true)
+		try {
+			const response = await fetch("/api/settings/whatsapp")
+			if (!response.ok)
+				throw new Error("Failed to fetch WhatsApp number.")
+			const data = await response.json()
+			setWhatsappNumber(data.whatsapp_number || "")
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsLoading(false)
 		}
+	}, [])
 
+	useEffect(() => {
+		fetchWhatsAppNumber()
+	}, [fetchWhatsAppNumber])
+
+	const handleSave = async () => {
 		setIsSaving(true)
 		try {
-			const res = await fetch("/api/settings/google-auth", {
+			const response = await fetch("/api/settings/whatsapp", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					mode: mode,
-					credentialsJson: mode === "custom" ? credentials : undefined
-				})
+				body: JSON.stringify({ whatsapp_number: whatsappNumber })
 			})
-
-			const data = await res.json()
-			if (!res.ok) {
-				throw new Error(
-					data.detail || "Failed to save Google settings."
-				)
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(data.error || "Failed to save number.")
 			}
-			toast.success(
-				data.message || "Google API settings saved successfully!"
-			)
-			setCredentials("") // Clear credentials after successful save
-			onSaveSuccess(mode) // Notify parent of the successful change
+			toast.success("WhatsApp number saved successfully!")
 		} catch (error) {
-			toast.error(`Error: ${error.message}`)
+			toast.error(error.message)
 		} finally {
 			setIsSaving(false)
 		}
 	}
 
-	const renderInstructions = () => (
-		<div className="mt-4 text-sm text-gray-400 space-y-3 p-4 bg-neutral-900/50 rounded-lg border border-neutral-700">
-			<h4 className="font-semibold text-gray-200">
-				How to get your Service Account Key:
-			</h4>
-			<ol className="list-decimal list-inside space-y-2">
-				<li>
-					Go to the{" "}
-					<a
-						href="https://console.cloud.google.com/"
-						target="_blank"
-						rel="noopener noreferrer"
-						className="text-lightblue hover:underline"
-					>
-						Google Cloud Console
-					</a>{" "}
-					and create a new project.
-				</li>
-				<li>
-					Enable the APIs you want to use (e.g., Gmail API, Google
-					Drive API, Google Calendar API, Google Maps Platform APIs,
-					Google Shopping Content API) in the "APIs & Services"
-					dashboard.
-				</li>
-				<li>
-					Go to "Credentials", click "Create Credentials", and select
-					"Service account".
-				</li>
-				<li>
-					Give the service account a name, grant it appropriate roles
-					(e.g., "Project Viewer"), and click "Done".
-				</li>
-				<li>
-					Find your new service account, go to the "Keys" tab, click
-					"Add Key", choose "Create new key", select "JSON", and
-					download the file.
-				</li>
-				<li>
-					Open the downloaded JSON file and paste its entire content
-					into the text box above.
-				</li>
-				<li className="font-bold text-yellow-400">
-					Important: You must enable{" "}
-					<a
-						href="https://developers.google.com/workspace/guides/configure-domain-wide-delegation"
-						target="_blank"
-						rel="noopener noreferrer"
-						className="text-lightblue hover:underline"
-					>
-						Domain-Wide Delegation
-					</a>{" "}
-					for your service account in your Google Workspace Admin
-					Console. You must grant it the following scopes:
-					<ul className="list-disc list-inside mt-1 pl-4 font-mono text-xs text-gray-300">
-						<li>https://www.googleapis.com/auth/calendar</li>
-						<li>https://www.googleapis.com/auth/drive</li>
-						<li>https://mail.google.com/</li>
-						<li>https://www.googleapis.com/auth/documents</li>
-						<li>https://www.googleapis.com/auth/presentations</li>
-						<li>https://www.googleapis.com/auth/spreadsheets</li>
-						<li>https://www.googleapis.com/auth/cloud-platform</li>
-						<li>https://www.googleapis.com/auth/content</li>
-					</ul>
-				</li>
-			</ol>
-		</div>
-	)
+	const handleRemove = async () => {
+		setIsSaving(true)
+		try {
+			const response = await fetch("/api/settings/whatsapp", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ whatsapp_number: "" }) // Send empty string to remove
+			})
+			if (!response.ok) throw new Error("Failed to remove number.")
+			setWhatsappNumber("")
+			toast.success("WhatsApp notifications disabled.")
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsSaving(false)
+		}
+	}
 
 	return (
-		<div className="bg-neutral-800/50 p-4 md:p-6 rounded-lg border border-neutral-700">
-			<div className="flex items-center gap-4">
-				<IconBrandGoogle className="w-8 h-8 text-white" />
-				<div>
-					<h3 className="font-semibold text-white text-lg">
-						Google Project Configuration
-					</h3>
-					<p className="text-gray-400 text-sm">
-						Choose how to authenticate with Google services.
-					</p>
-				</div>
+		<section>
+			<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2">
+				WhatsApp Notifications
+			</h2>
+			<div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)]">
+				<p className="text-gray-400 text-sm mb-4">
+					Receive important notifications directly to your WhatsApp.
+					Enter your number including the country code (e.g.,
+					14155552671).
+				</p>
+				{isLoading ? (
+					<div className="flex justify-center mt-4">
+						<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)]" />
+					</div>
+				) : (
+					<div className="flex flex-col sm:flex-row gap-2">
+						<div className="relative flex-grow">
+							<IconBrandWhatsapp
+								className="absolute left-3 top-1/2 -translate-y-1/2 text-green-500"
+								size={20}
+							/>
+							<input
+								type="tel"
+								value={whatsappNumber}
+								onChange={(e) =>
+									setWhatsappNumber(e.target.value)
+								}
+								placeholder="Enter WhatsApp Number"
+								className="w-full pl-10 pr-4 bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+							/>
+						</div>
+						<div className="flex gap-2 justify-end">
+							<button
+								onClick={handleSave}
+								disabled={isSaving}
+								className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors"
+							>
+								{isSaving ? (
+									<IconLoader className="w-4 h-4 mr-2 animate-spin" />
+								) : (
+									<IconPlus className="w-4 h-4 mr-2" />
+								)}
+								Save
+							</button>
+							{whatsappNumber && (
+								<button
+									onClick={handleRemove}
+									disabled={isSaving}
+									className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-red)]/80 hover:bg-[var(--color-accent-red)] text-white font-medium transition-colors"
+								>
+									<IconX className="w-4 h-4 mr-2" /> Remove
+								</button>
+							)}
+						</div>
+					</div>
+				)}
 			</div>
+		</section>
+	)
+}
 
-			<div className="mt-6 flex items-center space-x-4">
-				<button
-					onClick={() => onModeChange("default")}
-					className={cn(
-						"flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2",
-						mode === "default"
-							? "bg-lightblue text-white"
-							: "bg-neutral-700 hover:bg-neutral-600"
-					)}
-				>
-					<IconRocket size={16} />
-					Use Our Default Project
-				</button>
-				<button
-					onClick={() => onModeChange("custom")}
-					className={cn(
-						"flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2",
-						mode === "custom"
-							? "bg-green-600 text-white"
-							: "bg-neutral-700 hover:bg-neutral-600"
-					)}
-				>
-					<IconUser size={16} />
-					Use My Own Project
-				</button>
-			</div>
+const PrivacySettings = () => {
+	const [filters, setFilters] = useState([])
+	const [newFilter, setNewFilter] = useState("")
+	const [isLoading, setIsLoading] = useState(true)
 
-			{mode === "custom" && (
-				<div className="mt-6">
-					<label
-						htmlFor="gcp-credentials"
-						className="block text-sm font-medium text-gray-300 mb-2"
-					>
-						Service Account JSON Key
-					</label>
-					<textarea
-						id="gcp-credentials"
-						rows={8}
-						className="w-full bg-neutral-900 border border-neutral-600 rounded-md p-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 font-mono text-xs"
-						placeholder="Paste the content of your service account JSON file here..."
-						value={credentials}
-						onChange={(e) => setCredentials(e.target.value)}
+	const fetchFilters = useCallback(async () => {
+		setIsLoading(true)
+		try {
+			const response = await fetch("/api/settings/privacy-filters")
+			if (!response.ok) throw new Error("Failed to fetch filters.")
+			const data = await response.json()
+			setFilters(data.filters || [])
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsLoading(false)
+		}
+	}, [])
+
+	useEffect(() => {
+		fetchFilters()
+	}, [fetchFilters])
+
+	const handleAddFilter = async () => {
+		if (!newFilter.trim()) {
+			toast.error("Filter cannot be empty.")
+			return
+		}
+		const updatedFilters = [...filters, newFilter.trim()]
+		await handleSaveFilters(updatedFilters)
+		setNewFilter("") // Clear input after adding
+	}
+
+	const handleDeleteFilter = async (filterToDelete) => {
+		const updatedFilters = filters.filter((f) => f !== filterToDelete)
+		await handleSaveFilters(updatedFilters)
+	}
+
+	const handleSaveFilters = async (updatedFilters) => {
+		setIsLoading(true)
+		try {
+			const response = await fetch("/api/settings/privacy-filters", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ filters: updatedFilters })
+			})
+			if (!response.ok) throw new Error("Failed to save filters.")
+			toast.success("Privacy filters updated.")
+			setFilters(updatedFilters)
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsLoading(false)
+		}
+	}
+
+	return (
+		<section>
+			<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2">
+				Privacy Filters
+			</h2>
+			<div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)]">
+				<p className="text-gray-400 text-sm mb-4">
+					Add keywords to prevent emails or events containing them
+					from being processed by the proactive pipeline.
+				</p>
+				<div className="flex gap-2 mb-4">
+					<input
+						type="text"
+						value={newFilter}
+						onChange={(e) => setNewFilter(e.target.value)}
+						onKeyDown={(e) =>
+							e.key === "Enter" && handleAddFilter()
+						}
+						placeholder="Add a new filter keyword..."
+						className="flex-grow bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
 					/>
-					{renderInstructions()}
+					<button
+						onClick={handleAddFilter}
+						disabled={isLoading}
+						className="flex flex-row items-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors"
+					>
+						<IconPlus className="w-4 h-4 mr-2" /> Add
+					</button>
 				</div>
-			)}
-
-			<div className="mt-6 flex justify-end">
-				<button
-					onClick={handleSave}
-					disabled={isSaving}
-					className="flex items-center justify-center gap-2 py-2 px-5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors disabled:opacity-50"
-				>
-					{isSaving ? (
-						<IconLoader className="animate-spin" size={18} />
-					) : (
-						<IconFileText size={18} />
-					)}
-					<span>{isSaving ? "Saving..." : "Save Settings"}</span>
-				</button>
+				<div className="flex flex-wrap gap-2">
+					{filters.map((filter, index) => (
+						<div
+							key={index}
+							className="flex items-center gap-2 bg-[var(--color-primary-surface-elevated)] rounded-full py-1.5 px-3 text-sm text-gray-200"
+						>
+							<span>{filter}</span>
+							<button onClick={() => handleDeleteFilter(filter)}>
+								<IconX
+									size={14}
+									className="text-gray-500 hover:text-red-400"
+								/>
+							</button>
+						</div>
+					))}
+				</div>
+				{isLoading && (
+					<div className="flex justify-center mt-4">
+						<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)]" />
+					</div>
+				)}
 			</div>
-		</div>
+		</section>
 	)
 }
 
 const Settings = () => {
-	const [userDetails, setUserDetails] = useState({})
-	const [isSidebarVisible, setSidebarVisible] = useState(false)
-	const [pricing, setPricing] = useState("free")
-	const [showReferralDialog, setShowReferralDialog] = useState(false)
-	const [referralCode, setReferralCode] = useState("DUMMY")
-	const [referrerStatus, setReferrerStatus] = useState(false)
 	const [userIntegrations, setUserIntegrations] = useState([])
 	const [defaultTools, setDefaultTools] = useState([])
 	const [loadingIntegrations, setLoadingIntegrations] = useState(true)
 	const [activeManualIntegration, setActiveManualIntegration] = useState(null)
 	const [processingIntegration, setProcessingIntegration] = useState(null)
-	const [googleAuthMode, setGoogleAuthMode] = useState("default")
-	const [loadingGoogleAuthMode, setLoadingGoogleAuthMode] = useState(true)
+	const scrollRef = useRef(null)
 
-	const fetchGoogleAuthMode = useCallback(async () => {
-		setLoadingGoogleAuthMode(true)
-		try {
-			const res = await fetch("/api/settings/google-auth")
-			if (!res.ok)
-				throw new Error("Failed to fetch Google auth settings.")
-			const data = await res.json()
-			setGoogleAuthMode(data.mode || "default")
-		} catch (error) {
-			toast.error(error.message)
-		} finally {
-			setLoadingGoogleAuthMode(false)
-		}
-	}, [])
+	useSmoothScroll(scrollRef)
+
+	// --- CORRECTED: Specific list of Google services ---
+	const googleServices = [
+		"gmail",
+		"gcalendar",
+		"gdrive",
+		"gdocs",
+		"gslides",
+		"gsheets"
+	]
 
 	const fetchIntegrations = useCallback(async () => {
 		setLoadingIntegrations(true)
@@ -443,11 +474,21 @@ const Settings = () => {
 				icon: integrationIcons[ds.name] || IconSettingsCog
 			}))
 
+			const hiddenTools = [
+				"google_search",
+				"progress_updater",
+				"chat_tools",
+				"journal"
+			]
+
 			const userConnectable = integrationsWithIcons.filter(
-				(i) => i.auth_type === "oauth" || i.auth_type === "manual"
+				(i) =>
+					(i.auth_type === "oauth" || i.auth_type === "manual") &&
+					!hiddenTools.includes(i.name)
 			)
 			const builtIn = integrationsWithIcons.filter(
-				(i) => i.auth_type === "builtin"
+				(i) =>
+					i.auth_type === "builtin" && !hiddenTools.includes(i.name)
 			)
 			setUserIntegrations(userConnectable)
 			setDefaultTools(builtIn)
@@ -473,7 +514,6 @@ const Settings = () => {
 			const state = serviceName
 			let authUrl = ""
 
-			// Define scopes required by our default OAuth app
 			const scopes = {
 				gdrive: "https://www.googleapis.com/auth/drive",
 				gcalendar: "https://www.googleapis.com/auth/calendar",
@@ -491,7 +531,8 @@ const Settings = () => {
 				scopes[serviceName] ||
 				"https://www.googleapis.com/auth/userinfo.email"
 
-			if (serviceName.startsWith("g")) {
+			// --- CORRECTED: Use precise list for Google services ---
+			if (googleServices.includes(serviceName)) {
 				authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=consent&state=${state}`
 			} else if (serviceName === "github") {
 				authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${state}`
@@ -553,41 +594,6 @@ const Settings = () => {
 		}
 	}
 
-	const fetchUserDetails = useCallback(async () => {
-		try {
-			const response = await fetch("/api/user/profile")
-			if (!response.ok) throw new Error("Failed to fetch user profile")
-			const data = await response.json()
-			setUserDetails(data || {})
-		} catch (error) {
-			toast.error(`Error fetching user details: ${error.message}`)
-		}
-	}, [])
-
-	const fetchPricingPlan = useCallback(async () => {
-		try {
-			const response = await fetch("/api/user/pricing")
-			if (!response.ok) throw new Error("Failed to fetch pricing plan")
-			const data = await response.json()
-			setPricing(data.pricing || "free")
-		} catch (error) {
-			toast.error(`Error fetching pricing plan: ${error.message}`)
-		}
-	}, [])
-
-	const fetchReferralDetails = useCallback(async () => {
-		try {
-			const response = await fetch("/api/user/referral")
-			if (!response.ok)
-				throw new Error("Failed to fetch referral details")
-			const data = await response.json()
-			setReferralCode(data.referralCode || "N/A")
-			setReferrerStatus(data.referrerStatus || false)
-		} catch (error) {
-			toast.error(`Error fetching referral details: ${error.message}`)
-		}
-	}, [])
-
 	const fetchData = useCallback(async () => {
 		console.log("Fetching user data...")
 		try {
@@ -609,11 +615,7 @@ const Settings = () => {
 
 	useEffect(() => {
 		fetchData()
-		fetchUserDetails()
-		fetchPricingPlan()
-		fetchReferralDetails()
 		fetchIntegrations()
-		fetchGoogleAuthMode()
 
 		const urlParams = new URLSearchParams(window.location.search)
 		const success = urlParams.get("integration_success")
@@ -626,219 +628,196 @@ const Settings = () => {
 			toast.error(`Connection failed: ${error}`)
 			window.history.replaceState({}, document.title, "/settings")
 		}
-	}, [
-		fetchData,
-		fetchUserDetails,
-		fetchPricingPlan,
-		fetchReferralDetails,
-		fetchIntegrations,
-		fetchGoogleAuthMode
-	])
+	}, [fetchData, fetchIntegrations])
 
 	return (
-		<div className="h-screen bg-matteblack flex relative overflow-hidden dark">
-			<Sidebar
-				userDetails={userDetails}
-				isSidebarVisible={isSidebarVisible}
-				setSidebarVisible={setSidebarVisible}
-			/>
-			<div className="flex-grow flex flex-col h-full bg-matteblack text-white relative overflow-y-auto p-6 md:p-10 custom-scrollbar">
-				<div className="flex justify-between items-center mb-8 flex-shrink-0 px-4">
-					<h1 className="font-Poppins text-white text-3xl md:text-4xl font-light">
+		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
+			<Tooltip id="settings-tooltip" />
+			<div className="flex-1 flex flex-col overflow-hidden h-screen">
+				<header className="flex items-center justify-between p-4 md:px-8 md:py-6 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)]">
+					<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)] flex items-center gap-3">
 						Settings
 					</h1>
-					<div className="flex items-center gap-3">
-						<button
-							onClick={() =>
-								window.open(
-									"https://existence-sentient.vercel.app/dashboard",
-									"_blank"
-								)
-							}
-							className="flex items-center gap-2 py-2 px-4 rounded-full bg-darkblue hover:bg-lightblue text-white text-xs sm:text-sm font-medium transition-colors shadow-md"
-							title={
-								pricing === "free"
-									? "Upgrade for more features"
-									: "Manage Subscription"
-							}
-						>
-							<IconRocket size={18} />
-							<span>
-								{pricing === "free"
-									? "Upgrade to Pro"
-									: "Manage Pro Plan"}
-							</span>
-						</button>
-						<button
-							onClick={() => setShowReferralDialog(true)}
-							className="flex items-center gap-2 py-2 px-4 rounded-full bg-neutral-700 hover:bg-neutral-600 text-white text-xs sm:text-sm font-medium transition-colors shadow-md"
-							title="Refer a friend"
-						>
-							<IconGift size={18} />
-							<span>Refer Sentient</span>
-						</button>
-					</div>
-				</div>
-				<div className="w-full max-w-5xl mx-auto space-y-10 flex-grow">
-					<section>
-						<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-neutral-700 pb-2">
-							API & Service Configuration
-						</h2>
-						{loadingGoogleAuthMode ? (
-							<div className="flex justify-center items-center py-10">
-								<IconLoader className="w-8 h-8 animate-spin text-lightblue" />
-							</div>
-						) : (
-							<GoogleAuthSettings
-								mode={googleAuthMode}
-								onModeChange={setGoogleAuthMode}
-								onSaveSuccess={() => {
-									fetchGoogleAuthMode()
-									fetchIntegrations()
-								}}
-							/>
-						)}
-					</section>
+				</header>
+				<main
+					ref={scrollRef}
+					className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 custom-scrollbar"
+				>
+					<div className="w-full max-w-5xl mx-auto space-y-10">
+						<WhatsAppSettings />
+						<PrivacySettings />
+						<section>
+							<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2">
+								Connected Apps & Integrations
+							</h2>
+							<div className="bg-[var(--color-primary-surface)]/50 p-2 md:p-4 rounded-lg border border-[var(--color-primary-surface-elevated)]">
+								<div className="divide-y divide-[var(--color-primary-surface-elevated)]/50">
+									{loadingIntegrations ? (
+										<div className="flex justify-center items-center py-10">
+											<IconLoader className="w-8 h-8 animate-spin text-[var(--color-accent-blue)]" />
+										</div>
+									) : userIntegrations.length > 0 ? (
+										userIntegrations.map((integration) => {
+											const IntegrationIcon =
+												integration.icon ||
+												IconSettingsCog
+											const isProcessing =
+												processingIntegration ===
+												integration.name
 
-					<section>
-						<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-neutral-700 pb-2">
-							Connected Apps & Integrations
-						</h2>
-						<div className="bg-neutral-800/50 p-2 md:p-4 rounded-lg border border-neutral-700">
-							<div className="divide-y divide-neutral-700/50">
-								{loadingIntegrations ? (
-									<div className="flex justify-center items-center py-10">
-										<IconLoader className="w-8 h-8 animate-spin text-lightblue" />
-									</div>
-								) : userIntegrations.length > 0 ? (
-									userIntegrations.map((integration) => {
-										const IntegrationIcon =
-											integration.icon || IconSettingsCog
-										const isProcessing =
-											processingIntegration ===
-											integration.name
-										const isGoogleServiceInCustomMode =
-											integration.name.startsWith("g") &&
-											googleAuthMode === "custom"
-
-										return (
-											<div
-												key={integration.name}
-												className="flex items-center justify-between p-4"
-											>
-												<div className="flex items-center gap-4">
-													<IntegrationIcon className="w-8 h-8 text-lightblue" />
-													<div>
-														<h3 className="font-semibold text-white text-lg">
-															{
-																integration.display_name
-															}
-														</h3>
-														<p className="text-gray-400 text-sm">
-															{
-																integration.description
-															}
-														</p>
-													</div>
-												</div>
-												<div className="w-40 text-right">
-													{isGoogleServiceInCustomMode ? (
-														<div className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-green-600/20 text-green-400 text-xs font-medium cursor-default">
-															<IconLockOpen
-																size={14}
-															/>
-															<span>
-																Managed by
-																Custom Project
-															</span>
+											return (
+												<div
+													key={integration.name}
+													className="flex items-center justify-between p-4"
+												>
+													<div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+														<IntegrationIcon className="w-8 h-8 text-[var(--color-accent-blue)]" />
+														<div className="flex-1 min-w-0">
+															<h3 className="font-semibold text-[var(--color-text-primary)] text-base sm:text-lg truncate">
+																{
+																	integration.display_name
+																}
+															</h3>
+															<details
+																className="mt-1 text-gray-400 text-xs sm:text-sm group"
+																data-tooltip-id="settings-tooltip"
+																data-tooltip-content="Click to see what this integration does"
+															>
+																<summary className="list-none flex items-center cursor-pointer hover:text-white transition-colors w-fit">
+																	<span>
+																		Details
+																	</span>
+																	<IconChevronDown
+																		size={
+																			14
+																		}
+																		className="ml-1 transition-transform duration-200 group-open:rotate-180"
+																	/>
+																</summary>
+																<p className="mt-2 pt-2 border-t border-neutral-700/50">
+																	{
+																		integration.description
+																	}
+																</p>
+															</details>
 														</div>
-													) : isProcessing ? (
-														<IconLoader className="w-6 h-6 animate-spin text-lightblue ml-auto" />
-													) : integration.connected ? (
-														<button
-															onClick={() =>
-																handleDisconnect(
-																	integration.name
-																)
-															}
-															className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-red-600/20 hover:bg-red-600/40 text-red-400 text-sm font-medium transition-colors"
-														>
-															<IconPlugOff
-																size={16}
-															/>
-															<span>
-																Disconnect
-															</span>
-														</button>
-													) : (
-														<button
-															onClick={() =>
-																handleConnect(
-																	integration
-																)
-															}
-															className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-blue-600/50 hover:bg-blue-600/70 text-white text-sm font-medium transition-colors"
-														>
-															<IconPlugConnected
-																size={16}
-															/>
-															<span>Connect</span>
-														</button>
-													)}
-												</div>
-											</div>
-										)
-									})
-								) : (
-									<p className="text-gray-400 italic text-center py-8">
-										No integrations available.
-									</p>
-								)}
-							</div>
-						</div>
-					</section>
-
-					<section>
-						<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-neutral-700 pb-2">
-							Default System Tools
-						</h2>
-						<div className="bg-neutral-800/50 p-2 md:p-4 rounded-lg border border-neutral-700">
-							<div className="divide-y divide-neutral-700/50">
-								{loadingIntegrations ? (
-									<div className="flex justify-center items-center py-10">
-										<IconLoader className="w-8 h-8 animate-spin text-lightblue" />
-									</div>
-								) : defaultTools.length > 0 ? (
-									defaultTools.map((tool) => {
-										const ToolIcon =
-											tool.icon || IconSettingsCog
-										return (
-											<div
-												key={tool.name}
-												className="flex items-center justify-between p-4"
-											>
-												<div className="flex items-center gap-4">
-													<ToolIcon className="w-8 h-8 text-gray-400" />
-													<div>
-														<h3 className="font-semibold text-white text-lg">
-															{tool.display_name}
-														</h3>
-														<p className="text-gray-400 text-sm">
-															{tool.description}
-														</p>
+													</div>
+													<div className="w-32 sm:w-40 text-right flex-shrink-0">
+														{isProcessing ? (
+															<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)] ml-auto" />
+														) : integration.connected ? (
+															<button
+																onClick={() =>
+																	handleDisconnect(
+																		integration.name
+																	)
+																}
+																className="flex items-center justify-center gap-1 sm:gap-2 w-full py-2 px-3 rounded-md bg-[var(--color-accent-red)]/20 hover:bg-[var(--color-accent-red)]/40 text-[var(--color-accent-red)] text-sm font-medium transition-colors"
+															>
+																<IconPlugOff
+																	size={16}
+																/>
+																<span>
+																	Disconnect
+																</span>
+															</button>
+														) : (
+															<button
+																onClick={() =>
+																	handleConnect(
+																		integration
+																	)
+																}
+																className="flex items-center justify-center gap-1 sm:gap-2 w-full py-2 px-3 rounded-md bg-[var(--color-accent-blue)]/80 hover:bg-[var(--color-accent-blue)] text-white text-sm font-medium transition-colors"
+															>
+																<IconPlugConnected
+																	size={16}
+																/>
+																<span>
+																	Connect
+																</span>
+															</button>
+														)}
 													</div>
 												</div>
-											</div>
-										)
-									})
-								) : (
-									<p className="text-gray-400 italic text-center py-8">
-										No default tools available.
-									</p>
-								)}
+											)
+										})
+									) : (
+										<p className="text-gray-400 italic text-center py-8">
+											No integrations available.
+										</p>
+									)}
+								</div>
 							</div>
-						</div>
-					</section>
+						</section>
+
+						<section>
+							<h2
+								className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2"
+								data-tooltip-id="settings-tooltip"
+								data-tooltip-content="These tools are core to Sentient and are always enabled."
+							>
+								Default System Tools
+							</h2>
+							<div className="bg-[var(--color-primary-surface)]/50 p-2 md:p-4 rounded-lg border border-[var(--color-primary-surface-elevated)]">
+								<div className="divide-y divide-[var(--color-primary-surface-elevated)]/50">
+									{loadingIntegrations ? (
+										<div className="flex justify-center items-center py-10">
+											<IconLoader className="w-8 h-8 animate-spin text-[var(--color-accent-blue)]" />
+										</div>
+									) : defaultTools.length > 0 ? (
+										defaultTools.map((tool) => {
+											const ToolIcon =
+												tool.icon || IconSettingsCog
+											return (
+												<div
+													key={tool.name}
+													className="flex items-center justify-between p-4"
+												>
+													<div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+														<ToolIcon className="w-8 h-8 text-[var(--color-text-muted)]" />
+														<div className="flex-1 min-w-0">
+															<h3 className="font-semibold text-[var(--color-text-primary)] text-base sm:text-lg truncate">
+																{
+																	tool.display_name
+																}
+															</h3>
+															<details
+																className="mt-1 text-gray-400 text-xs sm:text-sm group"
+																data-tooltip-id="settings-tooltip"
+																data-tooltip-content="Click to see what this tool does"
+															>
+																<summary className="list-none flex items-center cursor-pointer hover:text-white transition-colors w-fit">
+																	<span>
+																		Details
+																	</span>
+																	<IconChevronDown
+																		size={
+																			14
+																		}
+																		className="ml-1 transition-transform duration-200 group-open:rotate-180"
+																	/>
+																</summary>
+																<p className="mt-2 pt-2 border-t border-neutral-700/50">
+																	{
+																		tool.description
+																	}
+																</p>
+															</details>
+														</div>
+													</div>
+												</div>
+											)
+										})
+									) : (
+										<p className="text-gray-400 italic text-center py-8">
+											No default tools available.
+										</p>
+									)}
+								</div>
+							</div>
+						</section>
+					</div>
 
 					{activeManualIntegration && (
 						<ManualTokenEntryModal
@@ -847,32 +826,7 @@ const Settings = () => {
 							onSuccess={() => fetchIntegrations()}
 						/>
 					)}
-
-					{showReferralDialog && (
-						<ModalDialog
-							title="Referral Code"
-							description={`Share this code with friends: ${
-								referralCode === "N/A" || !referralCode
-									? "Loading..."
-									: referralCode
-							}`}
-							extraContent={
-								referrerStatus ? (
-									<p className="text-sm text-green-400">
-										Referrer status: Active
-									</p>
-								) : (
-									<p className="text-sm text-yellow-400">
-										Referrer status: Inactive
-									</p>
-								)
-							}
-							onConfirm={() => setShowReferralDialog(false)}
-							confirmButtonText="Close"
-							cancelButton={false}
-						/>
-					)}
-				</div>
+				</main>
 			</div>
 		</div>
 	)

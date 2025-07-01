@@ -1,122 +1,56 @@
-// src/client/components/Sidebar.js
 "use client"
-import { useRouter } from "next/navigation"
-import { useEffect, useState, useRef, React, useCallback } from "react"
+import { useRouter, usePathname } from "next/navigation"
+import React, { useEffect, useState, useRef } from "react"
 import {
-	IconChevronRight,
-	IconChevronLeft,
-	IconUser,
-	IconLogout,
 	IconAdjustments,
-	IconMessage,
-	IconChecklist,
-	IconBrain,
-	IconNotification,
 	IconBell,
-	IconX,
+	IconBook,
+	IconChecklist,
+	IconChevronDown,
+	IconHome,
+	IconLogout,
 	IconPlus,
-	IconPencil,
-	IconTrash
+	IconSearch,
+	IconUser,
+	IconX
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
-import ModalDialog from "./ModalDialog"
+import { AnimatePresence, motion } from "framer-motion"
+import { cn } from "@utils/cn"
+import { useSmoothScroll } from "@hooks/useSmoothScroll"
 
 const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 	const router = useRouter()
-	const [pricing, setPricing] = useState("free")
-	const [chats, setChats] = useState([])
-	const [loadingChats, setLoadingChats] = useState(false)
-	const [editingChat, setEditingChat] = useState(null)
-	const [newChatTitle, setNewChatTitle] = useState("")
-	const wsRef = useRef(null)
+	const wsRef = useRef(null) // Removed chat list state and handlers
+	const scrollRef = useRef(null)
 
-	const fetchPricingPlan = useCallback(async () => {
-		try {
-			const response = await fetch("/api/user/pricing")
-			if (!response.ok) throw new Error("Failed to fetch")
-			const data = await response.json()
-			setPricing(data.pricing || "free")
-		} catch (error) {
-			toast.error("Error fetching pricing plan.")
-		}
-	}, [])
-
+	useSmoothScroll(scrollRef)
 	const logout = () => {
-		router.push("/api/auth/logout")
+		router.push("/auth/logout")
 	}
 
-	const fetchChats = useCallback(async () => {
-		setLoadingChats(true)
-		try {
-			const response = await fetch("/api/chat/list-chats")
-			if (!response.ok) throw new Error("Failed to fetch chats")
-			const data = await response.json()
-			// Sort chats by last_updated timestamp descending
-			const sortedChats = (data.chats || []).sort((a, b) => {
-				return new Date(b.last_updated) - new Date(a.last_updated)
-			})
-			setChats(sortedChats)
-		} catch (error) {
-			toast.error("Error fetching chat list.")
-		} finally {
-			setLoadingChats(false)
-		}
-	}, [])
+	// Removed chat-related handlers: fetchChats, handleRenameChat, handleDeleteChat
 
-	const handleRenameChat = async () => {
-		if (!editingChat || !newChatTitle.trim()) return
-		try {
-			const response = await fetch("/api/chat/rename", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					chatId: editingChat.chat_id,
-					newTitle: newChatTitle
-				})
-			})
-			if (!response.ok) throw new Error("Failed to rename chat")
-			toast.success("Chat renamed.")
-			setEditingChat(null)
-			setNewChatTitle("")
-			fetchChats() // Refresh list
-		} catch (error) {
-			toast.error(error.message)
-		}
-	}
-
-	const handleDeleteChat = async (chatId) => {
-		if (
-			!window.confirm(
-				"Are you sure you want to delete this chat permanently?"
-			)
-		)
-			return
-		try {
-			const response = await fetch("/api/chat/delete", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ chatId })
-			})
-			if (!response.ok) throw new Error("Failed to delete chat")
-			toast.success("Chat deleted.")
-			fetchChats() // Refresh list
-			router.push("/chat") // Redirect to new chat page
-		} catch (error) {
-			toast.error(error.message)
-		}
-	}
-
+	// Separate effect for fetching data, depends on userDetails
 	useEffect(() => {
-		// Guard clause: Do not run authentication-dependent logic if userDetails is not yet available.
 		if (!userDetails) {
 			return
 		}
+	}, [userDetails]) // Separate effect for fetching data, depends on userDetails
 
-		fetchPricingPlan()
-		fetchChats()
+	// Separate, dedicated effect for WebSocket lifecycle management
+	useEffect(() => {
+		// Guard clause: Do not run WebSocket logic if userDetails.sub is not yet available.
+		if (!userDetails?.sub) {
+			return
+		}
 
 		const connectWebSocket = async () => {
-			if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+			if (wsRef.current && wsRef.current.readyState < 2) {
+				// 0=CONNECTING, 1=OPEN
+				console.log(
+					"Sidebar WS: A connection is already open or connecting."
+				)
 				return
 			}
 
@@ -126,6 +60,8 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 					console.error(
 						"Sidebar WS: Could not get auth token for WebSocket."
 					)
+					// Retry after a delay if token fetch fails
+					setTimeout(connectWebSocket, 5000)
 					return
 				}
 				const { accessToken } = await tokenResponse.json()
@@ -139,6 +75,7 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 				const wsUrl = `${serverUrlWs}/api/ws/notifications`
 
 				const ws = new WebSocket(wsUrl)
+				ws.isCleaningUp = false // Custom flag on the instance itself
 				wsRef.current = ws
 
 				ws.onopen = () => {
@@ -154,11 +91,7 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 						toast.custom(
 							(t) => (
 								<div
-									className={`${
-										t.visible
-											? "animate-enter"
-											: "animate-leave"
-									} max-w-md w-full bg-neutral-800 shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5 border border-neutral-700`}
+									className={`${t.visible ? "animate-enter" : "animate-leave"} max-w-md w-full bg-neutral-800 shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5 border border-neutral-700`}
 								>
 									<div className="flex-1 w-0 p-4">
 										<div className="flex items-start">
@@ -194,10 +127,19 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 				}
 
 				ws.onclose = () => {
-					console.log(
-						"Sidebar: Notification WebSocket disconnected. Will try to reconnect..."
-					)
-					setTimeout(connectWebSocket, 5000) // Reconnect after 5 seconds
+					// IMPORTANT: Check the flag on the instance that was closed, NOT the ref.
+					if (ws.isCleaningUp) {
+						console.log(
+							"Sidebar: WebSocket closed intentionally on cleanup."
+						)
+					} else {
+						console.log(
+							"Sidebar: Notification WebSocket disconnected unexpectedly. Reconnecting..."
+						)
+						// Clear the ref to allow a new connection to be made.
+						wsRef.current = null
+						setTimeout(connectWebSocket, 5000) // Attempt to reconnect
+					}
 				}
 
 				ws.onerror = (error) => {
@@ -205,6 +147,7 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 						"Sidebar: Notification WebSocket error:",
 						error
 					)
+					// The onclose event will fire after an error, triggering the reconnect logic if needed.
 					ws.close()
 				}
 			} catch (error) {
@@ -218,229 +161,193 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 
 		connectWebSocket()
 
+		// This cleanup function runs when the component unmounts or dependencies change
 		return () => {
 			if (wsRef.current) {
+				console.log(
+					"Sidebar: Cleaning up WebSocket connection for effect re-run or unmount."
+				)
+				wsRef.current.isCleaningUp = true // Mark for intentional close
 				wsRef.current.close()
 			}
 		}
-	}, [userDetails, fetchPricingPlan, fetchChats, router])
+	}, [userDetails?.sub, router]) // Depend only on the stable user ID
+
+	const NavLink = ({ href, icon, label }) => {
+		const pathname = usePathname() ?? ""
+		const isActive = pathname === href
+
+		return (
+			<motion.button
+				onClick={() => router.push(href)}
+				whileHover={{
+					backgroundColor: "rgba(17, 24, 39, 0.5)" // Equivalent to bg-gray-900/50
+				}}
+				whileTap={{ scale: 0.98 }}
+				className={cn(
+					"flex items-center gap-4 w-full text-left p-3.5 rounded-xl text-base font-semibold transition-all duration-200 group",
+					isActive
+						? "bg-darkblue text-white hover:bg-lightblue"
+						: "text-neutral-400 hover:text-white hover:bg-lightblue"
+				)}
+			>
+				<motion.div
+					className={cn(
+						"transition-colors",
+						isActive ? "text-lightblue" : "text-neutral-500"
+					)}
+				>
+					{React.cloneElement(icon, { size: 24 })}
+				</motion.div>
+				<span className="group-hover:translate-x-0.5 transition-transform duration-150">
+					{label}
+				</span>
+			</motion.button>
+		)
+	}
+
+	const [isProfileOpen, setProfileOpen] = useState(false)
 
 	return (
 		<>
-			<div
-				id="sidebar"
-				className={`w-1/5 h-full flex flex-col bg-smokeblack overflow-y-auto transform transition-all duration-300 fixed top-0 left-0 ${isSidebarVisible ? "translate-x-0 opacity-100 z-40 pointer-events-auto" : "-translate-x-full opacity-0 z-0 pointer-events-none"}`}
-				// onMouseLeave={() => setSidebarVisible(false)} // This can be annoying, let's allow manual closing
+			<motion.div
+				initial={{ x: -320 }}
+				animate={{ x: isSidebarVisible ? 0 : -321 }}
+				transition={{ type: "spring", stiffness: 300, damping: 30 }}
+				className="fixed flex flex-col inset-y-0 left-0 z-50 w-[320px] bg-matteblack border-r border-neutral-800/50 font-Poppins"
+				onMouseLeave={() =>
+					window.innerWidth > 768 && setSidebarVisible(false)
+				}
 			>
-				<div className="flex items-center px-6 py-6">
-					<div className="flex items-center justify-center rounded-xl w-12 h-12">
+				<div
+					ref={scrollRef}
+					className="flex-1 flex flex-col p-5 overflow-y-auto no-scrollbar"
+				>
+					<motion.button
+						onClick={() => setSidebarVisible(false)}
+						className="absolute top-4 right-4 text-neutral-400 hover:text-white md:hidden p-1 hover:bg-lightblue rounded-lg transition-colors duration-150"
+						whileHover={{ scale: 1.1 }}
+						whileTap={{ scale: 0.9 }}
+					>
+						<IconX size={22} />
+					</motion.button>
+
+					{/* Sentient Logo section */}
+					<div className="flex items-center gap-3 mb-10 px-2">
 						<img
 							src="/images/half-logo-dark.svg"
 							alt="Logo"
-							className="w-8 h-8"
+							className="w-9 h-9 opacity-80"
 						/>
-					</div>
-					<span className="text-2xl text-white font-extralight ml-3">
-						Sentient
-					</span>
-				</div>
-				<div className="flex flex-col px-4 pt-4 pb-8 flex-grow">
-					<button
-						onClick={() => setSidebarVisible(false)}
-						className="absolute top-4 right-4 text-gray-400 hover:text-white"
-					>
-						<IconChevronLeft />
-					</button>
-					<button
-						onClick={() => router.push("/chat")}
-						className="cursor-pointer flex items-center gap-3 w-full text-left px-4 py-2 rounded-lg text-white hover:text-lightblue hover:bg-neutral-800 mt-1"
-					>
-						<IconMessage className="w-5 h-5" />
-						<span className="text-base text-white">Chat</span>
-					</button>
-
-					<button
-						onClick={() => router.push("/tasks")}
-						className="cursor-pointer flex items-center gap-3 w-full text-left px-4 py-2 rounded-lg text-white hover:text-lightblue hover:bg-neutral-800 mt-1"
-					>
-						<IconChecklist className="w-5 h-5" />
-						<span className="text-base text-white">Tasks</span>
-					</button>
-					<button
-						onClick={() => router.push("/memory")}
-						className="cursor-pointer flex items-center gap-3 w-full text-left px-4 py-2 rounded-lg text-white hover:text-lightblue hover:bg-neutral-800 mt-1"
-					>
-						<IconBrain className="w-5 h-5" />
-						<span className="text-base text-white">Memories</span>
-					</button>
-					<button
-						onClick={() => router.push("/settings")}
-						className="cursor-pointer flex items-center gap-3 w-full text-left px-4 py-2 rounded-lg text-white hover:text-lightblue hover:bg-neutral-800 mt-1"
-					>
-						<IconAdjustments className="w-5 h-5" />
-						<span className="text-base text-white">Settings</span>
-					</button>
-					<button
-						onClick={() => router.push("/notifications")}
-						className="cursor-pointer flex items-center gap-3 w-full text-left px-4 py-2 rounded-lg text-white hover:text-lightblue hover:bg-neutral-800 mt-1"
-					>
-						<IconNotification className="w-5 h-5" />
-						<span className="text-base text-white">
-							Notifications
+						<span className="text-2xl font-bold text-neutral-200">
+							Sentient
 						</span>
-					</button>
-
-					{/* Chat History Section */}
-					<div className="flex-grow mt-6 overflow-y-auto no-scrollbar border-t border-neutral-700 pt-4">
-						<div className="flex justify-between items-center px-4 mb-2">
-							<h3 className="text-sm font-semibold text-gray-400 uppercase">
-								Chats
-							</h3>
-							<button
-								onClick={() => router.push("/chat")}
-								className="p-1 text-gray-400 hover:text-white"
-								title="New Chat"
-							>
-								<IconPlus size={18} />
-							</button>
-						</div>
-						{loadingChats ? (
-							<p className="text-center text-gray-500 text-sm">
-								Loading chats...
-							</p>
-						) : chats.length === 0 ? (
-							<p className="text-center text-gray-500 text-sm px-4">
-								No chats yet. Start a new one!
-							</p>
-						) : (
-							<div className="space-y-1">
-								{chats.map((chat) => (
-									<div
-										key={chat.chat_id}
-										className="group flex items-center justify-between text-left px-4 py-2 rounded-lg text-white hover:bg-neutral-800 cursor-pointer"
-										onClick={() =>
-											router.push(`/chat/${chat.chat_id}`)
-										}
-									>
-										<span className="text-sm truncate pr-2">
-											{chat.title}
-										</span>
-										<div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-											<button
-												onClick={(e) => {
-													e.stopPropagation()
-													setEditingChat(chat)
-													setNewChatTitle(chat.title)
-												}}
-												className="p-1 hover:text-yellow-400"
-											>
-												<IconPencil size={14} />
-											</button>
-											<button
-												onClick={(e) => {
-													e.stopPropagation()
-													handleDeleteChat(
-														chat.chat_id
-													)
-												}}
-												className="p-1 hover:text-red-400"
-											>
-												<IconTrash size={14} />
-											</button>
-										</div>
-									</div>
-								))}
-							</div>
-						)}
 					</div>
 
-					<div className="mt-auto mb-6 mx-2 pt-6">
-						<div className="bg-gradient-to-br from-darkblue to-lightblue rounded-xl p-4 relative overflow-hidden mt-4">
-							<div className="absolute top-0 right-0 w-24 h-24 rounded-full bg-white opacity-10 -mr-8 -mt-8"></div>
-							<div className="flex items-center mb-2">
-								<div className="bg-white bg-opacity-20 p-1 rounded-lg">
-									<img
-										src="/images/half-logo-dark.svg"
-										alt="Logo"
-										className="w-6 h-6"
-									/>
-								</div>
-								<span className="text-xl font-bold text-white ml-2">
-									Pro Plan
-								</span>
-							</div>
-							<p className="text-white text-sm mb-4">
-								Unlimited access to all features!
-							</p>
-							<div className="flex items-center justify-between">
-								<span className="text-white font-bold">
-									$3 / mo
-								</span>
-								<button
-									onClick={() => router.push("/settings")}
-									className="bg-white text-black font-medium py-1 px-4 rounded-full"
+					{/* Primary Actions */}
+					<div className="flex items-center gap-3 mb-8 px-1">
+						<button
+							onClick={() => router.push("/tasks?action=add")}
+							className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-darkblue text-white text-base font-semibold hover:bg-lightblue transition-colors shadow-lg shadow-blue-900/20"
+						>
+							<IconPlus size={20} />
+							Add task
+						</button>
+						<button className="p-3 text-neutral-400 hover:bg-lightblue rounded-xl transition-colors">
+							<IconSearch size={22} />
+						</button>
+					</div>
+
+					{/* Main Navigation */}
+					<nav className="flex flex-col gap-2.5 mb-6">
+						<NavLink
+							href="/home"
+							icon={<IconHome />}
+							label="Home"
+						/>
+						<NavLink
+							href="/tasks"
+							icon={<IconChecklist />}
+							label="Tasks"
+						/>
+						<NavLink
+							href="/journal"
+							icon={<IconBook />}
+							label="Journal"
+						/>
+						<NavLink
+							href="/notifications"
+							icon={<IconBell />}
+							label="Notifications"
+						/>
+						<NavLink
+							href="/settings"
+							icon={<IconAdjustments />}
+							label="Settings"
+						/>
+					</nav>
+				</div>
+				<div className="p-3 border-t border-neutral-800/50">
+					<div className="relative">
+						<motion.button
+							onClick={() => setProfileOpen(!isProfileOpen)}
+							className="flex items-center w-full gap-3 p-2 rounded-xl hover:bg-lightblue transition-all duration-200 group"
+							whileHover={{ scale: 1.02 }}
+							whileTap={{ scale: 0.98 }}
+						>
+							{userDetails?.picture ? (
+								<motion.img
+									src={userDetails.picture}
+									alt="User"
+									className="w-10 h-10 rounded-full border-2 border-neutral-700"
+									whileHover={{ scale: 1.1 }}
+									transition={{ duration: 0.2 }}
+								/>
+							) : (
+								<motion.div
+									className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center border-2 border-neutral-700"
+									whileHover={{ scale: 1.1 }}
+									transition={{ duration: 0.2 }}
 								>
-									Get
-								</button>
-							</div>
-						</div>
-					</div>
-					<button
-						onClick={logout}
-						className="flex items-center justify-between px-6 py-2 text-[#9ca3af] hover:text-white"
-					>
-						<span className="text-base">Log out</span>
-						<IconLogout className="w-5 h-5" />
-					</button>
-				</div>
-				<div className="px-6 py-3 mt-auto border-t border-[#373a43]">
-					<div className="flex items-center space-x-3">
-						{userDetails?.picture ? (
-							<img
-								src={userDetails.picture}
-								alt="User"
-								className="w-10 h-10 rounded-full"
-							/>
-						) : (
-							<div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center">
-								<IconUser className="w-6 h-6 text-white" />
-							</div>
-						)}
-						<div>
-							<p className="text-white font-semibold">
+									<IconUser className="w-5 h-5 text-white" />
+								</motion.div>
+							)}
+							<span className="font-semibold text-white text-base flex-1 text-left group-hover:translate-x-0.5 transition-transform duration-150">
 								{userDetails?.given_name || "User"}
-							</p>
-							<p className="text-sm text-gray-400">
-								{pricing.charAt(0).toUpperCase() +
-									pricing.slice(1)}{" "}
-								Plan
-							</p>
-						</div>
+							</span>
+							<motion.div
+								animate={{ rotate: isProfileOpen ? 180 : 0 }}
+								transition={{ duration: 0.2 }}
+							>
+								<IconChevronDown className="w-5 h-5 text-neutral-400 transition-colors duration-150" />
+							</motion.div>
+						</motion.button>
+						<AnimatePresence>
+							{isProfileOpen && (
+								<motion.div
+									initial={{ opacity: 0, y: 10 }}
+									animate={{ opacity: 1, y: 0 }}
+									exit={{ opacity: 0, y: 10 }}
+									className="absolute bottom-full left-0 right-0 mb-3 bg-neutral-800 rounded-xl shadow-xl p-1 z-10"
+								>
+									<motion.button
+										onClick={logout}
+										className="flex items-center gap-3 w-full text-left px-3 py-2.5 rounded-lg text-base text-neutral-400 hover:bg-neutral-700 hover:text-white"
+									>
+										<IconLogout size={18} />
+										<span>Logout</span>
+									</motion.button>
+								</motion.div>
+							)}
+						</AnimatePresence>
 					</div>
 				</div>
-			</div>
+			</motion.div>
+			{/* Desktop hover trigger to show the sidebar */}
 			<div
-				className="fixed top-0 left-0 bg-transparent w-[5%] h-full z-30 flex items-center justify-start"
+				className="hidden md:block fixed top-0 left-0 h-full w-5 z-40"
 				onMouseEnter={() => setSidebarVisible(true)}
-			>
-				<div className="ml-3">
-					<IconChevronRight className="text-white w-6 h-6 animate-pulse font-bold" />
-				</div>
-			</div>
-			{editingChat && (
-				<ModalDialog
-					title="Rename Chat"
-					description={`Enter a new title for "${editingChat.title}"`}
-					showInput={true}
-					inputValue={newChatTitle}
-					onInputChange={setNewChatTitle}
-					inputPlaceholder="New chat title..."
-					onConfirm={handleRenameChat}
-					onCancel={() => setEditingChat(null)}
-					confirmButtonText="Rename"
-					confirmButtonType="success"
-				/>
-			)}
+			/>
 		</>
 	)
 }

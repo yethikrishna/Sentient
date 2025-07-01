@@ -1,119 +1,59 @@
-# src/server/main/chat/routes.py
-import datetime
 import datetime
 import uuid
 import json
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import asyncio
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from .models import ChatMessageInput, ChatHistoryRequest, RenameChatRequest, DeleteChatRequest
-from .utils import get_chat_history_util, generate_chat_llm_stream # generate_chat_llm_stream will use Qwen
-from ..auth.utils import PermissionChecker, AuthHelper  # Import PermissionChecker and AuthHelper from auth.utils
-from ..dependencies import mongo_manager
-from typing import Optional
-
-auth_helper = AuthHelper()
+from main.chat.models import ChatMessageInput
+from main.chat.utils import generate_chat_llm_stream
+from main.auth.utils import PermissionChecker
+from main.dependencies import mongo_manager
 
 router = APIRouter(
+    prefix="/chat",
     tags=["Chat"]
 )
 logger = logging.getLogger(__name__)
 
-@router.post("/get-history", summary="Get Chat History")
-async def get_chat_history_endpoint(
-    request: ChatHistoryRequest,
-    user_id: str = Depends(PermissionChecker(required_permissions=["read:chat"]))
-):
-    # Robustly handle chatId which may be a string or an array
-    chat_id_from_req = request.chatId
-    final_chat_id: Optional[str] = None
-
-    if isinstance(chat_id_from_req, str):
-        final_chat_id = chat_id_from_req
-    elif isinstance(chat_id_from_req, list):
-        if chat_id_from_req: # Check if list is not empty
-            final_chat_id = str(chat_id_from_req[0])
-
-    if not final_chat_id:
-        # A new chat page might call this without a valid ID.
-        # Returning an empty list is appropriate.
-        return JSONResponse(content={"messages": []})
-
-    messages = await get_chat_history_util(user_id, mongo_manager, final_chat_id)
-    return JSONResponse(content={"messages": messages})
-
-@router.get("/list-chats", summary="Get a list of all user chats")
-async def list_chats_endpoint(user_id: str = Depends(PermissionChecker(required_permissions=["read:chat"]))):
-	chats_from_db = await mongo_manager.get_all_chats_for_user(user_id)
-	serialized_chats = []
-	for chat in chats_from_db:
-		if isinstance(chat.get("last_updated"), datetime.datetime):
-			chat["last_updated"] = chat["last_updated"].isoformat()
-		serialized_chats.append(chat)
-	return JSONResponse(content={"chats": serialized_chats})
-
-@router.post("/rename-chat", summary="Rename a chat session")
-async def rename_chat_endpoint(
-    request: RenameChatRequest,
-    user_id: str = Depends(PermissionChecker(required_permissions=["write:chat"]))
-):
-    success = await mongo_manager.rename_chat(user_id, request.chatId, request.newTitle)
-    if not success:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found or you don't have permission to rename it.")
-    return JSONResponse(content={"message": "Chat renamed successfully."})
-
-@router.post("/delete-chat", summary="Delete a chat session")
-async def delete_chat_endpoint(
-    request: DeleteChatRequest,
-    user_id: str = Depends(PermissionChecker(required_permissions=["write:chat"]))
-):
-    success = await mongo_manager.delete_chat_history(user_id, request.chatId)
-    if not success:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found or you don't have permission to delete it.")
-    return JSONResponse(content={"message": "Chat deleted successfully."})
-
-@router.post("/chat", summary="Process Chat Message (Text)")
+@router.post("/message", summary="Process Chat Message (Overlay Chat)")
 async def chat_endpoint(
     request_body: ChatMessageInput, 
     user_id: str = Depends(PermissionChecker(required_permissions=["read:chat", "write:chat"]))
 ):
+    # Fetch comprehensive user context
     user_profile = await mongo_manager.get_user_profile(user_id)
-    username = user_profile.get("userData", {}).get("personalInfo", {}).get("name", "User") if user_profile else "User"
+    user_data = user_profile.get("userData", {}) if user_profile else {}
+    personal_info = user_data.get("personalInfo", {})
+    preferences = user_data.get("preferences", {})
+
+    user_context = {
+        "name": personal_info.get("name", "User"),
+        "timezone": personal_info.get("timezone", "UTC"),
+        "location": personal_info.get("location"),
+        "communication_style": preferences.get("communicationStyle", "friendly and professional")
+    }
+
+    # The new stateless chat sends the entire message history.
+    # We no longer save or retrieve history from the database here.
     
-    # Robustly handle chatId which may be a string, a list, or None
-    chat_id_from_req = request_body.chatId
-    chat_id: Optional[str] = None
-    if isinstance(chat_id_from_req, str) and chat_id_from_req:
-        chat_id = chat_id_from_req
-    elif isinstance(chat_id_from_req, list) and chat_id_from_req:
-        chat_id = str(chat_id_from_req[0])
-        
-    is_new_chat = not chat_id
-
-    if is_new_chat:
-        chat_id = str(uuid.uuid4())
-        title = ' '.join(request_body.input.split()[:3])
-        await mongo_manager.create_new_chat_session(user_id, chat_id, title)
-        logger.info(f"Created new chat with ID {chat_id} and title '{title}' for user {user_id}")
-
     async def event_stream_generator():
-        # For new chats, send a special event first with the new chat ID and title
-        if is_new_chat:
-            yield json.dumps({"type": "chat_created", "chatId": chat_id, "title": title}) + "\n"
         try:
+            # Pass the full message history directly to the LLM stream generator
             async for event in generate_chat_llm_stream(
                 user_id,
-                chat_id, # type: ignore
-                request_body.input,
-                username, 
+                request_body.messages,
+                user_context,
                 mongo_manager,
                 enable_internet=request_body.enable_internet,
                 enable_weather=request_body.enable_weather,
-                enable_news=request_body.enable_news
+                enable_news=request_body.enable_news,
+                enable_maps=request_body.enable_maps,
+                enable_shopping=request_body.enable_shopping
             ):
-                if not event: continue # Skip empty events
+                if not event: continue
                 yield json.dumps(event) + "\n"
         except asyncio.CancelledError:
              logger.info(f"Client disconnected, stream cancelled for user {user_id}.")
@@ -123,6 +63,6 @@ async def chat_endpoint(
                 "type": "error",
                 "message": "Sorry, I encountered an error while processing your request."
             }
-            yield json.dumps(error_response) + "\n" # This yield might fail if client is already gone
+            yield json.dumps(error_response) + "\n"
 
     return StreamingResponse(event_stream_generator(), media_type="application/x-ndjson")

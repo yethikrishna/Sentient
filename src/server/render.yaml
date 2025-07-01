@@ -1,292 +1,281 @@
-# render.yaml 
-# Blueprint for deploying the Sentient backend on Render. 
-# This defines the main API, all MCP servers, and the background workers. 
-services: 
-  # 1. Main FastAPI Server (Public Web Service) 
-  - type: web 
-    runtime: python
-    name: main-server 
-    region: oregon # Or your preferred region 
-    plan: free # Can be upgraded later 
-    buildCommand: | 
-      pip install --upgrade pip 
-      pip install -r src/server/requirements.txt 
-    startCommand: uvicorn server.main.app:app --host 0.0.0.0 --port $PORT 
-    healthCheckPath: /health 
-    envVars: 
-      - fromGroup: sentient-env 
-      - key: PYTHON_VERSION 
-        value: 3.11.5 
-  # 2. Celery Worker (Background Worker) 
-  - type: worker 
-    runtime: python
-    name: celery-worker 
-    region: oregon 
-    plan: free 
-    buildCommand: | 
-      pip install --upgrade pip 
-      pip install -r src/server/requirements.txt 
-    startCommand: celery -A server.celery_app worker --loglevel=info --pool=solo
-    envVars: 
-      - fromGroup: sentient-env 
-      - key: PYTHON_VERSION 
-        value: 3.11.5 
-  # 3. Polling & Extractor Workers (Background Workers) 
-  - type: worker 
-    runtime: python
-    name: poller-extractor-workers 
-    region: oregon 
-    plan: free 
-    buildCommand: | 
-      pip install --upgrade pip 
-      pip install -r src/server/requirements.txt 
-    startCommand: | 
-      python -m server.workers.pollers.gmail.main & 
-      python -m server.workers.pollers.gcalendar.main & 
-      python -m server.workers.extractors.main & 
-      wait 
-    envVars: 
-      - fromGroup: sentient-env 
-      - key: PYTHON_VERSION 
-        value: 3.11.5 
-  # 4. MCP Servers
-  - type: pserv 
-    runtime: python
-    name: memory-mcp 
-    region: oregon 
-    plan: free 
-    buildCommand: | 
-      pip install --upgrade pip 
-      pip install -r src/server/mcp-hub/memory/requirements.txt 
-    startCommand: python -m server.mcp-hub.memory.main 
-    envVars: 
-      - fromGroup: sentient-env 
-      - key: PYTHON_VERSION 
-        value: 3.11.5 
-      - key: MCP_SERVER_PORT 
-        value: 8001 
-  - type: pserv 
-    runtime: python
-    name: gmail-mcp 
-    region: oregon 
-    plan: free 
-    buildCommand: | 
-      pip install --upgrade pip 
-      pip install -r src/server/mcp-hub/gmail/requirements.txt 
-    startCommand: python -m server.mcp-hub.gmail.main 
-    envVars: 
-      - fromGroup: sentient-env 
-      - key: PYTHON_VERSION 
-        value: 3.11.5 
-      - key: MCP_SERVER_PORT 
-        value: 9001 
-  - type: pserv 
-    runtime: python
-    name: gcal-mcp 
-    region: oregon 
-    plan: free 
-    buildCommand: | 
-      pip install --upgrade pip 
-      pip install -r src/server/mcp-hub/gcal/requirements.txt 
-    startCommand: python -m server.mcp-hub.gcal.main 
-    envVars: 
-      - fromGroup: sentient-env 
-      - key: PYTHON_VERSION 
-        value: 3.11.5 
-      - key: MCP_SERVER_PORT 
-        value: 9002 
-  - type: pserv 
-    runtime: python
-    name: gdrive-mcp 
-    region: oregon 
-    plan: free 
-    buildCommand: | 
-      pip install --upgrade pip 
-      pip install -r src/server/mcp-hub/gdrive/requirements.txt 
-    startCommand: python -m server.mcp-hub.gdrive.main 
-    envVars: 
-      - fromGroup: sentient-env 
-      - key: PYTHON_VERSION 
-        value: 3.11.5 
-      - key: MCP_SERVER_PORT 
-        value: 9003 
-  - type: pserv 
-    runtime: python
-    name: gdocs-mcp 
-    region: oregon 
-    plan: free 
-    buildCommand: | 
-      pip install --upgrade pip 
-      pip install -r src/server/mcp-hub/gdocs/requirements.txt 
-    startCommand: python -m server.mcp-hub.gdocs.main 
-    envVars: 
-      - fromGroup: sentient-env 
-      - key: PYTHON_VERSION 
-        value: 3.11.5 
-      - key: MCP_SERVER_PORT 
-        value: 9004 
-  - type: pserv 
-    runtime: python
-    name: gsheets-mcp 
-    region: oregon 
-    plan: free 
-    buildCommand: | 
-      pip install --upgrade pip 
-      pip install -r src/server/mcp-hub/gsheets/requirements.txt 
-    startCommand: python -m server.mcp-hub.gsheets.main 
-    envVars: 
-      - fromGroup: sentient-env 
-      - key: PYTHON_VERSION 
-        value: 3.11.5 
-      - key: MCP_SERVER_PORT 
-        value: 9015 
-  - type: pserv 
-    runtime: python
-    name: gslides-mcp 
-    region: oregon 
-    plan: free 
-    buildCommand: | 
-      pip install --upgrade pip 
-      pip install -r src/server/mcp-hub/gslides/requirements.txt 
-    startCommand: python -m server.mcp-hub.gslides.main 
-    envVars: 
-      - fromGroup: sentient-env 
-      - key: PYTHON_VERSION 
-        value: 3.11.5 
-      - key: MCP_SERVER_PORT 
-        value: 9014 
-  - type: pserv 
-    runtime: python
-    name: google-search-mcp 
-    region: oregon 
-    plan: free 
-    buildCommand: | 
-      pip install --upgrade pip 
-      pip install -r src/server/mcp-hub/google_search/requirements.txt 
-    startCommand: python -m server.mcp-hub.google_search.main 
-    envVars: 
-      - fromGroup: sentient-env 
-      - key: PYTHON_VERSION 
-        value: 3.11.5 
-      - key: MCP_SERVER_PORT 
-        value: 9005 
-  - type: pserv 
-    runtime: python
-    name: slack-mcp 
-    region: oregon 
-    plan: free 
-    buildCommand: | 
-      pip install --upgrade pip 
-      pip install -r src/server/mcp-hub/slack/requirements.txt 
-    startCommand: python -m server.mcp-hub.slack.main 
-    envVars: 
-      - fromGroup: sentient-env 
-      - key: PYTHON_VERSION 
-        value: 3.11.5 
-      - key: MCP_SERVER_PORT 
-        value: 9006 
-  - type: pserv 
-    runtime: python
-    name: accuweather-mcp 
-    region: oregon 
-    plan: free 
-    buildCommand: | 
-      pip install --upgrade pip 
-      pip install -r src/server/mcp-hub/accuweather/requirements.txt 
-    startCommand: python -m server.mcp-hub.accuweather.main 
-    envVars: 
-      - fromGroup: sentient-env 
-      - key: PYTHON_VERSION 
-        value: 3.11.5 
-      - key: MCP_SERVER_PORT 
-        value: 9007 
-  - type: pserv 
-    runtime: python
-    name: quickchart-mcp 
-    region: oregon 
-    plan: free 
-    buildCommand: | 
-      pip install --upgrade pip 
-      pip install -r src/server/mcp-hub/quickchart/requirements.txt 
-    startCommand: python -m server.mcp-hub.quickchart.main 
-    envVars: 
-      - fromGroup: sentient-env 
-      - key: PYTHON_VERSION 
-        value: 3.11.5 
-      - key: MCP_SERVER_PORT 
-        value: 9008 
-  - type: pserv 
-    runtime: python
-    name: notion-mcp 
-    region: oregon 
-    plan: free 
-    buildCommand: | 
-      pip install --upgrade pip 
-      pip install -r src/server/mcp-hub/notion/requirements.txt 
-    startCommand: python -m server.mcp-hub.notion.main 
-    envVars: 
-      - fromGroup: sentient-env 
-      - key: PYTHON_VERSION 
-        value: 3.11.5 
-      - key: MCP_SERVER_PORT 
-        value: 9009 
-  - type: pserv 
-    runtime: python
-    name: github-mcp 
-    region: oregon 
-    plan: free 
-    buildCommand: | 
-      pip install --upgrade pip 
-      pip install -r src/server/mcp-hub/github/requirements.txt 
-    startCommand: python -m server.mcp-hub.github.main 
-    envVars: 
-      - fromGroup: sentient-env 
-      - key: PYTHON_VERSION 
-        value: 3.11.5 
-      - key: MCP_SERVER_PORT 
-        value: 9010 
-  - type: pserv 
-    runtime: python
-    name: progress-updater-mcp 
-    region: oregon 
-    plan: free 
-    buildCommand: | 
-      pip install --upgrade pip 
-      pip install -r src/server/mcp-hub/progress_updater/requirements.txt 
-    startCommand: python -m server.mcp-hub.progress_updater.main 
-    envVars: 
-      - fromGroup: sentient-env 
-      - key: PYTHON_VERSION 
-        value: 3.11.5 
-      - key: MCP_SERVER_PORT 
-        value: 9011 
-  - type: pserv 
-    runtime: python
-    name: news-mcp 
-    region: oregon 
-    plan: free 
-    buildCommand: | 
-      pip install --upgrade pip 
-      pip install -r src/server/mcp-hub/news/requirements.txt 
-    startCommand: python -m server.mcp-hub.news.main 
-    envVars: 
-      - fromGroup: sentient-env 
-      - key: PYTHON_VERSION 
-        value: 3.11.5 
-      - key: MCP_SERVER_PORT 
-        value: 9012 
-  - type: pserv 
-    runtime: python
-    name: chat-tools-mcp 
-    region: oregon 
-    plan: free 
-    buildCommand: | 
-      pip install --upgrade pip 
-      pip install -r src/server/mcp-hub/chat_tools/requirements.txt 
-    startCommand: python -m server.mcp-hub.chat_tools.main 
-    envVars: 
-      - fromGroup: sentient-env 
-      - key: PYTHON_VERSION 
-        value: 3.11.5 
-      - key: MCP_SERVER_PORT 
-        value: 9013
+# Blueprint for the DEVELOPMENT environment
+# Root Directory is src/server/. All paths are relative to this directory.
+
+services:
+    # 1. Main FastAPI Server (Public Web Service)
+    - type: web
+      name: main-server-dev
+      runtime: python
+      branch: dev
+      buildCommand: |
+          pip install --upgrade pip
+          pip install -r main/requirements.txt
+      startCommand: uvicorn main.app:app --host 0.0.0.0 --port $PORT
+      healthCheckPath: /health
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - fromGroup: sentient-dev-group
+
+    # 2. Celery Worker (runs scheduled tasks, polling, extraction, planning, execution)
+    - type: worker
+      name: celery-worker-dev
+      runtime: python
+      branch: dev
+      buildCommand: |
+          pip install --upgrade pip
+          pip install -r requirements.txt # Use the main requirements file
+      startCommand: celery -A workers.celery_app worker -B --loglevel=info # -B runs beat scheduler
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - fromGroup: sentient-dev-group
+
+    # --- MCP Hub Servers (Private Services) ---
+
+    - type: pserv
+      name: mcp-memory-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp_hub/memory/requirements.txt
+      startCommand: python -m mcp_hub.memory.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 8001
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-gmail-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp_hub/gmail/requirements.txt
+      startCommand: python -m mcp_hub.gmail.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9001
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-gcal-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp_hub/gcal/requirements.txt
+      startCommand: python -m mcp_hub.gcal.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9002
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-gdrive-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp_hub/gdrive/requirements.txt
+      startCommand: python -m mcp_hub.gdrive.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9003
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-gdocs-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp_hub/gdocs/requirements.txt
+      startCommand: python -m mcp_hub.gdocs.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9004
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-google-search-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp_hub/google_search/requirements.txt
+      startCommand: python -m mcp_hub.google_search.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9005
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-slack-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp_hub/slack/requirements.txt
+      startCommand: python -m mcp_hub.slack.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9006
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-accuweather-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp_hub/accuweather/requirements.txt
+      startCommand: python -m mcp_hub.accuweather.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9007
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-quickchart-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp_hub/quickchart/requirements.txt
+      startCommand: python -m mcp_hub.quickchart.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9008
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-notion-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp_hub/notion/requirements.txt
+      startCommand: python -m mcp_hub.notion.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9009
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-github-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp_hub/github/requirements.txt
+      startCommand: python -m mcp_hub.github.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9010
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-progress-updater-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp_hub/progress_updater/requirements.txt
+      startCommand: python -m mcp_hub.progress_updater.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9011
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-news-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp_hub/news/requirements.txt
+      startCommand: python -m mcp_hub.news.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9012
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-chat-tools-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp_hub/chat_tools/requirements.txt
+      startCommand: python -m mcp_hub.chat_tools.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9013
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-gslides-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp_hub/gslides/requirements.txt
+      startCommand: python -m mcp_hub.gslides.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9014
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-gsheets-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp_hub/gsheets/requirements.txt
+      startCommand: python -m mcp_hub.gsheets.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9015
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-gmaps-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp_hub/gmaps/requirements.txt
+      startCommand: python -m mcp_hub.gmaps.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9016
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-gshopping-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp_hub/gshopping/requirements.txt
+      startCommand: python -m mcp_hub.gshopping.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9017
+          - fromGroup: sentient-dev-group
+
+    - type: pserv
+      name: mcp-journal-dev
+      runtime: python
+      branch: dev
+      buildCommand: pip install -r mcp_hub/journal/requirements.txt
+      startCommand: python -m mcp_hub.journal.main
+      envVars:
+          - key: PYTHON_VERSION
+            value: "3.11.5"
+          - key: MCP_SERVER_PORT
+            value: 9018
+          - fromGroup: sentient-dev-group

@@ -2,8 +2,8 @@ import datetime
 import json
 from typing import Dict, Any, Optional
 
-from ..db import MongoManager
-from ..auth.utils import aes_encrypt, aes_decrypt
+from main.db import MongoManager
+from main.auth.utils import aes_encrypt, aes_decrypt
 
 async def store_encrypted_integration_token(user_id: str, service_name: str, token_data: Dict[str, Any], db_manager: MongoManager) -> bool:
     """Encrypts and stores the entire token object for a service."""

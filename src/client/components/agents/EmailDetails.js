@@ -46,50 +46,50 @@ const EmailDetails = ({ email }) => {
 	}
 
 	return (
-		<div className="w-full bg-smokeblack rounded-lg p-4 mb-4 border border-lightblue">
+		<div className="w-full bg-[var(--color-primary-surface)] rounded-lg p-4 mb-4 border border-[var(--color-accent-blue)]">
 			{/* Header section of the Email Details card */}
 			<div className="flex items-center gap-2 mb-4">
-				<IconMail className="w-6 h-6 text-lightblue" />
-				<h3 className="text-xl font-Poppins font-semibold text-white">
+				<IconMail className="w-6 h-6 text-[var(--color-accent-blue)]" />
+				<h3 className="text-xl font-semibold text-[var(--color-text-primary)]">
 					Email Details
 				</h3>
 			</div>
 			{/* Container for displaying email content */}
-			<div className="p-4 bg-matteblack rounded-md border border-gray-700">
+			<div className="p-4 bg-[var(--color-primary-background)] rounded-md border border-[var(--color-primary-surface-elevated)]">
 				{/* Display email Subject */}
 				<div className="mb-2">
-					<span className="font-Quicksand text-sm text-gray-400">
+					<span className="text-sm text-[var(--color-text-secondary)]">
 						Subject:{" "}
 					</span>
-					<span className="font-Quicksand text-white">
+					<span className="text-[var(--color-text-primary)]">
 						{email.subject}
 					</span>
 				</div>
 				{/* Display email Sender */}
 				<div className="mb-2">
-					<span className="font-Quicksand text-sm text-gray-400">
+					<span className="text-sm text-[var(--color-text-secondary)]">
 						From:{" "}
 					</span>
-					<span className="font-Quicksand text-white">
+					<span className="text-[var(--color-text-primary)]">
 						{email.from}
 					</span>
 				</div>
 				{/* Display email Snippet */}
 				<div className="mb-2">
-					<span className="font-Quicksand text-sm text-gray-400">
+					<span className="text-sm text-[var(--color-text-secondary)]">
 						Snippet:{" "}
 					</span>
-					<span className="font-Quicksand text-white">
+					<span className="text-[var(--color-text-primary)]">
 						{email.snippet}
 					</span>
 				</div>
 				{/* Display email Body */}
 				<div className="mb-2">
-					<span className="font-Quicksand text-sm text-gray-400">
+					<span className="text-sm text-[var(--color-text-secondary)]">
 						Body:{" "}
 					</span>
 					{/* Email body content, whitespace-pre-wrap to maintain formatting */}
-					<p className="font-Quicksand text-white whitespace-pre-wrap">
+					<p className="text-[var(--color-text-primary)] whitespace-pre-wrap">
 						{email.body}
 					</p>
 				</div>
@@ -97,7 +97,7 @@ const EmailDetails = ({ email }) => {
 				<div className="mt-2">
 					<button
 						onClick={handleCopy} // Call handleCopy function on button click
-						className="flex items-center text-lightblue hover:text-white transition-colors"
+						className="flex items-center text-[var(--color-accent-blue)] hover:text-white transition-colors"
 					>
 						{/* Conditional rendering of icon based on 'copied' state */}
 						{copied ? (
@@ -105,9 +105,7 @@ const EmailDetails = ({ email }) => {
 						) : (
 							<IconCopy className="w-5 h-5 mr-1" /> // Show copy icon if copied is false
 						)}
-						<span className="font-Quicksand text-sm">
-							Copy Email Body
-						</span>
+						<span className="text-sm">Copy Email Body</span>
 					</button>
 				</div>
 			</div>

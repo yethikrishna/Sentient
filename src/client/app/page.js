@@ -1,4 +1,3 @@
-// src/client/app/page.js
 "use client"
 
 import { useState, useEffect } from "react"
@@ -14,7 +13,7 @@ import React from "react"
  * This component is responsible for checking the user's authentication and onboarding status,
  * then redirecting them to the appropriate page (/auth/login, /onboarding, or /chat).
  * It displays a loading animation during this process.
- *
+ * The final destination for an authenticated and onboarded user is /home.
  * @returns {React.ReactNode} - The Home component UI.
  */
 const Home = () => {
@@ -49,12 +48,12 @@ const Home = () => {
 		const checkOnboardingStatus = async () => {
 			setIsCheckingOnboarding(true)
 			try {
-				const response = await fetch("/api/user/data")
+				const response = await fetch("/api/user/data") // Uses the same API endpoint
 
 				if (response.status === 401) {
 					// This case is unlikely if useUser() works but is good to handle.
 					toast.error("Session expired. Please log in again.")
-					router.push("/api/auth/logout")
+					router.push("/auth/logout")
 					return
 				}
 
@@ -89,7 +88,7 @@ const Home = () => {
 		// Only redirect if auth is loaded, user exists, and onboarding status is determined.
 		if (!isAuthLoading && user && onboarded !== null) {
 			if (onboarded) {
-				router.push("/chat")
+				router.push("/home")
 			} else {
 				router.push("/onboarding")
 			}
@@ -98,7 +97,7 @@ const Home = () => {
 
 	// Show a loading screen while checking authentication or onboarding status.
 	return (
-		<div className="min-h-screen flex flex-col items-center justify-center bg-black">
+		<div className="min-h-screen flex flex-col items-center justify-center bg-[var(--color-primary-background)]">
 			<div className="flex flex-col items-center justify-center h-full backdrop-blur-xs">
 				<AnimatedLogo />
 				<h1 className="text-white text-4xl mt-4">Sentient</h1>

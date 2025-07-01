@@ -3,10 +3,32 @@ import datetime
 import motor.motor_asyncio
 import logging
 from typing import List, Dict, Any
+import json
 
-from .config import MONGO_URI, MONGO_DB_NAME, INTEGRATIONS_CONFIG
+from workers.planner.config import MONGO_URI, MONGO_DB_NAME, INTEGRATIONS_CONFIG
+from workers.utils.crypto import aes_decrypt
 
 logger = logging.getLogger(__name__)
+
+def get_all_mcp_descriptions() -> Dict[str, str]:
+    """
+    Creates a dictionary of all available services and their high-level descriptions
+    from the main server's integration config.
+    """
+    if not INTEGRATIONS_CONFIG:
+        logging.warning("INTEGRATIONS_CONFIG is empty. No tools will be available to the planner.")
+        return {}
+    
+    mcp_descriptions = {}
+    for name, config in INTEGRATIONS_CONFIG.items():
+        display_name = config.get("display_name")
+        description = config.get("description")
+        if display_name and description:
+            # Use the simple name (e.g., 'gmail') as the key for the planner
+            mcp_descriptions[name] = description
+            
+    return mcp_descriptions
+
 
 class PlannerMongoManager:
     """A MongoDB manager for the planner worker."""
@@ -15,42 +37,8 @@ class PlannerMongoManager:
         self.db = self.client[MONGO_DB_NAME]
         self.user_profiles_collection = self.db["user_profiles"]
         self.tasks_collection = self.db["tasks"]
+        self.journal_blocks_collection = self.db["journal_blocks"]
         logger.info("PlannerMongoManager initialized.")
-
-    async def get_available_tools(self, user_id: str) -> List[str]:
-        """
-        Fetches the names of tools the user can actually use, based on their
-        connected integrations and Google Auth mode.
-        """
-        user_profile = await self.user_profiles_collection.find_one({"user_id": user_id})
-        if not user_profile:
-            return []
-        
-        user_data = user_profile.get("userData", {})
-        user_integrations = user_data.get("integrations", {})
-        google_auth_mode = user_data.get("googleAuth", {}).get("mode", "default")
-        
-        available_tools = []
-        
-        for name, config in INTEGRATIONS_CONFIG.items():
-            is_google_service = name.startswith('g')
-            
-            # If custom Google project is used, all Google tools are considered available
-            if is_google_service and google_auth_mode == 'custom':
-                available_tools.append(name)
-                continue
-
-            # If it's a built-in tool, it's always available
-            if config.get("auth_type") == "builtin":
-                available_tools.append(name)
-                continue
-
-            # For default OAuth/manual, check if it's connected
-            if user_integrations.get(name, {}).get("connected", False):
-                available_tools.append(name)
-                
-        # Return a unique list of tools
-        return list(set(available_tools))
 
     async def save_plan_as_task(self, user_id: str, description: str, plan: list, original_context: dict, source_event_id: str):
         """Saves a generated plan to the tasks collection for user approval."""
@@ -74,6 +62,17 @@ class PlannerMongoManager:
         }
         await self.tasks_collection.insert_one(task_doc)
         logger.info(f"Saved new plan with task_id: {task_id} for user: {user_id}")
+        
+        # If the plan originated from a journal block, link it back
+        if original_context.get("source") == "journal_block":
+            block_id = original_context.get("block_id")
+            if block_id:
+                await self.journal_blocks_collection.update_one(
+                    {"block_id": block_id, "user_id": user_id},
+                    {"$set": {"linked_task_id": task_id, "task_status": "approval_pending"}}
+                )
+                logger.info(f"Linked new task {task_id} to journal block {block_id}.")
+        
         return task_id
 
     async def close(self):

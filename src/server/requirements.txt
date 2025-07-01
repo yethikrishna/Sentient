@@ -1,52 +1,43 @@
-# Core Framework & Web Server
-fastapi
-uvicorn
-pydantic
-fastmcp
+# This is the master requirements file for the Docker image and Celery workers.
+# It includes dependencies for all services that run within this context.
 
-# Environment Variables
+# --- Core Framework & Web Server ---
+fastapi
+uvicorn[standard]
+
+# --- Data Validation & Config ---
 python-dotenv
 
-# Authentication & Security
+# --- Authentication & Security ---
 python-jose[cryptography]
 cryptography
 
-# HTTP & Async Networking
+# --- Asynchronous & HTTP Clients ---
 httpx
-nest_asyncio
 requests
 
-# Database
-motor           # Async MongoDB driver
-pymongo
-neo4j
-
-# AI / Machine Learning (LLM, STT, TTS)
-qwen-agent
-elevenlabs
-sentence-transformers
-numpy
-
-# Google API Clients
-google-api-python-client
-google-auth-httplib2
-google-auth-oauthlib
-
-# GitHub API Client
-PyGithub
-
-# Message Queues & Workers
-aiokafka
-kafka-python
-celery
+# --- Database & Caching ---
+motor
 redis
 
+# --- AI & Machine Learning ---
+qwen-agent
+google-genai
 
-# llama-cpp-python
-# snac
-# pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/<cuda-version>
-librosa
-faster-whisper
-snac
-torch
-# pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+# --- Background Task Queue ---
+celery
+python-dateutil # For rrule in scheduler
+
+# --- Google API Clients ---
+google-api-python-client
+google-auth-oauthlib
+
+# --- Other 3rd Party API Clients ---
+PyGithub
+notion-client
+
+# --- MCP Framework ---
+fastmcp
+
+# --- Charting (for gslides MCP) ---
+matplotlib

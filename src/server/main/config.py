@@ -1,11 +1,11 @@
 import os
-from dotenv import load_dotenv
+
 import datetime
 
 # Load .env from the current 'main' directory's parent, which is 'server'
-dotenv_path = "server/.env"
-print(f"[{datetime.datetime.now()}] [MainServer_Config] Loading .env from: {dotenv_path}")
-load_dotenv(dotenv_path=dotenv_path)
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+if os.path.exists(dotenv_path):
+    print(f"[{datetime.datetime.now()}] [MainServer_Config] Loading .env from: {dotenv_path}")
 
 APP_SERVER_PORT = int(os.getenv("APP_SERVER_PORT", "5000"))
 
@@ -55,6 +55,9 @@ if AES_IV_HEX:
 else:
     print(f"[{datetime.datetime.now()}] [MainServer_Config_WARNING] AES_IV is not set. Encryption/Decryption will fail.")
 
+# WAHA Configuration
+WAHA_URL = os.getenv("WAHA_URL", "http://localhost:3000")
+WAHA_API_KEY = os.getenv("WAHA_API_KEY")
 
 # Google API Config (mainly for token storage path if server handles auth code exchange)
 _SERVER_DIR_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..")) # main -> server
@@ -72,7 +75,7 @@ SUPPORTED_POLLING_SERVICES = ["gmail", "gcalendar"]
 INTEGRATIONS_CONFIG = {
     "github": {
         "display_name": "GitHub",
-        "description": "Connect to manage repositories, issues, and more.",
+        "description": "Connect to manage repositories, issues, and more. Enables the agent to search public and private repos, list your repos, view repository details, list issues, create new issues, and read file contents.",
         "auth_type": "oauth",
         "icon": "IconBrandGithub",
         "mcp_server_config": {
@@ -82,7 +85,7 @@ INTEGRATIONS_CONFIG = {
     },
     "gdrive": { # User-configurable OAuth
         "display_name": "Google Drive",
-        "description": "Access and manage files in your Google Drive.",
+        "description": "Access and manage files in your Google Drive. Allows the agent to search for files by name or content and read the contents of various file types like documents and spreadsheets.",
         "auth_type": "oauth",
         "icon": "IconBrandGoogleDrive",
         "mcp_server_config": {
@@ -92,7 +95,7 @@ INTEGRATIONS_CONFIG = {
     },
     "gcalendar": { # User-configurable OAuth
         "display_name": "Google Calendar",
-        "description": "Read and manage events on your Google Calendar.",
+        "description": "Read and manage events on your Google Calendar. Enables the agent to list upcoming events, add new events, search for specific events, update event details, and delete events.",
         "auth_type": "oauth",
         "icon": "IconCalendarEvent",
         "mcp_server_config": {
@@ -102,7 +105,7 @@ INTEGRATIONS_CONFIG = {
     },
     "gmail": { # User-configurable OAuth
         "display_name": "Gmail",
-        "description": "Read, send, and manage emails.",
+        "description": "Read, send, and manage emails. The agent can search your inbox, send new emails, create drafts, reply to threads, forward messages, and manage emails by deleting them or marking them as read/unread.",
         "auth_type": "oauth",
         "icon": "IconMail",
         "mcp_server_config": {
@@ -112,7 +115,7 @@ INTEGRATIONS_CONFIG = {
     },
     "gdocs": {
         "display_name": "Google Docs",
-        "description": "Create and manage documents in your Google Docs.",
+        "description": "Create and manage documents in Google Docs. Allows the agent to generate new, multi-section documents with titles, headings, paragraphs, and bullet points.",
         "auth_type": "oauth",
         "icon": "IconFileText",
         "mcp_server_config": {
@@ -122,7 +125,7 @@ INTEGRATIONS_CONFIG = {
     },
     "gslides": {
         "display_name": "Google Slides",
-        "description": "Create and manage presentations in Google Slides.",
+        "description": "Create and manage presentations in Google Slides. The agent can build new slide decks with titles, content, images, and charts based on a structured outline you provide.",
         "auth_type": "oauth",
         "icon": "IconPresentation",
         "mcp_server_config": {
@@ -132,7 +135,7 @@ INTEGRATIONS_CONFIG = {
     },
     "gsheets": {
         "display_name": "Google Sheets",
-        "description": "Create and manage spreadsheets in Google Sheets.",
+        "description": "Create and manage spreadsheets in Google Sheets. The agent can help organize data by creating new spreadsheets with one or more sheets, including headers and rows.",
         "auth_type": "oauth",
         "icon": "IconTable",
         "mcp_server_config": {
@@ -142,8 +145,8 @@ INTEGRATIONS_CONFIG = {
     },
     "gmaps": {
         "display_name": "Google Maps",
-        "description": "Search for places and get directions.",
-        "auth_type": "oauth",
+        "description": "Search for places and get directions. The agent can look up addresses, points of interest, and find routes for driving, walking, bicycling, or transit.",
+        "auth_type": "builtin",
         "icon": "IconMapPin",
         "mcp_server_config": {
             "name": "gmaps_server",
@@ -152,8 +155,8 @@ INTEGRATIONS_CONFIG = {
     },
     "gshopping": {
         "display_name": "Google Shopping",
-        "description": "Search for products online.",
-        "auth_type": "oauth",
+        "description": "Search for products online. The agent can find items to purchase by searching Google Shopping and returning a list of products with titles, links, and prices.",
+        "auth_type": "builtin",
         "icon": "IconShoppingCart",
         "mcp_server_config": {
             "name": "gshopping_server",
@@ -162,7 +165,7 @@ INTEGRATIONS_CONFIG = {
     },
     "slack": { # User-configurable Manual
         "display_name": "Slack",
-        "description": "Connect to your Slack workspace to send messages and more.",
+        "description": "Connect to your Slack workspace. Allows the agent to list channels, post messages, reply in threads, add reactions, read channel history, and get user information.",
         "auth_type": "manual",
         "icon": "IconBrandSlack",
         "manual_auth_info": {
@@ -184,7 +187,7 @@ INTEGRATIONS_CONFIG = {
     },
     "notion": {
         "display_name": "Notion",
-        "description": "Connect to your Notion workspace to search, create, and manage pages.",
+        "description": "Connect to your Notion workspace. The agent can search for pages and databases, read page content, create new pages, append content to existing pages, and query databases with filters.",
         "auth_type": "manual",
         "icon": "IconBrandNotion",
         "manual_auth_info": {
@@ -205,7 +208,7 @@ INTEGRATIONS_CONFIG = {
     },
     "news": { # Built-in
         "display_name": "News",
-        "description": "Fetches top headlines and news articles from around the world.",
+        "description": "Fetches top headlines and news articles from around the world. The agent can get top headlines by country or category, or search for articles on any topic.",
         "auth_type": "builtin",
         "icon": "IconNews",
         "mcp_server_config": {
@@ -215,7 +218,7 @@ INTEGRATIONS_CONFIG = {
     },
     "internet_search": { # Built-in
         "display_name": "Internet Search",
-        "description": "Allows the agent to search the web using Google Search.",
+        "description": "Allows the agent to search the web using Google Search to find real-time, factual information on any topic.",
         "auth_type": "builtin",
         "icon": "IconWorldSearch",
         "mcp_server_config": {
@@ -225,7 +228,7 @@ INTEGRATIONS_CONFIG = {
     },
     "accuweather": { # Built-in
         "display_name": "AccuWeather",
-        "description": "Provides current weather conditions and forecasts.",
+        "description": "Provides current weather conditions and daily forecasts. The agent can get the current weather for any location or a forecast for the next 1-5 days.",
         "auth_type": "builtin",
         "icon": "IconCloud", # Frontend needs to map this string to the icon component
         "mcp_server_config": {
@@ -235,7 +238,7 @@ INTEGRATIONS_CONFIG = {
     },
     "quickchart": { # Built-in
         "display_name": "QuickChart",
-        "description": "Generates charts and data visualizations on the fly.",
+        "description": "Generates charts and data visualizations on the fly. The agent can create bar charts, line charts, pie charts, and more, then provide a URL or download the image.",
         "auth_type": "builtin",
         "icon": "IconChartPie", # Frontend needs to map this
         "mcp_server_config": {
@@ -243,19 +246,9 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("QUICKCHART_MCP_SERVER_URL", "http://localhost:9008/sse")
         }
     },
-    "memory": { # Built-in
-        "display_name": "Long & Short-Term Memory",
-        "description": "Allows the agent to remember facts and context.",
-        "auth_type": "builtin",
-        "icon": "IconBrain", # Frontend needs to map this
-         "mcp_server_config": {
-             "name": "memory_server",
-             "url": os.getenv("MEMORY_MCP_SERVER_URL", "http://localhost:8001/sse")
-         }
-    },
     "progress_updater": { # Built-in tool for executor
         "display_name": "Progress Updater",
-        "description": "Allows an executor agent to update task progress.",
+        "description": "Internal tool for the system to provide real-time progress updates on long-running tasks.",
         "auth_type": "builtin",
         "icon": "IconActivity", # Will need to add this icon
         "mcp_server_config": {
@@ -265,7 +258,7 @@ INTEGRATIONS_CONFIG = {
     },
     "chat_tools": { # Built-in, for chat agent
         "display_name": "Chat Agent Tools",
-        "description": "Tools for the main conversational agent, like task handoff.",
+        "description": "Internal tools for the main conversational agent, such as handing off complex tasks to the planning system and checking task status.",
         "auth_type": "builtin",
         "icon": "IconMessage", # Frontend can map this
         "mcp_server_config": {
@@ -273,44 +266,54 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("CHAT_TOOLS_MCP_SERVER_URL", "http://localhost:9013/sse")
         }
     },
+    "journal": { # Built-in, for chat agent
+        "display_name": "Journal Tools",
+        "description": "Tools for managing the user's Journal. The agent can add new entries, search existing entries by keyword, and get a summary for a specific day.",
+        "auth_type": "builtin",
+        "icon": "IconMessage", # Frontend can map this
+        "mcp_server_config": {
+            "name": "journal_server",
+            "url": os.getenv("JOURNAL_MCP_SERVER_URL", "http://localhost:9018/sse")
+        }
+    },
+    "supermemory": {
+        "display_name": "Long-Term Memory",
+        "description": "The agent's long-term memory about the user. Use 'search' to recall facts, relationships, and preferences. Use 'addToSupermemory' to save new, permanent information about the user. This is critical for personalization.",
+        "auth_type": "builtin",
+        "icon": "IconBrain",
+        "mcp_server_config": {
+            "name": "supermemory",
+            # URL is constructed dynamically based on user's supermemory_user_id
+            "url": None
+        }
+    }
 }
 
 # --- Service Provider Configuration ---
 # These variables allow for flexible switching between different service providers.
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "OLLAMA")  # Options: "OLLAMA", "OPENROUTER"
-STT_PROVIDER = os.getenv("STT_PROVIDER", "FASTER_WHISPER") # Options: "FASTER_WHISPER", "ELEVENLABS"
-TTS_PROVIDER = os.getenv("TTS_PROVIDER", "ORPHEUS") # Options: "ORPHEUS", "ELEVENLABS"
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "OLLAMA") # Options: "OLLAMA", "NOVITA"
+# STT_PROVIDER = os.getenv("STT_PROVIDER", "FASTER_WHISPER") # Voice removed
+# TTS_PROVIDER = os.getenv("TTS_PROVIDER", "ORPHEUS") # Voice removed
 
 # --- Service-Specific API Keys and Paths ---
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY") # Used for both STT and TTS from ElevenLabs
+# ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY") # Voice removed
+# ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb") # Voice removed
 
-# For Orpheus (Dev TTS)
-ORPHEUS_MODEL_PATH = os.getenv("ORPHEUS_MODEL_PATH", os.path.join(os.path.dirname(__file__), "..", "legacy", "voice", "models", "orpheus-3b-0.1-ft-q4_k_m.gguf"))
-ORPHEUS_N_GPU_LAYERS = int(os.getenv("ORPHEUS_N_GPU_LAYERS", 30))
-
-# FasterWhisper STT (Dev STT) - Configs are usually passed at instantiation
-FASTER_WHISPER_MODEL_SIZE = os.getenv("FASTER_WHISPER_MODEL_SIZE", "base")
-FASTER_WHISPER_DEVICE = os.getenv("FASTER_WHISPER_DEVICE", "cpu")
-FASTER_WHISPER_COMPUTE_TYPE = os.getenv("FASTER_WHISPER_COMPUTE_TYPE", "int8")
+# Voice related model paths and settings removed
 
 
 # LLM Endpoint Configuration
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434") 
 OLLAMA_MODEL_NAME = os.getenv("OLLAMA_MODEL_NAME", "qwen3:4b") 
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY") 
-OPENROUTER_MODEL_NAME = os.getenv("OPENROUTER_MODEL_NAME", "qwen/qwen3-8b:free") 
+NOVITA_API_KEY = os.getenv("NOVITA_API_KEY")
+NOVITA_MODEL_NAME = os.getenv("NOVITA_MODEL_NAME", "qwen/qwen3-4b-fp8")
 # MCP Server URLs
-MEMORY_MCP_SERVER_URL = os.getenv("MEMORY_MCP_SERVER_URL", "http://localhost:8001/sse")
 PROGRESS_UPDATER_MCP_SERVER_URL=os.getenv("PROGRESS_UPDATER_MCP_SERVER_URL", "http://localhost:9011/sse")
-CHAT_TOOLS_MCP_SERVER_URL=os.getenv("CHAT_TOOLS_MCP_SERVER_URL", "http://localhost:9013/sse")
-
-MONGO_URI= os.getenv("MONGO_URI", "mongodb://localhost:27017/")
-MONGO_DB_NAME= os.getenv("MONGO_DB_NAME", "sentient_agent_db")
-NEO4J_URI= os.getenv("NEO4J_URI", "bolt://localhost:7687")
-NEO4J_USER= os.getenv("NEO4J_USER", "neo4j")
-NEO4J_PASSWORD= os.getenv("NEO4J_PASSWORD", "password")
+CHAT_TOOLS_MCP_SERVER_URL=os.getenv("CHAT_TOOLS_MCP_SERVER_URL", "http://localhost:9013/sse") # For agent action handoff
+SUPERMEMORY_MCP_BASE_URL = os.getenv("SUPERMEMORY_MCP_BASE_URL", "https://mcp.supermemory.ai/")
+SUPERMEMORY_MCP_ENDPOINT_SUFFIX = os.getenv("SUPERMEMORY_MCP_ENDPOINT_SUFFIX", "/sse")
 
 print(f"[{datetime.datetime.now()}] [MainServer_Config] Configuration loaded. AUTH0_DOMAIN: {'SET' if AUTH0_DOMAIN else 'NOT SET'}")
 print(f"[{datetime.datetime.now()}] [MainServer_Config] LLM Provider: {LLM_PROVIDER}")
-print(f"[{datetime.datetime.now()}] [MainServer_Config] STT Provider: {STT_PROVIDER}")
-print(f"[{datetime.datetime.now()}] [MainServer_Config] TTS Provider: {TTS_PROVIDER}")
+# print(f"[{datetime.datetime.now()}] [MainServer_Config] STT Provider: {STT_PROVIDER}") # Voice removed
+# print(f"[{datetime.datetime.now()}] [MainServer_Config] TTS Provider: {TTS_PROVIDER}") # Voice removed

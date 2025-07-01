@@ -1,15 +1,25 @@
 import logging
 from qwen_agent.agents import Assistant
 
-from . import config
-from . import prompts
+from workers.planner import config
+from workers.planner import prompts
+from workers.planner.db import get_all_mcp_descriptions
 
 logger = logging.getLogger(__name__)
 
-def get_planner_agent(available_tools: list):
+def get_planner_agent(available_tools: dict, current_time_str: str, user_name: str, user_location: str):
     """Initializes and returns a Qwen Assistant agent for planning."""
+    
+    # Format the MCP descriptions for the prompt
+    # The keys are now the simple names (e.g., 'gmail')
+    tools_list_str = "\n".join([f"- {name}: {desc}" for name, desc in available_tools.items()])
+    
+    # Add current time to the prompt for better contextual planning
     system_prompt = prompts.SYSTEM_PROMPT.format(
-        available_tools=", ".join(available_tools)
+        user_name=user_name,
+        user_location=user_location,
+        current_time=current_time_str,
+        available_tools=tools_list_str
     )
 
     llm_cfg = {}
@@ -24,8 +34,15 @@ def get_planner_agent(available_tools: list):
                 'response_format': {'type': 'json_object'},
             }
         }
-    else:
-        raise ValueError(f"Unsupported LLM_PROVIDER for planner: {config.LLM_PROVIDER}")
+    elif config.LLM_PROVIDER == "NOVITA":
+        llm_cfg = {
+            'model': config.NOVITA_MODEL_NAME,
+            'model_server': "https://api.novita.ai/v3/openai",
+            'api_key': config.NOVITA_API_KEY,
+            'generate_cfg': {'temperature': 0.3, 'response_format': {'type': 'json_object'}}
+        }
+    else: # Add NOVITA provider
+        raise ValueError(f"Unsupported LLM_PROVIDER for planner: {config.LLM_PROVIDER}. Must be 'OLLAMA' or 'NOVITA'")
 
     try:
         agent = Assistant(

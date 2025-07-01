@@ -1,8 +1,7 @@
 # src/server/main/dependencies.py
-from .db import MongoManager
-from .auth.utils import AuthHelper
-from .websocket import MainWebSocketManager
-from .memory.dependencies import neo4j_manager, mongo_manager_instance as memory_mongo_manager
+from main.db import MongoManager
+from main.auth.utils import AuthHelper
+from main.websocket import MainWebSocketManager
 
 # --- Global Instances ---
 # These instances are created once here and imported by other modules

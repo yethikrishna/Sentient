@@ -3,7 +3,7 @@
     Starts only the backend workers for the Sentient project.
 
 .DESCRIPTION
-    This script launches Celery, Kafka consumer, and Gmail poller workers,
+    This script launches the Celery worker and the Celery Beat scheduler,
     each in their own terminal window, using your Python virtual environment.
 #>
 
@@ -35,9 +35,8 @@ function Start-NewTerminal {
 Write-Host "`n🚀 Starting Backend Workers..." -ForegroundColor Cyan
 
 $workerServices = @(
-    @{ Name = "Celery (Memory, Planner, Executor)"; Command = "& '$venvActivatePath'; celery -A server.celery_app worker --loglevel=info --pool=solo" },
-    @{ Name = "Extractor (Kafka Consumer)";        Command = "& '$venvActivatePath'; python -m server.workers.extractors.main" },
-    @{ Name = "Gmail Poller (Kafka Producer)";     Command = "& '$venvActivatePath'; python -m server.workers.pollers.gmail.main" }
+    @{ Name = "Celery Worker"; Command = "& '$venvActivatePath'; celery -A server.workers.celery_app worker --loglevel=info --pool=solo" },
+    @{ Name = "Celery Beat Scheduler"; Command = "& '$venvActivatePath'; celery -A server.workers.celery_app beat --loglevel=info" }
 )
 
 foreach ($service in $workerServices) {

@@ -2,7 +2,8 @@
 import { Auth0Provider } from "@auth0/nextjs-auth0"
 import "@styles/globals.css" // Import global styles for the application
 import { Toaster } from "react-hot-toast" // Import Toaster component for displaying toast notifications
-import React from "react" // No longer need useEffect here
+import React from "react"
+import LayoutWrapper from "@components/LayoutWrapper"
 
 /**
  * Metadata for the RootLayout component.
@@ -26,15 +27,12 @@ export const metadata = {
  * @returns {React.ReactNode} - The RootLayout component UI.
  */
 export default function RootLayout({ children }) {
-	// Removed the useEffect hook that was sending Electron-specific heartbeats.
-	// This functionality is not applicable in a web-only environment.
-
 	return (
 		<html lang="en" suppressHydrationWarning>
 			<Auth0Provider>
-				<body className="bg-black">
+				<body className="font-Inter">
 					<Toaster position="bottom-right" />
-					{children}
+					<LayoutWrapper>{children}</LayoutWrapper>
 				</body>
 			</Auth0Provider>
 		</html>

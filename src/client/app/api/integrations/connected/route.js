@@ -1,24 +1,8 @@
 // src/client/app/api/integrations/connected/route.js
 import { NextResponse } from "next/server"
-import { getBackendAuthHeader, auth0 } from "@lib/auth0"
+import { withAuth } from "@lib/api-utils"
 
-export async function GET() {
-	const session = await auth0.getSession()
-	if (!session?.user?.sub) {
-		return NextResponse.json(
-			{ error: "Not authenticated" },
-			{ status: 401 }
-		)
-	}
-
-	const authHeader = await getBackendAuthHeader()
-	if (!authHeader) {
-		return NextResponse.json(
-			{ error: "Could not create auth header" },
-			{ status: 500 }
-		)
-	}
-
+export const GET = withAuth(async function GET(request, { authHeader }) {
 	try {
 		// This reuses the same backend endpoint but we will filter on the client
 		const response = await fetch(
@@ -38,4 +22,4 @@ export async function GET() {
 		console.error("API Error in /integrations/connected:", error)
 		return NextResponse.json({ error: error.message }, { status: 500 })
 	}
-}
+})

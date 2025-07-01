@@ -1,0 +1,6 @@
+python-dotenv
+motor
+pymongo
+qwen-agent
+celery
+redis

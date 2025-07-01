@@ -103,13 +103,12 @@ const LinkButton = ({ href, children }) => {
 
 	return (
 		<span
-			onClick={() => window.open(href, "_blank", "noopener noreferrer")} // Open URL in new tab on click
-			className="bg-white text-black border-2 border-black hover:border-lightblue py-1 px-2 rounded-md items-center cursor-pointer inline-flex"
+			onClick={() => window.open(href, "_blank", "noopener noreferrer")}
+			className="bg-[var(--color-primary-surface)] text-[var(--color-text-primary)] border border-[var(--color-primary-surface-elevated)] hover:border-[var(--color-accent-blue)] py-1 px-2 rounded-md items-center cursor-pointer inline-flex"
 			// Styling for the link button: background, text color, border, padding, rounded corners, cursor, inline-flex display
 			style={{
 				display: "inline-flex", // Ensure inline-flex for proper alignment
-				verticalAlign: "middle", // Vertical alignment to middle
-				margin: "0 4px" // Margin for spacing between link buttons
+				verticalAlign: "middle" // Vertical alignment to middle
 			}}
 		>
 			{icon} {/* Render the icon determined by getToolDetails */}
@@ -204,18 +203,22 @@ const ChatBubble = ({
 			)
 		}
 
-		// This is a deprecated way of parsing, new method below is better.
+		// Strip tool calls and results, then parse for <think> tags
+		const cleanMessage = message.replace(
+			/<tool_result[\s\S]*?<\/tool_result>/gs,
+			""
+		)
+
 		const contentParts = []
-		const regex =
-			/(<think>[\s\S]*?<\/think>|<tool_code name="[^"]*">[\s\S]*?<\/tool_code>|<tool_result tool_name="[^"]*">[\s\S]*?<\/tool_result>)/g
+		const regex = /(<think>[\s\S]*?<\/think>)/g
 		let lastIndex = 0
 
-		for (const match of message.matchAll(regex)) {
+		for (const match of cleanMessage.matchAll(regex)) {
 			// Capture the text before the current tag
 			if (match.index > lastIndex) {
 				contentParts.push({
 					type: "text",
-					content: message.substring(lastIndex, match.index)
+					content: cleanMessage.substring(lastIndex, match.index)
 				})
 			}
 
@@ -223,45 +226,28 @@ const ChatBubble = ({
 			const tag = match[0]
 			let subMatch
 			if ((subMatch = tag.match(/<think>([\s\S]*?)<\/think>/))) {
-				contentParts.push({
-					type: "think",
-					content: subMatch[1].trim()
-				})
-			} else if (
-				(subMatch = tag.match(
-					/<tool_code name="([^"]*)">([\s\S]*?)<\/tool_code>/
-				))
-			) {
-				contentParts.push({
-					type: "tool_code",
-					name: subMatch[1],
-					content: subMatch[2].trim()
-				})
-			} else if (
-				(subMatch = tag.match(
-					/<tool_result tool_name="([^"]*)">([\s\S]*?)<\/tool_result>/
-				))
-			) {
-				contentParts.push({
-					type: "tool_result",
-					name: subMatch[1],
-					content: subMatch[2].trim()
-				})
+				const thinkContent = subMatch[1].trim()
+				if (thinkContent) {
+					contentParts.push({
+						type: "think",
+						content: thinkContent
+					})
+				}
 			}
 			lastIndex = match.index + tag.length
 		}
 
 		// Capture any remaining text after the last tag
-		if (lastIndex < message.length) {
+		if (lastIndex < cleanMessage.length) {
 			contentParts.push({
 				type: "text",
-				content: message.substring(lastIndex)
+				content: cleanMessage.substring(lastIndex)
 			})
 		}
 
 		return contentParts.map((part, index) => {
 			const partId = `${part.type}_${index}`
-			if (part.type === "think") {
+			if (part.type === "think" && part.content) {
 				return (
 					<div
 						key={partId}
@@ -270,6 +256,8 @@ const ChatBubble = ({
 						<button
 							onClick={() => toggleExpansion(partId)}
 							className="flex items-center gap-2 text-yellow-400 hover:text-yellow-300 text-sm font-semibold"
+							data-tooltip-id="chat-bubble-tooltip"
+							data-tooltip-content="Click to see the agent's internal reasoning for this step."
 						>
 							{expandedStates[partId] ? (
 								<IconChevronUp size={16} />
@@ -288,74 +276,7 @@ const ChatBubble = ({
 					</div>
 				)
 			}
-			if (part.type === "tool_code") {
-				return (
-					<div
-						key={partId}
-						className="mb-4 border-l-2 border-cyan-500 pl-3"
-					>
-						<button
-							onClick={() => toggleExpansion(partId)}
-							className="flex items-center gap-2 text-cyan-400 hover:text-cyan-300 text-sm font-semibold"
-						>
-							{expandedStates[partId] ? (
-								<IconChevronUp size={16} />
-							) : (
-								<IconChevronDown size={16} />
-							)}
-							<IconCode size={16} />
-							Tool Call: {part.name}
-						</button>
-						{expandedStates[partId] && (
-							<div className="mt-2 p-3 bg-neutral-800/50 rounded-md">
-								<pre className="text-xs text-gray-300 whitespace-pre-wrap bg-transparent p-0 m-0 font-mono">
-									<code>
-										{(() => {
-											try {
-												return JSON.stringify(
-													JSON.parse(part.content),
-													null,
-													2
-												)
-											} catch (e) {
-												return part.content // Fallback to raw string if not valid JSON
-											}
-										})()}
-									</code>
-								</pre>
-							</div>
-						)}
-					</div>
-				)
-			}
-			if (part.type === "tool_result") {
-				return (
-					<div
-						key={partId}
-						className="mb-4 border-l-2 border-lime-500 pl-3"
-					>
-						<button
-							onClick={() => toggleExpansion(partId)}
-							className="flex items-center gap-2 text-lime-400 hover:text-lime-300 text-sm font-semibold"
-						>
-							{expandedStates[partId] ? (
-								<IconChevronUp size={16} />
-							) : (
-								<IconChevronDown size={16} />
-							)}
-							<IconTerminal2 size={16} />
-							Tool Result: {part.name}
-						</button>
-						{expandedStates[partId] && (
-							<div className="mt-2 p-3 bg-neutral-800/50 rounded-md">
-								<pre className="text-xs text-gray-300 whitespace-pre-wrap bg-transparent p-0 m-0 font-mono">
-									<code>{part.content}</code>
-								</pre>
-							</div>
-						)}
-					</div>
-				)
-			}
+
 			if (part.type === "text" && part.content.trim()) {
 				return (
 					<ReactMarkdown
@@ -379,69 +300,50 @@ const ChatBubble = ({
 		<div
 			className={`p-4 rounded-lg ${
 				isUser
-					? "bg-white text-black text-lg font-semibold self-end max-w-xs md:max-w-md lg:max-w-lg mt-5 mb-5"
-					: "bg-transparent text-lg text-white self-start w-full border-b border-t border-lightblue"
-			} mb-2 relative font-Inter`}
+					? "bg-[var(--color-accent-blue)] text-white text-base font-medium self-end max-w-[80%] sm:max-w-md lg:max-w-lg"
+					: "bg-transparent text-base text-white self-start w-full"
+			} mb-2 relative`}
 			style={{ wordBreak: "break-word" }}
 		>
 			{renderMessageContent()}
 
 			{!isUser && (
 				<div className="flex justify-start items-center space-x-4 mt-6">
+					<Tooltip id="chat-bubble-tooltip" />
 					{memoryUsed && (
-						<>
-							<span
-								data-tooltip-id="memory-used"
-								data-tooltip-content="Memory was used to generate this response"
-								className="flex items-center text-gray-400"
-							>
-								<IconBrain size={18} />
-							</span>
-							<Tooltip
-								id="memory-used"
-								place="right"
-								type="dark"
-								effect="float"
-							/>
-						</>
+						<span
+							data-tooltip-id="chat-bubble-tooltip"
+							data-tooltip-content="Memory was used to generate this response"
+							className="flex items-center text-[var(--color-accent-blue)]"
+						>
+							<IconBrain size={18} />
+						</span>
 					)}
 					{agentsUsed && (
-						<>
-							<span
-								data-tooltip-id="agents-used"
-								data-tooltip-content="Agents were used to process this response"
-								className="flex items-center text-gray-400"
-							>
-								<IconSettings size={18} />
-							</span>
-							<Tooltip
-								id="agents-used"
-								place="right"
-								type="dark"
-								effect="float"
-							/>
-						</>
+						<span
+							data-tooltip-id="chat-bubble-tooltip"
+							data-tooltip-content="Agents were used to process this response"
+							className="flex items-center text-[var(--color-text-secondary)]"
+						>
+							<IconSettings size={18} />
+						</span>
 					)}
 					{internetUsed && (
-						<>
-							<span
-								data-tooltip-id="internet-used"
-								data-tooltip-content="Internet was used to gather information for this response"
-								className="flex items-center text-gray-400"
-							>
-								<IconGlobe size={18} />
-							</span>
-							<Tooltip
-								id="internet-used"
-								place="right"
-								type="dark"
-								effect="float"
-							/>
-						</>
+						<span
+							data-tooltip-id="chat-bubble-tooltip"
+							data-tooltip-content="Internet was used to gather information for this response"
+							className="flex items-center text-[var(--color-text-secondary)]"
+						>
+							<IconGlobe size={18} />
+						</span>
 					)}
 					<button
 						onClick={handleCopyToClipboard}
-						className="flex items-center text-gray-400 hover:text-green-500 transition-colors"
+						className="flex items-center text-[var(--color-text-secondary)] hover:text-[var(--color-accent-green)] transition-colors"
+						data-tooltip-id="chat-bubble-tooltip"
+						data-tooltip-content={
+							copied ? "Copied!" : "Copy response"
+						}
 					>
 						{copied ? (
 							<IconCheck size={18} />

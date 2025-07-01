@@ -1,0 +1,32 @@
+# This file defines how to run your application using Docker Compose.
+# It's a blueprint for a single service called 'sentient-app'.
+version: '3.8' # Specifies the version of the Docker Compose file format.
+
+services: # This is a list of all services (containers) we want to run. We only have one.
+  sentient-app: # This is the name we are giving our service.
+    
+    # 'build' tells Docker Compose how to create the Docker image.
+    build:
+      # 'context: .' means "look for the Dockerfile in the current directory".
+      # Since we'll run this from src/server, it finds it correctly.
+      context: .
+      dockerfile: Dockerfile
+    
+    # 'container_name' gives a specific, predictable name to the running container.
+    container_name: sentient-app
+    
+    # 'restart: unless-stopped' is a safety measure. If the container crashes
+    # or the EC2 server reboots, Docker will automatically restart it.
+    restart: unless-stopped
+    
+    # 'env_file' tells the container to load all its environment variables
+    # from the specified file. We'll create '.env' in the next step.
+    env_file:
+      - ./.env
+      
+    # 'ports' maps a port on the EC2 server (the host) to a port inside the container.
+    # Format is "HOST_PORT:CONTAINER_PORT".
+    # This exposes your main FastAPI application (running on port 5000 inside the container)
+    # to the outside world through port 5000 on the EC2 instance.
+    ports:
+      - "5000:5000"

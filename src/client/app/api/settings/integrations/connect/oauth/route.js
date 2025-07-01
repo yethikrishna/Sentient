@@ -1,24 +1,8 @@
 // src/client/app/api/settings/integrations/connect/oauth/route.js
 import { NextResponse } from "next/server"
-import { getBackendAuthHeader, auth0 } from "@lib/auth0"
+import { withAuth } from "@lib/api-utils"
 
-export async function POST(request) {
-	const session = await auth0.getSession()
-	if (!session?.user?.sub) {
-		return NextResponse.json(
-			{ error: "Not authenticated" },
-			{ status: 401 }
-		)
-	}
-
-	const authHeader = await getBackendAuthHeader()
-	if (!authHeader) {
-		return NextResponse.json(
-			{ error: "Could not create auth header" },
-			{ status: 500 }
-		)
-	}
-
+export const POST = withAuth(async function POST(request, { authHeader }) {
 	try {
 		const body = await request.json() // { service_name, code, redirect_uri }
 		const response = await fetch(
@@ -44,4 +28,4 @@ export async function POST(request) {
 		)
 		return NextResponse.json({ error: error.message }, { status: 500 })
 	}
-}
+})

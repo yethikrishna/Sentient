@@ -1,19 +1,10 @@
 import { NextResponse } from "next/server"
-import { auth0 } from "@lib/auth0"
-import { getBackendAuthHeader } from "@lib/auth0"
+import { withAuth } from "@lib/api-utils"
 
-export async function POST(request) {
-	const session = await auth0.getSession()
-	if (!session?.user?.sub) {
-		return NextResponse.json(
-			{ message: "Not authenticated" },
-			{ status: 401 }
-		)
-	}
-
+export const POST = withAuth(async function POST(request, { authHeader }) {
 	try {
 		const {
-			input,
+			messages, // Changed from `input`
 			chatId,
 			enable_internet,
 			enable_weather,
@@ -21,7 +12,6 @@ export async function POST(request) {
 			enable_maps,
 			enable_shopping
 		} = await request.json()
-		const authHeader = await getBackendAuthHeader()
 
 		// Fetch user pricing/credits to pass to the backend
 		const pricingResponse = await fetch(
@@ -36,12 +26,13 @@ export async function POST(request) {
 		const credits = userData?.data?.proCredits || 0
 
 		const backendResponse = await fetch(
-			`${process.env.APP_SERVER_URL}/chat`,
+			`${process.env.APP_SERVER_URL}/chat/message`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },
 				body: JSON.stringify({
-					input,
+					// Pass `messages` array instead of `input`
+					messages,
 					chatId,
 					pricing,
 					credits,
@@ -83,10 +74,10 @@ export async function POST(request) {
 			}
 		})
 	} catch (error) {
-		console.error("API Error in /chat/send:", error)
+		console.error("API Error in /chat/message:", error)
 		return NextResponse.json(
 			{ message: "Internal Server Error", error: error.message },
 			{ status: 500 }
 		)
 	}
-}
+})

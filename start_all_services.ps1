@@ -9,11 +9,11 @@
     It launches each service in its own dedicated PowerShell terminal window with a clear title.
 
     The script handles:
-    - Starting databases like MongoDB (as admin) and Neo4j.
-    - Launching services within the Windows Subsystem for Linux (WSL), such as Kafka and Redis.
+    - Starting databases like MongoDB (as admin).
+    - Launching the Redis message broker within the Windows Subsystem for Linux (WSL).
     - Dynamically discovering and starting all MCP (Modular Companion Protocol) servers.
     - Activating the Python virtual environment for all backend scripts.
-    - Running Python workers for Kafka and Celery.
+    - Running the Celery worker and beat scheduler for background tasks.
     - Starting the main FastAPI server and the Next.js frontend client.
 
 .NOTES
@@ -26,15 +26,8 @@
 # --- Configuration ---
 # Please review and update these paths to match your local setup.
 
-# Path to the 'bin' directory of your Neo4j installation.
-$neo4jBinPath = "D:\Software\neo4j-community-5.25.1\bin"
-
-# The name of your WSL distribution where Kafka and Redis are installed.
+# The name of your WSL distribution where Redis is installed.
 $wslDistroName = "Ubuntu"
-
-# The base path to your Kafka installation inside your WSL distribution.
-# Example: "/home/your_wsl_username/kafka_2.13-3.7.0"
-$kafkaBasePathInWsl = "/home/kabeer2004/kafka_2.13-3.9.1" # <-- IMPORTANT: UPDATE THIS PATH
 
 # --- Script Body ---
 try {
@@ -45,16 +38,14 @@ try {
     # Define key paths
     $srcPath = Join-Path -Path $projectRoot -ChildPath "src"
     $clientPath = Join-Path -Path $srcPath -ChildPath "client"
-    $mcpHubPath = Join-Path -Path $srcPath -ChildPath "server\mcp-hub"
+    $mcpHubPath = Join-Path -Path $srcPath -ChildPath "server\mcp_hub"
     $venvActivatePath = Join-Path -Path $srcPath -ChildPath "server\venv\Scripts\activate.ps1"
 
     # --- Path Validation ---
     if (-not (Test-Path -Path $srcPath)) { throw "The 'src' directory was not found. Please run this script from the project root." }
     if (-not (Test-Path -Path $clientPath)) { throw "The 'src/client' directory was not found." }
-    if (-not (Test-Path -Path $mcpHubPath)) { throw "The 'src/server/mcp-hub' directory was not found." }
+    if (-not (Test-Path -Path $mcpHubPath)) { throw "The 'src/server/mcp_hub' directory was not found." }
     if (-not (Test-Path -Path $venvActivatePath)) { throw "The venv activation script was not found at '$venvActivatePath'." }
-    if (-not (Test-Path -Path $neo4jBinPath)) { throw "The Neo4j bin path '$neo4jBinPath' is invalid. Please update the configuration." }
-    Write-Host "✅ All required local paths verified." -ForegroundColor Green
 
     # Helper function to start a process in a new terminal window
     function Start-NewTerminal {
@@ -72,12 +63,11 @@ try {
             ArgumentList     = "-NoExit", "-Command", $psCommand
         }
         if (-not $NoExit) {
-            # For fire-and-forget commands like the topic initializer
+            # For fire-and-forget commands
             $startArgs.ArgumentList = "-Command", $psCommand
         }
         Start-Process @startArgs
     }
-
 
     # --- 1. Start Databases & Core Infrastructure ---
     Write-Host "`n--- 1. Starting Databases & Core Infrastructure ---" -ForegroundColor Cyan
@@ -87,29 +77,10 @@ try {
     Start-Process powershell.exe -Verb RunAs -ArgumentList "Start-Service -Name 'MongoDB' -ErrorAction SilentlyContinue; if (`$?) { Write-Host 'MongoDB service started successfully.' -ForegroundColor Green } else { Write-Host 'MongoDB service was already running or failed to start.' -ForegroundColor Yellow }; Read-Host 'Press Enter to close this admin window.'"
     Start-Sleep -Seconds 3
 
-    # Start Neo4j
-    Write-Host "🚀 Launching Neo4j..." -ForegroundColor Yellow
-    Start-NewTerminal -WindowTitle "DATABASE - Neo4j" -Command ".\neo4j.bat console" -WorkDir $neo4jBinPath
-    Start-Sleep -Seconds 3
-
     # Start Redis Server (for Celery)
     Write-Host "🚀 Launching Redis Server (in WSL)..." -ForegroundColor Yellow
-    Start-NewTerminal -WindowTitle "SERVICE - Redis" -Command "wsl -d $wslDistroName -e redis-server"
+    Start-NewTerminal -WindowTitle "SERVICE - Redis" -Command "wsl -d $wslDistroName -e redis-server --bind 0.0.0.0"
     Start-Sleep -Seconds 2
-
-    # Start Zookeeper for Kafka
-    Write-Host "🚀 Launching Zookeeper (in WSL)..." -ForegroundColor Yellow
-    if ($kafkaBasePathInWsl -like "*your_wsl_username*") { throw "Kafka path not configured. Please update `$kafkaBasePathInWsl in the script." }
-    $zookeeperCommand = "wsl -d $wslDistroName -e bash -c '$kafkaBasePathInWsl/bin/zookeeper-server-start.sh $kafkaBasePathInWsl/config/zookeeper.properties'"
-    Start-NewTerminal -WindowTitle "SERVICE - Zookeeper" -Command $zookeeperCommand
-    Start-Sleep -Seconds 5 # Give Zookeeper time to start before Kafka
-
-    # Start Kafka Server
-    Write-Host "🚀 Launching Kafka Server (in WSL)..." -ForegroundColor Yellow
-    $kafkaCommand = "wsl -d $wslDistroName -e bash -c '$kafkaBasePathInWsl/bin/kafka-server-start.sh $kafkaBasePathInWsl/config/server.properties'"
-    Start-NewTerminal -WindowTitle "SERVICE - Kafka" -Command $kafkaCommand
-    Start-Sleep -Seconds 5 # Give Kafka time to start
-
 
     # --- 2. Start MCP Servers ---
     Write-Host "`n--- 2. Starting All MCP Servers ---" -ForegroundColor Cyan
@@ -119,39 +90,29 @@ try {
     Write-Host "Found the following MCP servers to start:" -ForegroundColor Green
     $mcpServers | ForEach-Object { Write-Host " - $_" }
     Write-Host ""
-    
+
     foreach ($serverName in $mcpServers) {
         $windowTitle = "MCP - $($serverName.ToUpper())"
-        $pythonModule = "server.mcp-hub.$serverName.main"
+        $pythonModule = "server.mcp_hub.$serverName.main"
         $commandToRun = "& '$venvActivatePath'; python -m '$pythonModule'"
         Write-Host "🚀 Launching $windowTitle..." -ForegroundColor Yellow
         Start-NewTerminal -WindowTitle $windowTitle -Command $commandToRun -WorkDir $srcPath
         Start-Sleep -Milliseconds 500
     }
 
-
     # --- 3. Resetting Queues & State (for clean development starts) ---
     Write-Host "`n--- 3. Resetting Queues & State ---" -ForegroundColor Cyan
 
-    # Clear Redis (Celery queue)
+    # Clear Redis (Celery queue) - This is fast, runs in the current window.
     Write-Host "🚀 Flushing Redis database (Celery Queue)..." -ForegroundColor Yellow
     $redisFlushCommand = "wsl -d $wslDistroName -e redis-cli FLUSHALL"
     Start-NewTerminal -WindowTitle "RESET - Redis Flush" -Command $redisFlushCommand -WorkDir $srcPath -NoExit:$false
 
-    # Initialize Kafka Topics (if they don't exist)
-    Write-Host "🚀 Initializing Kafka topics..." -ForegroundColor Yellow
-    $kafkaInitCommand = "& '$venvActivatePath'; python -m server.workers.utils.kafka_topic_initializer" # This command runs and closes the window on completion
-    Start-NewTerminal -WindowTitle "SETUP - Kafka Topics" -Command $kafkaInitCommand -WorkDir $srcPath -NoExit:$false
-    Start-Sleep -Seconds 3
-
-
     # --- 4. Start Backend Workers ---
     Write-Host "`n--- 4. Starting Backend Workers ---" -ForegroundColor Cyan
     $workerServices = @(
-        # The single Celery worker now handles Memory, Planning, and Execution tasks.
-        @{ Name = "Celery (Memory, Planner, Executor)"; Command = "& '$venvActivatePath'; celery -A server.celery_app worker --loglevel=info --pool=solo" },
-        @{ Name = "Extractor (Kafka Consumer)";        Command = "& '$venvActivatePath'; python -m server.workers.extractors.main" },
-        @{ Name = "Gmail Poller (Kafka Producer)";     Command = "& '$venvActivatePath'; python -m server.workers.pollers.gmail.main" }
+        @{ Name = "Celery Worker"; Command = "& '$venvActivatePath'; celery -A server.workers.celery_app worker --loglevel=info --pool=solo" },
+        @{ Name = "Celery Beat Scheduler"; Command = "& '$venvActivatePath'; celery -A server.workers.celery_app beat --loglevel=info" }
     )
 
     foreach ($service in $workerServices) {
@@ -160,7 +121,6 @@ try {
         Start-NewTerminal -WindowTitle $windowTitle -Command $service.Command -WorkDir $srcPath
         Start-Sleep -Milliseconds 500
     }
-
 
     # --- 5. Start Main API Server and Frontend Client ---
     Write-Host "`n--- 5. Starting Main API and Client ---" -ForegroundColor Cyan

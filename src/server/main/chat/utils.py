@@ -3,59 +3,70 @@ import uuid
 import os
 import json
 import asyncio
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import threading
 import logging
 from typing import List, Dict, Any, Tuple, AsyncGenerator, Optional
 
-from ..db import MongoManager
-from ..llm import get_qwen_assistant
-from ..config import MEMORY_MCP_SERVER_URL, INTEGRATIONS_CONFIG
+from main.db import MongoManager
+from main.llm import get_qwen_assistant
+from main.config import INTEGRATIONS_CONFIG, SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX
 
 logger = logging.getLogger(__name__)
 
-async def get_chat_history_util(user_id: str, db_manager: MongoManager, chat_id: str) -> List[Dict[str, Any]]:
-    """
-    Fetches and serializes chat history for a given user and chat ID.
-    """
-    if not chat_id:
-        return []
-    messages_from_db = await db_manager.get_chat_history(user_id, chat_id)
-    
-    serialized_messages = []
-    for m in messages_from_db:
-        if isinstance(m, dict) and 'timestamp' in m and isinstance(m['timestamp'], datetime.datetime): # type: ignore
-            m['timestamp'] = m['timestamp'].isoformat()
-        serialized_messages.append(m)
-        
-    return [m for m in serialized_messages if m.get("isVisible", True)]
-
-
 async def generate_chat_llm_stream(
     user_id: str,
-    chat_id: str,
-    user_input: str, 
-    username: str,
+    messages: List[Dict[str, Any]], # This is now the history from the client
+    user_context: Dict[str, Any],
     db_manager: MongoManager,
-    assistant_message_id_override: Optional[str] = None,
     enable_internet: bool = False,
     enable_weather: bool = False,
     enable_news: bool = False,
     enable_maps: bool = False,
     enable_shopping: bool = False
     ) -> AsyncGenerator[Dict[str, Any], None]:
-    assistant_message_id = assistant_message_id_override or str(uuid.uuid4())
+    assistant_message_id = str(uuid.uuid4())
 
     try:
+        # --- Construct detailed system prompt from user context ---
+        username = user_context.get("name", "User")
+        timezone_str = user_context.get("timezone", "UTC")
+        comm_style = user_context.get("communication_style", "friendly and professional")
+        location_raw = user_context.get("location")
+
+        if isinstance(location_raw, dict) and 'latitude' in location_raw:
+            location = f"latitude: {location_raw.get('latitude')}, longitude: {location_raw.get('longitude')}"
+        elif isinstance(location_raw, str):
+            location = location_raw
+        else:
+            location = "Not specified"
+
+        try:
+            user_timezone = ZoneInfo(timezone_str)
+        except ZoneInfoNotFoundError:
+            logger.warning(f"Invalid timezone '{timezone_str}' for user {user_id}. Defaulting to UTC.")
+            user_timezone = ZoneInfo("UTC")
+
+        current_user_time = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
+
+        user_profile = await db_manager.get_user_profile(user_id)
+        supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id") if user_profile else None
+        
         active_mcp_servers = {}
 
-        # Always connect memory and chat tools
-        for service_name in ["memory", "chat_tools"]:
-            config = INTEGRATIONS_CONFIG.get(service_name)
-            if config and "mcp_server_config" in config:
-                mcp_config = config["mcp_server_config"]
-                active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
+        if supermemory_user_id:
+            full_supermemory_mcp_url = f"{SUPERMEMORY_MCP_BASE_URL.rstrip('/')}/{supermemory_user_id}{SUPERMEMORY_MCP_ENDPOINT_SUFFIX}"
+            active_mcp_servers["supermemory"] = {
+                "transport": "sse",
+                "url": full_supermemory_mcp_url
+            }
+        
+        active_mcp_servers["chat_tools"] = {"url": INTEGRATIONS_CONFIG["chat_tools"]["mcp_server_config"]["url"], "headers": {"X-User-ID": user_id}}
+        
+        # ADDED: Journal Server
+        active_mcp_servers["journal_server"] = {"url": INTEGRATIONS_CONFIG["journal"]["mcp_server_config"]["url"], "headers": {"X-User-ID": user_id}}
 
-        # Conditionally connect tools based on toggles
+
         tool_flags = {
             "internet_search": enable_internet,
             "accuweather": enable_weather,
@@ -73,44 +84,35 @@ async def generate_chat_llm_stream(
 
         tools = [{"mcpServers": active_mcp_servers}]
 
-        user_message_payload = {"id": str(uuid.uuid4()), "message": user_input, "isUser": True, "type": "text", "isVisible": True}
-        assistant_placeholder_payload = {"id": assistant_message_id, "message": "", "isUser": False, "type": "text", "isVisible": True, "agentsUsed": True}
-        
-        await db_manager.add_chat_message(user_id, chat_id, user_message_payload)
-        await db_manager.add_chat_message(user_id, chat_id, assistant_placeholder_payload)
     except Exception as e:
-        logger.error(f"Failed to save initial messages for user {user_id}: {e}", exc_info=True)
-        yield {"type": "error", "message": "Failed to save message."}
+        logger.error(f"Failed during initial setup for chat stream for user {user_id}: {e}", exc_info=True)
+        yield {"type": "error", "message": "Failed to set up chat stream."}
         return
 
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue[Optional[Any]] = asyncio.Queue()
-    history_from_db = await get_chat_history_util(user_id, db_manager, chat_id)
-    qwen_formatted_history = []
-    for msg in history_from_db:
-        if msg.get("id") == assistant_message_id: continue
-        if msg.get('isUser'): qwen_formatted_history.append({"role": "user", "content": str(msg.get("message", ""))})
-        else:
-            if isinstance(msg.get('structured_history'), list) and msg['structured_history']: qwen_formatted_history.extend(msg['structured_history'])
-            elif msg.get("message"): qwen_formatted_history.append({"role": "assistant", "content": str(msg.get("message", ""))})
-    
+
     stream_interrupted = False
     try:
         def worker():
             try:
-                system_prompt = (
-                    f"You are a helpful AI assistant named Sentient. The user's name is {username}. The current date is {datetime.datetime.now().strftime('%Y-%m-%d')}.\n\n"
-                    "You have access to a few tools:\n"
-                    "- Use memory tools (`search_memories`, `save_long_term_fact`, etc.) to remember and recall information about the user.\n"
-                    "- If the user asks for an action to be performed (e.g., 'send an email', 'create a presentation'), use the `create_task_from_description` tool to hand it off to the planning system. Do not try to execute it yourself.\n"
-                    "- You can check the status of a task with `get_task_status`.\n"
-                    f"- Internet search is currently {'ENABLED' if enable_internet else 'DISABLED'}. You can use it to find real-time information if enabled.\n"
-                    f"- Weather information is currently {'ENABLED' if enable_weather else 'DISABLED'}.\n"
-                    f"- News headlines and articles are currently {'ENABLED' if enable_news else 'DISABLED'}.\n"
-                    f"- Google Maps for places and directions is currently {'ENABLED' if enable_maps else 'DISABLED'}.\n"
-                    f"- Google Shopping for product searches is currently {'ENABLED' if enable_shopping else 'DISABLED'}.\n\n"
-                    "Be conversational and helpful."
+                system_prompt = ( # noqa
+                    f"You are Sentient, a personalized AI assistant. Your primary goal is to provide helpful, personalized, and context-aware responses. You MUST use your memory to achieve this.\n\n"
+                    f"**Critical Instructions:**\n"
+                    f"1.  **ALWAYS Use Memory First:** Before answering ANY query, you MUST use the `supermemory-search` tool to check if you already know relevant information about the user or the topic. This is not optional. Personalize your response based on what you find.\n"
+                    f"2.  **Continuously Learn:** If you learn a new, permanent fact about the user (their preferences, relationships, personal details, goals, etc.), you MUST use the `supermemory-addToSupermemory` tool to remember it for the future. For example, if the user says 'my wife's name is Jane', you must call the tool to save this fact.\n"
+                    f"3.  **Delegate Complex Tasks:** For requests that require multiple steps, research, or actions over time (e.g., 'plan my trip', 'summarize this topic'), use the `create_task_from_description` tool. Do not try to perform complex tasks yourself.\n"
+                    f"4.  **Use Your Journal:** For daily notes, simple reminders, or retrieving information from a specific day, use the journal tools (`search_journal`, `summarize_day`, `add_journal_entry`).\n\n"
+                    f"**User Context (for your reference):**\n"
+                    f"-   **User's Name:** {username}\n"
+                    f"-   **User's Location:** {location}\n"
+                    f"-   **Current Time:** {current_user_time}\n"
+                    f"-   **Your Persona:** You must adopt a '{comm_style}' communication style.\n\n"
+                    f"Your primary directive is to be as personalized and helpful as possible by actively using your memory. Do not ask questions you should already know the answer to; search your memory instead."
                 )
+
+                qwen_formatted_history = [{"role": msg["role"], "content": msg["content"]} for msg in messages]
+
                 qwen_assistant = get_qwen_assistant(system_message=system_prompt, function_list=tools)
                 for new_history_step in qwen_assistant.run(messages=qwen_formatted_history):
                     loop.call_soon_threadsafe(queue.put_nowait, new_history_step)
@@ -140,18 +142,6 @@ async def generate_chat_llm_stream(
     except asyncio.CancelledError:
         stream_interrupted = True; raise
     finally:
-        assistant_turn_messages = []
-        if final_history_state:
-            start_index = next((i for i in range(len(final_history_state) - 1, -1, -1) if final_history_state[i].get('role') == 'user'), -1)
-            if start_index != -1: assistant_turn_messages = final_history_state[start_index + 1:]
-        
-        final_text_content = last_yielded_content_str
-        if stream_interrupted and not final_text_content.endswith("[STREAM STOPPED BY USER]"):
-            final_text_content += "\n\n[STREAM STOPPED BY USER]"
-        
-        update_payload = {"message": final_text_content, "structured_history": assistant_turn_messages, "agentsUsed": True}
-        if final_text_content.strip(): await db_manager.update_chat_message(user_id, chat_id, assistant_message_id, update_payload)
-        
         yield {"type": "assistantStream", "token": "", "done": True, "messageId": assistant_message_id}
         await asyncio.to_thread(thread.join)
 
@@ -169,71 +159,3 @@ def msg_to_str(msg: Dict[str, Any]) -> str:
     elif msg.get('role') == 'assistant' and msg.get('content'):
         return msg.get('content', '')
     return ''
-
-async def process_voice_command(user_id: str, chat_id: str, transcribed_text: str, username: str, db_manager: MongoManager) -> Tuple[str, str]:
-    assistant_message_id = str(uuid.uuid4())
-    logger.info(f"Processing voice command for user {user_id}: '{transcribed_text}'")
-
-    try:
-        user_message_payload = {"id": str(uuid.uuid4()), "message": transcribed_text, "isUser": True, "type": "text", "isVisible": True}
-        assistant_placeholder_payload = {"id": assistant_message_id, "message": "[Thinking...]", "isUser": False, "type": "text", "isVisible": True}
-        await db_manager.add_chat_message(user_id, chat_id, user_message_payload)
-        await db_manager.add_chat_message(user_id, chat_id, assistant_placeholder_payload)
-    except Exception as e:
-        logger.error(f"DB Error before voice command processing for {user_id}: {e}", exc_info=True)
-        return "I had trouble saving our conversation.", assistant_message_id
-
-    history_from_db = await get_chat_history_util(user_id, db_manager, chat_id)
-    qwen_formatted_history = []
-    for msg in history_from_db:
-        if msg.get("id") == assistant_message_id: continue
-        if msg.get('isUser'): qwen_formatted_history.append({"role": "user", "content": str(msg.get("message", ""))})
-        else:
-            if isinstance(msg.get('structured_history'), list) and msg['structured_history']: qwen_formatted_history.extend(msg['structured_history'])
-            elif msg.get("message"): qwen_formatted_history.append({"role": "assistant", "content": str(msg.get("message", ""))})
-
-    final_text_response = "I'm sorry, I couldn't process that."
-    final_structured_history = []
-    try:
-        from ..config import INTEGRATIONS_CONFIG
-        user_profile_for_tools = await db_manager.get_user_profile(user_id)
-        user_integrations = user_profile_for_tools.get("userData", {}).get("integrations", {}) if user_profile_for_tools else {}
-        active_mcp_servers = {}
-        for service_name, config in INTEGRATIONS_CONFIG.items():
-            if "mcp_server_config" not in config: continue
-            if config.get("auth_type") == "builtin" or user_integrations.get(service_name, {}).get("connected"):
-                mcp_config = config["mcp_server_config"]
-                active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
-        tools = [{"mcpServers": active_mcp_servers}]
-
-        system_prompt = (
-            f"You are a helpful AI assistant named Sentient. The user's name is {username}. The current date is {datetime.datetime.now().strftime('%Y-%m-%d')}.\n\n"
-            "You have access to certain tools that you can call. Do not use tools unless explicitly required to answer the user's query. "
-            "Do not overuse tools, first check if any relevant context is available in the conversation history.\n\n"
-            "For voice conversations, keep your responses concise and natural."
-        )
-        qwen_assistant = get_qwen_assistant(system_message=system_prompt, function_list=tools)
-        
-        final_run_response = None
-        for response in qwen_assistant.run(messages=qwen_formatted_history):
-            final_run_response = response
-
-        if final_run_response and isinstance(final_run_response, list):
-            start_index = next((i for i in range(len(final_run_response) - 1, -1, -1) if final_run_response[i].get('role') == 'user'), -1)
-            final_structured_history = final_run_response[start_index + 1:] if start_index != -1 else final_run_response
-            
-            final_agent_message = final_run_response[-1]
-            if final_agent_message.get('role') == 'assistant' and final_agent_message.get('content'):
-                final_text_response = final_agent_message.get('content', '')
-            # Handle cases where the last message might be a tool result
-            elif final_agent_message.get('role') == 'function':
-                final_text_response = "I have completed the requested action."
-                
-    except Exception as e:
-        logger.error(f"Error in Qwen agent for voice command for {user_id}: {e}", exc_info=True)
-        final_text_response = "I encountered an error while thinking about your request."
-
-    update_payload = {"message": final_text_response, "structured_history": final_structured_history, "agentsUsed": True}
-    await db_manager.update_chat_message(user_id, chat_id, assistant_message_id, update_payload)
-
-    return final_text_response, assistant_message_id

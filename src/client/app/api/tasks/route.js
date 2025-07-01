@@ -1,25 +1,8 @@
 // src/client/app/api/tasks/route.js
 import { NextResponse } from "next/server"
-import { auth0 } from "@lib/auth0"
-import { getBackendAuthHeader } from "@lib/auth0"
+import { withAuth } from "@lib/api-utils"
 
-export async function GET() {
-	const session = await auth0.getSession()
-	if (!session?.user?.sub) {
-		return NextResponse.json(
-			{ error: "Not authenticated" },
-			{ status: 401 }
-		)
-	}
-
-	const authHeader = await getBackendAuthHeader()
-	if (!authHeader) {
-		return NextResponse.json(
-			{ error: "Could not create auth header" },
-			{ status: 500 }
-		)
-	}
-
+export const GET = withAuth(async function GET(request, { authHeader }) {
 	try {
 		const response = await fetch(
 			`${process.env.APP_SERVER_URL}/agents/fetch-tasks`,
@@ -38,4 +21,4 @@ export async function GET() {
 		console.error("API Error in /tasks:", error)
 		return NextResponse.json({ error: error.message }, { status: 500 })
 	}
-}
+})

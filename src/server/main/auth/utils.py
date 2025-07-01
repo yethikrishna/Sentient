@@ -15,7 +15,7 @@ from jose.exceptions import JOSEError
 from fastapi import HTTPException, status, Depends, WebSocket, WebSocketDisconnect
 from fastapi.security import OAuth2PasswordBearer
 
-from ..config import (
+from main.config import (
     AES_SECRET_KEY, AES_IV,
     AUTH0_DOMAIN, AUTH0_AUDIENCE, ALGORITHMS,
     AUTH0_MANAGEMENT_CLIENT_ID, AUTH0_MANAGEMENT_CLIENT_SECRET
@@ -160,7 +160,7 @@ class PermissionChecker:
         self.required_permissions = set(required_permissions)
 
     async def __call__(self, token: str = Depends(oauth2_scheme), auth_helper: AuthHelper = Depends()):
-        from ..dependencies import auth_helper as global_auth_helper
+        from main.dependencies import auth_helper as global_auth_helper
 
         user_id, token_permissions_list = await global_auth_helper.get_current_user_id_and_permissions(token=token)
         token_permissions_set = set(token_permissions_list)

@@ -80,7 +80,7 @@ const LinkButton = ({ href, children }) => {
 	return (
 		<span
 			onClick={() => window.open(href, "_blank", "noopener noreferrer")}
-			className="bg-white text-black border-2 border-black hover:border-lightblue py-1 px-2 rounded-md items-center cursor-pointer inline-flex"
+			className="bg-[var(--color-primary-surface)] text-[var(--color-text-primary)] border border-[var(--color-primary-surface-elevated)] hover:border-[var(--color-accent-blue)] py-1 px-2 rounded-md items-center cursor-pointer inline-flex"
 			style={{
 				display: "inline-flex",
 				verticalAlign: "middle",
@@ -113,9 +113,9 @@ const ToolResultBubble = ({
 	}
 
 	return (
-		<div className="w-fit max-w-[80%] bg-gray-800 text-white p-4 rounded-lg border border-lightblue font-Inter relative">
+		<div className="w-fit max-w-[80%] bg-[var(--color-primary-surface)] text-white p-4 rounded-lg border border-[var(--color-accent-blue)] relative">
 			{task && (
-				<h4 className="font-semibold mb-2 text-lightblue">
+				<h4 className="font-semibold mb-2 text-[var(--color-accent-blue)]">
 					Update on '{task}'
 				</h4>
 			)}

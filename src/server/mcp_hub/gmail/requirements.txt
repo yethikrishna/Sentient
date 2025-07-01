@@ -1,0 +1,9 @@
+fastmcp
+python-dotenv
+motor
+cryptography
+google-api-python-client
+google-auth-oauthlib
+httpx
+google-genai
+python-dotenv

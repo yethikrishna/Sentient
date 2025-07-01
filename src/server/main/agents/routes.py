@@ -9,7 +9,7 @@ from ..config import INTEGRATIONS_CONFIG
 from ..db import MongoManager
 from ..dependencies import mongo_manager
 from ..auth.utils import PermissionChecker
-from ...celery_app import celery_app
+from ...workers.celery_app import celery_app
 from ...workers.executor.tasks import execute_task_plan
 from ...workers.planner.llm import get_planner_agent
 from ...workers.planner.db import get_all_mcp_descriptions

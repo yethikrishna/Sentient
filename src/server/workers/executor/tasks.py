@@ -8,7 +8,7 @@ from typing import Dict, Any, List, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from qwen_agent.agents import Assistant
-from server.celery_app import celery_app
+from server.workers.celery_app import celery_app
 from server.workers.utils.api_client import notify_user
 
 # Load environment variables for the worker

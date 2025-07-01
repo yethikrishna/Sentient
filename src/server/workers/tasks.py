@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional
 
 from server.main.config import SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX, SUPPORTED_POLLING_SERVICES
 from server.workers.utils.api_client import notify_user
-from server.celery_app import celery_app
+from server.workers.celery_app import celery_app
 from server.workers.planner.llm import get_planner_agent
 from server.workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions
 from ..workers.supermemory_agent_utils import get_supermemory_qwen_agent, get_db_manager as get_memory_db_manager

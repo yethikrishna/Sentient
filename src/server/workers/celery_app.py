@@ -3,8 +3,8 @@ from celery import Celery
 from celery.schedules import crontab
 from dotenv import load_dotenv
 
-# Load environment variables
-dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
+# Load environment variables from the parent 'server' directory
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
 if os.path.exists(dotenv_path):
     load_dotenv(dotenv_path=dotenv_path)
 

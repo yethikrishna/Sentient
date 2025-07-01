@@ -35,8 +35,8 @@ function Start-NewTerminal {
 Write-Host "`n🚀 Starting Backend Workers..." -ForegroundColor Cyan
 
 $workerServices = @(
-    @{ Name = "Celery Worker"; Command = "& '$venvActivatePath'; celery -A server.celery_app worker --loglevel=info --pool=solo" },
-    @{ Name = "Celery Beat Scheduler"; Command = "& '$venvActivatePath'; celery -A server.celery_app beat --loglevel=info" }
+    @{ Name = "Celery Worker"; Command = "& '$venvActivatePath'; celery -A server.workers.celery_app worker --loglevel=info --pool=solo" },
+    @{ Name = "Celery Beat Scheduler"; Command = "& '$venvActivatePath'; celery -A server.workers.celery_app beat --loglevel=info" }
 )
 
 foreach ($service in $workerServices) {

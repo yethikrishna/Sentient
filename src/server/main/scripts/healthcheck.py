@@ -23,12 +23,12 @@ def get_services_from_env():
         services.append({"name": "WAHA", "type": "http", "url": f"{waha_url}/health"})
 
     # 2. MCP Hubs
-    mcp_pattern = re.compile(r"([A-Z0-9_]+_MCP_SERVER_URL)")
-    for key, value in os.environ.items():
-        if mcp_pattern.match(key) and value:
-            # Service name from env var: GMAIL_MCP_SERVER_URL -> mcp-gmail
-            service_name = key.replace('_MCP_SERVER_URL', '').replace('_', '-').lower()
-            services.append({"name": service_name, "type": "http", "url": value})
+    # mcp_pattern = re.compile(r"([A-Z0-9_]+_MCP_SERVER_URL)")
+    # for key, value in os.environ.items():
+    #     if mcp_pattern.match(key) and value:
+    #         # Service name from env var: GMAIL_MCP_SERVER_URL -> mcp-gmail
+    #         service_name = key.replace('_MCP_SERVER_URL', '').replace('_', '-').lower()
+    #         services.append({"name": service_name, "type": "http", "url": value})
 
     return services
 

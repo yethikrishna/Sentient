@@ -633,7 +633,7 @@ const Settings = () => {
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
 			<Tooltip id="settings-tooltip" />
-			<div className="flex-1 flex flex-col">
+			<div className="flex-1 flex flex-col overflow-hidden h-screen">
 				<header className="flex items-center justify-between p-4 md:px-8 md:py-6 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)]">
 					<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)] flex items-center gap-3">
 						Settings

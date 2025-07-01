@@ -36,7 +36,6 @@ import { cn } from "@utils/cn"
 import { useSmoothScroll } from "@hooks/useSmoothScroll"
 import { motion, AnimatePresence } from "framer-motion"
 import { useRouter } from "next/navigation"
-import { useSearchParams } from "next/navigation"
 
 const statusMap = {
 	pending: {
@@ -127,7 +126,6 @@ const Tasks = () => {
 	const [allTools, setAllTools] = useState([])
 	const [integrations, setIntegrations] = useState([])
 	const [loadingIntegrations, setLoadingIntegrations] = useState(true)
-	const searchParams = useSearchParams()
 	const scrollRef = useRef(null)
 
 	useSmoothScroll(scrollRef)
@@ -178,15 +176,6 @@ const Tasks = () => {
 			setLoading(false)
 		}
 	}, [])
-
-	// Handle opening a task from a query parameter
-	useEffect(() => {
-		const taskId = searchParams.get("taskId")
-		if (taskId && tasks.length > 0) {
-			const taskToView = tasks.find((t) => t.task_id === taskId)
-			if (taskToView) setViewingTask(taskToView)
-		}
-	}, [searchParams, tasks])
 
 	const fetchAllToolsAndIntegrations = async () => {
 		setLoadingIntegrations(true)
@@ -428,231 +417,246 @@ const Tasks = () => {
 		<div className="flex h-screen bg-gradient-to-br from-[var(--color-primary-background)] via-[var(--color-primary-background)] to-[var(--color-primary-surface)]/20 text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
 			<Tooltip id="tasks-tooltip" />
 			<div className="flex-1 flex flex-col overflow-hidden h-screen">
-				<motion.header
-					initial={{ y: -20, opacity: 0 }}
-					animate={{ y: 0, opacity: 1 }}
-					transition={{ duration: 0.6, ease: "easeOut" }}
-					className="flex items-center justify-between p-4 md:px-8 md:py-6 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)]"
-				>
-					<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)] flex items-center gap-3">
-						Tasks
-					</h1>
-					<div className="w-full md:max-w-lg flex items-center space-x-2 sm:space-x-3 bg-[var(--color-primary-surface)]/80 backdrop-blur-sm rounded-full p-2 shadow-lg border border-[var(--color-primary-surface-elevated)]">
-						<IconSearch className="h-5 w-5 text-gray-400 ml-2 flex-shrink-0" />
-						<input
-							type="text"
-							placeholder="Search tasks by description..."
-							value={searchTerm}
-							onChange={(e) => setSearchTerm(e.target.value)}
-							className="bg-transparent text-white focus:outline-none w-full px-1 sm:px-2 text-sm"
-						/>
-						<div className="relative flex-shrink-0">
-							<select
-								value={filterStatus}
-								onChange={(e) =>
-									setFilterStatus(e.target.value)
-								}
-								className="appearance-none bg-[var(--color-primary-surface-elevated)] border border-[var(--color-primary-surface-elevated)] text-white text-xs rounded-full pl-3 pr-8 py-1.5 focus:outline-none focus:border-[var(--color-accent-blue)] cursor-pointer"
-							>
-								<option value="all">All</option>
-								<option value="active">Active</option>
-								<option value="pending">Pending</option>
-								<option value="processing">Processing</option>
-								<option value="approval_pending">
-									Approval
-								</option>
-								<option value="completed">Completed</option>
-								<option value="error">Error</option>
-								<option value="cancelled">Cancelled</option>
-							</select>
-							<IconFilter className="absolute right-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-						</div>
-						<button
-							onClick={() => fetchTasksData()}
-							className="p-1.5 rounded-full hover:bg-[var(--color-primary-surface-elevated)] transition-colors text-gray-300"
-							data-tooltip-id="tasks-tooltip"
-							data-tooltip-content="Refresh task list"
-							disabled={loading && tasks.length > 0}
-						>
-							{loading && tasks.length > 0 ? (
-								<IconLoader className="h-5 w-5 animate-spin" />
-							) : (
-								<IconRefresh className="h-5 w-5" />
-							)}
-						</button>
-					</div>
-				</motion.header>
-
-				<main
-					ref={scrollRef}
-					className="flex-1 w-full max-w-3xl mx-auto flex flex-col overflow-y-auto custom-scrollbar px-4"
-				>
-					<div className="space-y-2 pt-6 pb-36">
-						{loading || loadingIntegrations ? (
-							<div className="flex justify-center items-center h-full">
-								<IconLoader className="w-12 h-12 animate-spin text-[var(--color-accent-blue)]" />
-							</div>
-						) : error ? (
-							<div className="text-red-400 text-center py-20">
-								{error}
-							</div>
-						) : filteredTasks.length === 0 ? (
-							<p className="text-gray-500 text-center py-20 mt-5">
-								No tasks found. Create a new plan below!
-							</p>
-						) : (
-							<>
-								<CollapsibleSection
-									title="Active"
-									tasks={groupedTasks.active}
-									isOpen={openSections.active}
-									toggleOpen={() => toggleSection("active")}
-									onViewDetails={setViewingTask}
-									onEditTask={handleEditTask}
-									onDeleteTask={handleDeleteTask}
-								/>
-								<CollapsibleSection
-									title="Pending Approval"
-									tasks={groupedTasks.approval_pending}
-									isOpen={openSections.approval_pending}
-									toggleOpen={() =>
-										toggleSection("approval_pending")
-									}
-									onViewDetails={setViewingTask}
-									onEditTask={handleEditTask}
-									onDeleteTask={handleDeleteTask}
-									onApproveTask={handleApproveTask}
-									integrations={integrations}
-								/>
-								<CollapsibleSection
-									title="Processing"
-									tasks={groupedTasks.processing}
-									isOpen={openSections.processing}
-									toggleOpen={() =>
-										toggleSection("processing")
-									}
-									onViewDetails={setViewingTask}
-								/>
-								<CollapsibleSection
-									title="Completed"
-									tasks={groupedTasks.completed}
-									isOpen={openSections.completed}
-									toggleOpen={() =>
-										toggleSection("completed")
-									}
-									onViewDetails={setViewingTask}
-									onDeleteTask={handleDeleteTask}
-									onReRunTask={handleReRunTask}
-								/>
-							</>
-						)}
-					</div>
-				</main>
-
-				<div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/50 via-neutral-900/80 to-transparent backdrop-blur-sm border-t border-neutral-700/50 z-20">
-					<div className="max-w-3xl mx-auto">
-						<div
-							onClick={() => setCreatePlanOpen(!isCreatePlanOpen)}
-							className="flex justify-between items-center cursor-pointer"
-						>
-							<h3 className="text-lg font-semibold text-white">
-								Create a New Plan
-							</h3>
-							<IconChevronDown
-								className={cn(
-									"transform transition-transform duration-200",
-									!isCreatePlanOpen && "rotate-180"
-								)}
+					<motion.header
+						initial={{ y: -20, opacity: 0 }}
+						animate={{ y: 0, opacity: 1 }}
+						transition={{ duration: 0.6, ease: "easeOut" }}
+						className="flex items-center justify-between p-4 md:px-8 md:py-6 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)]"
+					>
+						<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)] flex items-center gap-3">
+							Tasks
+						</h1>
+						<div className="w-full md:max-w-lg flex items-center space-x-2 sm:space-x-3 bg-[var(--color-primary-surface)]/80 backdrop-blur-sm rounded-full p-2 shadow-lg border border-[var(--color-primary-surface-elevated)]">
+							<IconSearch className="h-5 w-5 text-gray-400 ml-2 flex-shrink-0" />
+							<input
+								type="text"
+								placeholder="Search tasks by description..."
+								value={searchTerm}
+								onChange={(e) => setSearchTerm(e.target.value)}
+								className="bg-transparent text-white focus:outline-none w-full px-1 sm:px-2 text-sm"
 							/>
-						</div>
-						<AnimatePresence>
-							{isCreatePlanOpen && (
-								<motion.div
-									key="create-plan-panel"
-									initial={{ height: 0, opacity: 0 }}
-									animate={{ height: "auto", opacity: 1 }}
-									exit={{ height: 0, opacity: 0 }}
-									className="overflow-hidden"
+							<div className="relative flex-shrink-0">
+								<select
+									value={filterStatus}
+									onChange={(e) =>
+										setFilterStatus(e.target.value)
+									}
+									className="appearance-none bg-[var(--color-primary-surface-elevated)] border border-[var(--color-primary-surface-elevated)] text-white text-xs rounded-full pl-3 pr-8 py-1.5 focus:outline-none focus:border-[var(--color-accent-blue)] cursor-pointer"
 								>
-									{createStep === "generate" ? (
-										<div className="space-y-4 pt-4">
-											<label className="text-sm font-medium text-gray-300 mb-1 block">
-												What is your goal?
-											</label>
-											<textarea
-												placeholder="e.g., Send a daily summary of my calendar to my boss"
-												value={generationPrompt}
-												onChange={(e) =>
-													setGenerationPrompt(
-														e.target.value
-													)
-												}
-												rows={3}
-												className="w-full p-3 bg-neutral-800/50 border border-neutral-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 backdrop-blur-sm transition-colors"
-											/>
-											<div className="flex justify-end">
-												<button
-													onClick={handleGeneratePlan}
-													disabled={isGeneratingPlan}
-													className="p-3 px-6 bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] rounded-lg text-white font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
-												>
-													{isGeneratingPlan ? (
-														<IconLoader className="w-5 h-5 animate-spin" />
-													) : (
-														<>
-															Next: Review Plan{" "}
-															<IconArrowRight className="w-4 h-4" />
-														</>
-													)}
-												</button>
-											</div>
-										</div>
-									) : (
-										// REVIEW STEP
-										<div className="space-y-6 pt-4">
-											<PlanEditor
-												description={newTaskDescription}
-												setDescription={
-													setNewTaskDescription
-												}
-												priority={newTaskPriority}
-												setPriority={setNewTaskPriority}
-												plan={newTaskPlan}
-												setPlan={setNewTaskPlan}
-												schedule={newSchedule}
-												setSchedule={setNewSchedule}
-												allTools={allTools}
-												integrations={integrations}
-											/>
-											<div className="flex justify-between items-center">
-												<button
-													onClick={() =>
-														setCreateStep(
-															"generate"
+									<option value="all">All</option>
+									<option value="active">Active</option>
+									<option value="pending">Pending</option>
+									<option value="processing">
+										Processing
+									</option>
+									<option value="approval_pending">
+										Approval
+									</option>
+									<option value="completed">Completed</option>
+									<option value="error">Error</option>
+									<option value="cancelled">Cancelled</option>
+								</select>
+								<IconFilter className="absolute right-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+							</div>
+							<button
+								onClick={() => fetchTasksData()}
+								className="p-1.5 rounded-full hover:bg-[var(--color-primary-surface-elevated)] transition-colors text-gray-300"
+								data-tooltip-id="tasks-tooltip"
+								data-tooltip-content="Refresh task list"
+								disabled={loading && tasks.length > 0}
+							>
+								{loading && tasks.length > 0 ? (
+									<IconLoader className="h-5 w-5 animate-spin" />
+								) : (
+									<IconRefresh className="h-5 w-5" />
+								)}
+							</button>
+						</div>
+					</motion.header>
+
+					<main
+						ref={scrollRef}
+						className="flex-1 w-full max-w-3xl mx-auto flex flex-col overflow-y-auto custom-scrollbar px-4"
+					>
+						<div className="space-y-2 pt-6 pb-36">
+							{loading || loadingIntegrations ? (
+								<div className="flex justify-center items-center h-full">
+									<IconLoader className="w-12 h-12 animate-spin text-[var(--color-accent-blue)]" />
+								</div>
+							) : error ? (
+								<div className="text-red-400 text-center py-20">
+									{error}
+								</div>
+							) : filteredTasks.length === 0 ? (
+								<p className="text-gray-500 text-center py-20 mt-5">
+									No tasks found. Create a new plan below!
+								</p>
+							) : (
+								<>
+									<CollapsibleSection
+										title="Active"
+										tasks={groupedTasks.active}
+										isOpen={openSections.active}
+										toggleOpen={() =>
+											toggleSection("active")
+										}
+										onViewDetails={setViewingTask}
+										onEditTask={handleEditTask}
+										onDeleteTask={handleDeleteTask}
+									/>
+									<CollapsibleSection
+										title="Pending Approval"
+										tasks={groupedTasks.approval_pending}
+										isOpen={openSections.approval_pending}
+										toggleOpen={() =>
+											toggleSection("approval_pending")
+										}
+										onViewDetails={setViewingTask}
+										onEditTask={handleEditTask}
+										onDeleteTask={handleDeleteTask}
+										onApproveTask={handleApproveTask}
+										integrations={integrations}
+									/>
+									<CollapsibleSection
+										title="Processing"
+										tasks={groupedTasks.processing}
+										isOpen={openSections.processing}
+										toggleOpen={() =>
+											toggleSection("processing")
+										}
+										onViewDetails={setViewingTask}
+									/>
+									<CollapsibleSection
+										title="Completed"
+										tasks={groupedTasks.completed}
+										isOpen={openSections.completed}
+										toggleOpen={() =>
+											toggleSection("completed")
+										}
+										onViewDetails={setViewingTask}
+										onDeleteTask={handleDeleteTask}
+										onReRunTask={handleReRunTask}
+									/>
+								</>
+							)}
+						</div>
+					</main>
+
+					<div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/50 via-neutral-900/80 to-transparent backdrop-blur-sm border-t border-neutral-700/50 z-20">
+						<div className="max-w-3xl mx-auto">
+							<div
+								onClick={() =>
+									setCreatePlanOpen(!isCreatePlanOpen)
+								}
+								className="flex justify-between items-center cursor-pointer"
+							>
+								<h3 className="text-lg font-semibold text-white">
+									Create a New Plan
+								</h3>
+								<IconChevronDown
+									className={cn(
+										"transform transition-transform duration-200",
+										!isCreatePlanOpen && "rotate-180"
+									)}
+								/>
+							</div>
+							<AnimatePresence>
+								{isCreatePlanOpen && (
+									<motion.div
+										key="create-plan-panel"
+										initial={{ height: 0, opacity: 0 }}
+										animate={{ height: "auto", opacity: 1 }}
+										exit={{ height: 0, opacity: 0 }}
+										className="overflow-hidden"
+									>
+										{createStep === "generate" ? (
+											<div className="space-y-4 pt-4">
+												<label className="text-sm font-medium text-gray-300 mb-1 block">
+													What is your goal?
+												</label>
+												<textarea
+													placeholder="e.g., Send a daily summary of my calendar to my boss"
+													value={generationPrompt}
+													onChange={(e) =>
+														setGenerationPrompt(
+															e.target.value
 														)
 													}
-													className="py-2.5 px-6 rounded-lg bg-[var(--color-primary-surface-elevated)] hover:bg-[var(--color-primary-surface)] text-white text-sm font-semibold"
-												>
-													Back
-												</button>
-												<button
-													onClick={handleAddTask}
-													disabled={isAdding}
-													className="py-2.5 px-6 rounded-lg bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
-												>
-													{isAdding && (
-														<IconLoader className="h-5 h-5 animate-spin" />
-													)}
-													Save New Plan
-												</button>
+													rows={3}
+													className="w-full p-3 bg-neutral-800/50 border border-neutral-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 backdrop-blur-sm transition-colors"
+												/>
+												<div className="flex justify-end">
+													<button
+														onClick={
+															handleGeneratePlan
+														}
+														disabled={
+															isGeneratingPlan
+														}
+														className="p-3 px-6 bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] rounded-lg text-white font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
+													>
+														{isGeneratingPlan ? (
+															<IconLoader className="w-5 h-5 animate-spin" />
+														) : (
+															<>
+																Next: Review
+																Plan{" "}
+																<IconArrowRight className="w-4 h-4" />
+															</>
+														)}
+													</button>
+												</div>
 											</div>
-										</div>
-									)}
-								</motion.div>
-							)}
-						</AnimatePresence>
+										) : (
+											// REVIEW STEP
+											<div className="space-y-6 pt-4">
+												<PlanEditor
+													description={
+														newTaskDescription
+													}
+													setDescription={
+														setNewTaskDescription
+													}
+													priority={newTaskPriority}
+													setPriority={
+														setNewTaskPriority
+													}
+													plan={newTaskPlan}
+													setPlan={setNewTaskPlan}
+													schedule={newSchedule}
+													setSchedule={setNewSchedule}
+													allTools={allTools}
+													integrations={integrations}
+												/>
+												<div className="flex justify-between items-center">
+													<button
+														onClick={() =>
+															setCreateStep(
+																"generate"
+															)
+														}
+														className="py-2.5 px-6 rounded-lg bg-[var(--color-primary-surface-elevated)] hover:bg-[var(--color-primary-surface)] text-white text-sm font-semibold"
+													>
+														Back
+													</button>
+													<button
+														onClick={handleAddTask}
+														disabled={isAdding}
+														className="py-2.5 px-6 rounded-lg bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
+													>
+														{isAdding && (
+															<IconLoader className="h-5 h-5 animate-spin" />
+														)}
+														Save New Plan
+													</button>
+												</div>
+											</div>
+										)}
+									</motion.div>
+								)}
+							</AnimatePresence>
+						</div>
 					</div>
-				</div>
 			</div>
 			{viewingTask && (
 				<TaskDetailsModal
@@ -1240,9 +1244,7 @@ const TaskDetailsModal = ({ task, onClose, onApprove, integrations }) => {
 				</div>
 				<div className="overflow-y-auto custom-scrollbar pr-2 space-y-6">
 					<div className="flex items-center gap-4 text-sm">
-						<span className="text-[var(--color-text-secondary)]">
-							Status:
-						</span>
+						<span className="text-[var(--color-text-secondary)]">Status:</span>
 						<span
 							className={cn(
 								"font-semibold py-0.5 px-2 rounded-full text-xs",
@@ -1256,9 +1258,7 @@ const TaskDetailsModal = ({ task, onClose, onApprove, integrations }) => {
 							{statusInfo.label}
 						</span>
 						<div className="w-px h-4 bg-[var(--color-primary-surface-elevated)]"></div>
-						<span className="text-[var(--color-text-secondary)]">
-							Priority:
-						</span>
+						<span className="text-[var(--color-text-secondary)]">Priority:</span>
 						<span
 							className={cn("font-semibold", priorityInfo.color)}
 						>
@@ -1339,28 +1339,24 @@ const TaskDetailsModal = ({ task, onClose, onApprove, integrations }) => {
 												data-tooltip-id="task-details-tooltip"
 												data-tooltip-content="See the step-by-step reasoning the agent used to produce the result."
 											>
-												<IconBrain
-													size={16}
-													className="text-yellow-400"
-												/>{" "}
-												View Agent's Thoughts
+												<IconBrain size={16} className="text-yellow-400" /> View
+												Agent's Thoughts
 											</summary>
 											<pre className="mt-3 text-xs text-gray-400 whitespace-pre-wrap font-mono">
 												{thoughts}
 											</pre>
 										</details>
 									)}
-									{mainContent &&
-										typeof mainContent === "string" && (
-											<div
-												dangerouslySetInnerHTML={{
-													__html: mainContent.replace(
-														/\n/g,
-														"<br />"
-													)
-												}}
-											/>
-										)}
+									{mainContent && typeof mainContent === 'string' && (
+										<div
+											dangerouslySetInnerHTML={{
+												__html: mainContent.replace(
+													/\n/g,
+													"<br />"
+												)
+											}}
+										/>
+									)}
 									{finalAnswer && (
 										<div className="mt-2 p-4 bg-green-900/30 border border-[var(--color-accent-green)]/50 rounded-lg">
 											<p className="text-sm font-semibold text-green-300 mb-2">
@@ -1419,9 +1415,9 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 
 	const handleDayToggle = (day) => {
 		const currentDays = schedule.days || []
-		const newDays = currentDays.includes(day)
-			? currentDays.filter((d) => d !== day)
-			: [...currentDays, day]
+		const newDays = currentDays.includes(day) ?
+			currentDays.filter((d) => d !== day) :
+			[...currentDays, day]
 		setSchedule({ ...schedule, days: newDays })
 	}
 
@@ -1437,9 +1433,9 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 						onClick={() => handleTypeChange(value)}
 						className={cn(
 							"px-4 py-1.5 rounded-full text-sm",
-							(schedule.type || "once") === value
-								? "bg-[var(--color-accent-blue)] text-white"
-								: "bg-neutral-600 hover:bg-neutral-500"
+							(schedule.type || "once") === value ?
+							"bg-[var(--color-accent-blue)] text-white" :
+							"bg-neutral-600 hover:bg-neutral-500"
 						)}
 					>
 						{label}
@@ -1530,9 +1526,9 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 										onClick={() => handleDayToggle(day)}
 										className={cn(
 											"px-3 py-1.5 rounded-full text-xs font-semibold",
-											(schedule.days || []).includes(day)
-												? "bg-[var(--color-accent-blue)] text-white"
-												: "bg-neutral-600 hover:bg-neutral-500"
+											(schedule.days || []).includes(day) ?
+											"bg-[var(--color-accent-blue)] text-white" :
+											"bg-neutral-600 hover:bg-neutral-500"
 										)}
 									>
 										{day.substring(0, 3)}

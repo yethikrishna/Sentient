@@ -9,10 +9,10 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request, WebSocke
 from fastapi.responses import JSONResponse
 import logging
 
-from ..models import OnboardingRequest
-from ..auth.utils import PermissionChecker, AuthHelper, aes_encrypt, aes_decrypt
-from ..config import AUTH0_AUDIENCE
-from ..dependencies import mongo_manager, auth_helper, websocket_manager as main_websocket_manager
+from main.models import OnboardingRequest
+from main.auth.utils import PermissionChecker, AuthHelper, aes_encrypt, aes_decrypt
+from main.config import AUTH0_AUDIENCE
+from main.dependencies import mongo_manager, auth_helper, websocket_manager as main_websocket_manager
 from pydantic import BaseModel
 
 
@@ -22,7 +22,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 # For dispatching memory tasks
-from ...workers.tasks import process_memory_item
+from workers.tasks import process_memory_item
 
 class PrivacyFiltersRequest(BaseModel):
     filters: List[str]

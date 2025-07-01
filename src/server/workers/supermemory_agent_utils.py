@@ -1,7 +1,7 @@
 import logging
 from qwen_agent.agents import Assistant
-from server.workers.planner.db import PlannerMongoManager # Re-use for DB access
-from server.workers.planner.config import LLM_PROVIDER, OLLAMA_MODEL_NAME, OLLAMA_BASE_URL, NOVITA_MODEL_NAME, NOVITA_API_KEY
+from workers.planner.db import PlannerMongoManager # Re-use for DB access
+from workers.planner.config import LLM_PROVIDER, OLLAMA_MODEL_NAME, OLLAMA_BASE_URL, NOVITA_MODEL_NAME, NOVITA_API_KEY
 
 logger = logging.getLogger(__name__)
 

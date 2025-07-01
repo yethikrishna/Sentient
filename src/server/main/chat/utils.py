@@ -8,9 +8,9 @@ import threading
 import logging
 from typing import List, Dict, Any, Tuple, AsyncGenerator, Optional
 
-from ..db import MongoManager
-from ..llm import get_qwen_assistant
-from ..config import INTEGRATIONS_CONFIG, SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX
+from main.db import MongoManager
+from main.llm import get_qwen_assistant
+from main.config import INTEGRATIONS_CONFIG, SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX
 
 logger = logging.getLogger(__name__)
 

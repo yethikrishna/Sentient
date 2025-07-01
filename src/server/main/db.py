@@ -8,10 +8,10 @@ from pymongo.errors import DuplicateKeyError
 from typing import Dict, List, Optional, Any, Tuple
 
 # Import config from the current 'main' directory
-from .config import MONGO_URI, MONGO_DB_NAME
+from main.config import MONGO_URI, MONGO_DB_NAME
 
 USER_PROFILES_COLLECTION = "user_profiles" 
-CHAT_HISTORY_COLLECTION = "chat_history" 
+CHAT_HISTORY_COLLECTION = "chat_history"
 NOTIFICATIONS_COLLECTION = "notifications" 
 POLLING_STATE_COLLECTION = "polling_state_store" 
 PROCESSED_ITEMS_COLLECTION = "processed_items_log" 

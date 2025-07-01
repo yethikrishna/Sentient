@@ -13,7 +13,7 @@ from fastmcp.exceptions import ToolError
 from dotenv import load_dotenv
 
 # Load from main server .env, which is two levels up from the 'slack' folder
-dotenv_path = "server/.env"
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
 if os.path.exists(dotenv_path):
     load_dotenv(dotenv_path=dotenv_path)
 

@@ -1,8 +1,9 @@
 import httpx
 import logging
 from typing import Optional, Dict
+import asyncio
 
-from ..config import WAHA_URL, WAHA_API_KEY
+from main.config import WAHA_URL, WAHA_API_KEY
 
 logger = logging.getLogger(__name__)
 

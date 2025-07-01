@@ -6,9 +6,9 @@ import traceback
 import time # For sleep
 import logging # Import logging
 
-from .config import POLLING_INTERVALS_WORKER as POLL_CFG
-from .db import PollerMongoManager
-from .utils import get_gmail_credentials, fetch_emails
+from workers.poller.gmail.config import POLLING_INTERVALS_WORKER as POLL_CFG
+from workers.poller.gmail.db import PollerMongoManager
+from workers.poller.gmail.utils import get_gmail_credentials, fetch_emails
 from googleapiclient.errors import HttpError # Import HttpError
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ class GmailPollingService:
 
     def _calculate_next_poll_interval(self, user_profile: dict) -> int:
         """Calculates the polling interval based on user activity."""
-        from .config import (
+        from workers.poller.gmail.config import (
             ACTIVE_THRESHOLD_MINUTES_WORKER,
             RECENTLY_ACTIVE_THRESHOLD_HOURS_WORKER,
             PEAK_HOURS_START_WORKER,
@@ -93,7 +93,7 @@ class GmailPollingService:
                     continue
 
                 if not await self.db_manager.is_item_processed(user_id, self.service_name, email_item_id):
-                    from server.workers.tasks import extract_from_context
+                    from workers.tasks import extract_from_context
                     extract_from_context.delay(user_id, self.service_name, email_item_id, email)
                     await self.db_manager.log_processed_item(user_id, self.service_name, email_item_id)
                     processed_count += 1

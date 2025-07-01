@@ -27,7 +27,7 @@ MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_db")
 # Main Server's INTEGRATIONS_CONFIG
 # This needs to be imported carefully, assuming a shared structure or environment
 try:
-    from server.main.config import INTEGRATIONS_CONFIG
+    from main.config import INTEGRATIONS_CONFIG
 except (ImportError, ModuleNotFoundError):
     logging.warning("Could not import INTEGRATIONS_CONFIG from main server. Tool availability check will be limited.")
     INTEGRATIONS_CONFIG = {}

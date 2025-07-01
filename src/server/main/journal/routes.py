@@ -3,10 +3,10 @@ import uuid
 import json
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from .models import CreateBlockRequest, UpdateBlockRequest
-from ..dependencies import mongo_manager
-from ..auth.utils import PermissionChecker
-from ...workers.tasks import extract_from_context
+from main.journal.models import CreateBlockRequest, UpdateBlockRequest
+from main.dependencies import mongo_manager
+from main.auth.utils import PermissionChecker
+from workers.tasks import extract_from_context
 
 router = APIRouter(
     prefix="/journal",

@@ -2,10 +2,10 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 
-from .models import CreateNotificationRequest, DeleteNotificationRequest
-from .utils import create_and_push_notification
-from ..dependencies import mongo_manager, auth_helper
-from ..auth.utils import PermissionChecker
+from main.notifications.models import CreateNotificationRequest, DeleteNotificationRequest
+from main.notifications.utils import create_and_push_notification
+from main.dependencies import mongo_manager, auth_helper
+from main.auth.utils import PermissionChecker
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/notifications", tags=["Notifications"])

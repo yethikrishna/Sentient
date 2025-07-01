@@ -2,10 +2,10 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 
-from ..dependencies import mongo_manager
-from ..auth.utils import PermissionChecker
-from ..notifications.whatsapp_client import check_phone_number_exists
-from .models import WhatsAppNumberRequest
+from main.dependencies import mongo_manager
+from main.auth.utils import PermissionChecker
+from main.notifications.whatsapp_client import check_phone_number_exists
+from main.settings.models import WhatsAppNumberRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter(

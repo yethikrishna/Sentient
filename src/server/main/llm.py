@@ -4,7 +4,7 @@ import logging
 from qwen_agent.agents import Assistant
 from qwen_agent.llm import get_chat_model
 
-from .config import (
+from main.config import (
     LLM_PROVIDER,
     OLLAMA_MODEL_NAME, OLLAMA_BASE_URL,
     NOVITA_MODEL_NAME, NOVITA_API_KEY

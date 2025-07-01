@@ -4,10 +4,10 @@ import traceback
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 
-from .utils import aes_encrypt, aes_decrypt, PermissionChecker, AuthHelper
-from .models import AuthTokenStoreRequest, GoogleTokenStoreRequest, EncryptionRequest, DecryptionRequest
-from ..dependencies import mongo_manager
-from ..config import INTEGRATIONS_CONFIG # For validating service_name
+from main.auth.utils import aes_encrypt, aes_decrypt, PermissionChecker, AuthHelper
+from main.auth.models import AuthTokenStoreRequest, GoogleTokenStoreRequest, EncryptionRequest, DecryptionRequest
+from main.dependencies import mongo_manager
+from main.config import INTEGRATIONS_CONFIG # For validating service_name
 auth_helper = AuthHelper() 
 
 router = APIRouter(

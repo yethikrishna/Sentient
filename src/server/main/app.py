@@ -10,16 +10,16 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .config import APP_SERVER_PORT
-from .dependencies import mongo_manager
-from .auth.routes import router as auth_router
-from .chat.routes import router as chat_router
-from .notifications.routes import router as notifications_router
-from .integrations.routes import router as integrations_router
-from .misc.routes import router as misc_router
-from .agents.routes import router as agents_router
-from .journal.routes import router as journal_router
-from .settings.routes import router as settings_router # Import the new router
+from main.config import APP_SERVER_PORT
+from main.dependencies import mongo_manager
+from main.auth.routes import router as auth_router
+from main.chat.routes import router as chat_router
+from main.notifications.routes import router as notifications_router
+from main.integrations.routes import router as integrations_router
+from main.misc.routes import router as misc_router
+from main.agents.routes import router as agents_router
+from main.journal.routes import router as journal_router
+from main.settings.routes import router as settings_router # Import the new router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__) 
@@ -77,4 +77,4 @@ if __name__ == "__main__":
     log_config = uvicorn.config.LOGGING_CONFIG.copy()
     log_config["formatters"]["access"]["fmt"] = '%(asctime)s %(levelname)s %(client_addr)s - "[MAIN_SERVER_ACCESS] %(request_line)s" %(status_code)s'
     log_config["formatters"]["default"]["fmt"] = '%(asctime)s %(levelname)s [%(name)s] [MAIN_SERVER_DEFAULT] %(message)s'
-    uvicorn.run("server.main.app:app", host="0.0.0.0", port=APP_SERVER_PORT, lifespan="on", reload=False, workers=1, log_config=log_config)
+    uvicorn.run("main.app:app", host="0.0.0.0", port=APP_SERVER_PORT, lifespan="on", reload=False, workers=1, log_config=log_config)

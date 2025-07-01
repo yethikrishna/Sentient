@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Any
 import datetime
 from datetime import timezone # Ensure timezone imported
 
-from .config import MONGO_URI, MONGO_DB_NAME # Import from local config
+from workers.poller.gcalendar.config import MONGO_URI, MONGO_DB_NAME # Import from local config
 
 USER_PROFILES_COLLECTION = "user_profiles"
 POLLING_STATE_COLLECTION = "polling_state_store"

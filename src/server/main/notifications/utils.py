@@ -2,8 +2,8 @@ import logging
 from typing import Optional
 import datetime
 
-from ..dependencies import mongo_manager, websocket_manager
-from .whatsapp_client import send_whatsapp_message # Import the new client
+from main.dependencies import mongo_manager, websocket_manager
+from main.notifications.whatsapp_client import send_whatsapp_message # Import the new client
 
 logger = logging.getLogger(__name__)
 

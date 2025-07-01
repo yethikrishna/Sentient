@@ -4,16 +4,16 @@ import json
 import re
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from .models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest, GeneratePlanRequest
-from ..config import INTEGRATIONS_CONFIG
-from ..db import MongoManager
-from ..dependencies import mongo_manager
-from ..auth.utils import PermissionChecker
-from ...workers.celery_app import celery_app
-from ...workers.executor.tasks import execute_task_plan
-from ...workers.planner.llm import get_planner_agent
-from ...workers.planner.db import get_all_mcp_descriptions
-from ...workers.tasks import calculate_next_run
+from main.agents.models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest, GeneratePlanRequest
+from main.config import INTEGRATIONS_CONFIG
+from main.db import MongoManager
+from main.dependencies import mongo_manager
+from main.auth.utils import PermissionChecker
+from workers.celery_app import celery_app
+from workers.executor.tasks import execute_task_plan
+from workers.planner.llm import get_planner_agent
+from workers.planner.db import get_all_mcp_descriptions
+from workers.tasks import calculate_next_run
 
 router = APIRouter(
     prefix="/agents",

@@ -2,7 +2,7 @@
 import logging
 from qwen_agent.agents import Assistant
 
-from . import config
+from workers.memory import config
 
 logger = logging.getLogger(__name__)
 

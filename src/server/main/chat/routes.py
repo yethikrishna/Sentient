@@ -7,10 +7,10 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from .models import ChatMessageInput
-from .utils import generate_chat_llm_stream
-from ..auth.utils import PermissionChecker
-from ..dependencies import mongo_manager
+from main.chat.models import ChatMessageInput
+from main.chat.utils import generate_chat_llm_stream
+from main.auth.utils import PermissionChecker
+from main.dependencies import mongo_manager
 
 router = APIRouter(
     prefix="/chat",

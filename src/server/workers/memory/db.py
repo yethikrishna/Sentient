@@ -2,7 +2,7 @@ import motor.motor_asyncio
 import logging
 from typing import Optional, Dict
 
-from .config import MONGO_URI, MONGO_DB_NAME
+from workers.memory.config import MONGO_URI, MONGO_DB_NAME
 
 logger = logging.getLogger(__name__)
 

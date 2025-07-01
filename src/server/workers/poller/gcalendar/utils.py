@@ -11,8 +11,8 @@ from google.auth.transport.requests import Request as GoogleAuthRequest
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-from .config import AES_SECRET_KEY, AES_IV
-from .db import PollerMongoManager
+from workers.poller.gcalendar.config import AES_SECRET_KEY, AES_IV
+from workers.poller.gcalendar.db import PollerMongoManager
 from typing import Optional, List, Dict, Tuple
 
 def aes_decrypt(encrypted_data_b64: str) -> str:
@@ -53,7 +53,7 @@ async def get_gcalendar_credentials(user_id: str, db_manager: PollerMongoManager
             
             refreshed_token_info = json.loads(creds.to_json())
             # AES encrypt function needs to be available or imported
-            from server.main.auth.utils import aes_encrypt
+            from main.auth.utils import aes_encrypt
             encrypted_refreshed_creds = aes_encrypt(json.dumps(refreshed_token_info))
             await db_manager.user_profiles_collection.update_one(
                 {"user_id": user_id},

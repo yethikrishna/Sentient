@@ -4,7 +4,7 @@ from pymongo import IndexModel, DESCENDING, ASCENDING
 import datetime
 import logging
 
-from .config import MONGO_URI, MONGO_DB_NAME
+from workers.extractor.config import MONGO_URI, MONGO_DB_NAME
 
 logger = logging.getLogger(__name__)
 

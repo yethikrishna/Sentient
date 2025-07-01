@@ -2,8 +2,8 @@
 import logging
 from qwen_agent.agents import Assistant
 
-from . import config
-from . import prompts
+from workers.extractor import config
+from workers.extractor import prompts
 
 logger = logging.getLogger(__name__)
 

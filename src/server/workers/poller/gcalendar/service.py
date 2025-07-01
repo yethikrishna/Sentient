@@ -4,9 +4,9 @@ from datetime import timezone
 import traceback
 import logging
 
-from .config import POLLING_INTERVALS_WORKER as POLL_CFG
-from .db import PollerMongoManager
-from .utils import get_gcalendar_credentials, fetch_events
+from workers.poller.gcalendar.config import POLLING_INTERVALS_WORKER as POLL_CFG
+from workers.poller.gcalendar.db import PollerMongoManager
+from workers.poller.gcalendar.utils import get_gcalendar_credentials, fetch_events
 from googleapiclient.errors import HttpError
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ class GCalendarPollingService:
     def _calculate_next_poll_interval(self, user_profile: dict) -> int:
         """Calculates the polling interval based on user activity."""
         # Import these here to avoid circular dependency issues at module load time
-        from .config import (
+        from workers.poller.gcalendar.config import (
             ACTIVE_THRESHOLD_MINUTES_WORKER,
             RECENTLY_ACTIVE_THRESHOLD_HOURS_WORKER,
             PEAK_HOURS_START_WORKER,
@@ -91,7 +91,7 @@ class GCalendarPollingService:
 
                 if not await self.db_manager.is_item_processed(user_id, self.service_name, event_id):
                     # Dispatch a Celery task for each new event
-                    from server.workers.tasks import extract_from_context
+                    from workers.tasks import extract_from_context
                     extract_from_context.delay(user_id, self.service_name, event_id, event)
                     await self.db_manager.log_processed_item(user_id, self.service_name, event_id)
                     processed_count += 1

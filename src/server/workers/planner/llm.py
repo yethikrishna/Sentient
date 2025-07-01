@@ -1,9 +1,9 @@
 import logging
 from qwen_agent.agents import Assistant
 
-from . import config
-from . import prompts
-from .db import get_all_mcp_descriptions
+from workers.planner import config
+from workers.planner import prompts
+from workers.planner.db import get_all_mcp_descriptions
 
 logger = logging.getLogger(__name__)
 

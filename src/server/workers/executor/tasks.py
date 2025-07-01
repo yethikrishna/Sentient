@@ -8,11 +8,11 @@ from typing import Dict, Any, List, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from qwen_agent.agents import Assistant
-from server.workers.celery_app import celery_app
-from server.workers.utils.api_client import notify_user
+from workers.celery_app import celery_app
+from workers.utils.api_client import notify_user
 
 # Load environment variables for the worker
-from server.main.config import (
+from main.config import (
     MONGO_URI, MONGO_DB_NAME, INTEGRATIONS_CONFIG, LLM_PROVIDER,
     OLLAMA_BASE_URL, OLLAMA_MODEL_NAME, SUPERMEMORY_MCP_BASE_URL,
     SUPERMEMORY_MCP_ENDPOINT_SUFFIX
@@ -29,7 +29,7 @@ if LLM_PROVIDER == "OLLAMA":
         'api_key': 'ollama', # Ollama doesn't require a key
     }
 elif LLM_PROVIDER == "NOVITA":
-    from server.main.config import NOVITA_API_KEY, NOVITA_MODEL_NAME
+    from main.config import NOVITA_API_KEY, NOVITA_MODEL_NAME
     llm_cfg = {
         "model": NOVITA_MODEL_NAME,
         "api_key": NOVITA_API_KEY,

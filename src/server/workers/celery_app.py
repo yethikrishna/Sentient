@@ -16,8 +16,8 @@ celery_app = Celery(
     broker=CELERY_BROKER_URL,
     backend=CELERY_RESULT_BACKEND,
     include=[
-        'server.workers.executor.tasks', 
-        'server.workers.tasks'
+        'workers.executor.tasks',
+        'workers.tasks'
     ]
 )
 

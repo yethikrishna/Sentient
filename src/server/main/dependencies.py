@@ -1,7 +1,7 @@
 # src/server/main/dependencies.py
-from .db import MongoManager
-from .auth.utils import AuthHelper
-from .websocket import MainWebSocketManager
+from main.db import MongoManager
+from main.auth.utils import AuthHelper
+from main.websocket import MainWebSocketManager
 
 # --- Global Instances ---
 # These instances are created once here and imported by other modules

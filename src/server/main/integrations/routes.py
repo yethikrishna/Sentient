@@ -4,10 +4,10 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 
-from .models import ManualConnectRequest, OAuthConnectRequest, DisconnectRequest
-from ..dependencies import mongo_manager, auth_helper
-from ..auth.utils import aes_encrypt
-from ..config import (
+from main.integrations.models import ManualConnectRequest, OAuthConnectRequest, DisconnectRequest
+from main.dependencies import mongo_manager, auth_helper
+from main.auth.utils import aes_encrypt
+from main.config import (
     INTEGRATIONS_CONFIG, 
     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
     GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET

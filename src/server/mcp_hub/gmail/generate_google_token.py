@@ -1,7 +1,7 @@
 import asyncio
 import os
 import json
-from dotenv import load_dotenv
+
 import motor.motor_asyncio
 from google_auth_oauthlib.flow import InstalledAppFlow
 
@@ -13,9 +13,6 @@ ENV_FILE = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
 # This is the all-encompassing scope for Gmail management.
 SCOPES = ["https://mail.google.com/"]
 
-# Load environment variables from .env file
-if os.path.exists(ENV_FILE):
-    load_dotenv(dotenv_path=ENV_FILE)
 
 MONGO_URI = os.getenv("MONGO_URI")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")

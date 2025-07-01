@@ -2,16 +2,13 @@ import os
 import uuid
 import json
 from typing import Dict, Any
-from dotenv import load_dotenv
+
 from celery import Celery
 
 from fastmcp import FastMCP, Context
 from . import auth, config, db
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
-if os.path.exists(dotenv_path):
-    load_dotenv(dotenv_path=dotenv_path)
-else:
-    load_dotenv()  # Load from default .env if not found
+
+
 
 mcp = FastMCP(
     name="ChatToolsServer",

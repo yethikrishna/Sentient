@@ -2,15 +2,13 @@ import os
 from typing import Dict
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
-from dotenv import load_dotenv
+
 import motor.motor_asyncio
 
 # Load from main server .env
 dotenv_path = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
-if os.path.exists(dotenv_path):
-    load_dotenv(dotenv_path=dotenv_path)
-else:
-    load_dotenv()  # Load from default .env if not found
+
+
 
 # Configs
 MONGO_URI = os.getenv("MONGO_URI")

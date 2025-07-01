@@ -1,14 +1,6 @@
 import os
-from dotenv import load_dotenv
-import logging
 
-# Load .env file from the current directory or fallback to main server .env
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
-if os.path.exists(dotenv_path):
-    load_dotenv(dotenv_path=dotenv_path)
-else:
-    load_dotenv()  # Load from default .env if not found
-    logging.info(f"Loaded planner worker .env config from {dotenv_path}")
+import logging
 
 # LLM Configuration
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "OLLAMA")

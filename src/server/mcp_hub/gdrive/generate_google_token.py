@@ -3,7 +3,7 @@
 import asyncio
 import os
 import json
-from dotenv import load_dotenv
+
 import motor.motor_asyncio
 from google_auth_oauthlib.flow import InstalledAppFlow
 
@@ -14,12 +14,6 @@ ENV_FILE = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
 # This scope allows for full read/write access to Google Drive files.
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 
-# Load environment variables from .env file
-if not os.path.exists(ENV_FILE):
-    print(f"Error: The .env file was not found. Please create it from .env.template.")
-    exit()
-if os.path.exists(ENV_FILE):
-    load_dotenv(dotenv_path=ENV_FILE)
 
 MONGO_URI = os.getenv("MONGO_URI")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")

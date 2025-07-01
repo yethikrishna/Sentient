@@ -8,12 +8,10 @@ from typing import Dict, Any, List
 from google import genai
 from google.genai import types
 import numpy as np
-from dotenv import load_dotenv
+
 from googleapiclient.discovery import Resource
 from googleapiclient.errors import HttpError
 
-# Load API key
-load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # Initialize the Gemini client

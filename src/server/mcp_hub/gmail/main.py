@@ -1,6 +1,6 @@
 import os
 from typing import Dict, Any, List
-from dotenv import load_dotenv
+
 from urllib.parse import quote
 import base64
 from email.mime.text import MIMEText
@@ -16,11 +16,8 @@ from . import prompts
 from . import utils as helpers
 
 # Load environment variables from .env file
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
-if os.path.exists(dotenv_path):
-    load_dotenv(dotenv_path=dotenv_path)
-else:
-    load_dotenv()  # Load from default .env if not found
+
+
 
 # --- Server Initialization ---
 mcp = FastMCP(

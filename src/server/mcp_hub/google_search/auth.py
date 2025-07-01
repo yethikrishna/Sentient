@@ -9,13 +9,10 @@ from cryptography.hazmat.backends import default_backend
 import motor.motor_asyncio
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
-from dotenv import load_dotenv
 
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
-if os.path.exists(dotenv_path):
-    load_dotenv(dotenv_path=dotenv_path)
-else:
-    load_dotenv()  # Load from default .env if not found
+
+
+
 
 # Default keys from .env
 DEFAULT_GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")

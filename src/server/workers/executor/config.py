@@ -3,12 +3,13 @@ import os
 from dotenv import load_dotenv
 
 # Conditionally load .env for local development
-# The .env file is expected to be in the `src/server` directory
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
-if os.path.exists(dotenv_path):
-    load_dotenv(dotenv_path=dotenv_path)
-
-
+# Load .env file for 'dev' environment.
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev')
+if ENVIRONMENT == 'dev':
+    # The .env file is expected to be in the `src/server` directory
+    dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+    if os.path.exists(dotenv_path):
+        load_dotenv(dotenv_path=dotenv_path)
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_dev_db")
 

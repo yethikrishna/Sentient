@@ -6,11 +6,12 @@ from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from . import auth, utils
 
-# Inherit from the main server .env file
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
-if os.path.exists(dotenv_path):
-    load_dotenv(dotenv_path=dotenv_path)
-
+# Load .env file for 'dev' environment.
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev')
+if ENVIRONMENT == 'dev':
+    dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+    if os.path.exists(dotenv_path):
+        load_dotenv(dotenv_path=dotenv_path)
 
 mcp = FastMCP(
     name="JournalServer",

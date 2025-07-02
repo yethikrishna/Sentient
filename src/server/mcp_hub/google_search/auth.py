@@ -12,10 +12,12 @@ from fastmcp.exceptions import ToolError
 
 from dotenv import load_dotenv
 # Conditionally load .env for local development
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
-if os.path.exists(dotenv_path):
-    load_dotenv(dotenv_path=dotenv_path)
-
+# Load .env file for 'dev' environment.
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev')
+if ENVIRONMENT == 'dev':
+    dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+    if os.path.exists(dotenv_path):
+        load_dotenv(dotenv_path=dotenv_path)
 # Default keys from .env
 DEFAULT_GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 DEFAULT_GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")

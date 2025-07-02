@@ -1,19 +1,21 @@
+# workers/celery_app.py (or wherever this file is)
+
 import os
 from celery import Celery
 from celery.schedules import crontab
 from dotenv import load_dotenv
-import ssl # Import the ssl module
 
+# Load .env file for 'dev' environment.
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev')
+if ENVIRONMENT == 'dev':
+    dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+    if os.path.exists(dotenv_path):
+        load_dotenv(dotenv_path=dotenv_path)
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND')
 
-# Load environment variables from the parent 'server' directory
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
-if os.path.exists(dotenv_path):
-    load_dotenv(dotenv_path=dotenv_path)
-
-
-
-CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
+if not CELERY_BROKER_URL or not CELERY_RESULT_BACKEND:
+    raise ValueError("CELERY_BROKER_URL and CELERY_RESULT_BACKEND must be set in the environment or .env file")
 
 celery_app = Celery(
     'tasks',
@@ -24,14 +26,6 @@ celery_app = Celery(
         'workers.tasks'
     ]
 )
-
-# SSL configuration for Redis (Upstash requires this).
-# Using ssl.CERT_NONE is required for rediss:// URLs in Celery/Kombu.
-# redis_ssl_options = {
-#     'ssl_cert_reqs': ssl.CERT_NONE
-# }
-# celery_app.conf.broker_use_ssl = redis_ssl_options # For the broker connection
-# celery_app.conf.redis_backend_use_ssl = redis_ssl_options
 
 celery_app.conf.update(
     task_track_started=True,

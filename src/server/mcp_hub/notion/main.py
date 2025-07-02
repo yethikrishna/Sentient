@@ -10,10 +10,11 @@ from notion_client.helpers import is_full_page_or_database
 from . import auth, prompts, utils
 
 # Conditionally load .env for local development
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
-if os.path.exists(dotenv_path):
-    load_dotenv(dotenv_path=dotenv_path)
-
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev')
+if ENVIRONMENT == 'dev':
+    dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+    if os.path.exists(dotenv_path):
+        load_dotenv(dotenv_path=dotenv_path)
 mcp = FastMCP(
     name="NotionServer",
     instructions="This server provides tools to interact with the Notion API.",

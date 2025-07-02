@@ -6,7 +6,7 @@ services:
     ports:
       # Binds to 127.0.0.1 (localhost) for security. 
       # We'll expose it properly for production later.
-      - "127.0.0.1:3000:3000" 
+      - "127.0.0.1:8000:3000" 
     volumes:
       # This is crucial for persisting your session data
       - ./.sessions:/app/.sessions

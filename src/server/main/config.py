@@ -3,10 +3,12 @@ from dotenv import load_dotenv
 
 import datetime
 
-# Load .env from the current 'main' directory's parent, which is 'server'
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
-if os.path.exists(dotenv_path):
-    load_dotenv(dotenv_path=dotenv_path)
+# Load .env file for 'dev' environment. For 'stag' or 'prod', env vars are expected to be set by the platform.
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev')
+if ENVIRONMENT == 'dev':
+    dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+    if os.path.exists(dotenv_path):
+        load_dotenv(dotenv_path=dotenv_path)
 
 APP_SERVER_PORT = int(os.getenv("APP_SERVER_PORT", "5000"))
 

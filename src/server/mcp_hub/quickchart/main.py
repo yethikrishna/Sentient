@@ -10,11 +10,12 @@ from fastmcp.prompts.prompt import Message
 
 from . import auth, prompts, utils
 
-# Conditionally load .env for local development
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
-if os.path.exists(dotenv_path):
-    load_dotenv(dotenv_path=dotenv_path)
-
+# Load .env file for 'dev' environment.
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev')
+if ENVIRONMENT == 'dev':
+    dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+    if os.path.exists(dotenv_path):
+        load_dotenv(dotenv_path=dotenv_path)
 mcp = FastMCP(
     name="QuickChartServer",
     instructions="A server for generating data visualizations using QuickChart.io.",

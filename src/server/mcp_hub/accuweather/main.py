@@ -4,11 +4,12 @@ import os
 from typing import Dict, Any
 from dotenv import load_dotenv
 
-# Conditionally load .env for local development
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
-if os.path.exists(dotenv_path):
-    load_dotenv(dotenv_path=dotenv_path)
-
+# Load .env file for 'dev' environment.
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev')
+if ENVIRONMENT == 'dev':
+    dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+    if os.path.exists(dotenv_path):
+        load_dotenv(dotenv_path=dotenv_path)
 from fastmcp import FastMCP, Context
 from fastmcp.exceptions import ToolError
 from fastmcp.prompts.prompt import Message

@@ -2,14 +2,11 @@ import datetime
 import uuid
 import json
 import re
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status
 from main.agents.models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest, GeneratePlanRequest
 from main.config import INTEGRATIONS_CONFIG
-from main.db import MongoManager
 from main.dependencies import mongo_manager
 from main.auth.utils import PermissionChecker
-from workers.celery_app import celery_app
 from workers.executor.tasks import execute_task_plan
 from workers.planner.llm import get_planner_agent
 from workers.planner.db import get_all_mcp_descriptions

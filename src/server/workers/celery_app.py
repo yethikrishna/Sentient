@@ -27,11 +27,11 @@ celery_app = Celery(
 
 # SSL configuration for Redis (Upstash requires this).
 # Using ssl.CERT_NONE is required for rediss:// URLs in Celery/Kombu.
-redis_ssl_options = {
-    'ssl_cert_reqs': ssl.CERT_NONE
-}
-celery_app.conf.broker_use_ssl = redis_ssl_options # For the broker connection
-celery_app.conf.redis_backend_use_ssl = redis_ssl_options
+# redis_ssl_options = {
+#     'ssl_cert_reqs': ssl.CERT_NONE
+# }
+# celery_app.conf.broker_use_ssl = redis_ssl_options # For the broker connection
+# celery_app.conf.redis_backend_use_ssl = redis_ssl_options
 
 celery_app.conf.update(
     task_track_started=True,

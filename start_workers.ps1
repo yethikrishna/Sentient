@@ -12,10 +12,12 @@ $projectRoot = $PSScriptRoot
 if (-not $projectRoot) { $projectRoot = Get-Location }
 
 $srcPath = Join-Path -Path $projectRoot -ChildPath "src"
-$venvActivatePath = Join-Path -Path $srcPath -ChildPath "server\venv\Scripts\activate.ps1"
+$serverPath = Join-Path -Path $srcPath -ChildPath "server"
+$venvActivatePath = Join-Path -Path $serverPath -ChildPath "venv\Scripts\activate.ps1"
 
 # Validate required paths
 if (-not (Test-Path -Path $srcPath)) { throw "'src' directory not found." }
+if (-not (Test-Path -Path $serverPath)) { throw "'src/server' directory not found." }
 if (-not (Test-Path -Path $venvActivatePath)) { throw "Virtual environment not found at '$venvActivatePath'." }
 
 Write-Host "✅ Worker paths verified." -ForegroundColor Green
@@ -35,14 +37,14 @@ function Start-NewTerminal {
 Write-Host "`n🚀 Starting Backend Workers..." -ForegroundColor Cyan
 
 $workerServices = @(
-    @{ Name = "Celery Worker"; Command = "& '$venvActivatePath'; celery -A server.workers.celery_app worker --loglevel=info --pool=solo" },
-    @{ Name = "Celery Beat Scheduler"; Command = "& '$venvActivatePath'; celery -A server.workers.celery_app beat --loglevel=info" }
+    @{ Name = "Celery Worker"; Command = "& '$venvActivatePath'; celery -A workers.celery_app worker --loglevel=info --pool=solo" },
+    @{ Name = "Celery Beat Scheduler"; Command = "& '$venvActivatePath'; celery -A workers.celery_app beat --loglevel=info" }
 )
 
 foreach ($service in $workerServices) {
     $windowTitle = "WORKER - $($service.Name)"
     Write-Host "🟢 Launching $windowTitle..." -ForegroundColor Yellow
-    Start-NewTerminal -WindowTitle $windowTitle -Command $service.Command -WorkDir $srcPath
+    Start-NewTerminal -WindowTitle $windowTitle -Command $service.Command -WorkDir $serverPath
     Start-Sleep -Milliseconds 500
 }
 

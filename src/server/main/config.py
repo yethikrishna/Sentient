@@ -1,11 +1,12 @@
 import os
+from dotenv import load_dotenv
 
 import datetime
 
 # Load .env from the current 'main' directory's parent, which is 'server'
 dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
 if os.path.exists(dotenv_path):
-    print(f"[{datetime.datetime.now()}] [MainServer_Config] Loading .env from: {dotenv_path}")
+    load_dotenv(dotenv_path=dotenv_path)
 
 APP_SERVER_PORT = int(os.getenv("APP_SERVER_PORT", "5000"))
 

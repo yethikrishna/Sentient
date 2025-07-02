@@ -37,12 +37,14 @@ try {
 
     # Define key paths
     $srcPath = Join-Path -Path $projectRoot -ChildPath "src"
+    $serverPath = Join-Path -Path $srcPath -ChildPath "server"
     $clientPath = Join-Path -Path $srcPath -ChildPath "client"
-    $mcpHubPath = Join-Path -Path $srcPath -ChildPath "server\mcp_hub"
-    $venvActivatePath = Join-Path -Path $srcPath -ChildPath "server\venv\Scripts\activate.ps1"
+    $mcpHubPath = Join-Path -Path $serverPath -ChildPath "mcp_hub"
+    $venvActivatePath = Join-Path -Path $serverPath -ChildPath "venv\Scripts\activate.ps1"
 
     # --- Path Validation ---
     if (-not (Test-Path -Path $srcPath)) { throw "The 'src' directory was not found. Please run this script from the project root." }
+    if (-not (Test-Path -Path $serverPath)) { throw "The 'src/server' directory was not found." }
     if (-not (Test-Path -Path $clientPath)) { throw "The 'src/client' directory was not found." }
     if (-not (Test-Path -Path $mcpHubPath)) { throw "The 'src/server/mcp_hub' directory was not found." }
     if (-not (Test-Path -Path $venvActivatePath)) { throw "The venv activation script was not found at '$venvActivatePath'." }
@@ -93,10 +95,10 @@ try {
 
     foreach ($serverName in $mcpServers) {
         $windowTitle = "MCP - $($serverName.ToUpper())"
-        $pythonModule = "server.mcp_hub.$serverName.main"
+        $pythonModule = "mcp_hub.$serverName.main"
         $commandToRun = "& '$venvActivatePath'; python -m '$pythonModule'"
         Write-Host "🚀 Launching $windowTitle..." -ForegroundColor Yellow
-        Start-NewTerminal -WindowTitle $windowTitle -Command $commandToRun -WorkDir $srcPath
+        Start-NewTerminal -WindowTitle $windowTitle -Command $commandToRun -WorkDir $serverPath
         Start-Sleep -Milliseconds 500
     }
 
@@ -106,19 +108,19 @@ try {
     # Clear Redis (Celery queue) - This is fast, runs in the current window.
     Write-Host "🚀 Flushing Redis database (Celery Queue)..." -ForegroundColor Yellow
     $redisFlushCommand = "wsl -d $wslDistroName -e redis-cli FLUSHALL"
-    Start-NewTerminal -WindowTitle "RESET - Redis Flush" -Command $redisFlushCommand -WorkDir $srcPath -NoExit:$false
+    Start-NewTerminal -WindowTitle "RESET - Redis Flush" -Command $redisFlushCommand -WorkDir $serverPath -NoExit:$false
 
     # --- 4. Start Backend Workers ---
     Write-Host "`n--- 4. Starting Backend Workers ---" -ForegroundColor Cyan
     $workerServices = @(
-        @{ Name = "Celery Worker"; Command = "& '$venvActivatePath'; celery -A server.workers.celery_app worker --loglevel=info --pool=solo" },
-        @{ Name = "Celery Beat Scheduler"; Command = "& '$venvActivatePath'; celery -A server.workers.celery_app beat --loglevel=info" }
+        @{ Name = "Celery Worker"; Command = "& '$venvActivatePath'; celery -A workers.celery_app worker --loglevel=info --pool=solo" },
+        @{ Name = "Celery Beat Scheduler"; Command = "& '$venvActivatePath'; celery -A workers.celery_app beat --loglevel=info" }
     )
 
     foreach ($service in $workerServices) {
         $windowTitle = "WORKER - $($service.Name)"
         Write-Host "🚀 Launching $windowTitle..." -ForegroundColor Yellow
-        Start-NewTerminal -WindowTitle $windowTitle -Command $service.Command -WorkDir $srcPath
+        Start-NewTerminal -WindowTitle $windowTitle -Command $service.Command -WorkDir $serverPath
         Start-Sleep -Milliseconds 500
     }
 
@@ -127,8 +129,8 @@ try {
 
     # Start Main FastAPI Server
     Write-Host "🚀 Launching Main API Server..." -ForegroundColor Yellow
-    $mainApiCommand = "& '$venvActivatePath'; python -m server.main.app"
-    Start-NewTerminal -WindowTitle "API - Main Server" -Command $mainApiCommand -WorkDir $srcPath
+    $mainApiCommand = "& '$venvActivatePath'; python -m main.app"
+    Start-NewTerminal -WindowTitle "API - Main Server" -Command $mainApiCommand -WorkDir $serverPath
     Start-Sleep -Seconds 3
 
     # Start Next.js Client

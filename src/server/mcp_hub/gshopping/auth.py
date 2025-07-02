@@ -8,11 +8,14 @@ from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.backends import default_backend
 import motor.motor_asyncio
 
+from dotenv import load_dotenv
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
 
-
-
+# Conditionally load .env for local development
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path=dotenv_path)
 
 
 # --- Config ---

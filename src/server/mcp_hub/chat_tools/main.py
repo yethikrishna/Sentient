@@ -5,9 +5,14 @@ from typing import Dict, Any
 
 from celery import Celery
 
+from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from . import auth, config, db
 
+# Conditionally load .env for local development
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path=dotenv_path)
 
 
 mcp = FastMCP(

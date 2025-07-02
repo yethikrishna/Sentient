@@ -6,6 +6,7 @@ import base64
 from email.mime.text import MIMEText
 import asyncio
 
+from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from fastmcp.exceptions import ToolError
 from fastmcp.prompts.prompt import Message
@@ -15,7 +16,10 @@ from . import auth
 from . import prompts
 from . import utils as helpers
 
-# Load environment variables from .env file
+# Conditionally load .env for local development
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path=dotenv_path)
 
 
 

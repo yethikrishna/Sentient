@@ -1,11 +1,13 @@
 import os
+from dotenv import load_dotenv
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
 
 
 # Load from main server .env, which is two levels up
-
-
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path=dotenv_path)
 
 def get_user_id_from_context(ctx: Context) -> str:
     """

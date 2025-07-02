@@ -2,11 +2,12 @@
 
 import os
 from fastmcp.exceptions import ToolError
+from dotenv import load_dotenv
 
-
-
-
-
+# Conditionally load .env for local development
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path=dotenv_path)
 def get_accuweather_api_key() -> str:
     """
     Retrieves the AccuWeather API key from environment variables.

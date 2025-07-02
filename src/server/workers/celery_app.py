@@ -1,11 +1,14 @@
 import os
 from celery import Celery
 from celery.schedules import crontab
+from dotenv import load_dotenv
 import ssl # Import the ssl module
 
 
 # Load environment variables from the parent 'server' directory
 dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path=dotenv_path)
 
 
 

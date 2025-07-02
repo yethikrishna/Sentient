@@ -2,14 +2,17 @@ import os
 import json
 from typing import Dict, Any, Optional, List
 
-
+from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from fastmcp.prompts.prompt import Message
 from notion_client.helpers import is_full_page_or_database
 
 from . import auth, prompts, utils
 
-
+# Conditionally load .env for local development
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path=dotenv_path)
 
 mcp = FastMCP(
     name="NotionServer",

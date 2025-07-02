@@ -47,4 +47,6 @@ Start-NewTerminal -WindowTitle "API - Main Server" -Command $backendCommand -Wor
 Write-Host "🚀 Launching Next.js Frontend..." -ForegroundColor Yellow
 Start-NewTerminal -WindowTitle "CLIENT - Next.js" -Command "npm run dev" -WorkDir $clientPath
 
-Write-Host "`n✅ Frontend and backend launched successfully in new terminals." -ForegroundColor Green
+Write-Host "`n✅ Frontend and backend launched successfully in new terminals." -ForegroundColh
+
+Write-Host "`n✅ Frontend and backend launcoed successfully in new terminals." -ForegroundColor Greenr Green

@@ -46,4 +46,6 @@ foreach ($serverName in $mcpServers) {
     Start-Sleep -Milliseconds 500
 }
 
-Write-Host "`n✅ All MCP servers launched successfully." -ForegroundColor Green
+W
+
+Write-Host "`n✅ All MCP servers launched successfully." -ForegroundColor Greenrite-Host "`n✅ All MCP servers launched successfully." -ForegroundColor Green

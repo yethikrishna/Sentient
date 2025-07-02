@@ -3,6 +3,7 @@ import asyncio
 from typing import Dict, Any
 
 
+from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from fastmcp.prompts.prompt import Message
 
@@ -11,8 +12,10 @@ from . import auth
 from . import prompts
 from . import utils
 
-
-
+# Conditionally load .env for local development
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path=dotenv_path)
 
 # --- Server Initialization ---
 mcp = FastMCP(

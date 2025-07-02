@@ -136,20 +136,53 @@ async def async_execute_task_plan(task_id: str, user_id: str):
 
     supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id") if user_profile else None
     
+    # 1. Determine required and available tools for the user
+    required_tools_from_plan = {step['tool'] for step in task.get('plan', [])}
+    logger.info(f"Task {task_id}: Plan requires tools: {required_tools_from_plan}")
+    
+    user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
+    google_auth_mode = user_profile.get("userData", {}).get("googleAuth", {}).get("mode", "default")
+    
+    # Construct Supermemory URL from stored user ID
+    supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id") if user_profile else None
+    
     active_mcp_servers = {}
-    for service_name, config in INTEGRATIONS_CONFIG.items():
-        mcp_config = config.get("mcp_server_config")
-        # For supermemory, the url is None in the config, but we still want its description available.
-        # It's handled specially below. For others, they must have a URL.
-        if mcp_config and mcp_config.get("url"):
-            active_mcp_servers[service_name] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
 
+    # Always connect progress_updater
+    progress_updater_config = INTEGRATIONS_CONFIG.get("progress_updater", {}).get("mcp_server_config")
+    if progress_updater_config:
+        active_mcp_servers[progress_updater_config["name"]] = {"url": progress_updater_config["url"], "headers": {"X-User-ID": user_id}}
+
+    # Always connect supermemory if available for user
     if supermemory_user_id:
         active_mcp_servers["supermemory"] = {
             "transport": "sse",
             "url": f"{SUPERMEMORY_MCP_BASE_URL.rstrip('/')}/{supermemory_user_id}{SUPERMEMORY_MCP_ENDPOINT_SUFFIX}"
         }
 
+    # Connect tools specified in the plan if they are available to the user
+    for tool_name in required_tools_from_plan:
+        if tool_name not in INTEGRATIONS_CONFIG:
+            logger.warning(f"Task {task_id}: Plan requires tool '{tool_name}' which is not in server config.")
+            continue
+
+        config = INTEGRATIONS_CONFIG[tool_name]
+        mcp_config = config.get("mcp_server_config")
+        
+        # Skip if no MCP config or if it's a tool we handle specially or exclude
+        if not mcp_config or tool_name in ["progress_updater", "supermemory", "chat_tools"]:
+            continue
+            
+        # Check availability
+        is_google_service = tool_name.startswith('g')
+        is_available_via_custom = is_google_service and google_auth_mode == 'custom'
+        is_builtin = config.get("auth_type") == "builtin"
+        is_connected_via_oauth = user_integrations.get(tool_name, {}).get("connected", False)
+
+        if is_builtin or is_connected_via_oauth or is_available_via_custom:
+            active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
+        else:
+            logger.warning(f"Task {task_id}: Plan requires tool '{tool_name}' but it is not available/connected for user {user_id}.")
     tools_config = [{"mcpServers": active_mcp_servers}]
     logger.info(f"Task {task_id}: Executor configured with tools: {list(active_mcp_servers.keys())}")
 

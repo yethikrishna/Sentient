@@ -66,13 +66,14 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 				}
 				const { accessToken } = await tokenResponse.json()
 
-				const wsProtocol =
-					window.location.protocol === "https:" ? "wss" : "ws"
 				const serverUrlHttp =
 					process.env.NEXT_PUBLIC_APP_SERVER_URL ||
 					"http://localhost:5000"
-				const serverUrlWs = serverUrlHttp.replace(/^http/, "ws")
-				const wsUrl = `${serverUrlWs}/api/ws/notifications`
+				const wsProtocol =
+					window.location.protocol === "https:" ? "wss" : "ws"
+				// Strip the protocol from the server URL to get just the host and port
+				const serverHost = serverUrlHttp.replace(/^https?:\/\//, "")
+				const wsUrl = `${wsProtocol}://${serverHost}/api/ws/notifications`
 
 				const ws = new WebSocket(wsUrl)
 				ws.isCleaningUp = false // Custom flag on the instance itself

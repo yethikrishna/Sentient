@@ -54,8 +54,9 @@ export default function FloatingNav({ onChatOpen }) {
 				const serverUrlHttp =
 					process.env.NEXT_PUBLIC_APP_SERVER_URL ||
 					"http://localhost:5000"
-				const serverUrlWs = serverUrlHttp.replace(/^http/, "ws")
-				const wsUrl = `${serverUrlWs}/api/ws/notifications`
+				// Strip the protocol from the server URL to get just the host and port
+				const serverHost = serverUrlHttp.replace(/^https?:\/\//, "")
+				const wsUrl = `${wsProtocol}://${serverHost}/api/ws/notifications`
 				const ws = new WebSocket(wsUrl)
 				ws.isCleaningUp = false
 				wsRef.current = ws

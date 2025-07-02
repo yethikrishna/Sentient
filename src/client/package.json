@@ -11,7 +11,8 @@
 		"start": "next start",
 		"lint": "eslint .",
 		"format": "prettier --check .",
-		"format:fix": "prettier --write ."
+		"format:fix": "prettier --write .",
+		"export": "next export"
 	},
 	"dependencies": {
 		"@auth0/nextjs-auth0": "4.6.1",

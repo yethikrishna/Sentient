@@ -5,7 +5,7 @@ import { withAuth } from "@lib/api-utils"
 export const GET = withAuth(async function GET(request, { authHeader }) {
 	try {
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/api/settings/supermemory`,
+			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/api/settings/supermemory`,
 			{
 				// Ensure GET is used for fetching data
 				method: "GET",
@@ -34,7 +34,7 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 		const body = await request.json() // { mcp_url: "..." }
 		const backendResponse = await fetch(
 			// Renamed to avoid conflict with API response
-			`${process.env.APP_SERVER_URL}/api/settings/supermemory`,
+			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/api/settings/supermemory`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },

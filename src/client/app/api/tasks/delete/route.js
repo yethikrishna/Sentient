@@ -6,7 +6,7 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 	try {
 		const { taskId } = await request.json()
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/agents/delete-task`,
+			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/agents/delete-task`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },

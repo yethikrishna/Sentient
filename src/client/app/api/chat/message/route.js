@@ -15,7 +15,7 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 
 		// Fetch user pricing/credits to pass to the backend
 		const pricingResponse = await fetch(
-			`${process.env.APP_SERVER_URL}/api/get-user-data`,
+			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/api/get-user-data`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader }
@@ -26,7 +26,7 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 		const credits = userData?.data?.proCredits || 0
 
 		const backendResponse = await fetch(
-			`${process.env.APP_SERVER_URL}/chat/message`,
+			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/chat/message`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },

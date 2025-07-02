@@ -6,7 +6,7 @@ export const GET = withAuth(async function GET(request, { authHeader }) {
 	try {
 		// This reuses the same backend endpoint but we will filter on the client
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/integrations/sources`,
+			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/integrations/sources`,
 			{
 				method: "GET",
 				headers: { "Content-Type": "application/json", ...authHeader }

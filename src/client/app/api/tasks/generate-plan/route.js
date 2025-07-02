@@ -5,7 +5,7 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 	try {
 		const body = await request.json() // { prompt: "..." }
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/agents/generate-plan`,
+			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/agents/generate-plan`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },

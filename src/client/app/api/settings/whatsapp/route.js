@@ -6,7 +6,7 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 	try {
 		const body = await request.json() // { whatsapp_number: "..." }
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/api/settings/whatsapp`,
+			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/api/settings/whatsapp`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },
@@ -30,7 +30,7 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 export const GET = withAuth(async function GET(request, { authHeader }) {
 	try {
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/api/settings/whatsapp`,
+			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/api/settings/whatsapp`,
 			{
 				method: "GET",
 				headers: { "Content-Type": "application/json", ...authHeader }

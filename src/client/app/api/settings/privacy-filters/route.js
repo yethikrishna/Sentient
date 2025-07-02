@@ -6,7 +6,7 @@ export const GET = withAuth(async function GET(request, { authHeader }) {
 	try {
 		// We can get this from the get-user-data endpoint
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/api/get-user-data`,
+			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/api/get-user-data`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader }
@@ -44,7 +44,7 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 		}
 
 		const backendResponse = await fetch(
-			`${process.env.APP_SERVER_URL}/api/settings/privacy-filters`,
+			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/api/settings/privacy-filters`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },

@@ -7,7 +7,7 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 		// FIX: The request body from the client is already in the correct format { data: ... }.
 		// It should not be wrapped again.
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/api/onboarding`,
+			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/api/onboarding`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },

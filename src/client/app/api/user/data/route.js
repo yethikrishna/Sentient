@@ -5,7 +5,7 @@ import { withAuth } from "@lib/api-utils"
 export const GET = withAuth(async function GET(request, { authHeader }) {
 	try {
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/api/get-user-data`,
+			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/api/get-user-data`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader }

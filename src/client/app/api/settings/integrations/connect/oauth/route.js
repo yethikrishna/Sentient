@@ -6,7 +6,7 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 	try {
 		const body = await request.json() // { service_name, code, redirect_uri }
 		const response = await fetch(
-			`${process.env.APP_SERVER_URL}/integrations/connect/oauth`,
+			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/integrations/connect/oauth`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },

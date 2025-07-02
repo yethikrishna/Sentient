@@ -30,7 +30,7 @@ async def _waha_request(method: str, endpoint: str, params: Optional[Dict] = Non
 async def check_phone_number_exists(phone_number: str) -> Optional[Dict]:
     """Checks if a phone number is registered on WhatsApp using WAHA."""
     try:
-        response = await _waha_request("GET", "/api/contacts/check-exists", params={"phone": phone_number})
+        response = await _waha_request("GET", "/api/contacts/check-exists", params={"phone": phone_number, "session": "default"})
         return response.json()
     except Exception:
         return None

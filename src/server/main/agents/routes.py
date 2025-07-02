@@ -14,6 +14,7 @@ from workers.executor.tasks import execute_task_plan
 from workers.planner.llm import get_planner_agent
 from workers.planner.db import get_all_mcp_descriptions
 from workers.tasks import calculate_next_run
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 router = APIRouter(
     prefix="/agents",
@@ -213,14 +214,50 @@ async def generate_plan(
     request: GeneratePlanRequest,
     user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"]))
 ):
+    """
+    Generates a task plan from a user prompt. This now includes fetching
+    user context to provide a personalized planning experience.
+    """
     try:
+        # --- Fetch user context for personalization ---
+        user_profile = await mongo_manager.get_user_profile(user_id)
+        if not user_profile:
+            raise HTTPException(status_code=404, detail="User profile not found.")
+
+        personal_info = user_profile.get("userData", {}).get("personalInfo", {})
+        user_name = personal_info.get("name", "User")  # Default to "User" if not set
+        user_location_raw = personal_info.get("location", "Not specified")
+
+        # Handle different formats for location data
+        if isinstance(user_location_raw, dict) and 'latitude' in user_location_raw:
+            user_location = f"latitude: {user_location_raw.get('latitude')}, longitude: {user_location_raw.get('longitude')}"
+        elif isinstance(user_location_raw, str) and user_location_raw.strip():
+            user_location = user_location_raw
+        else:
+            user_location = "Not specified"
+
+        # --- Prepare planner agent dependencies ---
         available_tools = get_all_mcp_descriptions()
         if not available_tools:
             raise HTTPException(status_code=503, detail="No tools available for planning.")
-        
-        current_time_str = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S %Z')
-        agent = get_planner_agent(available_tools, current_time_str)
 
+        user_timezone_str = personal_info.get("timezone", "UTC")
+        try:
+            user_timezone = ZoneInfo(user_timezone_str)
+        except ZoneInfoNotFoundError:
+            user_timezone = ZoneInfo("UTC")
+
+        current_time_str = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
+
+        # --- Correctly call the planner agent with all required arguments ---
+        agent = get_planner_agent(
+            available_tools=available_tools,
+            current_time_str=current_time_str,
+            user_name=user_name,
+            user_location=user_location
+        )
+
+        # --- Run the agent ---
         user_prompt = f"Please create a plan for the following goal: {request.prompt}"
         messages = [{'role': 'user', 'content': user_prompt}]
 
@@ -230,6 +267,7 @@ async def generate_plan(
                 last_message = chunk[-1]
                 if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
                     content = last_message["content"]
+                    # Extract JSON from markdown code block if present
                     match = re.search(r'```json\n(.*?)\n```', content, re.DOTALL)
                     final_response_str = match.group(1) if match else content
 
@@ -239,4 +277,6 @@ async def generate_plan(
         plan_data = json.loads(final_response_str)
         return {"description": plan_data.get("description"), "plan": plan_data.get("plan", [])}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to generate plan: {str(e)}")

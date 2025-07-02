@@ -18,10 +18,6 @@ def get_extractor_agent():
             'model': config.OLLAMA_MODEL_NAME,
             'model_server': ollama_v1_url,
             'api_key': 'ollama',
-            'generate_cfg': {
-                'temperature': 0.1,
-                'response_format': {'type': 'json_object'},
-            }
         }
         logger.info(f"Qwen Agent configured for OLLAMA: model={config.OLLAMA_MODEL_NAME}")
     elif config.LLM_PROVIDER == "NOVITA":
@@ -30,10 +26,6 @@ def get_extractor_agent():
             'model': config.NOVITA_MODEL_NAME,
             'model_server': novita_v1_url,
             'api_key': config.NOVITA_API_KEY,
-            'generate_cfg': {
-                'temperature': 0.1,
-                'response_format': {'type': 'json_object'},
-            }
         }
         logger.info(f"Qwen Agent configured for NOVITA: model={config.NOVITA_MODEL_NAME}")
     else:

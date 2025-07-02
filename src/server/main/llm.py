@@ -27,9 +27,6 @@ def get_qwen_assistant(system_message: str = DEFAULT_SYSTEM_PROMPT, function_lis
             'model': OLLAMA_MODEL_NAME,  # e.g., "llama3.2:3b"
             'model_server': ollama_v1_url,
             'api_key': 'ollama',  # Placeholder, Ollama doesn't typically require a key via API
-            'generate_cfg': {
-                'temperature': 0.7, # Example generation parameter
-            }
         }
         logger.info(f"Qwen Agent configured for LLM_PROVIDER='OLLAMA': model={OLLAMA_MODEL_NAME}, server={ollama_v1_url}")
     elif LLM_PROVIDER == "NOVITA":
@@ -39,9 +36,6 @@ def get_qwen_assistant(system_message: str = DEFAULT_SYSTEM_PROMPT, function_lis
             'model': NOVITA_MODEL_NAME,
             'model_server': novita_v1_url,
             'api_key': NOVITA_API_KEY,
-            'generate_cfg': {
-                'temperature': 0.7, # Example generation parameter
-            }
         }
         # For Novita, some models might need specific routing prefixes if not handled by model_server directly
         # e.g. 'openrouter/meta-llama/llama-3.1-8b-instruct'

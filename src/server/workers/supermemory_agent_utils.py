@@ -28,9 +28,6 @@ def get_supermemory_qwen_agent(supermemory_mcp_url: str):
             'model': OLLAMA_MODEL_NAME,
             'model_server': ollama_v1_url,
             'api_key': 'ollama',
-            'generate_cfg': {
-                'temperature': 0.1, # Low temperature for deterministic tool use
-            }
         }
     elif LLM_PROVIDER == "NOVITA":
         novita_v1_url = "https://api.novita.ai/v3/openai"
@@ -38,9 +35,6 @@ def get_supermemory_qwen_agent(supermemory_mcp_url: str):
             'model': NOVITA_MODEL_NAME,
             'model_server': novita_v1_url,
             'api_key': NOVITA_API_KEY,
-            'generate_cfg': {
-                'temperature': 0.1,
-            }
         }
     else:
         logger.error(f"Invalid LLM_PROVIDER for Supermemory agent: '{LLM_PROVIDER}'.")

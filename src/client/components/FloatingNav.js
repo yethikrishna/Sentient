@@ -52,8 +52,7 @@ export default function FloatingNav({ onChatOpen }) {
 				const wsProtocol =
 					window.location.protocol === "https:" ? "wss" : "ws"
 				const serverUrlHttp =
-					process.env.NEXT_PUBLIC_APP_SERVER_URL ||
-					"http://localhost:5000"
+					process.env.APP_SERVER_URL || "http://localhost:5000"
 				const serverUrlWs = serverUrlHttp.replace(/^http/, "ws")
 				const wsUrl = `${serverUrlWs}/api/ws/notifications`
 				const ws = new WebSocket(wsUrl)

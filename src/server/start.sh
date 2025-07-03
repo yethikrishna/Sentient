@@ -2,6 +2,7 @@
 set -e
 
 if [ -f /app/.env ]; then
+  dos2unix /app/.env
   echo "Loading environment variables from /app/.env"
   set -a
   . /app/.env

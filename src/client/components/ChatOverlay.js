@@ -14,8 +14,7 @@ import {
 import toast from "react-hot-toast"
 import { cn } from "@utils/cn"
 import { Tooltip } from "react-tooltip"
-import { motion } from "framer-motion"
-import { useSmoothScroll } from "@hooks/useSmoothScroll"
+import { motion, AnimatePresence } from "framer-motion"
 import ChatBubble from "@components/ChatBubble"
 
 // Simplified Switch component from old chat page
@@ -52,11 +51,8 @@ const ChatOverlay = ({ onClose }) => {
 	const [isShoppingEnabled, setShoppingEnabled] = useState(false)
 	const textareaRef = useRef(null)
 	const chatEndRef = useRef(null)
-	const abortControllerRef = useRef(null)
-	const scrollRef = useRef(null)
-
-	useSmoothScroll(scrollRef)
-
+	const abortControllerRef = useRef(null) // To abort fetch requests
+	const scrollContainerRef = useRef(null) // For scrolling
 	// Reset state when overlay is closed
 	// This effect now correctly handles cleanup on unmount
 	useEffect(() => {
@@ -199,11 +195,10 @@ const ChatOverlay = ({ onClose }) => {
 	}
 
 	useEffect(() => {
-		if (chatEndRef.current) {
+		// Auto-scroll to bottom, using smooth behavior
+		if (chatEndRef.current)
 			chatEndRef.current.scrollIntoView({ behavior: "smooth" })
-		}
-	}, [messages, thinking])
-
+	}, [messages, thinking]) // Rerun whenever messages change or thinking state changes
 	const handleBackdropClick = (e) => {
 		if (e.target === e.currentTarget) {
 			onClose()
@@ -236,8 +231,8 @@ const ChatOverlay = ({ onClose }) => {
 				</header>
 
 				<div
-					ref={scrollRef}
-					className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 no-scrollbar"
+					ref={scrollContainerRef}
+					className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 custom-scrollbar"
 				>
 					{messages.length === 0 && !thinking ? (
 						<div className="flex-1 flex flex-col justify-center items-center text-gray-400">
@@ -265,16 +260,24 @@ const ChatOverlay = ({ onClose }) => {
 							</div>
 						))
 					)}
-					{thinking && (
-						<div className="flex justify-start w-full mt-2">
-							<div className="flex items-center gap-2 p-3 bg-gray-700 rounded-lg">
-								<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-75"></div>
-								<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-150"></div>
-								<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-300"></div>
+					<AnimatePresence>
+						{thinking && (
+							<div className="flex justify-start w-full mt-2">
+								<motion.div
+									initial={{ opacity: 0, y: 10 }}
+									animate={{ opacity: 1, y: 0 }}
+									exit={{ opacity: 0 }}
+									className="flex items-center gap-2 p-3 bg-gray-700 rounded-lg"
+								>
+									<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-75"></div>
+									<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-150"></div>
+									<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-300"></div>
+								</motion.div>
 							</div>
-						</div>
-					)}
-					<div ref={chatEndRef} />
+						)}
+					</AnimatePresence>
+					<div ref={chatEndRef} />{" "}
+					{/* This empty div is the target for scrolling */}
 				</div>
 
 				<div className="p-4 border-t border-[var(--color-primary-surface)]">

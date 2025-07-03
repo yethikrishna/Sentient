@@ -68,9 +68,11 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 		return new Response(backendResponse.body, {
 			status: 200,
 			headers: {
-				"Content-Type": "text/event-stream",
+				// Use application/x-ndjson for newline-delimited JSON streams
+				"Content-Type": "application/x-ndjson",
 				"Cache-Control": "no-cache",
-				Connection: "keep-alive"
+				Connection: "keep-alive",
+				"X-Accel-Buffering": "no" // Disable buffering on Netlify/Vercel
 			}
 		})
 	} catch (error) {

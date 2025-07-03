@@ -13,6 +13,7 @@ ENV PYTHONPATH=/app
 # - curl
 RUN apt-get update && apt-get install -y --no-install-recommends \
     supervisor \
+    nginx \
     curl \
     dos2unix \
     unzip \
@@ -20,6 +21,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Create necessary directories
 RUN mkdir -p /etc/supervisor/conf.d /var/log/supervisor
+
+# Remove the default Nginx site configuration.
+RUN rm /etc/nginx/sites-enabled/default
 
 # Set the working directory
 WORKDIR /app
@@ -32,6 +36,9 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy the supervisor configuration file from the build context (src/server)
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
+# Copy our custom Nginx configuration
+COPY nginx.conf /etc/nginx/sites-available/sentient
+
 # Copy all the server-side Python code from the build context (src/server) into the container
 COPY . .
 RUN if [ -f /app/.env ]; then dos2unix /app/.env; fi
@@ -39,6 +46,9 @@ RUN if [ -f /app/.env ]; then dos2unix /app/.env; fi
 # Copy the startup script, fix its line endings, and make it executable
 COPY start.sh .
 RUN dos2unix ./start.sh && chmod +x ./start.sh
+
+# Link our Nginx config to make it active.
+RUN ln -s /etc/nginx/sites-available/sentient /etc/nginx/sites-enabled/sentient
 
 # Expose the public port for the main FastAPI server
 EXPOSE 5000

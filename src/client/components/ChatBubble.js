@@ -119,6 +119,45 @@ const LinkButton = ({ href, children }) => {
 }
 
 /**
+ * A dedicated component to render tool code blocks neatly.
+ */
+const ToolCodeBlock = ({ name, code, isExpanded, onToggle }) => {
+	let formattedCode = code
+	try {
+		// Pretty-print if it's a JSON string
+		const parsed = JSON.parse(code)
+		formattedCode = JSON.stringify(parsed, null, 2)
+	} catch (e) {
+		// Not JSON, leave as is
+	}
+
+	return (
+		<div className="mb-4 border-l-2 border-green-500 pl-3">
+			<button
+				onClick={onToggle}
+				className="flex items-center gap-2 text-green-400 hover:text-green-300 text-sm font-semibold"
+				data-tooltip-id="chat-bubble-tooltip"
+				data-tooltip-content="Click to see the tool call details."
+			>
+				{isExpanded ? (
+					<IconChevronUp size={16} />
+				) : (
+					<IconChevronDown size={16} />
+				)}
+				Tool Call: {name}
+			</button>
+			{isExpanded && (
+				<div className="mt-2 p-3 bg-neutral-800/50 rounded-md">
+					<pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono">
+						<code>{formattedCode}</code>
+					</pre>
+				</div>
+			)}
+		</div>
+	)
+}
+
+/**
  * ChatBubble Component - Displays a single chat message bubble.
  *
  * This component renders a chat message, distinguishing between user and AI messages with different styles.
@@ -187,44 +226,73 @@ const ChatBubble = ({
 	 * each part accordingly: text as Markdown, and special tags as collapsible blocks.
 	 */
 	const renderMessageContent = () => {
-		if (isUser || typeof message !== "string") {
+		if (isUser || typeof message !== "string" || !message) {
 			// Fallback for user messages or non-string AI messages
 			return (
 				<ReactMarkdown
 					className="prose prose-invert"
 					remarkPlugins={[remarkGfm]}
-					children={message}
+					children={message || ""}
 					components={{
 						a: ({ href, children }) => (
 							<LinkButton href={href} children={children} />
+						),
+						// Ensure code blocks are rendered with a plain background
+						pre: ({ node, ...props }) => (
+							<pre className="bg-transparent p-0" {...props} />
+						),
+						code: ({ node, ...props }) => (
+							<code className="text-white" {...props} />
 						)
 					}}
 				/>
 			)
 		}
 
-		// Strip tool calls and results, then parse for <think> tags
-		const cleanMessage = message.replace(
-			/<tool_result[\s\S]*?<\/tool_result>/gs,
-			""
-		)
-
 		const contentParts = []
-		const regex = /(<think>[\s\S]*?<\/think>)/g
+		// Regex to capture all custom tags: <think>, <tool_code>, and <tool_result>
+		const regex =
+			/(<think>[\s\S]*?<\/think>|<tool_code name="[^"]+">[\s\S]*?<\/tool_code>|<tool_result tool_name="[^"]+">[\s\S]*?<\/tool_result>)/g
 		let lastIndex = 0
 
-		for (const match of cleanMessage.matchAll(regex)) {
+		for (const match of message.matchAll(regex)) {
 			// Capture the text before the current tag
 			if (match.index > lastIndex) {
 				contentParts.push({
 					type: "text",
-					content: cleanMessage.substring(lastIndex, match.index)
+					content: message.substring(lastIndex, match.index)
 				})
 			}
 
-			// Parse the tag itself
-			const tag = match[0]
+			const tag = match[0] // The full tag match
 			let subMatch
+
+			// Check for <tool_code>
+			if (
+				(subMatch = tag.match(
+					/<tool_code name="([^"]+)">([\s\S]*?)<\/tool_code>/
+				))
+			) {
+				const toolName = subMatch[1]
+				const toolCode = subMatch[2].trim()
+				if (toolName && toolCode) {
+					contentParts.push({
+						type: "tool_code",
+						name: toolName,
+						code: toolCode
+					})
+				}
+			}
+			// Check for <tool_result>
+			else if (
+				(subMatch = tag.match(
+					/<tool_result tool_name="([^"]+)">([\s\S]*?)<\/tool_result>/
+				))
+			) {
+				// We parse tool_result but do not add it to contentParts, effectively hiding it.
+				// The agent's summary should be in a subsequent "text" part.
+			}
+			// Check for <think>
 			if ((subMatch = tag.match(/<think>([\s\S]*?)<\/think>/))) {
 				const thinkContent = subMatch[1].trim()
 				if (thinkContent) {
@@ -234,14 +302,15 @@ const ChatBubble = ({
 					})
 				}
 			}
+
 			lastIndex = match.index + tag.length
 		}
 
 		// Capture any remaining text after the last tag
-		if (lastIndex < cleanMessage.length) {
+		if (lastIndex < message.length) {
 			contentParts.push({
-				type: "text",
-				content: cleanMessage.substring(lastIndex)
+				type: "text", // The final part of the message
+				content: message.substring(lastIndex)
 			})
 		}
 
@@ -276,6 +345,17 @@ const ChatBubble = ({
 					</div>
 				)
 			}
+			if (part.type === "tool_code") {
+				return (
+					<ToolCodeBlock
+						key={partId}
+						name={part.name}
+						code={part.code}
+						isExpanded={!!expandedStates[partId]}
+						onToggle={() => toggleExpansion(partId)}
+					/>
+				)
+			}
 
 			if (part.type === "text" && part.content.trim()) {
 				return (
@@ -283,6 +363,7 @@ const ChatBubble = ({
 						key={partId}
 						className="prose prose-invert"
 						remarkPlugins={[remarkGfm]}
+						// The agent's summary and textual response
 						children={part.content}
 						components={{
 							a: ({ href, children }) => (

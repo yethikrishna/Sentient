@@ -172,22 +172,23 @@ const ChatBubble = ({
 	memoryUsed,
 	agentsUsed,
 	internetUsed,
-	isStreamDone // Prop to track if the stream is complete
+	isStreamDone
 }) => {
 	const [copied, setCopied] = useState(false)
 	const [expandedStates, setExpandedStates] = useState({})
 
 	// Function to copy message content to clipboard
 	const handleCopyToClipboard = () => {
-		let textToCopy = message
-		try {
-			const parsed = JSON.parse(message)
-			textToCopy = JSON.stringify(parsed, null, 2)
-		} catch (e) {
-			// Not a JSON string, copy as is
-		}
+		// Filter out the tags and copy the plain text content.
+		const plainText = message
+			.replace(/<think>[\s\S]*?<\/think>/g, "")
+			.replace(/<tool_code[^>]*>[\s\S]*?<\/tool_code>/g, "")
+			.replace(/<tool_result[^>]*>[\s\S]*?<\/tool_result>/g, "")
+			.replace(/<answer>([\s\S]*?)<\/answer>/g, "$1")
+			.trim()
+
 		navigator.clipboard
-			.writeText(textToCopy)
+			.writeText(plainText)
 			.then(() => {
 				setCopied(true)
 				setTimeout(() => setCopied(false), 2000)
@@ -219,20 +220,12 @@ const ChatBubble = ({
 
 		const contentParts = []
 		const regex =
-			/(<think>[\s\S]*?<\/think>|<tool_code name="[^"]+">[\s\S]*?<\/tool_code>|<tool_result tool_name="[^"]+">[\s\S]*?<\/tool_result>)/g
+			/(<think>[\s\S]*?<\/think>|<tool_code name="[^"]+">[\s\S]*?<\/tool_code>|<tool_result tool_name="[^"]+">[\s\S]*?<\/tool_result>|<answer>[\s\S]*?<\/answer>)/g
 		let lastIndex = 0
 
 		// Parse the message into parts
 		for (const match of message.matchAll(regex)) {
-			if (match.index > lastIndex) {
-				const textContent = message.substring(lastIndex, match.index)
-				if (textContent.trim()) {
-					contentParts.push({
-						type: "text",
-						content: textContent
-					})
-				}
-			}
+			// By not capturing the text between matches, we ignore "junk tokens"
 
 			const tag = match[0]
 			let subMatch
@@ -254,7 +247,7 @@ const ChatBubble = ({
 				})
 			} else if (
 				(subMatch = tag.match(
-					/<tool_result tool_name="([^"]+)">([\s\S]*?)<\/tool_result>/
+					/<tool_result tool_name="([^"]+)">[\s\S]*?<\/tool_result>/
 				))
 			) {
 				contentParts.push({
@@ -262,18 +255,21 @@ const ChatBubble = ({
 					name: subMatch[1],
 					result: subMatch[2] ? subMatch[2].trim() : "{}"
 				})
+			} else if ((subMatch = tag.match(/<answer>([\s\S]*?)<\/answer>/))) {
+				const answerContent = subMatch[1]
+				// Don't trim, whitespace might be intentional
+				if (answerContent) {
+					contentParts.push({
+						type: "answer",
+						content: answerContent
+					})
+				}
 			}
 
 			lastIndex = match.index + tag.length
 		}
 
-		// Capture remaining text after the last tag
-		if (lastIndex < message.length) {
-			const remainingText = message.substring(lastIndex)
-			if (remainingText.trim()) {
-				contentParts.push({ type: "text", content: remainingText })
-			}
-		}
+		// By not capturing text after the last tag, we ignore trailing junk.
 
 		// Render all parts
 		return contentParts.map((part, index) => {
@@ -327,26 +323,20 @@ const ChatBubble = ({
 					/>
 				)
 			}
-			if (part.type === "text" && part.content.trim()) {
-				// Render text parts only when the stream is complete
-				if (isStreamDone) {
-					return (
-						<ReactMarkdown
-							key={partId}
-							className="prose prose-invert"
-							remarkPlugins={[remarkGfm]}
-							children={part.content}
-							components={{
-								a: ({ href, children }) => (
-									<LinkButton
-										href={href}
-										children={children}
-									/>
-								)
-							}}
-						/>
-					)
-				}
+			if (part.type === "answer" && part.content) {
+				return (
+					<ReactMarkdown
+						key={partId}
+						className="prose prose-invert"
+						remarkPlugins={[remarkGfm]}
+						children={part.content}
+						components={{
+							a: ({ href, children }) => (
+								<LinkButton href={href} children={children} />
+							)
+						}}
+					/>
+				)
 			}
 			return null
 		})

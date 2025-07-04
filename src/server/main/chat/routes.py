@@ -56,7 +56,6 @@ async def chat_endpoint(
                     continue
                 # yield as bytes and flush
                 yield json.dumps(event) + "\n"
-                await asyncio.sleep(0.1)  # Yield control to the event loop
         except asyncio.CancelledError:
             logger.info(f"Client disconnected, stream cancelled for user {user_id}.")
         except Exception as e:

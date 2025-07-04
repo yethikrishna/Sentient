@@ -24,20 +24,8 @@ import IconGoogleDrive from "./icons/IconGoogleDrive" // Importing custom icon c
 import IconGoogleMail from "./icons/IconGoogleMail" // Importing custom icon component for Google Mail
 import toast from "react-hot-toast" // Importing toast for displaying toast notifications
 
-/**
- * LinkButton Component - Renders a styled button that opens a link in a new tab.
- *
- * This component is used within chat messages to display URLs in a button format.
- * It automatically detects the type of link (e.g., Google Docs, Gmail, generic link)
- * and displays an appropriate icon and name. Clicking the button opens the link in a new tab.
- *
- * @param {object} props - Component props.
- * @param {string} props.href - The URL to be opened when the button is clicked.
- * @param {React.ReactNode} props.children - The display text for the link, used as fallback name if tool name not found.
- * @returns {React.ReactNode} - The LinkButton component UI.
- */
+// LinkButton component remains the same...
 const LinkButton = ({ href, children }) => {
-	// Mapping of domain names to their respective icons and names for tool identification
 	const toolMapping = {
 		"drive.google.com": {
 			icon: <IconGoogleDrive size={14} className="mr-1" />,
@@ -49,7 +37,7 @@ const LinkButton = ({ href, children }) => {
 		},
 		"gmail.com": {
 			icon: <IconGoogleMail size={14} className="mr-1" />,
-			name: children // Fallback name if specific tool name is not found
+			name: children
 		},
 		"docs.google.com/spreadsheets": {
 			icon: <IconGoogleSheets />,
@@ -69,62 +57,46 @@ const LinkButton = ({ href, children }) => {
 		},
 		"external-mail": {
 			icon: <IconMail size={14} className="mr-1" />,
-			name: children // Uses children as name for external mail links
+			name: children
 		},
 		default: {
 			icon: <IconLink size={14} className="mr-1" />,
-			name: "Link" // Default name for generic links
+			name: "Link"
 		}
 	}
 
-	/**
-	 * Determines the tool details (icon and name) based on the URL.
-	 *
-	 * Iterates through the `toolMapping` to find a matching domain in the given URL.
-	 * If a match is found, returns the corresponding icon and name.
-	 * If no specific domain is matched, defaults to a generic link icon and name.
-	 *
-	 * @function getToolDetails
-	 * @param {string} url - The URL to analyze.
-	 * @returns {{ icon: React.ReactNode, name: string }} - An object containing the icon and name for the tool.
-	 */
 	const getToolDetails = (url) => {
 		for (const domain in toolMapping) {
 			if (url.includes(domain)) {
-				return toolMapping[domain] // Return tool details if domain is found in URL
+				return toolMapping[domain]
 			} else if (url.match(/^[^@]+@[\w.-]+\.[a-z]{2,}$/i)) {
-				return toolMapping["external-mail"] // Return external mail tool details if URL matches email format
+				return toolMapping["external-mail"]
 			}
 		}
-		return toolMapping["default"] // Return default tool details for unmatched URLs
+		return toolMapping["default"]
 	}
 
-	const { icon, name } = getToolDetails(href) // Get tool icon and name based on href
+	const { icon, name } = getToolDetails(href)
 
 	return (
 		<span
 			onClick={() => window.open(href, "_blank", "noopener noreferrer")}
 			className="bg-[var(--color-primary-surface)] text-[var(--color-text-primary)] border border-[var(--color-primary-surface-elevated)] hover:border-[var(--color-accent-blue)] py-1 px-2 rounded-md items-center cursor-pointer inline-flex"
-			// Styling for the link button: background, text color, border, padding, rounded corners, cursor, inline-flex display
 			style={{
-				display: "inline-flex", // Ensure inline-flex for proper alignment
-				verticalAlign: "middle" // Vertical alignment to middle
+				display: "inline-flex",
+				verticalAlign: "middle"
 			}}
 		>
-			{icon} {/* Render the icon determined by getToolDetails */}
+			{icon}
 			<span>{name}</span>{" "}
-			{/* Render the name determined by getToolDetails */}
 		</span>
 	)
 }
 
-/**
- * A dedicated component to render tool code blocks neatly.
- */
+// ToolCodeBlock component remains the same...
 const ToolCodeBlock = ({ name, code, isExpanded, onToggle }) => {
 	let formattedCode = code
 	try {
-		// Pretty-print if it's a JSON string
 		const parsed = JSON.parse(code)
 		formattedCode = JSON.stringify(parsed, null, 2)
 	} catch (e) {
@@ -157,14 +129,10 @@ const ToolCodeBlock = ({ name, code, isExpanded, onToggle }) => {
 	)
 }
 
-/**
- * A dedicated component to render tool result blocks neatly.
- * NOTE: This component is now being used to display the tool result.
- */
+// ToolResultBlock component remains the same...
 const ToolResultBlock = ({ name, result, isExpanded, onToggle }) => {
 	let formattedResult = result
 	try {
-		// Pretty-print if it's a JSON string
 		const parsed = JSON.parse(result)
 		formattedResult = JSON.stringify(parsed, null, 2)
 	} catch (e) {
@@ -197,47 +165,18 @@ const ToolResultBlock = ({ name, result, isExpanded, onToggle }) => {
 	)
 }
 
-/**
- * ChatBubble Component - Displays a single chat message bubble.
- *
- * This component renders a chat message, distinguishing between user and AI messages with different styles.
- * It supports rendering Markdown content, detects and renders URLs as LinkButtons, and provides functionality
- * to copy message text to the clipboard. For AI messages, it also conditionally displays icons indicating
- * if memory, agents, or internet were used in generating the response, along with tooltips for these icons.
- *
- * @param {object} props - Component props.
- * @param {string} props.message - The text content of the chat message, can be Markdown or JSON.
- * @param {boolean} props.isUser - Boolean indicating if the message is from the user or AI.
- * @param {boolean} props.memoryUsed - Boolean indicating if memory was used to generate the response (AI messages only).
- * @param {boolean} props.agentsUsed - Boolean indicating if agents were used (AI messages only).
- * @param {boolean} props.boolean - Boolean indicating if internet was used (AI messages only).
- * @returns {React.ReactNode} - The ChatBubble component UI.
- */
 const ChatBubble = ({
-	message, // Text content of the message, can be Markdown or JSON - message: string
-	isUser, // Boolean, true if message is from user, false if from AI - isUser: boolean
-	memoryUsed, // Boolean, true if memory was used in response generation (AI only) - memoryUsed: boolean
-	agentsUsed, // Boolean, true if agents were used in response generation (AI only) - agentsUsed: boolean
-	internetUsed // Boolean, true if internet was used in response generation (AI only) - internetUsed: boolean
+	message,
+	isUser,
+	memoryUsed,
+	agentsUsed,
+	internetUsed
 }) => {
-	// State to manage the 'copied' status for the copy button, indicating if the message text has been copied.
 	const [copied, setCopied] = useState(false)
 	const [expandedStates, setExpandedStates] = useState({})
 
-	/**
-	 * Handles copying the message text to the clipboard.
-	 *
-	 * When the copy button is clicked, this function attempts to write the message text to the clipboard.
-	 * On success, it sets the 'copied' state to true to update the button icon to a checkmark,
-	 * and then resets it back to false after a short delay (2 seconds) to revert the icon.
-	 * If copying fails, it displays an error toast notification to inform the user.
-	 *
-	 * @function handleCopyToClipboard
-	 * @returns {void}
-	 */
 	const handleCopyToClipboard = () => {
 		let textToCopy = message
-		// If message is a JSON string (e.g., from old tool results), stringify it for copying
 		try {
 			const parsed = JSON.parse(message)
 			textToCopy = JSON.stringify(parsed, null, 2)
@@ -258,16 +197,8 @@ const ChatBubble = ({
 		setExpandedStates((prev) => ({ ...prev, [id]: !prev[id] }))
 	}
 
-	/**
-	 * Renders the content of the chat bubble.
-	 *
-	 * This function parses the incoming message string for special tags like <think>,
-	 * <tool_code>, and <tool_result>. It splits the message into parts and renders
-	 * each part accordingly: text as Markdown, and special tags as collapsible blocks.
-	 */
 	const renderMessageContent = () => {
 		if (isUser || typeof message !== "string" || !message) {
-			// Fallback for user messages or non-string AI messages
 			return (
 				<ReactMarkdown
 					className="prose prose-invert"
@@ -287,26 +218,27 @@ const ChatBubble = ({
 			/(<think>[\s\S]*?<\/think>|<tool_code name="[^"]+">[\s\S]*?<\/tool_code>|<tool_result tool_name="[^"]+">[\s\S]*?<\/tool_result>)/g
 		let lastIndex = 0
 
-		// --- START OF THE ROBUST FIX ---
-
-		// Helper function to check for and filter out junk tokens
-		const isJunk = (text) => {
-			const trimmed = text.trim()
-			if (trimmed === "") return true // Ignore whitespace-only strings
-
-			// This regex identifies common junk patterns seen in logs.
-			// It looks for fragments of closing tags or orphaned tag-like words.
-			const junkRegex = /^(<\/(\w+>)?|_code>|code>|ode>|>)$/
-			return junkRegex.test(trimmed)
-		}
+		// --- START OF THE ROBUST CONTEXTUAL FIX ---
 
 		for (const match of message.matchAll(regex)) {
 			// 1. Process the text *before* the current valid tag
 			if (match.index > lastIndex) {
 				const textContent = message.substring(lastIndex, match.index)
-				// Only add the text if it's NOT junk
-				if (!isJunk(textContent)) {
-					contentParts.push({ type: "text", content: textContent })
+				const lastPart =
+					contentParts.length > 0
+						? contentParts[contentParts.length - 1]
+						: null
+
+				// This is the key: Only add text if it's at the start of the message
+				// or if it follows another text block. This filters out any text
+				// sandwiched between special tags (e.g., </tool_code>...JUNK...<tool_result>).
+				if (!lastPart || lastPart.type === "text") {
+					if (textContent.trim()) {
+						contentParts.push({
+							type: "text",
+							content: textContent
+						})
+					}
 				}
 			}
 
@@ -319,33 +251,25 @@ const ChatBubble = ({
 					/<tool_code name="([^"]+)">([\s\S]*?)<\/tool_code>/
 				))
 			) {
-				const toolName = subMatch[1]
-				// Handle empty tool_code blocks gracefully
-				const toolCode = subMatch[2] ? subMatch[2].trim() : "{}"
 				contentParts.push({
 					type: "tool_code",
-					name: toolName,
-					code: toolCode
+					name: subMatch[1],
+					code: subMatch[2] ? subMatch[2].trim() : "{}"
 				})
 			} else if (
 				(subMatch = tag.match(
 					/<tool_result tool_name="([^"]+)">([\s\S]*?)<\/tool_result>/
 				))
 			) {
-				const toolName = subMatch[1]
-				const toolResult = subMatch[2] ? subMatch[2].trim() : "{}"
 				contentParts.push({
 					type: "tool_result",
-					name: toolName,
-					result: toolResult
+					name: subMatch[1],
+					result: subMatch[2] ? subMatch[2].trim() : "{}"
 				})
 			} else if ((subMatch = tag.match(/<think>([\s\S]*?)<\/think>/))) {
 				const thinkContent = subMatch[1].trim()
 				if (thinkContent) {
-					contentParts.push({
-						type: "think",
-						content: thinkContent
-					})
+					contentParts.push({ type: "think", content: thinkContent })
 				}
 			}
 
@@ -353,20 +277,17 @@ const ChatBubble = ({
 			lastIndex = match.index + tag.length
 		}
 
-		// 4. Process any remaining text after the last valid tag
+		// 4. Process any remaining text after the last valid tag.
+		// This is often the final answer from the assistant.
 		if (lastIndex < message.length) {
 			const remainingText = message.substring(lastIndex)
-			// Also check the final part for junk or incomplete streaming tags
-			const openBrackets = (message.match(/</g) || []).length
-			const closeBrackets = (message.match(/>/g) || []).length
-
-			if (!isJunk(remainingText) && openBrackets <= closeBrackets) {
+			if (remainingText.trim()) {
 				contentParts.push({ type: "text", content: remainingText })
 			}
 		}
-		// --- END OF THE ROBUST FIX ---
 
-		// The rest of the rendering logic remains the same
+		// --- END OF THE ROBUST CONTEXTUAL FIX ---
+
 		return contentParts.map((part, index) => {
 			const partId = `${part.type}_${index}`
 			if (part.type === "think" && part.content) {
@@ -409,7 +330,6 @@ const ChatBubble = ({
 					/>
 				)
 			}
-			// ADDED THIS BLOCK TO RENDER THE TOOL RESULT
 			if (part.type === "tool_result") {
 				return (
 					<ToolResultBlock

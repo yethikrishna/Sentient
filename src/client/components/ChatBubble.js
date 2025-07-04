@@ -236,13 +236,6 @@ const ChatBubble = ({
 					components={{
 						a: ({ href, children }) => (
 							<LinkButton href={href} children={children} />
-						),
-						// Ensure code blocks are rendered with a plain background
-						pre: ({ node, ...props }) => (
-							<pre className="bg-transparent p-0" {...props} />
-						),
-						code: ({ node, ...props }) => (
-							<code className="text-white" {...props} />
 						)
 					}}
 				/>
@@ -250,56 +243,57 @@ const ChatBubble = ({
 		}
 
 		const contentParts = []
-		// Regex to capture all custom tags: <think>, <tool_code>, and <tool_result>
 		const regex =
 			/(<think>[\s\S]*?<\/think>|<tool_code name="[^"]+">[\s\S]*?<\/tool_code>|<tool_result tool_name="[^"]+">[\s\S]*?<\/tool_result>)/g
 		let lastIndex = 0
 
+		// --- START OF THE ROBUST FIX ---
+
+		// Helper function to check for and filter out junk tokens
+		const isJunk = (text) => {
+			const trimmed = text.trim()
+			if (trimmed === "") return true // Ignore whitespace-only strings
+
+			// This regex identifies common junk patterns seen in logs.
+			// It looks for fragments of closing tags or orphaned tag-like words.
+			const junkRegex = /^(<\/(\w+>)?|_code>|code>|ode>|>)$/
+			return junkRegex.test(trimmed)
+		}
+
 		for (const match of message.matchAll(regex)) {
-			// Capture the text before the current tag
+			// 1. Process the text *before* the current valid tag
 			if (match.index > lastIndex) {
 				const textContent = message.substring(lastIndex, match.index)
-				const isPartialTag =
-					textContent.startsWith("<tool_") ||
-					textContent.startsWith("<think")
-				if (textContent.trim() && !isPartialTag) {
-					contentParts.push({
-						type: "text",
-						content: textContent
-					})
+				// Only add the text if it's NOT junk
+				if (!isJunk(textContent)) {
+					contentParts.push({ type: "text", content: textContent })
 				}
 			}
 
-			const tag = match[0] // The full tag match
+			// 2. Process the valid, complete tag itself
+			const tag = match[0]
 			let subMatch
 
-			// Check for <tool_code>
 			if (
 				(subMatch = tag.match(
 					/<tool_code name="([^"]+)">([\s\S]*?)<\/tool_code>/
 				))
 			) {
 				const toolName = subMatch[1]
-				const toolCode = subMatch[2].trim()
-				if (toolName && toolCode) {
-					contentParts.push({
-						type: "tool_code",
-						name: toolName,
-						code: toolCode
-					})
-				}
-			}
-			// Check for <tool_result>
-			else if (
+				// Handle empty tool_code blocks gracefully
+				const toolCode = subMatch[2] ? subMatch[2].trim() : "{}"
+				contentParts.push({
+					type: "tool_code",
+					name: toolName,
+					code: toolCode
+				})
+			} else if (
 				(subMatch = tag.match(
 					/<tool_result tool_name="([^"]+)">([\s\S]*?)<\/tool_result>/
 				))
 			) {
-				// We parse tool_result but do not add it to contentParts, effectively hiding it.
-				// The agent's summary should be in a subsequent "text" part.
-			}
-			// Check for <think>
-			if ((subMatch = tag.match(/<think>([\s\S]*?)<\/think>/))) {
+				// We correctly parse and then ignore/hide tool_result
+			} else if ((subMatch = tag.match(/<think>([\s\S]*?)<\/think>/))) {
 				const thinkContent = subMatch[1].trim()
 				if (thinkContent) {
 					contentParts.push({
@@ -309,23 +303,24 @@ const ChatBubble = ({
 				}
 			}
 
+			// 3. Update our position in the message string
 			lastIndex = match.index + tag.length
 		}
 
-		// Capture any remaining text after the last tag
+		// 4. Process any remaining text after the last valid tag
 		if (lastIndex < message.length) {
-			const textContent = message.substring(lastIndex)
-			const isPartialTag =
-				textContent.startsWith("<tool_") ||
-				textContent.startsWith("<think")
-			if (textContent.trim() && !isPartialTag) {
-				contentParts.push({
-					type: "text", // The final part of the message
-					content: textContent
-				})
+			const remainingText = message.substring(lastIndex)
+			// Also check the final part for junk or incomplete streaming tags
+			const openBrackets = (message.match(/</g) || []).length
+			const closeBrackets = (message.match(/>/g) || []).length
+
+			if (!isJunk(remainingText) && openBrackets <= closeBrackets) {
+				contentParts.push({ type: "text", content: remainingText })
 			}
 		}
+		// --- END OF THE ROBUST FIX ---
 
+		// The rest of the rendering logic remains the same
 		return contentParts.map((part, index) => {
 			const partId = `${part.type}_${index}`
 			if (part.type === "think" && part.content) {
@@ -368,14 +363,12 @@ const ChatBubble = ({
 					/>
 				)
 			}
-
 			if (part.type === "text" && part.content.trim()) {
 				return (
 					<ReactMarkdown
 						key={partId}
 						className="prose prose-invert"
 						remarkPlugins={[remarkGfm]}
-						// The agent's summary and textual response
 						children={part.content}
 						components={{
 							a: ({ href, children }) => (

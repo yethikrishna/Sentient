@@ -99,19 +99,33 @@ const ChatOverlay = ({ onClose }) => {
 		}))
 
 		try {
-			const response = await fetch("/api/chat/message", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					messages: apiMessages,
-					enable_internet: isInternetEnabled,
-					enable_weather: isWeatherEnabled,
-					enable_news: isNewsEnabled,
-					enable_maps: isMapsEnabled,
-					enable_shopping: isShoppingEnabled
-				}),
-				signal: abortControllerRef.current.signal
-			})
+			// 1. Fetch the access token from our own API to authenticate the direct call
+			const tokenResponse = await fetch("/api/auth/token")
+			if (!tokenResponse.ok) {
+				throw new Error("Could not fetch authentication token.")
+			}
+			const { accessToken } = await tokenResponse.json()
+
+			// 2. Make the streaming call directly to the backend, bypassing the Netlify function proxy
+			const response = await fetch(
+				`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/chat/message`,
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						Authorization: `Bearer ${accessToken}` // Add the auth header
+					},
+					body: JSON.stringify({
+						messages: apiMessages,
+						enable_internet: isInternetEnabled,
+						enable_weather: isWeatherEnabled,
+						enable_news: isNewsEnabled,
+						enable_maps: isMapsEnabled,
+						enable_shopping: isShoppingEnabled
+					}),
+					signal: abortControllerRef.current.signal
+				}
+			)
 			if (!response.ok || !response.body) {
 				const errorData = await response
 					.json()

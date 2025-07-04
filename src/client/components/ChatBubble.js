@@ -1,30 +1,30 @@
 import React from "react"
-import { useState } from "react" // Importing useState hook from React for managing component state
+import { useState } from "react"
 import {
-	IconClipboard, // Icon for clipboard (copy) action
-	IconCheck, // Icon for checkmark (confirmation) action
-	IconBrain, // Icon for brain (memory) feature
-	IconSettings, // Icon for settings (agents) feature
-	IconGlobe, // Icon for globe (internet) feature
-	IconLink, // Icon for external link
-	IconMail, // Icon for mail
+	IconClipboard,
+	IconCheck,
+	IconBrain,
+	IconSettings,
+	IconGlobe,
+	IconLink,
+	IconMail,
 	IconCode,
 	IconChevronDown,
 	IconChevronUp,
 	IconTerminal2
-} from "@tabler/icons-react" // Importing icons from tabler-icons-react library
-import { Tooltip } from "react-tooltip" // Importing Tooltip component for displaying tooltips
-import ReactMarkdown from "react-markdown" // Importing ReactMarkdown component for rendering Markdown content
-import remarkGfm from "remark-gfm" // Importing remarkGfm plugin for ReactMarkdown to support GitHub Flavored Markdown
-import IconGoogleDocs from "./icons/IconGoogleDocs" // Importing custom icon component for Google Docs
-import IconGoogleSheets from "./icons/IconGoogleSheets" // Importing custom icon component for Google Sheets
-import IconGoogleCalendar from "./icons/IconGoogleCalendar" // Importing custom icon component for Google Calendar
-import IconGoogleSlides from "./icons/IconGoogleSlides" // Importing custom icon component for Google Slides
-import IconGoogleDrive from "./icons/IconGoogleDrive" // Importing custom icon component for Google Drive
-import IconGoogleMail from "./icons/IconGoogleMail" // Importing custom icon component for Google Mail
-import toast from "react-hot-toast" // Importing toast for displaying toast notifications
+} from "@tabler/icons-react"
+import { Tooltip } from "react-tooltip"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
+import IconGoogleDocs from "./icons/IconGoogleDocs"
+import IconGoogleSheets from "./icons/IconGoogleSheets"
+import IconGoogleCalendar from "./icons/IconGoogleCalendar"
+import IconGoogleSlides from "./icons/IconGoogleSlides"
+import IconGoogleDrive from "./icons/IconGoogleDrive"
+import IconGoogleMail from "./icons/IconGoogleMail"
+import toast from "react-hot-toast"
 
-// LinkButton component remains the same...
+// LinkButton component to handle different types of links with custom icons
 const LinkButton = ({ href, children }) => {
 	const toolMapping = {
 		"drive.google.com": {
@@ -88,12 +88,12 @@ const LinkButton = ({ href, children }) => {
 			}}
 		>
 			{icon}
-			<span>{name}</span>{" "}
+			<span>{name}</span>
 		</span>
 	)
 }
 
-// ToolCodeBlock component remains the same...
+// ToolCodeBlock component to display tool calls in a collapsible format
 const ToolCodeBlock = ({ name, code, isExpanded, onToggle }) => {
 	let formattedCode = code
 	try {
@@ -129,7 +129,7 @@ const ToolCodeBlock = ({ name, code, isExpanded, onToggle }) => {
 	)
 }
 
-// ToolResultBlock component remains the same...
+// ToolResultBlock component to display tool results in a collapsible format
 const ToolResultBlock = ({ name, result, isExpanded, onToggle }) => {
 	let formattedResult = result
 	try {
@@ -165,16 +165,19 @@ const ToolResultBlock = ({ name, result, isExpanded, onToggle }) => {
 	)
 }
 
+// Main ChatBubble component
 const ChatBubble = ({
 	message,
 	isUser,
 	memoryUsed,
 	agentsUsed,
-	internetUsed
+	internetUsed,
+	isStreamDone // Prop to track if the stream is complete
 }) => {
 	const [copied, setCopied] = useState(false)
 	const [expandedStates, setExpandedStates] = useState({})
 
+	// Function to copy message content to clipboard
 	const handleCopyToClipboard = () => {
 		let textToCopy = message
 		try {
@@ -183,7 +186,6 @@ const ChatBubble = ({
 		} catch (e) {
 			// Not a JSON string, copy as is
 		}
-
 		navigator.clipboard
 			.writeText(textToCopy)
 			.then(() => {
@@ -193,10 +195,12 @@ const ChatBubble = ({
 			.catch((err) => toast.error(`Failed to copy text: ${err}`))
 	}
 
+	// Function to toggle expansion of collapsible sections
 	const toggleExpansion = (id) => {
 		setExpandedStates((prev) => ({ ...prev, [id]: !prev[id] }))
 	}
 
+	// Function to render message content, processing special tags and text
 	const renderMessageContent = () => {
 		if (isUser || typeof message !== "string" || !message) {
 			return (
@@ -218,20 +222,13 @@ const ChatBubble = ({
 			/(<think>[\s\S]*?<\/think>|<tool_code name="[^"]+">[\s\S]*?<\/tool_code>|<tool_result tool_name="[^"]+">[\s\S]*?<\/tool_result>)/g
 		let lastIndex = 0
 
-		// --- START OF THE ROBUST CONTEXTUAL FIX ---
-
 		for (const match of message.matchAll(regex)) {
-			// 1. Process the text *before* the current valid tag
 			if (match.index > lastIndex) {
 				const textContent = message.substring(lastIndex, match.index)
 				const lastPart =
 					contentParts.length > 0
 						? contentParts[contentParts.length - 1]
 						: null
-
-				// This is the key: Only add text if it's at the start of the message
-				// or if it follows another text block. This filters out any text
-				// sandwiched between special tags (e.g., </tool_code>...JUNK...<tool_result>).
 				if (!lastPart || lastPart.type === "text") {
 					if (textContent.trim()) {
 						contentParts.push({
@@ -242,7 +239,6 @@ const ChatBubble = ({
 				}
 			}
 
-			// 2. Process the valid, complete tag itself
 			const tag = match[0]
 			let subMatch
 
@@ -273,20 +269,16 @@ const ChatBubble = ({
 				}
 			}
 
-			// 3. Update our position in the message string
 			lastIndex = match.index + tag.length
 		}
 
-		// 4. Process any remaining text after the last valid tag.
-		// This is often the final answer from the assistant.
-		if (lastIndex < message.length) {
+		// Only add remaining text if the stream is done
+		if (isStreamDone && lastIndex < message.length) {
 			const remainingText = message.substring(lastIndex)
 			if (remainingText.trim()) {
 				contentParts.push({ type: "text", content: remainingText })
 			}
 		}
-
-		// --- END OF THE ROBUST CONTEXTUAL FIX ---
 
 		return contentParts.map((part, index) => {
 			const partId = `${part.type}_${index}`
@@ -370,7 +362,6 @@ const ChatBubble = ({
 			style={{ wordBreak: "break-word" }}
 		>
 			{renderMessageContent()}
-
 			{!isUser && (
 				<div className="flex justify-start items-center space-x-4 mt-6">
 					<Tooltip id="chat-bubble-tooltip" />

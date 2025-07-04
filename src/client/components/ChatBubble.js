@@ -258,10 +258,16 @@ const ChatBubble = ({
 		for (const match of message.matchAll(regex)) {
 			// Capture the text before the current tag
 			if (match.index > lastIndex) {
-				contentParts.push({
-					type: "text",
-					content: message.substring(lastIndex, match.index)
-				})
+				const textContent = message.substring(lastIndex, match.index)
+				const isPartialTag =
+					textContent.startsWith("<tool_") ||
+					textContent.startsWith("<think")
+				if (textContent.trim() && !isPartialTag) {
+					contentParts.push({
+						type: "text",
+						content: textContent
+					})
+				}
 			}
 
 			const tag = match[0] // The full tag match
@@ -308,10 +314,16 @@ const ChatBubble = ({
 
 		// Capture any remaining text after the last tag
 		if (lastIndex < message.length) {
-			contentParts.push({
-				type: "text", // The final part of the message
-				content: message.substring(lastIndex)
-			})
+			const textContent = message.substring(lastIndex)
+			const isPartialTag =
+				textContent.startsWith("<tool_") ||
+				textContent.startsWith("<think")
+			if (textContent.trim() && !isPartialTag) {
+				contentParts.push({
+					type: "text", // The final part of the message
+					content: textContent
+				})
+			}
 		}
 
 		return contentParts.map((part, index) => {

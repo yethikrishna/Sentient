@@ -222,27 +222,27 @@ const ChatBubble = ({
 			/(<think>[\s\S]*?<\/think>|<tool_code name="[^"]+">[\s\S]*?<\/tool_code>|<tool_result tool_name="[^"]+">[\s\S]*?<\/tool_result>)/g
 		let lastIndex = 0
 
+		// Parse the message into parts
 		for (const match of message.matchAll(regex)) {
 			if (match.index > lastIndex) {
 				const textContent = message.substring(lastIndex, match.index)
-				const lastPart =
-					contentParts.length > 0
-						? contentParts[contentParts.length - 1]
-						: null
-				if (!lastPart || lastPart.type === "text") {
-					if (textContent.trim()) {
-						contentParts.push({
-							type: "text",
-							content: textContent
-						})
-					}
+				if (textContent.trim()) {
+					contentParts.push({
+						type: "text",
+						content: textContent
+					})
 				}
 			}
 
 			const tag = match[0]
 			let subMatch
 
-			if (
+			if ((subMatch = tag.match(/<think>([\s\S]*?)<\/think>/))) {
+				const thinkContent = subMatch[1].trim()
+				if (thinkContent) {
+					contentParts.push({ type: "think", content: thinkContent })
+				}
+			} else if (
 				(subMatch = tag.match(
 					/<tool_code name="([^"]+)">([\s\S]*?)<\/tool_code>/
 				))
@@ -262,24 +262,20 @@ const ChatBubble = ({
 					name: subMatch[1],
 					result: subMatch[2] ? subMatch[2].trim() : "{}"
 				})
-			} else if ((subMatch = tag.match(/<think>([\s\S]*?)<\/think>/))) {
-				const thinkContent = subMatch[1].trim()
-				if (thinkContent) {
-					contentParts.push({ type: "think", content: thinkContent })
-				}
 			}
 
 			lastIndex = match.index + tag.length
 		}
 
-		// Only add remaining text if the stream is done
-		if (isStreamDone && lastIndex < message.length) {
+		// Capture remaining text after the last tag
+		if (lastIndex < message.length) {
 			const remainingText = message.substring(lastIndex)
 			if (remainingText.trim()) {
 				contentParts.push({ type: "text", content: remainingText })
 			}
 		}
 
+		// Render all parts
 		return contentParts.map((part, index) => {
 			const partId = `${part.type}_${index}`
 			if (part.type === "think" && part.content) {
@@ -291,8 +287,6 @@ const ChatBubble = ({
 						<button
 							onClick={() => toggleExpansion(partId)}
 							className="flex items-center gap-2 text-yellow-400 hover:text-yellow-300 text-sm font-semibold"
-							data-tooltip-id="chat-bubble-tooltip"
-							data-tooltip-content="Click to see the agent's internal reasoning for this step."
 						>
 							{expandedStates[partId] ? (
 								<IconChevronUp size={16} />
@@ -334,19 +328,25 @@ const ChatBubble = ({
 				)
 			}
 			if (part.type === "text" && part.content.trim()) {
-				return (
-					<ReactMarkdown
-						key={partId}
-						className="prose prose-invert"
-						remarkPlugins={[remarkGfm]}
-						children={part.content}
-						components={{
-							a: ({ href, children }) => (
-								<LinkButton href={href} children={children} />
-							)
-						}}
-					/>
-				)
+				// Render text parts only when the stream is complete
+				if (isStreamDone) {
+					return (
+						<ReactMarkdown
+							key={partId}
+							className="prose prose-invert"
+							remarkPlugins={[remarkGfm]}
+							children={part.content}
+							components={{
+								a: ({ href, children }) => (
+									<LinkButton
+										href={href}
+										children={children}
+									/>
+								)
+							}}
+						/>
+					)
+				}
 			}
 			return null
 		})

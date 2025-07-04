@@ -265,6 +265,8 @@ async def generate_plan(
                 if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
                     content = last_message["content"]
                     
+                    print(f"[INFO] Received chunk from planner agent: {content}")
+                    
                     # Extract JSON from markdown code block if present
                     match = re.search(r'```json\n(.*?)\n```', content, re.DOTALL)
                     final_response_str = match.group(1) if match else content

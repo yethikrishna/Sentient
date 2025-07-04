@@ -158,6 +158,46 @@ const ToolCodeBlock = ({ name, code, isExpanded, onToggle }) => {
 }
 
 /**
+ * A dedicated component to render tool result blocks neatly.
+ * NOTE: This component is now being used to display the tool result.
+ */
+const ToolResultBlock = ({ name, result, isExpanded, onToggle }) => {
+	let formattedResult = result
+	try {
+		// Pretty-print if it's a JSON string
+		const parsed = JSON.parse(result)
+		formattedResult = JSON.stringify(parsed, null, 2)
+	} catch (e) {
+		// Not a valid JSON, leave as is
+	}
+
+	return (
+		<div className="mb-4 border-l-2 border-purple-500 pl-3">
+			<button
+				onClick={onToggle}
+				className="flex items-center gap-2 text-purple-400 hover:text-purple-300 text-sm font-semibold"
+				data-tooltip-id="chat-bubble-tooltip"
+				data-tooltip-content="Click to see the result from the tool."
+			>
+				{isExpanded ? (
+					<IconChevronUp size={16} />
+				) : (
+					<IconChevronDown size={16} />
+				)}
+				Tool Result: {name}
+			</button>
+			{isExpanded && (
+				<div className="mt-2 p-3 bg-neutral-800/50 rounded-md">
+					<pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono">
+						<code>{formattedResult}</code>
+					</pre>
+				</div>
+			)}
+		</div>
+	)
+}
+
+/**
  * ChatBubble Component - Displays a single chat message bubble.
  *
  * This component renders a chat message, distinguishing between user and AI messages with different styles.
@@ -292,7 +332,13 @@ const ChatBubble = ({
 					/<tool_result tool_name="([^"]+)">([\s\S]*?)<\/tool_result>/
 				))
 			) {
-				// We correctly parse and then ignore/hide tool_result
+				const toolName = subMatch[1]
+				const toolResult = subMatch[2] ? subMatch[2].trim() : "{}"
+				contentParts.push({
+					type: "tool_result",
+					name: toolName,
+					result: toolResult
+				})
 			} else if ((subMatch = tag.match(/<think>([\s\S]*?)<\/think>/))) {
 				const thinkContent = subMatch[1].trim()
 				if (thinkContent) {
@@ -358,6 +404,18 @@ const ChatBubble = ({
 						key={partId}
 						name={part.name}
 						code={part.code}
+						isExpanded={!!expandedStates[partId]}
+						onToggle={() => toggleExpansion(partId)}
+					/>
+				)
+			}
+			// ADDED THIS BLOCK TO RENDER THE TOOL RESULT
+			if (part.type === "tool_result") {
+				return (
+					<ToolResultBlock
+						key={partId}
+						name={part.name}
+						result={part.result}
 						isExpanded={!!expandedStates[partId]}
 						onToggle={() => toggleExpansion(partId)}
 					/>

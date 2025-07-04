@@ -54,13 +54,13 @@ async def chat_endpoint(
             ):
                 if not event:
                     continue
-                logger.info(f"Streaming event to user {user_id}: {json.dumps(event)}")
+                print(f"[INFO] Streaming event to user {user_id}: {json.dumps(event)}")
                 # yield as bytes and flush
                 yield json.dumps(event) + "\n"
         except asyncio.CancelledError:
-            logger.info(f"Client disconnected, stream cancelled for user {user_id}.")
+            print(f"[INFO] Client disconnected, stream cancelled for user {user_id}.")
         except Exception as e:
-            logger.error(f"Error in chat stream for user {user_id}: {e}", exc_info=True)
+            print(f"[ERROR] Error in chat stream for user {user_id}: {e}")
             error_response = {
                 "type": "error",
                 "message": "Sorry, I encountered an error while processing your request."

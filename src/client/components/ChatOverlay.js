@@ -132,9 +132,15 @@ const ChatOverlay = ({ onClose }) => {
 				while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
 					const line = buffer.slice(0, newlineIndex)
 					buffer = buffer.slice(newlineIndex + 1)
-					if (line.trim() === "") continue
+					if (line.trim() === "") continue // Skip empty lines
+
+					// Log the raw line received from the stream
+					console.log("[ChatStream] Received raw line:", line)
+
 					try {
 						const parsed = JSON.parse(line)
+						// Log the parsed JavaScript object
+						console.log("[ChatStream] Parsed data:", parsed)
 						if (parsed.type === "error") {
 							toast.error(`An error occurred: ${parsed.message}`)
 							continue

@@ -72,7 +72,8 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 				"Content-Type": "application/x-ndjson",
 				"Cache-Control": "no-cache",
 				Connection: "keep-alive",
-				"X-Accel-Buffering": "no" // Disable buffering on Netlify/Vercel
+				"X-Accel-Buffering": "no", // Disable buffering on Netlify/Vercel
+				"Content-Encoding": "identity"
 			}
 		})
 	} catch (error) {

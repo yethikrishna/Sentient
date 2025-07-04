@@ -41,7 +41,6 @@ async def chat_endpoint(
     
     async def event_stream_generator():
         try:
-            # Pass the full message history directly to the LLM stream generator
             async for event in generate_chat_llm_stream(
                 user_id,
                 request_body.messages,
@@ -53,16 +52,28 @@ async def chat_endpoint(
                 enable_maps=request_body.enable_maps,
                 enable_shopping=request_body.enable_shopping
             ):
-                if not event: continue
-                yield json.dumps(event) + "\n"
+                if not event:
+                    continue
+                # yield as bytes and flush
+                chunk = (json.dumps(event) + "\n").encode("utf-8")
+                yield chunk
+                await asyncio.sleep(0)  # Force control back to event loop
         except asyncio.CancelledError:
-             logger.info(f"Client disconnected, stream cancelled for user {user_id}.")
+            logger.info(f"Client disconnected, stream cancelled for user {user_id}.")
         except Exception as e:
             logger.error(f"Error in chat stream for user {user_id}: {e}", exc_info=True)
             error_response = {
                 "type": "error",
                 "message": "Sorry, I encountered an error while processing your request."
             }
-            yield json.dumps(error_response) + "\n"
+            yield (json.dumps(error_response) + "\n").encode("utf-8")
 
-    return StreamingResponse(event_stream_generator(), media_type="application/x-ndjson")
+    return StreamingResponse(
+        event_stream_generator(),
+        media_type="application/x-ndjson",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # Disable Nginx buffering
+            "Transfer-Encoding": "chunked",  # Hint chunked encoding
+        }
+    )

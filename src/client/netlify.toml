@@ -1,3 +1,9 @@
 [build]
    command = "npm run build"
    publish = ".next"
+[[headers]]
+  for = "/api/chat/message"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Content-Encoding = "identity"
+    X-Accel-Buffering = "no"

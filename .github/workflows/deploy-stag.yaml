@@ -1,0 +1,43 @@
+# .github/workflows/deploy-stag.yaml
+name: Deploy to Staging VM
+
+on:
+  # This section defines when the workflow will run.
+  push:
+    branches:
+      - staging # Trigger on every push to the "staging" branch.
+
+jobs:
+  deploy:
+    # The job will run on a fresh virtual machine provided by GitHub.
+    runs-on: ubuntu-latest
+    steps:
+      # This is the main step that does the work.
+      - name: Deploy over SSH
+        # It uses a pre-made Action from the community to simplify SSH.
+        uses: appleboy/ssh-action@master
+        with:
+          # These values are securely pulled from your GitHub Secrets.
+          host: ${{ secrets.STAG_VM_HOST }}
+          username: ${{ secrets.STAG_VM_USER }}
+          key: ${{ secrets.STAG_VM_SSH_PRIVATE_KEY }}
+
+          # This is the script that the Action will run on your VM.
+          script: |
+            # Change to your project's directory on the VM.
+            cd ~/sentient
+
+            # Pull the latest changes from the staging branch on GitHub.
+            git pull origin staging
+
+            # Navigate into the server directory where your docker-compose file is.
+            cd src/server
+
+            # Stop and remove the old containers.
+            docker-compose down
+
+            # Build new images if the Dockerfile has changed, and start the new containers in the background.
+            docker-compose up --build -d
+
+            # Optional: This cleans up any old, unused Docker images to save disk space.
+            docker image prune -af

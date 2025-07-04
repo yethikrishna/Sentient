@@ -1,11 +1,11 @@
-# .github/workflows/deploy.yml
-name: Deploy to Staging VM
+# .github/workflows/deploy-stag.yaml
+name: Deploy to development VM
 
 on:
   # This section defines when the workflow will run.
   push:
     branches:
-      - staging # Trigger on every push to the "staging" branch.
+      - development # Trigger on every push to the "development" branch.
 
 jobs:
   deploy:
@@ -18,17 +18,17 @@ jobs:
         uses: appleboy/ssh-action@master
         with:
           # These values are securely pulled from your GitHub Secrets.
-          host: ${{ secrets.VM_HOST }}
-          username: ${{ secrets.VM_USER }}
-          key: ${{ secrets.VM_SSH_PRIVATE_KEY }}
+          host: ${{ secrets.DEV_VM_HOST }}
+          username: ${{ secrets.DEV_VM_USER }}
+          key: ${{ secrets.DEV_VM_SSH_PRIVATE_KEY }}
 
           # This is the script that the Action will run on your VM.
           script: |
             # Change to your project's directory on the VM.
             cd ~/sentient
 
-            # Pull the latest changes from the staging branch on GitHub.
-            git pull origin staging
+            # Pull the latest changes from the development branch on GitHub.
+            git pull origin development
 
             # Navigate into the server directory where your docker-compose file is.
             cd src/server

@@ -1,8 +1,5 @@
 #!/bin/bash
-# Starts the main FastAPI server and a background healthcheck script.
-
-echo "Starting healthcheck monitoring script in the background..."
-python main/scripts/healthcheck.py &
+# Starts the main FastAPI server 
 
 echo "Starting main Uvicorn server..."
 # The --forwarded-allow-ips='*' is important for running behind a reverse proxy like Render's

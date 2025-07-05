@@ -99,23 +99,16 @@ const ChatOverlay = ({ onClose }) => {
 		}))
 
 		try {
-			// 1. Fetch the access token from our own API to authenticate the direct call
-			const tokenResponse = await fetch("/api/auth/token")
-			if (!tokenResponse.ok) {
-				throw new Error("Could not fetch authentication token.")
-			}
-			const { accessToken } = await tokenResponse.json()
-
-			// 2. Make the streaming call directly to the backend, bypassing the Netlify function proxy
+			// Make the streaming call to our Next.js API route.
 			const response = await fetch(
-				`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/chat/message`,
+				"/api/chat/message", // Use the API route which proxies to the backend
 				{
 					method: "POST",
 					headers: {
-						"Content-Type": "application/json",
-						Authorization: `Bearer ${accessToken}` // Add the auth header
+						"Content-Type": "application/json"
 					},
 					body: JSON.stringify({
+						// The API route will forward these to the backend
 						messages: apiMessages,
 						enable_internet: isInternetEnabled,
 						enable_weather: isWeatherEnabled,

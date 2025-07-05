@@ -5,7 +5,7 @@ from main.agents.models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest,
 from main.config import INTEGRATIONS_CONFIG
 from main.dependencies import mongo_manager
 from main.auth.utils import PermissionChecker
-from server.main.agents.utils import clean_llm_output
+from main.agents.utils import clean_llm_output
 from workers.executor.tasks import execute_task_plan
 from workers.planner.llm import get_planner_agent
 from workers.planner.db import get_all_mcp_descriptions

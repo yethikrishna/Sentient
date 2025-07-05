@@ -265,12 +265,13 @@ async def generate_plan(
                 if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
                     content = last_message["content"]
                     
-                    print(f"[INFO] Received chunk from planner agent: {content}")
                     
                     # Extract JSON from markdown code block if present
                     match = re.search(r'```json\n(.*?)\n```', content, re.DOTALL)
                     final_response_str = match.group(1) if match else content
-
+                    
+        print(f"[INFO] Received chunk from planner agent: {content}")
+        print(f"[INFO] Final response from planner agent: {final_response_str}")
         if not final_response_str:
             raise HTTPException(status_code=500, detail="Planner agent returned an empty response.")
 

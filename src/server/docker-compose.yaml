@@ -29,7 +29,7 @@ services:
     container_name: redis-db
     restart: unless-stopped
     # Use the password from the .env file
-    command: redis-server --requirepass your_redis_password_here
+    command: redis-server --requirepass ${REDIS_PASSWORD}
     volumes:
       # Use a named volume for persistent Redis data
       - redis-data:/data
@@ -48,9 +48,9 @@ services:
     environment:
       - WHATSAPP_DEFAULT_ENGINE=GOWS
       # Use variables from the .env file
-      - WAHA_API_KEY=your_waha_api_key_here
+      - WAHA_API_KEY=${WAHA_API_KEY}
       - WAHA_DASHBOARD_USERNAME=admin
-      - WAHA_DASHBOARD_PASSWORD=admin
+      - WAHA_DASHBOARD_PASSWORD=${WAHA_DASHBOARD_PASSWORD}
     networks:
       - sentient_network
     # No ports are exposed to the host. The sentient-app communicates with it internally.

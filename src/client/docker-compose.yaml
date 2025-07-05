@@ -1,0 +1,15 @@
+# src/client/docker-compose.yml
+
+services:
+  sentient-client:
+    # Build the image from the Dockerfile in the current directory
+    build: .
+    container_name: sentient-client
+    # Always restart the container unless it is explicitly stopped
+    restart: unless-stopped
+    # Map port 80 on the VM to port 3000 inside the container
+    ports:
+      - "80:3000"
+    # Load environment variables from a .env file in the same directory
+    env_file:
+      - .env

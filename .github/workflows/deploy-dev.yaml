@@ -38,6 +38,3 @@ jobs:
 
             # Build new images if the Dockerfile has changed, and start the new containers in the background.
             docker compose up --build -d
-
-            # Optional: This cleans up any old, unused Docker images to save disk space.
-            docker image prune -af

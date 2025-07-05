@@ -24,7 +24,7 @@ import IconGoogleDrive from "./icons/IconGoogleDrive"
 import IconGoogleMail from "./icons/IconGoogleMail"
 import toast from "react-hot-toast"
 
-// LinkButton component to handle different types of links with custom icons
+// LinkButton component (no changes needed)
 const LinkButton = ({ href, children }) => {
 	const toolMapping = {
 		"drive.google.com": {
@@ -93,7 +93,7 @@ const LinkButton = ({ href, children }) => {
 	)
 }
 
-// ToolCodeBlock component to display tool calls in a collapsible format
+// ToolCodeBlock is no longer rendered, but we keep it for potential future use or debugging
 const ToolCodeBlock = ({ name, code, isExpanded, onToggle }) => {
 	let formattedCode = code
 	try {
@@ -171,20 +171,24 @@ const ChatBubble = ({
 	isUser,
 	memoryUsed,
 	agentsUsed,
-	internetUsed,
-	isStreamDone
+	internetUsed
 }) => {
 	const [copied, setCopied] = useState(false)
 	const [expandedStates, setExpandedStates] = useState({})
+	const [renderedContent, setRenderedContent] = useState([])
+
+	// Memoize the parsed content to avoid re-parsing on every render
+	React.useEffect(() => {
+		setRenderedContent(renderMessageContent())
+	}, [message, expandedStates]) // Rerun parsing if message or expansion state changes
 
 	// Function to copy message content to clipboard
 	const handleCopyToClipboard = () => {
-		// Filter out the tags and copy the plain text content.
-		const plainText = message
-			.replace(/<think>[\s\S]*?<\/think>/g, "")
-			.replace(/<tool_code[^>]*>[\s\S]*?<\/tool_code>/g, "")
-			.replace(/<tool_result[^>]*>[\s\S]*?<\/tool_result>/g, "")
-			.replace(/<answer>([\s\S]*?)<\/answer>/g, "$1")
+		// Build the text to copy from the parsed parts, ensuring we only copy the final answer
+		const plainText = renderedContent
+			.filter((part) => part.type === "answer")
+			.map((part) => part.props.children)
+			.join("")
 			.trim()
 
 		navigator.clipboard
@@ -201,11 +205,14 @@ const ChatBubble = ({
 		setExpandedStates((prev) => ({ ...prev, [id]: !prev[id] }))
 	}
 
-	// Function to render message content, processing special tags and text
+	// ***************************************************************
+	// *** UPDATED LOGIC: Function to render message content       ***
+	// ***************************************************************
 	const renderMessageContent = () => {
 		if (isUser || typeof message !== "string" || !message) {
-			return (
+			return [
 				<ReactMarkdown
+					key="user-md"
 					className="prose prose-invert"
 					remarkPlugins={[remarkGfm]}
 					children={message || ""}
@@ -215,18 +222,24 @@ const ChatBubble = ({
 						)
 					}}
 				/>
-			)
+			]
 		}
 
 		const contentParts = []
 		const regex =
-			/(<think>[\s\S]*?<\/think>|<tool_code name="[^"]+">[\s\S]*?<\/tool_code>|<tool_result tool_name="[^"]+">[\s\S]*?<\/tool_result>|<answer>[\s\S]*?<\/answer>)/g
+			/(<think>[\s\S]*?<\/think>|<tool_code[^>]*>[\s\S]*?<\/tool_code>|<tool_result[^>]*>[\s\S]*?<\/tool_result>|<answer>[\s\S]*?<\/answer>)/g
 		let lastIndex = 0
+		let inToolCallPhase = false // State to track if we are between a tool_code and tool_result
 
-		// Parse the message into parts
 		for (const match of message.matchAll(regex)) {
-			// By not capturing the text between matches, we ignore "junk tokens"
+			const precedingText = message.substring(lastIndex, match.index)
 
+			// 1. Add any text that came before the current tag, but only if we're not in the "ignore" phase
+			if (precedingText.trim() && !inToolCallPhase) {
+				contentParts.push({ type: "answer", content: precedingText })
+			}
+
+			// 2. Process the matched tag
 			const tag = match[0]
 			let subMatch
 
@@ -237,19 +250,19 @@ const ChatBubble = ({
 				}
 			} else if (
 				(subMatch = tag.match(
-					/<tool_code name="([^"]+)">([\s\S]*?)<\/tool_code>/
+					/<tool_code name="([^"]+)">[\s\S]*?<\/tool_code>/
 				))
 			) {
-				contentParts.push({
-					type: "tool_code",
-					name: subMatch[1],
-					code: subMatch[2] ? subMatch[2].trim() : "{}"
-				})
+				// When we find a tool_code, we enter the "ignore" phase and do not render the code itself.
+				inToolCallPhase = true
 			} else if (
+				// CORRECTED REGEX: Added ([\s\S]*?) to capture the result content
 				(subMatch = tag.match(
-					/<tool_result tool_name="([^"]+)">[\s\S]*?<\/tool_result>/
+					/<tool_result tool_name="([^"]+)">([\s\S]*?)<\/tool_result>/
 				))
 			) {
+				// When we find a tool_result, we exit the "ignore" phase and render the result.
+				inToolCallPhase = false
 				contentParts.push({
 					type: "tool_result",
 					name: subMatch[1],
@@ -257,7 +270,6 @@ const ChatBubble = ({
 				})
 			} else if ((subMatch = tag.match(/<answer>([\s\S]*?)<\/answer>/))) {
 				const answerContent = subMatch[1]
-				// Don't trim, whitespace might be intentional
 				if (answerContent) {
 					contentParts.push({
 						type: "answer",
@@ -265,15 +277,19 @@ const ChatBubble = ({
 					})
 				}
 			}
-
 			lastIndex = match.index + tag.length
 		}
 
-		// By not capturing text after the last tag, we ignore trailing junk.
+		// 3. Add any remaining text after the last tag (this is the final, streaming answer)
+		const remainingText = message.substring(lastIndex)
+		if (remainingText && !inToolCallPhase) {
+			contentParts.push({ type: "answer", content: remainingText })
+		}
 
-		// Render all parts
+		// 4. Render all the collected parts into React components
 		return contentParts.map((part, index) => {
 			const partId = `${part.type}_${index}`
+
 			if (part.type === "think" && part.content) {
 				return (
 					<div
@@ -299,17 +315,6 @@ const ChatBubble = ({
 							</div>
 						)}
 					</div>
-				)
-			}
-			if (part.type === "tool_code") {
-				return (
-					<ToolCodeBlock
-						key={partId}
-						name={part.name}
-						code={part.code}
-						isExpanded={!!expandedStates[partId]}
-						onToggle={() => toggleExpansion(partId)}
-					/>
 				)
 			}
 			if (part.type === "tool_result") {
@@ -338,6 +343,7 @@ const ChatBubble = ({
 					/>
 				)
 			}
+			// Note: tool_code parts are never rendered
 			return null
 		})
 	}
@@ -351,7 +357,7 @@ const ChatBubble = ({
 			} mb-2 relative`}
 			style={{ wordBreak: "break-word" }}
 		>
-			{renderMessageContent()}
+			{renderedContent}
 			{!isUser && (
 				<div className="flex justify-start items-center space-x-4 mt-6">
 					<Tooltip id="chat-bubble-tooltip" />

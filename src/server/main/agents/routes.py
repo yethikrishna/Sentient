@@ -1,12 +1,11 @@
 import datetime
 import uuid
-import json
-import re
 from fastapi import APIRouter, Depends, HTTPException, status
 from main.agents.models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest, GeneratePlanRequest
 from main.config import INTEGRATIONS_CONFIG
 from main.dependencies import mongo_manager
 from main.auth.utils import PermissionChecker
+from server.main.agents.utils import clean_llm_output
 from workers.executor.tasks import execute_task_plan
 from workers.planner.llm import get_planner_agent
 from workers.planner.db import get_all_mcp_descriptions
@@ -264,7 +263,8 @@ async def generate_plan(
                 last_message = chunk[-1]
                 if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
                     content = last_message["content"]
-                    
+        
+        content = clean_llm_output(content)
         plan_data = JsonExtractor.extract_valid_json(content)
 
         print(f"[INFO] Received chunk from planner agent: {content}")

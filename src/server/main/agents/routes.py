@@ -12,6 +12,7 @@ from workers.planner.llm import get_planner_agent
 from workers.planner.db import get_all_mcp_descriptions
 from workers.tasks import calculate_next_run
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from json_extractor import JsonExtractor
 
 router = APIRouter(
     prefix="/agents",
@@ -258,24 +259,19 @@ async def generate_plan(
         user_prompt = f"Please create a plan for the following goal: {request.prompt}"
         messages = [{'role': 'user', 'content': user_prompt}]
 
-        final_response_str = ""
         for chunk in agent.run(messages=messages):
             if isinstance(chunk, list) and chunk:
                 last_message = chunk[-1]
                 if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
                     content = last_message["content"]
                     
-                    
-                    # Extract JSON from markdown code block if present
-                    match = re.search(r'```json\n(.*?)\n```', content, re.DOTALL)
-                    final_response_str = match.group(1) if match else content
-                    
+        plan_data = JsonExtractor.extract_valid_json(content)
+
         print(f"[INFO] Received chunk from planner agent: {content}")
-        print(f"[INFO] Final response from planner agent: {final_response_str}")
-        if not final_response_str:
+        print(f"[INFO] Final response from planner agent: {plan_data}")
+        if not plan_data:
             raise HTTPException(status_code=500, detail="Planner agent returned an empty response.")
 
-        plan_data = json.loads(final_response_str)
         return {"description": plan_data.get("description"), "plan": plan_data.get("plan", [])}
     except Exception as e:
         import traceback

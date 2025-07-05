@@ -41,3 +41,5 @@ fastmcp
 
 # --- Charting (for gslides MCP) ---
 matplotlib
+
+jsonextractor

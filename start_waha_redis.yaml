@@ -1,0 +1,37 @@
+# docker-compose.yaml
+
+services:
+  waha:
+    image: devlikeapro/waha:noweb
+    container_name: waha-notifier
+    restart: unless-stopped
+    ports:
+      # Exposes Waha on the VM's public IP on port 8000
+      - "8000:3000"
+    volumes:
+      # Persists WhatsApp session data on the host machine
+      - ./.sessions:/app/.sessions
+    environment:
+      - WHATSAPP_DEFAULT_ENGINE=GOWS
+      # !! CHANGE THIS in production to a long, random string !!
+      - WAHA_API_KEY=admin
+      - WAHA_DASHBOARD_USERNAME=admin
+      - WAHA_DASHBOARD_PASSWORD=admin
+    # No 'depends_on' - this service is independent
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis-db
+    restart: unless-stopped
+    ports:
+      # Exposes Redis on the VM's public IP on port 6379
+      # 🚨 THIS IS A SECURITY RISK. Ensure your firewall is locked down.
+      - "6379:6379"
+    command:
+      # Sets a required password for all connections.
+      # !! CHANGE THIS PASSWORD IMMEDIATELY !!
+      - redis-server
+      - --requirepass yourpasswordhere
+    volumes:
+      # Persists Redis data on the host machine
+      - ./redis-data:/data

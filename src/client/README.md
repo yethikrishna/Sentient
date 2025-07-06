@@ -1,25 +1,24 @@
 <p align="center"><img src="https://i.imgur.com/X7dSE68.png"></p>
 
+## Next.js Web Client
+
+This is a Next.js project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+
 ## Usage
-
-### Create an App
-
-```
-# with npx
-$ npx create-nextron-app my-app --example basic-lang-javascript
-
-# with yarn
-$ yarn create nextron-app my-app --example basic-lang-javascript
-
-# with pnpm
-$ pnpm dlx create-nextron-app my-app --example basic-lang-javascript
-```
 
 ### Install Dependencies
 
-```
-$ cd my-app
+First, ensure you have Node.js and a package manager (npm, yarn, or pnpm) installed.
 
+If you have a `package-lock.json` from the old Electron project, delete it and the `node_modules` directory:
+
+```bash
+$ rm -rf node_modules package-lock.json
+```
+
+Then, install the dependencies:
+
+```
 # using yarn or npm
 $ yarn (or `npm install`)
 

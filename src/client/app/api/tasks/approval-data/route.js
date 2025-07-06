@@ -1,0 +1,34 @@
+// src/client/app/api/tasks/approval-data/route.js
+import { NextResponse } from "next/server"
+import { withAuth } from "@lib/api-utils"
+
+export const GET = withAuth(async function GET(request, { authHeader }) {
+	const { searchParams } = new URL(request.url)
+	const taskId = searchParams.get("taskId")
+	if (!taskId) {
+		return NextResponse.json(
+			{ error: "Task ID is required" },
+			{ status: 400 }
+		)
+	}
+
+	try {
+		const response = await fetch(
+			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/agents/get-task-approval-data`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json", ...authHeader },
+				body: JSON.stringify({ taskId: taskId })
+			}
+		)
+
+		const data = await response.json()
+		if (!response.ok) {
+			throw new Error(data.error || "Failed to fetch approval data")
+		}
+		return NextResponse.json(data)
+	} catch (error) {
+		console.error("API Error in /tasks/approval-data:", error)
+		return NextResponse.json({ error: error.message }, { status: 500 })
+	}
+})

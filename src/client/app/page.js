@@ -1,57 +1,107 @@
 "use client"
 
-import { useEffect } from "react" // Importing the useEffect hook from React
-import { useRouter } from "next/navigation" // Importing the useRouter hook from next/navigation for client-side routing
-import AnimatedLogo from "@components/AnimatedLogo" // Importing the AnimatedLogo component
-import toast from "react-hot-toast" // Importing the toast library for displaying notifications
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { useUser } from "@auth0/nextjs-auth0"
+import AnimatedLogo from "@components/AnimatedLogo"
+import toast from "react-hot-toast"
 import React from "react"
 
 /**
- * Home Component - The landing page of the application.
+ * Home Component - The initial loading screen of the application.
  *
- * This component serves as the initial entry point of the application.
- * Upon loading, it immediately redirects the user to the '/update' page to check for updates.
- * It displays an animated logo and the application title while the redirection is being processed.
- *
- * @returns {React.ReactNode} - The Home component UI, which includes an animated logo and application title.
+ * This component is responsible for checking the user's authentication and onboarding status,
+ * then redirecting them to the appropriate page (/auth/login, /onboarding, or /chat).
+ * It displays a loading animation during this process.
+ * The final destination for an authenticated and onboarded user is /home.
+ * @returns {React.ReactNode} - The Home component UI.
  */
 const Home = () => {
-	const router = useRouter() // Initializing the router for navigation
+	const router = useRouter()
+	const { user, error: authError, isLoading: isAuthLoading } = useUser()
 
-	/**
-	 * useEffect hook to initialize the app and navigate to the update page on component mount.
-	 *
-	 * This hook runs once after the component is mounted. It defines an async function `initializeApp`
-	 * that attempts to navigate the user to the '/update' route. Any errors during initialization
-	 * are caught and displayed as a toast notification.
-	 */
+	const [onboarded, setOnboarded] = useState(null)
+	const [isCheckingOnboarding, setIsCheckingOnboarding] = useState(false)
+
 	useEffect(() => {
-		/**
-		 * Initializes the application and navigates to the update page.
-		 *
-		 * This asynchronous function is designed to be called once when the component mounts.
-		 * It uses the Next.js router to redirect the user to the '/update' page to initiate the update process.
-		 * Any errors during this initialization and navigation process are caught and displayed to the user as a toast error message.
-		 *
-		 * @async
-		 * @function initializeApp
-		 * @returns {Promise<void>} - A promise that resolves after attempting to redirect to the update page or after handling any errors.
-		 */
-		const initializeApp = async () => {
+		if (isAuthLoading) {
+			// Still waiting for Auth0 to determine the user's session.
+			return
+		}
+
+		if (authError) {
+			console.error("Authentication error:", authError)
+			toast.error("Authentication failed. Please try again.")
+			// Redirect to login to re-attempt authentication.
+			router.push("/auth/login")
+			return
+		}
+
+		if (!user) {
+			// User is not authenticated. Redirect to the Auth0 login page.
+			console.log("No user session found, redirecting to login.")
+			router.push("/auth/login")
+			return
+		}
+
+		// If we reach here, the user is authenticated. Now, check their onboarding status.
+		const checkOnboardingStatus = async () => {
+			setIsCheckingOnboarding(true)
 			try {
-				router.push("/update") // Programmatically navigate to the '/update' route
+				const response = await fetch("/api/user/data") // Uses the same API endpoint
+
+				if (response.status === 401) {
+					// This case is unlikely if useUser() works but is good to handle.
+					toast.error("Session expired. Please log in again.")
+					router.push("/auth/logout")
+					return
+				}
+
+				if (!response.ok) {
+					const errorData = await response.json()
+					throw new Error(
+						errorData.message || "Failed to fetch user data"
+					)
+				}
+
+				const result = await response.json()
+				const onboardingCompleted =
+					result?.data?.onboardingComplete ?? false
+				setOnboarded(onboardingCompleted)
 			} catch (error) {
-				toast.error(`Error initializing app: ${error}`) // Display a toast error message if navigation fails
+				toast.error(`Error initializing app: ${error.message}`)
+				// Default to sending to onboarding on error for safety.
+				setOnboarded(false)
+			} finally {
+				setIsCheckingOnboarding(false)
 			}
 		}
-		initializeApp() // Call initializeApp when the component mounts
-	}, [router]) // Dependency array includes 'router' to satisfy hook dependencies, but effect is intended to run only once on mount
 
+		// Only check onboarding if it hasn't been determined yet.
+		if (onboarded === null) {
+			checkOnboardingStatus()
+		}
+	}, [isAuthLoading, user, authError, router, onboarded])
+
+	// This effect handles the redirection after onboarding status is known.
+	useEffect(() => {
+		// Only redirect if auth is loaded, user exists, and onboarding status is determined.
+		if (!isAuthLoading && user && onboarded !== null) {
+			if (onboarded) {
+				router.push("/home")
+			} else {
+				router.push("/onboarding")
+			}
+		}
+	}, [isAuthLoading, user, onboarded, router])
+
+	// Show a loading screen while checking authentication or onboarding status.
 	return (
-		<div className="flex flex-col items-center justify-center min-h-screen bg-black">
-			<AnimatedLogo /> {/* Render the AnimatedLogo component */}
-			<h1 className="text-white text-4xl mt-4">Sentient</h1>{" "}
-			{/* Display the title of the application */}
+		<div className="min-h-screen flex flex-col items-center justify-center bg-[var(--color-primary-background)]">
+			<div className="flex flex-col items-center justify-center h-full backdrop-blur-xs">
+				<AnimatedLogo />
+				<h1 className="text-white text-4xl mt-4">Sentient</h1>
+			</div>
 		</div>
 	)
 }

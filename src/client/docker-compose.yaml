@@ -1,15 +1,28 @@
-# src/client/docker-compose.yml
+# src/client/docker-compose.yaml
 
 services:
   sentient-client:
-    # Build the image from the Dockerfile in the current directory
-    build: .
+    build:
+      context: .
+      # ---- MODIFIED SECTION ----
+      # Pass variables from the .env file as build arguments
+      # This makes them available during `npm run build`
+      args:
+        - NEXT_PUBLIC_APP_SERVER_URL=${NEXT_PUBLIC_APP_SERVER_URL}
+        - AUTH0_SECRET=${AUTH0_SECRET}
+        - AUTH0_BASE_URL=${AUTH0_BASE_URL}
+        - APP_BASE_URL=${APP_BASE_URL}
+        - AUTH0_ISSUER_BASE_URL=${AUTH0_ISSUER_BASE_URL}
+        - AUTH0_CLIENT_ID=${AUTH0_CLIENT_ID}
+        - AUTH0_CLIENT_SECRET=${AUTH0_CLIENT_SECRET}
+        - AUTH0_AUDIENCE=${AUTH0_AUDIENCE}
+        - AUTH0_SCOPE=${AUTH0_SCOPE}
+      # -------------------------
     container_name: sentient-client
-    # Always restart the container unless it is explicitly stopped
     restart: unless-stopped
-    # Map port 3000 on the VM to port 3000 inside the container
     ports:
       - "3000:3000"
-    # Load environment variables from a .env file in the same directory
+    # This loads the SAME .env file into the RUNNING container
+    # for server-side code to use at runtime.
     env_file:
       - .env

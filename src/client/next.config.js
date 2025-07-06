@@ -1,7 +1,13 @@
+// src/client/next.config.js
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
 	images: {
 		unoptimized: true
+	},
+	// Add this section to keep console logs in production builds
+	compiler: {
+		removeConsole: false
 	}
 }
 

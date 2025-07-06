@@ -10,7 +10,7 @@ WORKDIR /app
 # Others are needed for server-side logic during the build (if any).
 ARG NEXT_PUBLIC_APP_SERVER_URL
 ARG AUTH0_SECRET
-ARG AUTH0_BASE_URL # This is a legacy var in the template, you have APP_BASE_URL
+ARG AUTH0_BASE_URL
 ARG APP_BASE_URL
 ARG AUTH0_ISSUER_BASE_URL
 ARG AUTH0_CLIENT_ID

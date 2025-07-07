@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server"
 import { withAuth } from "@lib/api-utils"
 
+const appServerUrl =
+	process.env.INTERNAL_APP_SERVER_URL ||
+	process.env.NEXT_PUBLIC_APP_SERVER_URL
+
 export const GET = withAuth(async function GET(request, { authHeader }) {
 	try {
-		const response = await fetch(
-			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/integrations/sources`,
-			{
-				method: "GET",
-				headers: { "Content-Type": "application/json", ...authHeader }
-			}
-		)
+		const response = await fetch(`${appServerUrl}/integrations/sources`, {
+			method: "GET",
+			headers: { "Content-Type": "application/json", ...authHeader }
+		})
 
 		const data = await response.json()
 		if (!response.ok) {

@@ -239,6 +239,7 @@ outputs
 !.env.project
 !.env.vault
 !.env.template
+!.env.selfhost.template
 token.pickle
 chatsDb.json
 userProfileDb.json

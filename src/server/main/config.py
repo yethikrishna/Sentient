@@ -5,7 +5,7 @@ import datetime
 
 # Load .env file for 'dev' environment. For 'stag' or 'prod', env vars are expected to be set by the platform.
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev')
-if ENVIRONMENT == 'dev':
+if ENVIRONMENT in ['dev', 'SELFHOST']:
     dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
     if os.path.exists(dotenv_path):
         load_dotenv(dotenv_path=dotenv_path)
@@ -15,7 +15,9 @@ APP_SERVER_PORT = int(os.getenv("APP_SERVER_PORT", "5000"))
 # Auth0 Configuration
 AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN")
 AUTH0_AUDIENCE = os.getenv("AUTH0_AUDIENCE") 
+AUTH0_SCOPE = os.getenv("AUTH0_SCOPE")
 ALGORITHMS = ["RS256"]
+SELF_HOST_AUTH_SECRET = os.getenv("SELF_HOST_AUTH_SECRET")
 # For Management API
 AUTH0_MANAGEMENT_CLIENT_ID = os.getenv("AUTH0_MANAGEMENT_CLIENT_ID")
 AUTH0_MANAGEMENT_CLIENT_SECRET = os.getenv("AUTH0_MANAGEMENT_CLIENT_SECRET")

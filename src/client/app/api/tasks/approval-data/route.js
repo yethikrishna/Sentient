@@ -2,6 +2,10 @@
 import { NextResponse } from "next/server"
 import { withAuth } from "@lib/api-utils"
 
+const appServerUrl =
+	process.env.INTERNAL_APP_SERVER_URL ||
+	process.env.NEXT_PUBLIC_APP_SERVER_URL
+
 export const GET = withAuth(async function GET(request, { authHeader }) {
 	const { searchParams } = new URL(request.url)
 	const taskId = searchParams.get("taskId")
@@ -14,7 +18,7 @@ export const GET = withAuth(async function GET(request, { authHeader }) {
 
 	try {
 		const response = await fetch(
-			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/agents/get-task-approval-data`,
+			`${appServerUrl}/agents/get-task-approval-data`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },

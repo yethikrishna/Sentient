@@ -2,17 +2,18 @@
 import { NextResponse } from "next/server"
 import { withAuth } from "@lib/api-utils"
 
+const appServerUrl =
+	process.env.INTERNAL_APP_SERVER_URL ||
+	process.env.NEXT_PUBLIC_APP_SERVER_URL
+
 export const POST = withAuth(async function POST(request, { authHeader }) {
 	try {
 		const taskData = await request.json()
-		const response = await fetch(
-			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/agents/add-task`,
-			{
-				method: "POST",
-				headers: { "Content-Type": "application/json", ...authHeader },
-				body: JSON.stringify(taskData)
-			}
-		)
+		const response = await fetch(`${appServerUrl}/agents/add-task`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json", ...authHeader },
+			body: JSON.stringify(taskData)
+		})
 
 		const data = await response.json()
 		if (!response.ok) {

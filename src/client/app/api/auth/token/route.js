@@ -2,10 +2,21 @@ import { NextResponse } from "next/server"
 import { auth0 } from "@lib/auth0"
 
 /**
- * API route to securely get the user's access token from their session.
- * This is used by the client-side WebSocket to get a token for authentication.
+ * API route to securely get a token for authenticating with backend services.
+ * - In Auth0 mode, it gets the user's access token from their session.
+ * - In SELFHOST mode, it returns the static self-host token.
  */
 export async function GET() {
+	if (process.env.NEXT_PUBLIC_ENVIRONMENT === "SELFHOST") {
+		const token = process.env.SELF_HOST_AUTH_TOKEN
+		if (!token) {
+			return NextResponse.json(
+				{ message: "SELF_HOST_AUTH_TOKEN not configured" },
+				{ status: 500 }
+			)
+		}
+		return NextResponse.json({ accessToken: token })
+	}
 	try {
 		const tokenResult = await auth0.getAccessToken()
 		// Handle both `accessToken` and `token` properties for robustness

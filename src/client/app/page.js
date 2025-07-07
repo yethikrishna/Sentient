@@ -18,32 +18,19 @@ import React from "react"
  */
 const Home = () => {
 	const router = useRouter()
-	const { user, error: authError, isLoading: isAuthLoading } = useUser()
+	const isSelfHost = process.env.NEXT_PUBLIC_ENVIRONMENT === "SELFHOST"
+	const {
+		user,
+		error: authError,
+		isLoading: isAuthLoading
+	} = useUser({
+		disabled: isSelfHost // Disable the hook in self-host mode
+	})
 
 	const [onboarded, setOnboarded] = useState(null)
 	const [isCheckingOnboarding, setIsCheckingOnboarding] = useState(false)
 
 	useEffect(() => {
-		if (isAuthLoading) {
-			// Still waiting for Auth0 to determine the user's session.
-			return
-		}
-
-		if (authError) {
-			console.error("Authentication error:", authError)
-			toast.error("Authentication failed. Please try again.")
-			// Redirect to login to re-attempt authentication.
-			router.push("/auth/login")
-			return
-		}
-
-		if (!user) {
-			// User is not authenticated. Redirect to the Auth0 login page.
-			console.log("No user session found, redirecting to login.")
-			router.push("/auth/login")
-			return
-		}
-
 		// If we reach here, the user is authenticated. Now, check their onboarding status.
 		const checkOnboardingStatus = async () => {
 			setIsCheckingOnboarding(true)
@@ -77,14 +64,57 @@ const Home = () => {
 			}
 		}
 
+		if (isSelfHost) {
+			// In self-host mode, we bypass Auth0 checks and go straight to onboarding check.
+			if (onboarded === null && !isCheckingOnboarding) {
+				checkOnboardingStatus()
+			}
+			return
+		}
+
+		if (isAuthLoading) {
+			// Still waiting for Auth0 to determine the user's session.
+			return
+		}
+
+		if (authError) {
+			console.error("Auth0 authentication error:", authError)
+			toast.error("Authentication failed. Please try again.")
+			// Redirect to login to re-attempt authentication.
+			// FIX: Use window.location for full redirect to external Auth0 page
+			if (typeof window !== "undefined") {
+				window.location.href = "/api/auth/login"
+			}
+			return
+		}
+
+		if (!user) {
+			// User is not authenticated. Redirect to the Auth0 login page.
+			console.log("No user session found, redirecting to login.")
+			router.push("/auth/login")
+			return
+		}
+
 		// Only check onboarding if it hasn't been determined yet.
 		if (onboarded === null) {
 			checkOnboardingStatus()
 		}
-	}, [isAuthLoading, user, authError, router, onboarded])
+	}, [isAuthLoading, user, authError, router, onboarded, isSelfHost])
 
 	// This effect handles the redirection after onboarding status is known.
 	useEffect(() => {
+		if (isSelfHost) {
+			// In self-host mode, user is always "present", just need onboarding status.
+			if (onboarded !== null) {
+				if (onboarded) {
+					router.push("/home")
+				} else {
+					router.push("/onboarding")
+				}
+			}
+			return
+		}
+
 		// Only redirect if auth is loaded, user exists, and onboarding status is determined.
 		if (!isAuthLoading && user && onboarded !== null) {
 			if (onboarded) {
@@ -93,7 +123,7 @@ const Home = () => {
 				router.push("/onboarding")
 			}
 		}
-	}, [isAuthLoading, user, onboarded, router])
+	}, [isAuthLoading, user, onboarded, router, isSelfHost])
 
 	// Show a loading screen while checking authentication or onboarding status.
 	return (

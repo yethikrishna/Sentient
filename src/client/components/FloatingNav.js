@@ -20,6 +20,7 @@ export default function FloatingNav({ onChatOpen }) {
 	const router = useRouter()
 	const pathname = usePathname()
 	const [userDetails, setUserDetails] = useState(null)
+	const isSelfHost = process.env.NEXT_PUBLIC_ENVIRONMENT === "SELFHOST"
 	const [unreadCount, setUnreadCount] = useState(0)
 	const wsRef = useRef(null)
 
@@ -199,7 +200,7 @@ export default function FloatingNav({ onChatOpen }) {
 	]
 	const allLinks = [...navLinks, ...actionLinks]
 
-	if (userDetails) {
+	if (userDetails && !isSelfHost) {
 		allLinks.push({
 			title: `Logout (${userDetails.given_name || "User"})`,
 			href: "/auth/logout",

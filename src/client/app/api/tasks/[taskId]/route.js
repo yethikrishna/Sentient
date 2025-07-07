@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server"
 import { withAuth } from "@lib/api-utils"
 
-const APP_SERVER_URL = process.env.NEXT_PUBLIC_APP_SERVER_URL
+const APP_SERVER_URL =
+	process.env.INTERNAL_APP_SERVER_URL ||
+	process.env.NEXT_PUBLIC_APP_SERVER_URL
 
 // GET: Fetch a single task by its ID
 export const GET = withAuth(async function GET(

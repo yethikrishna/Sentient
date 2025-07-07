@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server"
 import { withAuth } from "@lib/api-utils"
 
+const appServerUrl =
+	process.env.INTERNAL_APP_SERVER_URL ||
+	process.env.NEXT_PUBLIC_APP_SERVER_URL
+
 export const POST = withAuth(async function POST(request, { authHeader }) {
 	try {
 		const {
@@ -15,7 +19,7 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 
 		// Fetch user pricing/credits to pass to the backend
 		const pricingResponse = await fetch(
-			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/api/get-user-data`,
+			`${appServerUrl}/api/get-user-data`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader }
@@ -25,27 +29,24 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 		const pricing = userData?.data?.pricing || "free"
 		const credits = userData?.data?.proCredits || 0
 
-		const backendResponse = await fetch(
-			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/chat/message`,
-			{
-				method: "POST",
-				headers: { "Content-Type": "application/json", ...authHeader },
-				body: JSON.stringify({
-					// Pass `messages` array instead of `input`
-					messages,
-					chatId,
-					pricing,
-					credits,
-					enable_internet,
-					enable_weather,
-					enable_news,
-					enable_maps,
-					enable_shopping
-				}),
-				// IMPORTANT: duplex must be set to 'half' to stream response body in Next.js Edge/Node runtime
-				duplex: "half"
-			}
-		)
+		const backendResponse = await fetch(`${appServerUrl}/chat/message`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json", ...authHeader },
+			body: JSON.stringify({
+				// Pass `messages` array instead of `input`
+				messages,
+				chatId,
+				pricing,
+				credits,
+				enable_internet,
+				enable_weather,
+				enable_news,
+				enable_maps,
+				enable_shopping
+			}),
+			// IMPORTANT: duplex must be set to 'half' to stream response body in Next.js Edge/Node runtime
+			duplex: "half"
+		})
 
 		if (!backendResponse.ok) {
 			const errorText = await backendResponse.text()

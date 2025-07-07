@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server"
 import { withAuth } from "@lib/api-utils"
 
+const appServerUrl =
+	process.env.INTERNAL_APP_SERVER_URL ||
+	process.env.NEXT_PUBLIC_APP_SERVER_URL
+
 // GET handler to fetch the current Supermemory MCP URL
 export const GET = withAuth(async function GET(request, { authHeader }) {
 	try {
 		const response = await fetch(
-			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/api/settings/supermemory`,
+			`${appServerUrl}/api/settings/supermemory`,
 			{
 				// Ensure GET is used for fetching data
 				method: "GET",
@@ -34,7 +38,7 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 		const body = await request.json() // { mcp_url: "..." }
 		const backendResponse = await fetch(
 			// Renamed to avoid conflict with API response
-			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/api/settings/supermemory`,
+			`${appServerUrl}/api/settings/supermemory`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },

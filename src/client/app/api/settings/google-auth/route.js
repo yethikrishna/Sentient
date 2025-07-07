@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server"
 import { withAuth } from "@lib/api-utils"
 
+const appServerUrl =
+	process.env.INTERNAL_APP_SERVER_URL ||
+	process.env.NEXT_PUBLIC_APP_SERVER_URL
+
 export const GET = withAuth(async function GET(request, { authHeader }) {
 	try {
-		const response = await fetch(
-			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/api/get-user-data`,
-			{
-				method: "POST", // This endpoint is a POST to carry the auth header
-				headers: { "Content-Type": "application/json", ...authHeader }
-			}
-		)
+		const response = await fetch(`${appServerUrl}/api/get-user-data`, {
+			method: "POST", // This endpoint is a POST to carry the auth header
+			headers: { "Content-Type": "application/json", ...authHeader }
+		})
 
 		if (!response.ok) {
 			throw new Error("Failed to fetch user settings from backend.")
@@ -45,7 +46,7 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 		}
 
 		const response = await fetch(
-			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/api/settings/google-auth`,
+			`${appServerUrl}/api/settings/google-auth`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },

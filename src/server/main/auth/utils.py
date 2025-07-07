@@ -1,0 +1,224 @@
+import os
+import datetime
+import json
+import traceback
+from typing import Optional, Dict, Any, List, Tuple
+
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.backends import default_backend
+import base64
+import requests
+
+from jose import jwt, JWTError
+from jose.exceptions import JOSEError
+from fastapi import HTTPException, status, Depends, WebSocket, WebSocketDisconnect
+from fastapi.security import OAuth2PasswordBearer
+
+from main.config import (
+    AES_SECRET_KEY, AES_IV,
+    AUTH0_DOMAIN, AUTH0_AUDIENCE, ALGORITHMS,
+    AUTH0_MANAGEMENT_CLIENT_ID, AUTH0_MANAGEMENT_CLIENT_SECRET
+)
+
+# --- JWKS Fetching ---
+jwks = None
+if AUTH0_DOMAIN:
+    jwks_url = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
+    try:
+        print(f"[{datetime.datetime.now()}] [AuthUtils] Fetching JWKS from {jwks_url}...")
+        jwks_response = requests.get(jwks_url, timeout=10)
+        jwks_response.raise_for_status()
+        jwks = jwks_response.json()
+        print(f"[{datetime.datetime.now()}] [AuthUtils] JWKS fetched successfully.")
+    except requests.exceptions.RequestException as e:
+        print(f"[{datetime.datetime.now()}] [AuthUtils_FATAL_ERROR] Could not fetch JWKS: {e}")
+        jwks = None
+    except Exception as e:
+        print(f"[{datetime.datetime.now()}] [AuthUtils_FATAL_ERROR] Error processing JWKS: {e}")
+        jwks = None
+else:
+    print(f"[{datetime.datetime.now()}] [AuthUtils_FATAL_ERROR] AUTH0_DOMAIN not set. Cannot fetch JWKS.")
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+class AuthHelper:
+    async def _validate_token_and_get_payload(self, token: str) -> dict:
+        if not jwks:
+            print(f"[{datetime.datetime.now()}] [AuthHelper_VALIDATION_ERROR] JWKS not available.")
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Auth service config error (JWKS).")
+
+        credentials_exception = HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials", headers={"WWW-Authenticate": "Bearer"},
+        )
+        try:
+            unverified_header = jwt.get_unverified_header(token)
+            token_kid = unverified_header.get("kid")
+            if not token_kid:
+                raise credentials_exception
+
+            rsa_key_data = {}
+            for key_entry in jwks.get("keys", []):
+                if isinstance(key_entry, dict) and key_entry.get("kid") == token_kid:
+                    rsa_key_data = {comp: key_entry[comp] for comp in ["kty", "kid", "use", "n", "e"] if comp in key_entry}
+                    if all(k in rsa_key_data for k in ["kty", "n", "e"]): break
+            
+            if not rsa_key_data or not all(k in rsa_key_data for k in ["kty", "n", "e"]):
+                raise credentials_exception
+
+            payload = jwt.decode(
+                token, rsa_key_data, algorithms=ALGORITHMS,
+                audience=AUTH0_AUDIENCE, issuer=f"https://{AUTH0_DOMAIN}/"
+            )
+            return payload
+        except JWTError as e:
+            print(f"[{datetime.datetime.now()}] [AuthHelper_VALIDATION_ERROR] JWT Error: {e}")
+            raise credentials_exception
+        except JOSEError as e:
+            print(f"[{datetime.datetime.now()}] [AuthHelper_VALIDATION_ERROR] JOSE Error: {e}")
+            raise credentials_exception
+        except HTTPException:
+            raise
+        except Exception as e:
+            print(f"[{datetime.datetime.now()}] [AuthHelper_VALIDATION_ERROR] Unexpected token validation error: {e}")
+            traceback.print_exc()
+            raise credentials_exception
+
+    async def get_current_user_id_and_permissions(self, token: str = Depends(oauth2_scheme)) -> Tuple[str, List[str]]:
+        payload = await self._validate_token_and_get_payload(token)
+        user_id = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User ID (sub) not in token")
+        permissions = payload.get("permissions", [])
+        return user_id, permissions
+
+    async def get_current_user_id(self, token: str = Depends(oauth2_scheme)) -> str:
+        user_id, _ = await self.get_current_user_id_and_permissions(token=token)
+        return user_id
+    
+    async def get_decoded_payload_with_claims(self, token: str = Depends(oauth2_scheme)) -> dict:
+        payload = await self._validate_token_and_get_payload(token)
+        user_id = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User ID (sub) not in token")
+        payload["user_id"] = user_id 
+        return payload
+
+    async def ws_authenticate_with_data(self, websocket: WebSocket) -> Optional[Dict]:
+        try:
+            auth_message_str = await websocket.receive_text()
+            auth_message = json.loads(auth_message_str)
+            
+            if auth_message.get("type") != "auth" or not auth_message.get("token"):
+                await websocket.send_json({"type": "auth_failure", "message": "Invalid auth message format."})
+                await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+                return None
+
+            token = auth_message["token"]
+            payload = await self._validate_token_and_get_payload(token)
+            user_id = payload.get("sub")
+
+            if not user_id:
+                await websocket.send_json({"type": "auth_failure", "message": "User ID not found in token."})
+                await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+                return None
+            
+            # Add other data from the auth message to the return dict
+            auth_data = {
+                "user_id": user_id,
+                **{k: v for k, v in auth_message.items() if k not in ["type", "token"]}
+            }
+
+            await websocket.send_json({"type": "auth_success", "user_id": user_id})
+            return auth_data
+        except WebSocketDisconnect:
+            print(f"[{datetime.datetime.now()}] [WS_AUTH] WebSocket disconnected during auth.")
+            return None
+        except json.JSONDecodeError:
+            await websocket.send_json({"type": "auth_failure", "message": "Auth message must be JSON."})
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return None
+        except HTTPException as e:
+            await websocket.send_json({"type": "auth_failure", "message": f"Token validation failed: {e.detail}"})
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return None
+        except Exception as e:
+            traceback.print_exc()
+            try:
+                await websocket.send_json({"type": "auth_failure", "message": "Internal server error during auth."})
+                await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
+            except: pass
+            return None
+
+    async def ws_authenticate(self, websocket: WebSocket) -> Optional[str]:
+        auth_data = await self.ws_authenticate_with_data(websocket)
+        return auth_data.get("user_id") if auth_data else None
+
+class PermissionChecker:
+    def __init__(self, required_permissions: List[str]):
+        self.required_permissions = set(required_permissions)
+
+    async def __call__(self, token: str = Depends(oauth2_scheme), auth_helper: AuthHelper = Depends()):
+        from main.dependencies import auth_helper as global_auth_helper
+
+        user_id, token_permissions_list = await global_auth_helper.get_current_user_id_and_permissions(token=token)
+        token_permissions_set = set(token_permissions_list)
+
+        if not self.required_permissions.issubset(token_permissions_set):
+            missing = self.required_permissions - token_permissions_set
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Missing permissions: {', '.join(missing)}")
+        return user_id
+
+# --- AES Encryption/Decryption ---
+def aes_encrypt(data: str) -> str:
+    if not AES_SECRET_KEY or not AES_IV:
+        raise ValueError("AES encryption keys are not configured.")
+    backend = default_backend()
+    cipher = Cipher(algorithms.AES(AES_SECRET_KEY), modes.CBC(AES_IV), backend=backend)
+    encryptor = cipher.encryptor()
+    padder = padding.PKCS7(algorithms.AES.block_size).padder()
+    padded_data = padder.update(data.encode()) + padder.finalize()
+    encrypted = encryptor.update(padded_data) + encryptor.finalize()
+    return base64.b64encode(encrypted).decode()
+
+def aes_decrypt(encrypted_data: str) -> str:
+    if not AES_SECRET_KEY or not AES_IV:
+        raise ValueError("AES encryption keys are not configured.")
+    backend = default_backend()
+    cipher = Cipher(algorithms.AES(AES_SECRET_KEY), modes.CBC(AES_IV), backend=backend)
+    decryptor = cipher.decryptor()
+    encrypted_bytes = base64.b64decode(encrypted_data)
+    decrypted = decryptor.update(encrypted_bytes) + decryptor.finalize()
+    unpadder = padding.PKCS7(algorithms.AES.block_size).unpadder()
+    unpadded_data = unpadder.update(decrypted) + unpadder.finalize()
+    return unpadded_data.decode()
+
+# --- Auth0 Management API Token ---
+def get_management_token() -> str:
+    if not all([AUTH0_DOMAIN, AUTH0_MANAGEMENT_CLIENT_ID, AUTH0_MANAGEMENT_CLIENT_SECRET]):
+        print(f"[{datetime.datetime.now()}] [AuthUtils_MGMT_TOKEN_ERROR] Auth0 Management API credentials not fully configured.")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Auth0 Management API config error.")
+    
+    url = f"https://{AUTH0_DOMAIN}/oauth/token"
+    payload = {
+        "grant_type": "client_credentials",
+        "client_id": AUTH0_MANAGEMENT_CLIENT_ID,
+        "client_secret": AUTH0_MANAGEMENT_CLIENT_SECRET,
+        "audience": f"https://{AUTH0_DOMAIN}/api/v2/",
+    }
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    try:
+        response = requests.post(url, data=payload, headers=headers, timeout=10)
+        response.raise_for_status()
+        token_data = response.json()
+        access_token = token_data.get("access_token")
+        if not access_token:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Invalid token response from Auth0 Mgmt API.")
+        return access_token
+    except requests.exceptions.RequestException as e:
+        print(f"[{datetime.datetime.now()}] [AuthUtils_MGMT_TOKEN_ERROR] Failed to get management token: {e}")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Failed to get management token: {e}")
+    except Exception as e:
+        print(f"[{datetime.datetime.now()}] [AuthUtils_MGMT_TOKEN_ERROR] Error processing management token response: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error processing management token response.")

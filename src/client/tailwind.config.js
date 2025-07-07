@@ -18,7 +18,7 @@ module.exports = {
 				third: "moveInCircle 40s linear infinite",
 				fourth: "moveHorizontal 40s ease infinite",
 				fifth: "moveInCircle 20s ease infinite",
-				meteor: "meteor var(--duration) var(--delay) ease-in-out infinite"
+				"meteor-effect": "meteor 5s linear infinite"
 			},
 			keyframes: {
 				meteor: {
@@ -78,13 +78,8 @@ module.exports = {
 			fontFamily: {
 				Poppins: ["Poppins", "sans-serif"],
 				Montserrat: ["Montserrat", "sans-serif"],
-				Quicksand: ["Quicksand", "sans-serif"]
-			},
-			colors: {
-				lightblue: "#00B2FE",
-				darkblue: "#005CFE",
-				matteblack: "#212121",
-				smokeblack: "#1A1A1A"
+				Quicksand: ["Quicksand", "sans-serif"],
+				Inter: ["Inter", "sans-serif"]
 			},
 			screens: {
 				xs: "128px",

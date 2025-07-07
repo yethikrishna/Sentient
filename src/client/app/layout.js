@@ -1,6 +1,9 @@
+// src/client/app/layout.js
+import { Auth0Provider } from "@auth0/nextjs-auth0"
 import "@styles/globals.css" // Import global styles for the application
 import { Toaster } from "react-hot-toast" // Import Toaster component for displaying toast notifications
 import React from "react"
+import LayoutWrapper from "@components/LayoutWrapper"
 
 /**
  * Metadata for the RootLayout component.
@@ -23,17 +26,15 @@ export const metadata = {
  * @param {React.ReactNode} props.children - The child components that represent the application's content.
  * @returns {React.ReactNode} - The RootLayout component UI.
  */
-export default async function RootLayout({ children }) {
+export default function RootLayout({ children }) {
 	return (
 		<html lang="en" suppressHydrationWarning>
-			{/* Root html element with language set to English and hydration warning suppressed */}
-			<body className="bg-black">
-				{/* Body element with a black background using global styles */}
-				<Toaster position="bottom-right" />
-				{/* Toaster component for displaying notifications, positioned at the bottom-right */}
-				{children}
-				{/* Render the child components, which is the main content of the application */}
-			</body>
+			<Auth0Provider>
+				<body className="font-Inter">
+					<Toaster position="bottom-right" />
+					<LayoutWrapper>{children}</LayoutWrapper>
+				</body>
+			</Auth0Provider>
 		</html>
 	)
 }

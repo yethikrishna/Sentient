@@ -1,5 +1,6 @@
-import { Tooltip } from "@node_modules/react-tooltip/dist/react-tooltip" // Importing Tooltip component from react-tooltip library
-import { IconStar } from "@node_modules/@tabler/icons-react/dist/esm/tabler-icons-react" // Importing IconStar component from tabler-icons-react library
+// src/client/components/ProIcon.js
+import { Tooltip } from "react-tooltip" // Corrected import path
+import { IconStar } from "@tabler/icons-react" // Corrected import path
 import React from "react"
 
 /**
@@ -17,8 +18,7 @@ const ProIcon = () => (
 		<span
 			data-tooltip-id="pro-feature" // Unique ID for the tooltip, used to associate Tooltip component
 			data-tooltip-content="This feature is only available for Pro users. You can upgrade anytime from the Settings page."
-			// Content of the tooltip, explaining Pro feature availability and upgrade instructions
-			className="text-yellow-400 ml-2 cursor-pointer"
+			className="text-[var(--color-accent-orange)] ml-2 cursor-pointer"
 			// Styling for the span element: yellow-400 text color, margin left for spacing, cursor pointer to indicate interactivity
 		>
 			<IconStar />{" "}

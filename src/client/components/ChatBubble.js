@@ -1,40 +1,31 @@
 import React from "react"
-import { useState } from "react" // Importing useState hook from React for managing component state
+import { useState } from "react"
 import {
-	IconClipboard, // Icon for clipboard (copy) action
-	IconCheck, // Icon for checkmark (confirmation) action
-	IconBrain, // Icon for brain (memory) feature
-	IconSettings, // Icon for settings (agents) feature
-	IconGlobe, // Icon for globe (internet) feature
-	IconLink, // Icon for external link
-	IconMail // Icon for mail
-} from "@tabler/icons-react" // Importing icons from tabler-icons-react library
-import { Tooltip } from "react-tooltip" // Importing Tooltip component for displaying tooltips
-import ReactMarkdown from "react-markdown" // Importing ReactMarkdown component for rendering Markdown content
-import remarkGfm from "remark-gfm" // Importing remarkGfm plugin for ReactMarkdown to support GitHub Flavored Markdown
-import IconGoogleDocs from "./icons/IconGoogleDocs" // Importing custom icon component for Google Docs
-import IconGoogleSheets from "./icons/IconGoogleSheets" // Importing custom icon component for Google Sheets
-import IconGoogleCalendar from "./icons/IconGoogleCalendar" // Importing custom icon component for Google Calendar
-import IconGoogleSlides from "./icons/IconGoogleSlides" // Importing custom icon component for Google Slides
-import IconGoogleDrive from "./icons/IconGoogleDrive" // Importing custom icon component for Google Drive
-import IconGoogleMail from "./icons/IconGoogleMail" // Importing custom icon component for Google Mail
-import GmailSearchResults from "./agents/GmailSearchResults" // Importing GmailSearchResults component
-import toast from "react-hot-toast" // Importing toast for displaying toast notifications
+	IconClipboard,
+	IconCheck,
+	IconBrain,
+	IconSettings,
+	IconGlobe,
+	IconLink,
+	IconMail,
+	IconCode,
+	IconChevronDown,
+	IconChevronUp,
+	IconTerminal2
+} from "@tabler/icons-react"
+import { Tooltip } from "react-tooltip"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
+import IconGoogleDocs from "./icons/IconGoogleDocs"
+import IconGoogleSheets from "./icons/IconGoogleSheets"
+import IconGoogleCalendar from "./icons/IconGoogleCalendar"
+import IconGoogleSlides from "./icons/IconGoogleSlides"
+import IconGoogleDrive from "./icons/IconGoogleDrive"
+import IconGoogleMail from "./icons/IconGoogleMail"
+import toast from "react-hot-toast"
 
-/**
- * LinkButton Component - Renders a styled button that opens a link in a new tab.
- *
- * This component is used within chat messages to display URLs in a button format.
- * It automatically detects the type of link (e.g., Google Docs, Gmail, generic link)
- * and displays an appropriate icon and name. Clicking the button opens the link in a new tab.
- *
- * @param {object} props - Component props.
- * @param {string} props.href - The URL to be opened when the button is clicked.
- * @param {React.ReactNode} props.children - The display text for the link, used as fallback name if tool name not found.
- * @returns {React.ReactNode} - The LinkButton component UI.
- */
+// LinkButton component (no changes needed)
 const LinkButton = ({ href, children }) => {
-	// Mapping of domain names to their respective icons and names for tool identification
 	const toolMapping = {
 		"drive.google.com": {
 			icon: <IconGoogleDrive size={14} className="mr-1" />,
@@ -46,7 +37,7 @@ const LinkButton = ({ href, children }) => {
 		},
 		"gmail.com": {
 			icon: <IconGoogleMail size={14} className="mr-1" />,
-			name: children // Fallback name if specific tool name is not found
+			name: children
 		},
 		"docs.google.com/spreadsheets": {
 			icon: <IconGoogleSheets />,
@@ -66,247 +57,353 @@ const LinkButton = ({ href, children }) => {
 		},
 		"external-mail": {
 			icon: <IconMail size={14} className="mr-1" />,
-			name: children // Uses children as name for external mail links
+			name: children
 		},
 		default: {
 			icon: <IconLink size={14} className="mr-1" />,
-			name: "Link" // Default name for generic links
+			name: "Link"
 		}
 	}
 
-	/**
-	 * Determines the tool details (icon and name) based on the URL.
-	 *
-	 * Iterates through the `toolMapping` to find a matching domain in the given URL.
-	 * If a match is found, returns the corresponding icon and name.
-	 * If no specific domain is matched, defaults to a generic link icon and name.
-	 *
-	 * @function getToolDetails
-	 * @param {string} url - The URL to analyze.
-	 * @returns {{ icon: React.ReactNode, name: string }} - An object containing the icon and name for the tool.
-	 */
 	const getToolDetails = (url) => {
 		for (const domain in toolMapping) {
 			if (url.includes(domain)) {
-				return toolMapping[domain] // Return tool details if domain is found in URL
+				return toolMapping[domain]
 			} else if (url.match(/^[^@]+@[\w.-]+\.[a-z]{2,}$/i)) {
-				return toolMapping["external-mail"] // Return external mail tool details if URL matches email format
+				return toolMapping["external-mail"]
 			}
 		}
-		return toolMapping["default"] // Return default tool details for unmatched URLs
+		return toolMapping["default"]
 	}
 
-	const { icon, name } = getToolDetails(href) // Get tool icon and name based on href
+	const { icon, name } = getToolDetails(href)
 
 	return (
 		<span
-			onClick={() => window.open(href, "_blank", "noopener noreferrer")} // Open URL in new tab on click
-			className="bg-white text-black border-2 border-black hover:border-lightblue py-1 px-2 rounded-md items-center cursor-pointer inline-flex"
-			// Styling for the link button: background, text color, border, padding, rounded corners, cursor, inline-flex display
+			onClick={() => window.open(href, "_blank", "noopener noreferrer")}
+			className="bg-[var(--color-primary-surface)] text-[var(--color-text-primary)] border border-[var(--color-primary-surface-elevated)] hover:border-[var(--color-accent-blue)] py-1 px-2 rounded-md items-center cursor-pointer inline-flex"
 			style={{
-				display: "inline-flex", // Ensure inline-flex for proper alignment
-				verticalAlign: "middle", // Vertical alignment to middle
-				margin: "0 4px" // Margin for spacing between link buttons
+				display: "inline-flex",
+				verticalAlign: "middle"
 			}}
 		>
-			{icon} {/* Render the icon determined by getToolDetails */}
-			<span>{name}</span>{" "}
-			{/* Render the name determined by getToolDetails */}
+			{icon}
+			<span>{name}</span>
 		</span>
 	)
 }
 
-/**
- * ChatBubble Component - Displays a single chat message bubble.
- *
- * This component renders a chat message, distinguishing between user and AI messages with different styles.
- * It supports rendering Markdown content, detects and renders URLs as LinkButtons, and provides functionality
- * to copy message text to the clipboard. For AI messages, it also conditionally displays icons indicating
- * if memory, agents, or internet were used in generating the response, along with tooltips for these icons.
- *
- * @param {object} props - Component props.
- * @param {string} props.message - The text content of the chat message, can be Markdown or JSON.
- * @param {boolean} props.isUser - Boolean indicating if the message is from the user or AI.
- * @param {boolean} props.memoryUsed - Boolean indicating if memory was used to generate the response (AI messages only).
- * @param {boolean} props.agentsUsed - Boolean indicating if agents were used (AI messages only).
- * @param {boolean} props.internetUsed - Boolean indicating if internet was used (AI messages only).
- * @returns {React.ReactNode} - The ChatBubble component UI.
- */
-const ChatBubble = ({
-	message, // Text content of the message, can be Markdown or JSON - message: string
-	isUser, // Boolean, true if message is from user, false if from AI - isUser: boolean
-	memoryUsed, // Boolean, true if memory was used in response generation (AI only) - memoryUsed: boolean
-	agentsUsed, // Boolean, true if agents were used in response generation (AI only) - agentsUsed: boolean
-	internetUsed // Boolean, true if internet was used in response generation (AI only) - internetUsed: boolean
-}) => {
-	// State to manage the 'copied' status for the copy button, indicating if the message text has been copied.
-	const [copied, setCopied] = useState(false) // copied: boolean - true if message text is copied, false otherwise
-
-	/**
-	 * Handles copying the message text to the clipboard.
-	 *
-	 * When the copy button is clicked, this function attempts to write the message text to the clipboard.
-	 * On success, it sets the 'copied' state to true to update the button icon to a checkmark,
-	 * and then resets it back to false after a short delay (2 seconds) to revert the icon.
-	 * If copying fails, it displays an error toast notification to inform the user.
-	 *
-	 * @function handleCopyToClipboard
-	 * @returns {void}
-	 */
-	const handleCopyToClipboard = () => {
-		navigator.clipboard
-			.writeText(message) // Attempts to write the message text to the clipboard
-			.then(() => {
-				setCopied(true) // Set 'copied' state to true on successful copy
-				setTimeout(() => setCopied(false), 2000) // Reset 'copied' state to false after 2 seconds
-			})
-			.catch((err) => toast.error(`Failed to copy text: ${err}`)) // Display error toast if copy operation fails
-	}
-
-	/**
-	 * Renders the content of the chat bubble.
-	 *
-	 * Attempts to parse the message as JSON to handle structured messages like tool results.
-	 * If the message is a tool result for Gmail inbox search, it renders the GmailSearchResults component.
-	 * For other message types or if JSON parsing fails, it renders the message as Markdown with
-	 * support for LinkButtons for URLs, and conditionally displays icons for memory, agents, and internet usage for AI messages.
-	 *
-	 * @function renderContent
-	 * @returns {React.ReactNode} - The content to be rendered inside the chat bubble.
-	 */
-	const renderContent = () => {
-		try {
-			// Attempt to parse the message as JSON to handle structured responses
-			let parsedMessage = JSON.parse(message)
-			// If parsed message is a string, attempt to parse it again (for double-stringified JSON)
-			if (typeof parsedMessage === "string") {
-				parsedMessage = JSON.parse(parsedMessage)
-			}
-			// Check if the parsed message is a tool result for Gmail inbox search
-			if (
-				parsedMessage.type === "toolResult" &&
-				parsedMessage.tool_name === "search_inbox"
-			) {
-				// Render GmailSearchResults component for inbox search results
-				return (
-					<GmailSearchResults
-						emails={parsedMessage.emails} // Pass emails array to GmailSearchResults
-						gmailSearchUrl={parsedMessage.gmail_search_url} // Pass Gmail search URL to GmailSearchResults
-					/>
-				)
-			}
-		} catch (e) {
-			// JSON parsing failed or message is not a structured tool result, render as Markdown
-		}
-
-		// Default rendering for text messages (Markdown)
-		return (
-			<div
-				className={`p-4 rounded-lg ${
-					isUser
-						? "bg-white text-black text-lg font-semibold self-end max-w-xs md:max-w-md lg:max-w-lg mt-5 mb-5"
-						: "bg-transparent text-lg text-white self-start w-full border-b border-t border-lightblue"
-					// Conditional styling based on whether the message is from the user or AI
-					// User messages: white background, black text, bold font, right-aligned, max-width, margins
-					// AI messages: transparent background, white text, left-aligned, full width, top/bottom border, border-lightblue
-				} mb-2 relative font-Inter`} // Common styles: margin-bottom, relative positioning, font-Inter
-				style={{ wordBreak: "break-word" }} // Style to break words for long text to prevent overflow
-			>
-				{/* ReactMarkdown component to render message content as Markdown */}
-				<ReactMarkdown
-					className="prose prose-invert" // Apply prose styling for better readability in inverted color scheme
-					remarkPlugins={[remarkGfm]} // Enable GitHub Flavored Markdown plugin
-					children={message} // Message content to be rendered as Markdown
-					components={{
-						a: ({ href, children }) => (
-							<LinkButton href={href} children={children} /> // Render URLs as LinkButton components
-						)
-					}}
-				/>
-
-				{/* Conditionally render icons and copy button for AI messages (non-user messages) */}
-				{!isUser && (
-					<div className="flex justify-start items-center space-x-4 mt-6">
-						{/* Memory Used Icon and Tooltip */}
-						{memoryUsed && (
-							<>
-								<span
-									data-tooltip-id="memory-used" // Tooltip ID for "Memory Used"
-									data-tooltip-content="Memory was used to generate this response" // Tooltip text
-									className="flex items-center text-gray-400" // Styling for the icon container
-								>
-									<IconBrain size={18} />{" "}
-									{/* Brain icon to indicate memory usage */}
-								</span>
-								<Tooltip
-									id="memory-used" // Tooltip ID to associate with the span
-									place="right" // Position of the tooltip
-									type="dark" // Tooltip theme
-									effect="float" // Tooltip animation effect
-								/>
-							</>
-						)}
-						{/* Agents Used Icon and Tooltip */}
-						{agentsUsed && (
-							<>
-								<span
-									data-tooltip-id="agents-used" // Tooltip ID for "Agents Used"
-									data-tooltip-content="Agents were used to process this response" // Tooltip text
-									className="flex items-center text-gray-400" // Styling for the icon container
-								>
-									<IconSettings size={18} />{" "}
-									{/* Settings icon to indicate agents usage */}
-								</span>
-								<Tooltip
-									id="agents-used" // Tooltip ID to associate with the span
-									place="right" // Position of the tooltip
-									type="dark" // Tooltip theme
-									effect="float" // Tooltip animation effect
-								/>
-							</>
-						)}
-						{/* Internet Used Icon and Tooltip */}
-						{internetUsed && (
-							<>
-								<span
-									data-tooltip-id="internet-used" // Tooltip ID for "Internet Used"
-									data-tooltip-content="Internet was used to gather information for this response" // Tooltip text
-									className="flex items-center text-gray-400" // Styling for the icon container
-								>
-									<IconGlobe size={18} />{" "}
-									{/* Globe icon to indicate internet usage */}
-								</span>
-								<Tooltip
-									id="internet-used" // Tooltip ID to associate with the span
-									place="right" // Tooltip position
-									type="dark" // Tooltip theme
-									effect="float" // Tooltip animation type
-								/>
-							</>
-						)}
-						{/* Copy to Clipboard Button */}
-						<button
-							onClick={handleCopyToClipboard} // Call handleCopyToClipboard function on button click
-							className="flex items-center text-gray-400 hover:text-green-500 transition-colors"
-							// Styling for the copy button: text color, hover text color, transition for color change
-						>
-							{/* Conditional rendering of icon based on 'copied' state */}
-							{copied ? (
-								<IconCheck size={18} /> // Show check icon if copied is true
-							) : (
-								<IconClipboard size={18} /> // Show clipboard icon if copied is false
-							)}
-						</button>
-					</div>
-				)}
-			</div>
-		)
+// ToolCodeBlock is no longer rendered, but we keep it for potential future use or debugging
+const ToolCodeBlock = ({ name, code, isExpanded, onToggle }) => {
+	let formattedCode = code
+	try {
+		const parsed = JSON.parse(code)
+		formattedCode = JSON.stringify(parsed, null, 2)
+	} catch (e) {
+		// Not JSON, leave as is
 	}
 
 	return (
-		<div className={`...`}>
-			{/* Render the content of the chat bubble by calling renderContent function */}
-			{renderContent()}
+		<div className="mb-4 border-l-2 border-green-500 pl-3">
+			<button
+				onClick={onToggle}
+				className="flex items-center gap-2 text-green-400 hover:text-green-300 text-sm font-semibold"
+				data-tooltip-id="chat-bubble-tooltip"
+				data-tooltip-content="Click to see the tool call details."
+			>
+				{isExpanded ? (
+					<IconChevronUp size={16} />
+				) : (
+					<IconChevronDown size={16} />
+				)}
+				Tool Call: {name}
+			</button>
+			{isExpanded && (
+				<div className="mt-2 p-3 bg-neutral-800/50 rounded-md">
+					<pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono">
+						<code>{formattedCode}</code>
+					</pre>
+				</div>
+			)}
+		</div>
+	)
+}
+
+// ToolResultBlock component to display tool results in a collapsible format
+const ToolResultBlock = ({ name, result, isExpanded, onToggle }) => {
+	let formattedResult = result
+	try {
+		const parsed = JSON.parse(result)
+		formattedResult = JSON.stringify(parsed, null, 2)
+	} catch (e) {
+		// Not a valid JSON, leave as is
+	}
+
+	return (
+		<div className="mb-4 border-l-2 border-purple-500 pl-3">
+			<button
+				onClick={onToggle}
+				className="flex items-center gap-2 text-purple-400 hover:text-purple-300 text-sm font-semibold"
+				data-tooltip-id="chat-bubble-tooltip"
+				data-tooltip-content="Click to see the result from the tool."
+			>
+				{isExpanded ? (
+					<IconChevronUp size={16} />
+				) : (
+					<IconChevronDown size={16} />
+				)}
+				Tool Result: {name}
+			</button>
+			{isExpanded && (
+				<div className="mt-2 p-3 bg-neutral-800/50 rounded-md">
+					<pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono">
+						<code>{formattedResult}</code>
+					</pre>
+				</div>
+			)}
+		</div>
+	)
+}
+
+// Main ChatBubble component
+const ChatBubble = ({
+	message,
+	isUser,
+	memoryUsed,
+	agentsUsed,
+	internetUsed
+}) => {
+	const [copied, setCopied] = useState(false)
+	const [expandedStates, setExpandedStates] = useState({})
+	const [renderedContent, setRenderedContent] = useState([])
+
+	// Memoize the parsed content to avoid re-parsing on every render
+	React.useEffect(() => {
+		setRenderedContent(renderMessageContent())
+	}, [message, expandedStates]) // Rerun parsing if message or expansion state changes
+
+	// Function to copy message content to clipboard
+	const handleCopyToClipboard = () => {
+		// Build the text to copy from the parsed parts, ensuring we only copy the final answer
+		const plainText = renderedContent
+			.filter((part) => part.type === "answer")
+			.map((part) => part.props.children)
+			.join("")
+			.trim()
+
+		navigator.clipboard
+			.writeText(plainText)
+			.then(() => {
+				setCopied(true)
+				setTimeout(() => setCopied(false), 2000)
+			})
+			.catch((err) => toast.error(`Failed to copy text: ${err}`))
+	}
+
+	// Function to toggle expansion of collapsible sections
+	const toggleExpansion = (id) => {
+		setExpandedStates((prev) => ({ ...prev, [id]: !prev[id] }))
+	}
+
+	// ***************************************************************
+	// *** UPDATED LOGIC: Function to render message content       ***
+	// ***************************************************************
+	const renderMessageContent = () => {
+		if (isUser || typeof message !== "string" || !message) {
+			return [
+				<ReactMarkdown
+					key="user-md"
+					className="prose prose-invert"
+					remarkPlugins={[remarkGfm]}
+					children={message || ""}
+					components={{
+						a: ({ href, children }) => (
+							<LinkButton href={href} children={children} />
+						)
+					}}
+				/>
+			]
+		}
+
+		const contentParts = []
+		const regex =
+			/(<think>[\s\S]*?<\/think>|<tool_code[^>]*>[\s\S]*?<\/tool_code>|<tool_result[^>]*>[\s\S]*?<\/tool_result>|<answer>[\s\S]*?<\/answer>)/g
+		let lastIndex = 0
+		let inToolCallPhase = false // State to track if we are between a tool_code and tool_result
+
+		for (const match of message.matchAll(regex)) {
+			const precedingText = message.substring(lastIndex, match.index)
+
+			// 1. Add any text that came before the current tag, but only if we're not in the "ignore" phase
+			if (precedingText.trim() && !inToolCallPhase) {
+				contentParts.push({ type: "answer", content: precedingText })
+			}
+
+			// 2. Process the matched tag
+			const tag = match[0]
+			let subMatch
+
+			if ((subMatch = tag.match(/<think>([\s\S]*?)<\/think>/))) {
+				const thinkContent = subMatch[1].trim()
+				if (thinkContent) {
+					contentParts.push({ type: "think", content: thinkContent })
+				}
+			} else if (
+				(subMatch = tag.match(
+					/<tool_code name="([^"]+)">[\s\S]*?<\/tool_code>/
+				))
+			) {
+				// When we find a tool_code, we enter the "ignore" phase and do not render the code itself.
+				inToolCallPhase = true
+			} else if (
+				// CORRECTED REGEX: Added ([\s\S]*?) to capture the result content
+				(subMatch = tag.match(
+					/<tool_result tool_name="([^"]+)">([\s\S]*?)<\/tool_result>/
+				))
+			) {
+				// When we find a tool_result, we exit the "ignore" phase and render the result.
+				inToolCallPhase = false
+				contentParts.push({
+					type: "tool_result",
+					name: subMatch[1],
+					result: subMatch[2] ? subMatch[2].trim() : "{}"
+				})
+			} else if ((subMatch = tag.match(/<answer>([\s\S]*?)<\/answer>/))) {
+				const answerContent = subMatch[1]
+				if (answerContent) {
+					contentParts.push({
+						type: "answer",
+						content: answerContent
+					})
+				}
+			}
+			lastIndex = match.index + tag.length
+		}
+
+		// 3. Add any remaining text after the last tag (this is the final, streaming answer)
+		const remainingText = message.substring(lastIndex)
+		if (remainingText && !inToolCallPhase) {
+			contentParts.push({ type: "answer", content: remainingText })
+		}
+
+		// 4. Render all the collected parts into React components
+		return contentParts.map((part, index) => {
+			const partId = `${part.type}_${index}`
+
+			if (part.type === "think" && part.content) {
+				return (
+					<div
+						key={partId}
+						className="mb-4 border-l-2 border-yellow-500 pl-3"
+					>
+						<button
+							onClick={() => toggleExpansion(partId)}
+							className="flex items-center gap-2 text-yellow-400 hover:text-yellow-300 text-sm font-semibold"
+						>
+							{expandedStates[partId] ? (
+								<IconChevronUp size={16} />
+							) : (
+								<IconChevronDown size={16} />
+							)}
+							Agent's Thought Process
+						</button>
+						{expandedStates[partId] && (
+							<div className="mt-2 p-3 bg-neutral-800/50 rounded-md">
+								<ReactMarkdown className="prose prose-sm prose-invert text-gray-300 whitespace-pre-wrap">
+									{part.content}
+								</ReactMarkdown>
+							</div>
+						)}
+					</div>
+				)
+			}
+			if (part.type === "tool_result") {
+				return (
+					<ToolResultBlock
+						key={partId}
+						name={part.name}
+						result={part.result}
+						isExpanded={!!expandedStates[partId]}
+						onToggle={() => toggleExpansion(partId)}
+					/>
+				)
+			}
+			if (part.type === "answer" && part.content) {
+				return (
+					<ReactMarkdown
+						key={partId}
+						className="prose prose-invert"
+						remarkPlugins={[remarkGfm]}
+						children={part.content}
+						components={{
+							a: ({ href, children }) => (
+								<LinkButton href={href} children={children} />
+							)
+						}}
+					/>
+				)
+			}
+			// Note: tool_code parts are never rendered
+			return null
+		})
+	}
+
+	return (
+		<div
+			className={`p-4 rounded-lg ${
+				isUser
+					? "bg-[var(--color-accent-blue)] text-white text-base font-medium self-end max-w-[80%] sm:max-w-md lg:max-w-lg"
+					: "bg-transparent text-base text-white self-start w-full"
+			} mb-2 relative`}
+			style={{ wordBreak: "break-word" }}
+		>
+			{renderedContent}
+			{!isUser && (
+				<div className="flex justify-start items-center space-x-4 mt-6">
+					<Tooltip id="chat-bubble-tooltip" />
+					{memoryUsed && (
+						<span
+							data-tooltip-id="chat-bubble-tooltip"
+							data-tooltip-content="Memory was used to generate this response"
+							className="flex items-center text-[var(--color-accent-blue)]"
+						>
+							<IconBrain size={18} />
+						</span>
+					)}
+					{agentsUsed && (
+						<span
+							data-tooltip-id="chat-bubble-tooltip"
+							data-tooltip-content="Agents were used to process this response"
+							className="flex items-center text-[var(--color-text-secondary)]"
+						>
+							<IconSettings size={18} />
+						</span>
+					)}
+					{internetUsed && (
+						<span
+							data-tooltip-id="chat-bubble-tooltip"
+							data-tooltip-content="Internet was used to gather information for this response"
+							className="flex items-center text-[var(--color-text-secondary)]"
+						>
+							<IconGlobe size={18} />
+						</span>
+					)}
+					<button
+						onClick={handleCopyToClipboard}
+						className="flex items-center text-[var(--color-text-secondary)] hover:text-[var(--color-accent-green)] transition-colors"
+						data-tooltip-id="chat-bubble-tooltip"
+						data-tooltip-content={
+							copied ? "Copied!" : "Copy response"
+						}
+					>
+						{copied ? (
+							<IconCheck size={18} />
+						) : (
+							<IconClipboard size={18} />
+						)}
+					</button>
+				</div>
+			)}
 		</div>
 	)
 }

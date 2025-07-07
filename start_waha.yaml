@@ -1,0 +1,23 @@
+services:
+  waha:
+    image: devlikeapro/waha:noweb # This image is for browserless engines like NOWEB and GOWS
+    container_name: waha-notifier
+    restart: unless-stopped
+    ports:
+      # Binds to 127.0.0.1 (localhost) for security. 
+      # We'll expose it properly for production later.
+      - "127.0.0.1:8000:3000" 
+    volumes:
+      # This is crucial for persisting your session data
+      - ./.sessions:/app/.sessions
+    environment:
+      # --- Recommended Engine for Notifications ---
+      - WHATSAPP_DEFAULT_ENGINE=GOWS
+      
+      # --- Security (IMPORTANT for deployment) ---
+      # Generate a secure key for production. 'admin' is for local testing only.
+      - WAHA_API_KEY=admin 
+      
+      # --- Optional: Dashboard and Swagger credentials ---
+      - WAHA_DASHBOARD_USERNAME=admin
+      - WAHA_DASHBOARD_PASSWORD=admin

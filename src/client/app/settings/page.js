@@ -1,666 +1,833 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react" // Added useCallback
-import Disclaimer from "@components/Disclaimer"
-import AppCard from "@components/AppCard"
-import Sidebar from "@components/Sidebar"
-import ProIcon from "@components/ProIcon" // Still used within AppCard logic
 import toast from "react-hot-toast"
-// REMOVED: ShiningButton import - replaced with standard buttons or integrated styling
 import ModalDialog from "@components/ModalDialog"
-// ADDED: More icons
 import {
-	IconGift,
-	IconRocket,
-	IconFlask, // Replaced IconBeta with IconFlask
-	IconBrandLinkedin,
-	IconBrandReddit,
-	IconBrandX, // Specific brand icons
 	IconMail,
 	IconCalendarEvent,
-	IconWorldSearch, // Data source icons
+	IconWorldSearch,
 	IconLoader,
-	IconSettingsCog // For customize/recreate buttons
+	IconSettingsCog,
+	IconBrandGoogleDrive,
+	IconBrandSlack,
+	IconBrandNotion,
+	IconPlugConnected,
+	IconPlugOff,
+	IconPlus,
+	IconCloud,
+	IconChartPie,
+	IconBrain,
+	IconBrandGithub,
+	IconNews,
+	IconFileText,
+	IconPresentation,
+	IconTable,
+	IconMapPin,
+	IconShoppingCart,
+	IconChevronDown,
+	IconX,
+	IconBrandWhatsapp
 } from "@tabler/icons-react"
+import { useState, useEffect, useCallback, useRef } from "react"
+import { Tooltip } from "react-tooltip"
 import React from "react"
-import { Switch } from "@radix-ui/react-switch" // Keep Radix Switch
-import { cn } from "@utils/cn" // Import cn utility
+import { useSmoothScroll } from "@hooks/useSmoothScroll"
 
-// ADDED: Mapping for Data Source Icons
-const dataSourceIcons = {
+const integrationIcons = {
 	gmail: IconMail,
 	gcalendar: IconCalendarEvent,
-	internet_search: IconWorldSearch
+	internet_search: IconWorldSearch,
+	gdrive: IconBrandGoogleDrive,
+	gdocs: IconFileText,
+	gslides: IconPresentation,
+	gsheets: IconTable,
+	gmaps: IconMapPin,
+	gshopping: IconShoppingCart,
+	slack: IconBrandSlack,
+	notion: IconBrandNotion,
+	accuweather: IconCloud,
+	quickchart: IconChartPie,
+	memory: IconBrain,
+	google_search: IconWorldSearch,
+	github: IconBrandGithub,
+	news: IconNews
 }
 
-const Settings = () => {
-	const [showDisclaimer, setShowDisclaimer] = useState(false)
-	const [linkedInProfileUrl, setLinkedInProfileUrl] = useState("")
-	const [redditProfileUrl, setRedditProfileUrl] = useState("")
-	const [twitterProfileUrl, setTwitterProfileUrl] = useState("")
-	const [isProfileConnected, setIsProfileConnected] = useState({
-		LinkedIn: false,
-		Reddit: false,
-		Twitter: false
-	})
-	const [action, setAction] = useState("")
-	const [selectedApp, setSelectedApp] = useState("")
-	const [loading, setLoading] = useState({
-		LinkedIn: false,
-		Reddit: false,
-		Twitter: false
-	})
-	const [userDetails, setUserDetails] = useState({})
-	const [isSidebarVisible, setSidebarVisible] = useState(false)
-	const [pricing, setPricing] = useState("free")
-	const [showReferralDialog, setShowReferralDialog] = useState(false)
-	const [referralCode, setReferralCode] = useState("DUMMY")
-	const [referrerStatus, setReferrerStatus] = useState(false)
-	const [betaUser, setBetaUser] = useState(false)
-	const [showBetaDialog, setShowBetaDialog] = useState(false)
-	const [dataSources, setDataSources] = useState([])
-	// ADDED: Customize input state
-	const [isCustomizeInputVisible, setCustomizeInputVisible] = useState(false)
-	const [newGraphInfo, setNewGraphInfo] = useState("")
-	const [customizeLoading, setCustomizeLoading] = useState(false) // Separate loading for customize
-	const [recreateGraphLoading, setRecreateGraphLoading] = useState(false)
-
-	// --- Data Fetching ---
-	// MODIFIED: Wrapped fetchDataSources in useCallback
-	const fetchDataSources = useCallback(async () => {
-		console.log("Fetching data sources...")
-		try {
-			const response = await window.electron.invoke("get-data-sources")
-			if (response.error) {
-				console.error("Error fetching data sources:", response.error)
-				toast.error("Error fetching data sources.")
-				setDataSources([]) // Ensure empty array on error
-			} else {
-				// Ensure data_sources is an array and add icons
-				const sourcesWithIcons = (
-					Array.isArray(response.data_sources)
-						? response.data_sources
-						: []
-				).map((ds) => ({
-					...ds,
-					icon: dataSourceIcons[ds.name] || IconSettingsCog // Assign icon or default
-				}))
-				setDataSources(sourcesWithIcons)
-				console.log("Data sources fetched:", sourcesWithIcons)
+// Hardcoded configuration for manual integrations
+const MANUAL_INTEGRATION_CONFIGS = {
+	slack: {
+		instructions: [
+			"1. Go to api.slack.com/apps and create a new app from scratch.",
+			"2. In 'OAuth & Permissions', add User Token Scopes like `chat:write`, `channels:read`.",
+			"3. Install the app and copy the 'User OAuth Token' (starts with `xoxp-`).",
+			"4. Find your 'Team ID' (starts with `T`) from your Slack URL or settings."
+		],
+		fields: [
+			{ id: "token", label: "User OAuth Token", type: "password" },
+			{ id: "team_id", label: "Team ID", type: "text" }
+		]
+	},
+	notion: {
+		instructions: [
+			"Go to notion.so/my-integrations to create a new integration.",
+			"Give it a name and associate it with a workspace.",
+			"On the next screen, copy the 'Internal Integration Token'.",
+			"Go to the Notion pages or databases you want Sentient to access.",
+			"Click the '...' menu, find 'Add connections', and select your new integration."
+		],
+		fields: [
+			{
+				id: "token",
+				label: "Internal Integration Token",
+				type: "password"
 			}
-		} catch (error) {
-			console.error("Error fetching data sources:", error)
-			toast.error("Error fetching data sources.")
-			setDataSources([])
-		}
-	}, []) // Empty dependency array
+		]
+	}
+}
 
-	// MODIFIED: Wrapped handleToggle in useCallback
-	const handleToggle = async (sourceName, enabled) => {
-		console.log(`Toggling ${sourceName} to ${enabled}`)
-		console.log(typeof (enabled)) // Check type
-		console.log(typeof (sourceName)) // Check type
-		// Optimistic UI update
-		setDataSources((prev) =>
-			prev.map((ds) => (ds.name === sourceName ? { ...ds, enabled } : ds))
+const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {
+	const [credentials, setCredentials] = useState({})
+	const [isSubmitting, setIsSubmitting] = useState(false)
+
+	if (!integration) {
+		return null
+	}
+
+	const config = MANUAL_INTEGRATION_CONFIGS[integration?.name]
+	const instructions = config?.instructions || []
+	const fields = config?.fields || []
+
+	if (fields.length === 0) {
+		console.error(
+			`No fields configured for manual integration: ${integration?.name}`
 		)
-		console.log(`Toggling ${sourceName} to ${enabled}`)
-		try {
-			const response = await window.electron.invoke(
-				"set-data-source-enabled",
-				{ source: sourceName, enabled }
-			) // Pass object
-			if (response.error) {
-				console.error(
-					`Error updating ${sourceName} data source:`,
-					response.error
-				)
-				toast.error(`Error updating ${sourceName}: ${response.error}`)
-				// Revert optimistic update on error
-				setDataSources((prev) =>
-					prev.map((ds) =>
-						ds.name === sourceName
-							? { ...ds, enabled: !enabled }
-							: ds
-					)
-				)
-			} else {
-				toast.success(
-					`${sourceName} ${enabled ? "enabled" : "disabled"}.`
-				) // Removed restart message for now
+		return null
+	}
+
+	const handleChange = (e) => {
+		setCredentials({
+			...credentials,
+			[e.target.name]: e.target.value
+		})
+	}
+
+	const handleSubmit = async () => {
+		for (const field of fields) {
+			if (!credentials[field.id]?.trim()) {
+				toast.error(`Please provide the ${field.label}.`)
+				return
 			}
-		} catch (error) {
-			console.error(`Error updating ${sourceName} data source:`, error)
-			toast.error(`Error updating ${sourceName}.`)
-			// Revert optimistic update on error
-			setDataSources((prev) =>
-				prev.map((ds) =>
-					ds.name === sourceName ? { ...ds, enabled: !enabled } : ds
-				)
+		}
+
+		setIsSubmitting(true)
+		try {
+			const response = await fetch(
+				"/api/settings/integrations/connect/manual",
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						service_name: integration.name,
+						credentials
+					})
+				}
 			)
+
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(
+					data.error ||
+						`Failed to connect ${integration.display_name}`
+				)
+			}
+
+			toast.success(`${integration.display_name} connected successfully!`)
+			onSuccess()
+			onClose()
+		} catch (error) {
+			console.error(
+				`Error connecting ${integration.display_name}:`,
+				error
+			)
+			toast.error(error.message)
+		} finally {
+			setIsSubmitting(false)
 		}
 	}
 
-	const fetchUserDetails = useCallback(async () => {
-		/* ...no functional change, ensure useCallback if needed... */
-	}, [])
-	const fetchPricingPlan = useCallback(async () => {
-		/* ...no functional change, ensure useCallback if needed... */
-	}, [])
-	const fetchBetaUserStatus = useCallback(async () => {
-		/* ...no functional change, ensure useCallback if needed... */
-	}, [])
-	const fetchReferralDetails = useCallback(async () => {
-		/* ...no functional change, ensure useCallback if needed... */
-	}, [])
+	const modalContent = (
+		<div className="text-left space-y-4 my-4">
+			<div>
+				<h4 className="font-semibold text-gray-300 mb-2">
+					Instructions:
+				</h4>
+				<ol className="list-decimal list-inside space-y-1 text-sm text-gray-400">
+					{instructions.map((step, index) => (
+						<li key={index}>{step}</li>
+					))}
+				</ol>
+			</div>
+			<div className="space-y-3">
+				{fields.map((field) => (
+					<div key={field.id}>
+						<label
+							htmlFor={field.id}
+							className="block text-sm font-medium text-gray-300 mb-1"
+						>
+							Enter {field.label}
+						</label>
+						<input
+							type={field.type}
+							name={field.id}
+							id={field.id}
+							onChange={handleChange}
+							value={credentials[field.id] || ""}
+							className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+							autoComplete="off"
+						/>
+					</div>
+				))}
+			</div>
+		</div>
+	)
 
-	const handleBetaUserToggle = async () => {
-		try {
-			// await window.electron?.invoke("invert-beta-user-status")
-			setBetaUser((prev) => !prev)
-			toast.success(
-				betaUser ? "Exited Beta Program." : "You are now a Beta User!"
-			)
-		} catch (error) {
-			console.error("Error updating beta user status:", error)
-			toast.error("Error updating beta user status.")
-		}
-		setShowBetaDialog(false)
-	}
+	return (
+		<ModalDialog
+			title={`Connect to ${integration.display_name}`}
+			description="Follow the instructions below and enter your credentials."
+			onConfirm={handleSubmit}
+			onCancel={onClose}
+			confirmButtonText={isSubmitting ? "Connecting..." : "Connect"}
+			isConfirmDisabled={isSubmitting}
+			extraContent={modalContent}
+		/>
+	)
+}
 
-	const fetchData = useCallback(async () => {
-		console.log("Fetching connection statuses...")
+const WhatsAppSettings = () => {
+	const [whatsappNumber, setWhatsappNumber] = useState("")
+	const [isLoading, setIsLoading] = useState(true)
+	const [isSaving, setIsSaving] = useState(false)
+
+	const fetchWhatsAppNumber = useCallback(async () => {
+		setIsLoading(true)
 		try {
-			const response = await window.electron?.invoke("get-user-data")
-			if (response.status === 200 && response.data) {
-				const { linkedInProfile, redditProfile, twitterProfile } =
-					response.data
-				// More robust check: presence of data AND potentially a specific key (like 'profileUrl' if available)
-				setIsProfileConnected({
-					LinkedIn:
-						!!linkedInProfile &&
-						Object.keys(linkedInProfile).length > 0,
-					Reddit: !!redditProfile && redditProfile.length > 0, // Check if array has items
-					Twitter: !!twitterProfile && twitterProfile.length > 0 // Check if array has items
-				})
-				console.log("Connection statuses updated:", {
-					LinkedIn:
-						!!linkedInProfile &&
-						Object.keys(linkedInProfile).length > 0,
-					Reddit: !!redditProfile && redditProfile.length > 0,
-					Twitter: !!twitterProfile && twitterProfile.length > 0
-				})
-			} else {
-				console.error(
-					"Error fetching DB data, status:",
-					response?.status,
-					"response:",
-					response
-				)
-				// toast.error("Error fetching connection status."); // Avoid excessive toasts
-			}
+			const response = await fetch("/api/settings/whatsapp")
+			if (!response.ok)
+				throw new Error("Failed to fetch WhatsApp number.")
+			const data = await response.json()
+			setWhatsappNumber(data.whatsapp_number || "")
 		} catch (error) {
-			console.error("Error fetching user data:", error)
-			// toast.error("Error fetching user data."); // Avoid excessive toasts
+			toast.error(error.message)
+		} finally {
+			setIsLoading(false)
 		}
-	}, []) // Empty dependency array
+	}, [])
 
 	useEffect(() => {
-		console.log("Initial useEffect running...")
-		fetchData() // Fetch connection status
-		fetchUserDetails()
-		fetchPricingPlan()
-		fetchReferralDetails()
-		fetchBetaUserStatus()
-		fetchDataSources()
-		// No interval here, data fetched on mount or refresh
-	}, [
-		fetchData,
-		fetchUserDetails,
-		fetchPricingPlan,
-		fetchReferralDetails,
-		fetchBetaUserStatus,
-		fetchDataSources
-	]) // Add all useCallback functions
+		fetchWhatsAppNumber()
+	}, [fetchWhatsAppNumber])
 
-	// --- Action Handlers ---
-	const handleConnectClick = (appName) => {
-		if (
-			pricing === "free" &&
-			(appName === "Reddit" || appName === "Twitter")
-		) {
-			toast.error("This feature requires a Pro plan.")
-			return
-		}
-		setShowDisclaimer(true)
-		setSelectedApp(appName)
-		setAction("connect")
-	}
-
-	const handleDisconnectClick = (appName) => {
-		setShowDisclaimer(true)
-		setSelectedApp(appName)
-		setAction("disconnect")
-	}
-
-	const handleDisclaimerAccept = async () => {
-		setShowDisclaimer(false)
-		setLoading((prev) => ({ ...prev, [selectedApp]: true }))
+	const handleSave = async () => {
+		setIsSaving(true)
 		try {
-			let successMessage = ""
-			let response = null
-			if (action === "connect") {
-				const profileKey = `${selectedApp.toLowerCase()}Profile`
-				const urlKey = `${selectedApp.toLowerCase()}ProfileUrl` // Keep this for consistency if backend expects it
-				const profileUrl =
-					selectedApp === "LinkedIn"
-						? linkedInProfileUrl
-						: selectedApp === "Reddit"
-							? redditProfileUrl
-							: twitterProfileUrl
-				// Validate URL input for connect action
-				if (!profileUrl || !profileUrl.trim()) {
-					throw new Error(
-						`${selectedApp} Profile URL cannot be empty.`
-					)
-				}
-				const scrapeMethod = `scrape-${selectedApp.toLowerCase()}`
-
-				response = await window.electron?.invoke(scrapeMethod, {
-					url: profileUrl
-				}) // Pass URL correctly
-
-				if (
-					response &&
-					(response.profile || Array.isArray(response.topics))
-				) {
-					// Check for expected success data
-					const dataToSet =
-						selectedApp === "LinkedIn"
-							? response.profile
-							: response.topics
-					await window.electron?.invoke("set-user-data", {
-						data: { [profileKey]: dataToSet }
-					})
-					successMessage = `${selectedApp} profile connected.`
-					await window.electron?.invoke("build-personality") // Rebuild personality after connect
-					setLinkedInProfileUrl("")
-					setRedditProfileUrl("")
-					setTwitterProfileUrl("") // Clear URLs after success
-				} else {
-					console.error(
-						`Error scraping ${selectedApp} profile:`,
-						response
-					)
-					throw new Error(
-						response?.error ||
-							`Error scraping ${selectedApp} profile.`
-					)
-				}
-			} else if (action === "disconnect") {
-				const profileKey = `${selectedApp.toLowerCase()}Profile`
-				await window.electron?.invoke("set-user-data", {
-					data: { [profileKey]: {} }
-				}) // Set to empty object
-				await window.electron?.invoke("delete-subgraph", {
-					source: selectedApp.toLowerCase()
-				}) // Pass source name correctly
-				successMessage = `${selectedApp} profile disconnected.`
-				await window.electron?.invoke("build-personality") // Rebuild personality after disconnect
+			const response = await fetch("/api/settings/whatsapp", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ whatsapp_number: whatsappNumber })
+			})
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(data.error || "Failed to save number.")
 			}
-			toast.success(successMessage)
-			setIsProfileConnected((prev) => ({
-				...prev,
-				[selectedApp]: action === "connect"
-			}))
+			toast.success("WhatsApp number saved successfully!")
 		} catch (error) {
-			console.error(`Error processing ${selectedApp} profile:`, error)
-			toast.error(
-				`Error processing ${selectedApp} profile: ${error.message || ""}`
-			)
+			toast.error(error.message)
 		} finally {
-			setLoading((prev) => ({ ...prev, [selectedApp]: false }))
-			setAction("")
-			setSelectedApp("") // Reset action state
+			setIsSaving(false)
 		}
 	}
 
-	const handleDisclaimerDecline = () => {
-		setShowDisclaimer(false)
-		setAction("")
-		setSelectedApp("")
+	const handleRemove = async () => {
+		setIsSaving(true)
+		try {
+			const response = await fetch("/api/settings/whatsapp", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ whatsapp_number: "" }) // Send empty string to remove
+			})
+			if (!response.ok) throw new Error("Failed to remove number.")
+			setWhatsappNumber("")
+			toast.success("WhatsApp notifications disabled.")
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsSaving(false)
+		}
 	}
 
 	return (
-		// MODIFIED: Overall page structure using flex
-		<div className="h-screen bg-matteblack flex relative overflow-hidden dark">
-			<Sidebar
-				userDetails={userDetails}
-				isSidebarVisible={isSidebarVisible}
-				setSidebarVisible={setSidebarVisible}
-			/>
-			{/* MODIFIED: Main Content Area */}
-			<div className="flex-grow flex flex-col h-full bg-matteblack text-white relative overflow-y-auto p-6 md:p-10 custom-scrollbar">
-				{/* --- Top Section: Heading & Action Buttons --- */}
-				<div className="flex justify-between items-center mb-8 flex-shrink-0 px-4">
-					<h1 className="font-Poppins text-white text-3xl md:text-4xl font-light">
-						{" "}
-						Settings{" "}
-					</h1>
-					{/* MODIFIED: Top right buttons - smaller, themed */}
-					<div className="flex items-center gap-3">
-						<button
-							onClick={() =>
-								window.open(
-									"https://existence-sentient.vercel.app/dashboard",
-									"_blank"
-								)
-							}
-							className="flex items-center gap-2 py-2 px-4 rounded-full bg-darkblue hover:bg-lightblue text-white text-xs sm:text-sm font-medium transition-colors shadow-md"
-							title={
-								pricing === "free"
-									? "Upgrade for more features"
-									: "Manage Subscription"
-							}
-						>
-							<IconRocket size={18} />
-							<span>
-								{pricing === "free"
-									? "Upgrade to Pro"
-									: "Manage Pro Plan"}
-							</span>
-						</button>
-						<button
-							onClick={() => setShowReferralDialog(true)}
-							className="flex items-center gap-2 py-2 px-4 rounded-full bg-neutral-700 hover:bg-neutral-600 text-white text-xs sm:text-sm font-medium transition-colors shadow-md"
-							title="Refer a friend"
-						>
-							<IconGift size={18} />
-							<span>Refer Sentient</span>
-						</button>
-						<button
-							onClick={() => setShowBetaDialog(true)}
-							className="flex items-center gap-2 py-2 px-4 rounded-full bg-neutral-700 hover:bg-neutral-600 text-white text-xs sm:text-sm font-medium transition-colors shadow-md"
-							title={
-								betaUser
-									? "Leave Beta Program"
-									: "Join Beta Program"
-							}
-						>
-							<IconFlask size={18} /> {/* Replaced IconBeta */}
-							<span>{betaUser ? "Leave Beta" : "Join Beta"}</span>
-						</button>
+		<section>
+			<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2">
+				WhatsApp Notifications
+			</h2>
+			<div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)]">
+				<p className="text-gray-400 text-sm mb-4">
+					Receive important notifications directly to your WhatsApp.
+					Enter your number including the country code (e.g.,
+					14155552671).
+				</p>
+				{isLoading ? (
+					<div className="flex justify-center mt-4">
+						<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)]" />
 					</div>
-				</div>
-				{/* --- Main Settings Content --- */}
-				{/* MODIFIED: Centered content with max-width */}
-				<div className="w-full max-w-5xl mx-auto space-y-10 flex-grow">
-					{/* Connections Section */}
-					<section>
-						<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-neutral-700 pb-2">
-							App Connections
-						</h2>
-						{/* MODIFIED: Adjusted grid gap and responsiveness */}
-						<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-							{/* MODIFIED: AppCard calls with simplified props */}
-							<AppCard
-								logo="/images/linkedin-logo.png"
-								name="LinkedIn"
-								description={
-									isProfileConnected.LinkedIn
-										? "Professional profile connected."
-										: "Connect LinkedIn to use your profile info."
-								}
-								onClick={
-									isProfileConnected.LinkedIn
-										? () =>
-												handleDisconnectClick(
-													"LinkedIn"
-												)
-										: () => handleConnectClick("LinkedIn")
-								}
-								action={
-									isProfileConnected.LinkedIn
-										? "disconnect"
-										: "connect"
-								}
-								isConnected={isProfileConnected.LinkedIn} // Pass connection status
-								loading={loading.LinkedIn}
-								disabled={
-									Object.values(loading).some(
-										(status) => status
-									) && !loading.LinkedIn
-								} // Disable others while one is loading
-								requiresUrl={!isProfileConnected.LinkedIn} // Show URL input only if not connected
-								profileUrl={linkedInProfileUrl}
-								setProfileUrl={setLinkedInProfileUrl}
-								icon={IconBrandLinkedin} // Pass specific icon
+				) : (
+					<div className="flex flex-col sm:flex-row gap-2">
+						<div className="relative flex-grow">
+							<IconBrandWhatsapp
+								className="absolute left-3 top-1/2 -translate-y-1/2 text-green-500"
+								size={20}
 							/>
-							<AppCard
-								logo="/images/reddit-logo.png"
-								name="Reddit"
-								description={
-									isProfileConnected.Reddit
-										? "Reddit interests connected."
-										: "Connect Reddit to analyze topics."
+							<input
+								type="tel"
+								value={whatsappNumber}
+								onChange={(e) =>
+									setWhatsappNumber(e.target.value)
 								}
-								onClick={
-									isProfileConnected.Reddit
-										? () => handleDisconnectClick("Reddit")
-										: () => handleConnectClick("Reddit")
-								}
-								action={
-									isProfileConnected.Reddit
-										? "disconnect"
-										: pricing === "free"
-											? "pro"
-											: "connect"
-								} // Pass 'pro' string for ProIcon
-								isConnected={isProfileConnected.Reddit}
-								loading={loading.Reddit}
-								disabled={
-									(pricing === "free" &&
-										!isProfileConnected.Reddit) ||
-									(Object.values(loading).some(
-										(status) => status
-									) &&
-										!loading.Reddit)
-								}
-								requiresUrl={
-									!isProfileConnected.Reddit &&
-									pricing !== "free"
-								}
-								profileUrl={redditProfileUrl}
-								setProfileUrl={setRedditProfileUrl}
-								icon={IconBrandReddit}
-							/>
-							<AppCard
-								logo="/images/twitter-logo.png"
-								name="Twitter / X" // Updated name
-								description={
-									isProfileConnected.Twitter
-										? "X (Twitter) interests connected."
-										: "Connect X (Twitter) to analyze topics."
-								}
-								onClick={
-									isProfileConnected.Twitter
-										? () => handleDisconnectClick("Twitter")
-										: () => handleConnectClick("Twitter")
-								}
-								action={
-									isProfileConnected.Twitter
-										? "disconnect"
-										: pricing === "free"
-											? "pro"
-											: "connect"
-								} // Pass 'pro' string for ProIcon
-								isConnected={isProfileConnected.Twitter}
-								loading={loading.Twitter}
-								disabled={
-									(pricing === "free" &&
-										!isProfileConnected.Twitter) ||
-									(Object.values(loading).some(
-										(status) => status
-									) &&
-										!loading.Twitter)
-								}
-								requiresUrl={
-									!isProfileConnected.Twitter &&
-									pricing !== "free"
-								}
-								profileUrl={twitterProfileUrl}
-								setProfileUrl={setTwitterProfileUrl}
-								icon={IconBrandX} // Updated icon
+								placeholder="Enter WhatsApp Number"
+								className="w-full pl-10 pr-4 bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
 							/>
 						</div>
-					</section>
-
-					{/* Data Sources Section */}
-					<section>
-						<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-neutral-700 pb-2">
-							Background Data Sources
-						</h2>
-						{/* MODIFIED: Restyled container and list items */}
-						<div className="bg-neutral-800/50 p-4 md:p-6 rounded-lg border border-neutral-700">
-							<div className="space-y-4">
-								{dataSources.length > 0 ? (
-									dataSources.map((source) => {
-										const SourceIcon =
-											source.icon || IconSettingsCog // Use mapped icon or default
-										return (
-											<div
-												key={source.name}
-												className="flex items-center justify-between py-2"
-											>
-												<div className="flex items-center gap-3">
-													<SourceIcon className="w-6 h-6 text-lightblue" />{" "}
-													{/* Use icon */}
-													<span className="font-medium text-white text-base">
-														{source.name}
-													</span>{" "}
-													{/* Increased text size */}
-												</div>
-												{/* MODIFIED: Radix Switch with custom theme styling */}
-												<Switch
-													checked={source.enabled}
-													onCheckedChange={(
-														enabled
-													) =>
-														handleToggle(
-															source.name,
-															enabled
-														)
-													}
-													className={cn(
-														"group relative inline-flex h-[24px] w-[44px] flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-lightblue focus:ring-offset-2 focus:ring-offset-neutral-800",
-														source.enabled
-															? "bg-lightblue"
-															: "bg-neutral-600" // Background color based on state
-													)}
-												>
-													<span className="sr-only">
-														Toggle {source.name}
-													</span>
-													<span
-														aria-hidden="true"
-														className={cn(
-															"pointer-events-none inline-block h-[20px] w-[20px] transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-															source.enabled
-																? "translate-x-[20px]"
-																: "translate-x-0" // Thumb position based on state
-														)}
-													/>
-												</Switch>
-											</div>
-										)
-									})
+						<div className="flex gap-2 justify-end">
+							<button
+								onClick={handleSave}
+								disabled={isSaving}
+								className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors"
+							>
+								{isSaving ? (
+									<IconLoader className="w-4 h-4 mr-2 animate-spin" />
 								) : (
-									<p className="text-gray-400 italic text-center py-4">
-										{" "}
-										Data source settings loading...{" "}
-									</p>
+									<IconPlus className="w-4 h-4 mr-2" />
 								)}
-							</div>
+								Save
+							</button>
+							{whatsappNumber && (
+								<button
+									onClick={handleRemove}
+									disabled={isSaving}
+									className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-red)]/80 hover:bg-[var(--color-accent-red)] text-white font-medium transition-colors"
+								>
+									<IconX className="w-4 h-4 mr-2" /> Remove
+								</button>
+							)}
 						</div>
-					</section>
+					</div>
+				)}
+			</div>
+		</section>
+	)
+}
 
-					{/* End Centered Content */}
-					{/* Modals */}
-					{showReferralDialog && (
-						<ModalDialog
-							title="Referral Code"
-							description={`Share this code with friends: ${referralCode === "N/A" ? "Loading..." : ""}`}
-							extraContent={
-								referrerStatus ? (
-									<p className="text-sm text-green-400">
-										Referrer status: Active
-									</p>
-								) : (
-									<p className="text-sm text-yellow-400">
-										Referrer status: Inactive
-									</p>
-								)
-							}
-							onConfirm={() => setShowReferralDialog(false)}
-							confirmButtonText="Close"
-							cancelButton={false}
+const PrivacySettings = () => {
+	const [filters, setFilters] = useState([])
+	const [newFilter, setNewFilter] = useState("")
+	const [isLoading, setIsLoading] = useState(true)
+
+	const fetchFilters = useCallback(async () => {
+		setIsLoading(true)
+		try {
+			const response = await fetch("/api/settings/privacy-filters")
+			if (!response.ok) throw new Error("Failed to fetch filters.")
+			const data = await response.json()
+			setFilters(data.filters || [])
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsLoading(false)
+		}
+	}, [])
+
+	useEffect(() => {
+		fetchFilters()
+	}, [fetchFilters])
+
+	const handleAddFilter = async () => {
+		if (!newFilter.trim()) {
+			toast.error("Filter cannot be empty.")
+			return
+		}
+		const updatedFilters = [...filters, newFilter.trim()]
+		await handleSaveFilters(updatedFilters)
+		setNewFilter("") // Clear input after adding
+	}
+
+	const handleDeleteFilter = async (filterToDelete) => {
+		const updatedFilters = filters.filter((f) => f !== filterToDelete)
+		await handleSaveFilters(updatedFilters)
+	}
+
+	const handleSaveFilters = async (updatedFilters) => {
+		setIsLoading(true)
+		try {
+			const response = await fetch("/api/settings/privacy-filters", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ filters: updatedFilters })
+			})
+			if (!response.ok) throw new Error("Failed to save filters.")
+			toast.success("Privacy filters updated.")
+			setFilters(updatedFilters)
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsLoading(false)
+		}
+	}
+
+	return (
+		<section>
+			<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2">
+				Privacy Filters
+			</h2>
+			<div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)]">
+				<p className="text-gray-400 text-sm mb-4">
+					Add keywords to prevent emails or events containing them
+					from being processed by the proactive pipeline.
+				</p>
+				<div className="flex gap-2 mb-4">
+					<input
+						type="text"
+						value={newFilter}
+						onChange={(e) => setNewFilter(e.target.value)}
+						onKeyDown={(e) =>
+							e.key === "Enter" && handleAddFilter()
+						}
+						placeholder="Add a new filter keyword..."
+						className="flex-grow bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+					/>
+					<button
+						onClick={handleAddFilter}
+						disabled={isLoading}
+						className="flex flex-row items-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors"
+					>
+						<IconPlus className="w-4 h-4 mr-2" /> Add
+					</button>
+				</div>
+				<div className="flex flex-wrap gap-2">
+					{filters.map((filter, index) => (
+						<div
+							key={index}
+							className="flex items-center gap-2 bg-[var(--color-primary-surface-elevated)] rounded-full py-1.5 px-3 text-sm text-gray-200"
+						>
+							<span>{filter}</span>
+							<button onClick={() => handleDeleteFilter(filter)}>
+								<IconX
+									size={14}
+									className="text-gray-500 hover:text-red-400"
+								/>
+							</button>
+						</div>
+					))}
+				</div>
+				{isLoading && (
+					<div className="flex justify-center mt-4">
+						<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)]" />
+					</div>
+				)}
+			</div>
+		</section>
+	)
+}
+
+const Settings = () => {
+	const [userIntegrations, setUserIntegrations] = useState([])
+	const [defaultTools, setDefaultTools] = useState([])
+	const [loadingIntegrations, setLoadingIntegrations] = useState(true)
+	const [activeManualIntegration, setActiveManualIntegration] = useState(null)
+	const [processingIntegration, setProcessingIntegration] = useState(null)
+	const scrollRef = useRef(null)
+
+	useSmoothScroll(scrollRef)
+
+	// --- CORRECTED: Specific list of Google services ---
+	const googleServices = [
+		"gmail",
+		"gcalendar",
+		"gdrive",
+		"gdocs",
+		"gslides",
+		"gsheets"
+	]
+
+	const fetchIntegrations = useCallback(async () => {
+		setLoadingIntegrations(true)
+		try {
+			const response = await fetch("/api/settings/integrations")
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(data.error || "Failed to fetch integrations")
+			}
+			const integrationsWithIcons = (
+				Array.isArray(data.integrations) ? data.integrations : []
+			).map((ds) => ({
+				...ds,
+				icon: integrationIcons[ds.name] || IconSettingsCog
+			}))
+
+			const hiddenTools = [
+				"google_search",
+				"progress_updater",
+				"chat_tools",
+				"journal"
+			]
+
+			const userConnectable = integrationsWithIcons.filter(
+				(i) =>
+					(i.auth_type === "oauth" || i.auth_type === "manual") &&
+					!hiddenTools.includes(i.name)
+			)
+			const builtIn = integrationsWithIcons.filter(
+				(i) =>
+					i.auth_type === "builtin" && !hiddenTools.includes(i.name)
+			)
+			setUserIntegrations(userConnectable)
+			setDefaultTools(builtIn)
+		} catch (error) {
+			console.error("Error fetching integrations:", error)
+			toast.error(`Error fetching integrations: ${error.message}`)
+		} finally {
+			setLoadingIntegrations(false)
+		}
+	}, [])
+
+	const handleConnect = (integration) => {
+		if (integration.auth_type === "oauth") {
+			const { name: serviceName, client_id: clientId } = integration
+			if (!clientId) {
+				toast.error(
+					`Client ID for ${integration.display_name} is not configured.`
+				)
+				return
+			}
+
+			const redirectUri = `${window.location.origin}/api/settings/integrations/connect/oauth/callback`
+			const state = serviceName
+			let authUrl = ""
+
+			const scopes = {
+				gdrive: "https://www.googleapis.com/auth/drive",
+				gcalendar: "https://www.googleapis.com/auth/calendar",
+				gmail: "https://mail.google.com/",
+				gdocs: "https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive",
+				gslides:
+					"https://www.googleapis.com/auth/presentations https://www.googleapis.com/auth/drive",
+				gsheets: "https://www.googleapis.com/auth/spreadsheets",
+				gmaps: "https://www.googleapis.com/auth/cloud-platform",
+				gshopping: "https://www.googleapis.com/auth/content",
+				github: "repo user"
+			}
+
+			const scope =
+				scopes[serviceName] ||
+				"https://www.googleapis.com/auth/userinfo.email"
+
+			// --- CORRECTED: Use precise list for Google services ---
+			if (googleServices.includes(serviceName)) {
+				authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=consent&state=${state}`
+			} else if (serviceName === "github") {
+				authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${state}`
+			}
+
+			if (authUrl) {
+				window.location.href = authUrl
+			} else {
+				toast.error(
+					`OAuth flow for ${integration.display_name} is not implemented.`
+				)
+			}
+		} else if (integration.auth_type === "manual") {
+			if (MANUAL_INTEGRATION_CONFIGS[integration.name]) {
+				setActiveManualIntegration(integration)
+			} else {
+				toast.error(
+					`UI configuration for ${integration.display_name} not found.`
+				)
+			}
+		}
+	}
+
+	const handleDisconnect = async (integrationName) => {
+		const displayName =
+			userIntegrations.find((i) => i.name === integrationName)
+				?.display_name || integrationName
+
+		if (
+			!window.confirm(
+				`Are you sure you want to disconnect ${displayName}?`
+			)
+		) {
+			return
+		}
+
+		setProcessingIntegration(integrationName)
+		try {
+			const response = await fetch(
+				"/api/settings/integrations/disconnect",
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ service_name: integrationName })
+				}
+			)
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(
+					data.error || `Failed to disconnect ${displayName}`
+				)
+			}
+			toast.success(`${displayName} disconnected.`)
+			fetchIntegrations()
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setProcessingIntegration(null)
+		}
+	}
+
+	const fetchData = useCallback(async () => {
+		console.log("Fetching user data...")
+		try {
+			const response = await fetch("/api/user/data")
+			if (!response.ok) {
+				const errorData = await response.json()
+				throw new Error(
+					errorData.message || "Failed to fetch user data"
+				)
+			}
+			const result = await response.json()
+			if (result.data) {
+				console.log("User data fetched successfully.")
+			}
+		} catch (error) {
+			toast.error(`Failed to fetch user data: ${error.message}`)
+		}
+	}, [])
+
+	useEffect(() => {
+		fetchData()
+		fetchIntegrations()
+
+		const urlParams = new URLSearchParams(window.location.search)
+		const success = urlParams.get("integration_success")
+		const error = urlParams.get("integration_error")
+
+		if (success) {
+			toast.success(`Successfully connected to ${success}!`)
+			window.history.replaceState({}, document.title, "/settings")
+		} else if (error) {
+			toast.error(`Connection failed: ${error}`)
+			window.history.replaceState({}, document.title, "/settings")
+		}
+	}, [fetchData, fetchIntegrations])
+
+	return (
+		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
+			<Tooltip id="settings-tooltip" />
+			<div className="flex-1 flex flex-col overflow-hidden h-screen">
+				<header className="flex items-center justify-between p-4 md:px-8 md:py-6 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)]">
+					<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)] flex items-center gap-3">
+						Settings
+					</h1>
+				</header>
+				<main
+					ref={scrollRef}
+					className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 custom-scrollbar"
+				>
+					<div className="w-full max-w-5xl mx-auto space-y-10">
+						<WhatsAppSettings />
+						<PrivacySettings />
+						<section>
+							<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2">
+								Connected Apps & Integrations
+							</h2>
+							<div className="bg-[var(--color-primary-surface)]/50 p-2 md:p-4 rounded-lg border border-[var(--color-primary-surface-elevated)]">
+								<div className="divide-y divide-[var(--color-primary-surface-elevated)]/50">
+									{loadingIntegrations ? (
+										<div className="flex justify-center items-center py-10">
+											<IconLoader className="w-8 h-8 animate-spin text-[var(--color-accent-blue)]" />
+										</div>
+									) : userIntegrations.length > 0 ? (
+										userIntegrations.map((integration) => {
+											const IntegrationIcon =
+												integration.icon ||
+												IconSettingsCog
+											const isProcessing =
+												processingIntegration ===
+												integration.name
+
+											return (
+												<div
+													key={integration.name}
+													className="flex items-center justify-between p-4"
+												>
+													<div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+														<IntegrationIcon className="w-8 h-8 text-[var(--color-accent-blue)]" />
+														<div className="flex-1 min-w-0">
+															<h3 className="font-semibold text-[var(--color-text-primary)] text-base sm:text-lg truncate">
+																{
+																	integration.display_name
+																}
+															</h3>
+															<details
+																className="mt-1 text-gray-400 text-xs sm:text-sm group"
+																data-tooltip-id="settings-tooltip"
+																data-tooltip-content="Click to see what this integration does"
+															>
+																<summary className="list-none flex items-center cursor-pointer hover:text-white transition-colors w-fit">
+																	<span>
+																		Details
+																	</span>
+																	<IconChevronDown
+																		size={
+																			14
+																		}
+																		className="ml-1 transition-transform duration-200 group-open:rotate-180"
+																	/>
+																</summary>
+																<p className="mt-2 pt-2 border-t border-neutral-700/50">
+																	{
+																		integration.description
+																	}
+																</p>
+															</details>
+														</div>
+													</div>
+													<div className="w-32 sm:w-40 text-right flex-shrink-0">
+														{isProcessing ? (
+															<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)] ml-auto" />
+														) : integration.connected ? (
+															<button
+																onClick={() =>
+																	handleDisconnect(
+																		integration.name
+																	)
+																}
+																className="flex items-center justify-center gap-1 sm:gap-2 w-full py-2 px-3 rounded-md bg-[var(--color-accent-red)]/20 hover:bg-[var(--color-accent-red)]/40 text-[var(--color-accent-red)] text-sm font-medium transition-colors"
+															>
+																<IconPlugOff
+																	size={16}
+																/>
+																<span>
+																	Disconnect
+																</span>
+															</button>
+														) : (
+															<button
+																onClick={() =>
+																	handleConnect(
+																		integration
+																	)
+																}
+																className="flex items-center justify-center gap-1 sm:gap-2 w-full py-2 px-3 rounded-md bg-[var(--color-accent-blue)]/80 hover:bg-[var(--color-accent-blue)] text-white text-sm font-medium transition-colors"
+															>
+																<IconPlugConnected
+																	size={16}
+																/>
+																<span>
+																	Connect
+																</span>
+															</button>
+														)}
+													</div>
+												</div>
+											)
+										})
+									) : (
+										<p className="text-gray-400 italic text-center py-8">
+											No integrations available.
+										</p>
+									)}
+								</div>
+							</div>
+						</section>
+
+						<section>
+							<h2
+								className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2"
+								data-tooltip-id="settings-tooltip"
+								data-tooltip-content="These tools are core to Sentient and are always enabled."
+							>
+								Default System Tools
+							</h2>
+							<div className="bg-[var(--color-primary-surface)]/50 p-2 md:p-4 rounded-lg border border-[var(--color-primary-surface-elevated)]">
+								<div className="divide-y divide-[var(--color-primary-surface-elevated)]/50">
+									{loadingIntegrations ? (
+										<div className="flex justify-center items-center py-10">
+											<IconLoader className="w-8 h-8 animate-spin text-[var(--color-accent-blue)]" />
+										</div>
+									) : defaultTools.length > 0 ? (
+										defaultTools.map((tool) => {
+											const ToolIcon =
+												tool.icon || IconSettingsCog
+											return (
+												<div
+													key={tool.name}
+													className="flex items-center justify-between p-4"
+												>
+													<div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+														<ToolIcon className="w-8 h-8 text-[var(--color-text-muted)]" />
+														<div className="flex-1 min-w-0">
+															<h3 className="font-semibold text-[var(--color-text-primary)] text-base sm:text-lg truncate">
+																{
+																	tool.display_name
+																}
+															</h3>
+															<details
+																className="mt-1 text-gray-400 text-xs sm:text-sm group"
+																data-tooltip-id="settings-tooltip"
+																data-tooltip-content="Click to see what this tool does"
+															>
+																<summary className="list-none flex items-center cursor-pointer hover:text-white transition-colors w-fit">
+																	<span>
+																		Details
+																	</span>
+																	<IconChevronDown
+																		size={
+																			14
+																		}
+																		className="ml-1 transition-transform duration-200 group-open:rotate-180"
+																	/>
+																</summary>
+																<p className="mt-2 pt-2 border-t border-neutral-700/50">
+																	{
+																		tool.description
+																	}
+																</p>
+															</details>
+														</div>
+													</div>
+												</div>
+											)
+										})
+									) : (
+										<p className="text-gray-400 italic text-center py-8">
+											No default tools available.
+										</p>
+									)}
+								</div>
+							</div>
+						</section>
+					</div>
+
+					{activeManualIntegration && (
+						<ManualTokenEntryModal
+							integration={activeManualIntegration}
+							onClose={() => setActiveManualIntegration(null)}
+							onSuccess={() => fetchIntegrations()}
 						/>
 					)}
-					{showBetaDialog && (
-						<ModalDialog
-							title={
-								betaUser
-									? "Exit Beta Program?"
-									: "Join Beta Program?"
-							}
-							description={
-								betaUser
-									? "You will lose access to beta features."
-									: "Get early access to new features!"
-							}
-							onCancel={() => setShowBetaDialog(false)}
-							onConfirm={handleBetaUserToggle}
-							confirmButtonText={
-								betaUser ? "Exit Beta" : "Join Beta"
-							}
-							confirmButtonColor={
-								betaUser ? "bg-red-600" : "bg-green-600"
-							}
-							confirmButtonBorderColor={
-								betaUser ? "border-red-600" : "border-green-600"
-							}
-						/>
-					)}
-					{showDisclaimer && (
-						<Disclaimer
-							appName={selectedApp}
-							profileUrl={
-								action === "connect"
-									? selectedApp === "LinkedIn"
-										? linkedInProfileUrl
-										: selectedApp === "Reddit"
-											? redditProfileUrl
-											: twitterProfileUrl
-									: ""
-							}
-							setProfileUrl={
-								action === "connect"
-									? selectedApp === "LinkedIn"
-										? setLinkedInProfileUrl
-										: selectedApp === "Reddit"
-											? setRedditProfileUrl
-											: setTwitterProfileUrl
-									: null
-							}
-							onAccept={handleDisclaimerAccept}
-							onDecline={handleDisclaimerDecline}
-							action={action}
-							showInput={action === "connect"}
-						/>
-					)}
-				</div>{" "}
-				{/* END OF MAIN CONTENT AREA */}
-			</div>{" "}
+				</main>
+			</div>
 		</div>
 	)
 }

@@ -7,7 +7,7 @@ export const GET = withAuth(async function GET(request, { authHeader }) {
 		const response = await fetch(
 			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/notifications`,
 			{
-				method: "GET",
+				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader }
 			}
 		)

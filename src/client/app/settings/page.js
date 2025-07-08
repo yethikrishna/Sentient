@@ -30,8 +30,6 @@ import {
 } from "@tabler/icons-react"
 import { useState, useEffect, useCallback, useRef } from "react"
 import { Tooltip } from "react-tooltip"
-import React from "react"
-import { useSmoothScroll } from "@hooks/useSmoothScroll"
 
 const integrationIcons = {
 	gmail: IconMail,
@@ -445,9 +443,6 @@ const Settings = () => {
 	const [loadingIntegrations, setLoadingIntegrations] = useState(true)
 	const [activeManualIntegration, setActiveManualIntegration] = useState(null)
 	const [processingIntegration, setProcessingIntegration] = useState(null)
-	const scrollRef = useRef(null)
-
-	useSmoothScroll(scrollRef)
 
 	// --- CORRECTED: Specific list of Google services ---
 	const googleServices = [
@@ -639,10 +634,7 @@ const Settings = () => {
 						Settings
 					</h1>
 				</header>
-				<main
-					ref={scrollRef}
-					className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 custom-scrollbar"
-				>
+				<main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 custom-scrollbar">
 					<div className="w-full max-w-5xl mx-auto space-y-10">
 						<WhatsAppSettings />
 						<PrivacySettings />

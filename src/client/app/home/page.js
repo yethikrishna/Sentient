@@ -291,11 +291,16 @@ const HomePage = () => {
 
 	const fetchUserDetails = useCallback(async () => {
 		try {
-			const response = await fetch("/api/user/profile")
+			const response = await fetch("/api/user/data")
 			if (!response.ok) throw new Error("Failed to fetch user details")
-			setUserDetails(await response.json())
+			const result = await response.json()
+			const userName =
+				result?.data?.personalInfo?.name ||
+				result?.data?.onboardingAnswers?.["user-name"]
+			setUserDetails({ given_name: userName || "User" })
 		} catch (error) {
 			toast.error(`Error fetching user details: ${error.message}`)
+			setUserDetails({ given_name: "User" })
 		}
 	}, [])
 

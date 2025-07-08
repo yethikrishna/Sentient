@@ -5,7 +5,7 @@ import { withAuth } from "@lib/api-utils"
 export const GET = withAuth(async function GET(request, { authHeader }) {
 	try {
 		const response = await fetch(
-			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/notifications`,
+			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/notifications/`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader }

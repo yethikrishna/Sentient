@@ -22,7 +22,7 @@ async def create_notification_internal(request: CreateNotificationRequest):
         logger.error(f"Internal notification creation failed for user {request.user_id}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-@router.post("/", summary="Get All User Notifications")
+@router.get("/", summary="Get All User Notifications")
 async def get_notifications(user_id: str = Depends(PermissionChecker(required_permissions=["read:notifications"]))):
     notifications = await mongo_manager.get_notifications(user_id)
     return JSONResponse(content={"notifications": notifications})

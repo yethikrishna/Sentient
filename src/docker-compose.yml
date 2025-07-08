@@ -47,6 +47,10 @@ services:
       - redis
     networks:
       - sentient_network
+    # Add DNS servers to ensure the container can resolve external domains like api.novita.ai
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
 
   # MongoDB Database
   mongodb:

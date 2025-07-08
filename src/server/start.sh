@@ -11,7 +11,7 @@ if [ "$ENVIRONMENT" != "SELFHOST" ]; then
       case "$line" in
         ''|\#*) continue ;;
       esac
-      export "$line"
+      export $line
     done < /app/.env
   fi
 fi

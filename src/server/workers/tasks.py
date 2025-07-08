@@ -3,6 +3,7 @@ import logging
 import json
 import re
 import datetime
+from json_extractor import JsonExtractor
 import os
 import httpx
 from dateutil import rrule
@@ -131,20 +132,23 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
             agent = get_extractor_agent()
             messages = [{'role': 'user', 'content': llm_input_content}]
             
-            final_response_str = ""
+            final_content_str = ""
             for chunk in agent.run(messages=messages):
                 if isinstance(chunk, list) and chunk:
                     last_message = chunk[-1]
                     if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
-                        content = last_message["content"]
-                        match = re.search(r'```json\n(.*?)\n```', content, re.DOTALL)
-                        final_response_str = match.group(1) if match else content
+                        final_content_str = last_message["content"]
 
-            if not final_response_str:
+            if not final_content_str:
                 logger.error(f"Extractor LLM returned no response for event {event_id}.")
                 return
 
-            extracted_data = json.loads(final_response_str)
+            extracted_data = JsonExtractor.extract_valid_json(final_content_str)
+            if not extracted_data:
+                logger.error(f"Could not extract valid JSON from LLM response for event {event_id}. Response: '{final_content_str}'")
+                await db_manager.log_extraction_result(event_id, user_id, 0, 0) # Log to prevent re-processing
+                return
+
             memory_items = extracted_data.get("memory_items", [])
             action_items = extracted_data.get("action_items", [])
             short_term_notes = extracted_data.get("short_term_notes", [])

@@ -149,6 +149,19 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
                 await db_manager.log_extraction_result(event_id, user_id, 0, 0) # Log to prevent re-processing
                 return
 
+            # FIX: Handle cases where the extractor returns a list containing the dictionary
+            if isinstance(extracted_data, list):
+                if extracted_data and isinstance(extracted_data[0], dict):
+                    extracted_data = extracted_data[0]
+                else:
+                    # The list is empty or doesn't contain a dict, so there's no data.
+                    extracted_data = {} # Set to empty dict to avoid further errors
+
+            if not isinstance(extracted_data, dict):
+                logger.error(f"Extracted JSON is not a dictionary for event {event_id}. Extracted: '{extracted_data}'")
+                await db_manager.log_extraction_result(event_id, user_id, 0, 0)
+                return
+
             memory_items = extracted_data.get("memory_items", [])
             action_items = extracted_data.get("action_items", [])
             short_term_notes = extracted_data.get("short_term_notes", [])

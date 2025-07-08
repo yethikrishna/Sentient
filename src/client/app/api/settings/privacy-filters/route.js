@@ -2,8 +2,9 @@ import { NextResponse } from "next/server"
 import { withAuth } from "@lib/api-utils"
 
 const appServerUrl =
-	process.env.INTERNAL_APP_SERVER_URL ||
-	process.env.NEXT_PUBLIC_APP_SERVER_URL
+	process.env.NEXT_PUBLIC_ENVIRONMENT === "SELFHOST"
+		? process.env.INTERNAL_APP_SERVER_URL
+		: process.env.NEXT_PUBLIC_APP_SERVER_URL
 
 // GET handler to fetch current privacy filters
 export const GET = withAuth(async function GET(request, { authHeader }) {

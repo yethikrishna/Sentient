@@ -33,7 +33,7 @@ export async function GET(request) {
 		// The browser session (cookie) is automatically forwarded by Next.js server-side fetch,
 		// which authenticates the user to our own API proxy.
 		const apiResponse = await fetch(
-			"/api/settings/integrations/connect/oauth",
+			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/api/settings/integrations/connect/oauth`,
 			{
 				method: "POST",
 				headers: {

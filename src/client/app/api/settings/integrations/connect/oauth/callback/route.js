@@ -8,7 +8,15 @@ export async function GET(request) {
 	const state = searchParams.get("state") // This will be 'gdrive', 'gcalendar', etc.
 	const error = searchParams.get("error")
 
-	const settingsUrl = new URL("/settings", request.url)
+	const baseUrl = process.env.APP_BASE_URL
+	if (!baseUrl) {
+		console.error("APP_BASE_URL environment variable is not set.")
+		return new Response("Server configuration error.", { status: 500 })
+	}
+
+	// FIX: Use the public-facing APP_BASE_URL for redirection, not the internal request.url.
+	// This ensures the browser is redirected to the correct, publicly accessible address.
+	const settingsUrl = new URL("/settings", baseUrl)
 
 	if (error) {
 		// User denied access or an error occurred
@@ -33,7 +41,7 @@ export async function GET(request) {
 		// The browser session (cookie) is automatically forwarded by Next.js server-side fetch,
 		// which authenticates the user to our own API proxy.
 		const apiResponse = await fetch(
-			`${process.env.APP_BASE_URL}/api/settings/integrations/connect/oauth`,
+			`${baseUrl}/api/settings/integrations/connect/oauth`,
 			{
 				method: "POST",
 				headers: {
@@ -43,7 +51,7 @@ export async function GET(request) {
 				body: JSON.stringify({
 					service_name: state,
 					code: code,
-					redirect_uri: `${process.env.APP_BASE_URL}/api/settings/integrations/connect/oauth/callback`
+					redirect_uri: `${baseUrl}/api/settings/integrations/connect/oauth/callback`
 				})
 			}
 		)

@@ -81,10 +81,7 @@ const Home = () => {
 			console.error("Auth0 authentication error:", authError)
 			toast.error("Authentication failed. Please try again.")
 			// Redirect to login to re-attempt authentication.
-			// FIX: Use window.location for full redirect to external Auth0 page
-			if (typeof window !== "undefined") {
-				window.location.href = "/api/auth/login"
-			}
+			router.push("/api/auth/login")
 			return
 		}
 

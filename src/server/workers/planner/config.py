@@ -3,13 +3,23 @@ from dotenv import load_dotenv
 
 import logging
 
-# Conditionally load .env for local development
-# Load .env file for 'dev' environment.
-ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev')
-if ENVIRONMENT == 'dev':
-    dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+# --- Environment Loading Logic ---
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
+logging.info(f"[PlannerConfig] Initializing configuration for ENVIRONMENT='{ENVIRONMENT}'")
+
+server_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+
+if ENVIRONMENT == 'dev-local':
+    dotenv_path = os.path.join(server_root, '.env')
+    logging.info(f"[PlannerConfig] Loading .env file for 'dev-local' mode from: {dotenv_path}")
     if os.path.exists(dotenv_path):
         load_dotenv(dotenv_path=dotenv_path)
+elif ENVIRONMENT == 'selfhost':
+    dotenv_path = os.path.join(server_root, '.env.selfhost')
+    logging.info(f"[PlannerConfig] Loading .env file for 'selfhost' mode from: {dotenv_path}")
+    load_dotenv(dotenv_path=dotenv_path)
+else:
+    logging.info(f"[PlannerConfig] Skipping dotenv loading for '{ENVIRONMENT}' mode.")
 # LLM Configuration
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "OLLAMA")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")

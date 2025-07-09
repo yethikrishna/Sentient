@@ -3,6 +3,15 @@ import { NextResponse } from "next/server"
 import { auth0 } from "@lib/auth0"
 
 export async function GET() {
+	if (process.env.NEXT_PUBLIC_ENVIRONMENT === "selfhost") {
+		return NextResponse.json({
+			sub: "self-hosted-user",
+			given_name: "User",
+			name: "Self-Hosted User",
+			picture: "/images/half-logo-dark.svg" // A default picture
+		})
+	}
+
 	const session = await auth0.getSession()
 
 	if (!session?.user) {

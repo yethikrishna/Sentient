@@ -2,6 +2,11 @@ import { NextResponse } from "next/server"
 import { auth0 } from "./lib/auth0"
 
 export async function middleware(request) {
+	if (process.env.NEXT_PUBLIC_ENVIRONMENT === "selfhost") {
+		// In self-host mode, authentication is handled by a static token,
+		// so we don't need Auth0's session middleware.
+		return NextResponse.next()
+	}
 	const authRes = await auth0.middleware(request)
 
 	// authentication routes — let the middleware handle it

@@ -1,4 +1,4 @@
-// src/client/app/api/tasks/update/route.js
+// src/client/app/api/settings/profile/route.js
 import { NextResponse } from "next/server"
 import { withAuth } from "@lib/api-utils"
 
@@ -9,20 +9,23 @@ const appServerUrl =
 
 export const POST = withAuth(async function POST(request, { authHeader }) {
 	try {
-		const taskData = await request.json()
-		const response = await fetch(`${appServerUrl}/agents/update-task`, {
+		const body = await request.json()
+		const response = await fetch(`${appServerUrl}/api/settings/profile`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json", ...authHeader },
-			body: JSON.stringify(taskData)
+			body: JSON.stringify(body)
 		})
 
 		const data = await response.json()
 		if (!response.ok) {
-			throw new Error(data.error || "Failed to update task")
+			throw new Error(data.detail || "Failed to update profile")
 		}
 		return NextResponse.json(data)
 	} catch (error) {
-		console.error("API Error in /tasks/update:", error)
-		return NextResponse.json({ error: error.message }, { status: 500 })
+		console.error("API Error in /settings/profile (POST):", error)
+		return NextResponse.json(
+			{ error: "Internal Server Error", details: error.message },
+			{ status: 500 }
+		)
 	}
 })

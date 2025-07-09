@@ -4,8 +4,8 @@ from fastapi.responses import JSONResponse
 
 from main.dependencies import mongo_manager
 from main.auth.utils import PermissionChecker
-from main.notifications.whatsapp_client import check_phone_number_exists
-from main.settings.models import WhatsAppNumberRequest
+from main.notifications.whatsapp_client import check_phone_number_exists, send_whatsapp_message
+from main.settings.models import WhatsAppNumberRequest, ProfileUpdateRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter(
@@ -74,3 +74,25 @@ async def get_whatsapp_number(
 
     wa_prefs = user_profile.get("userData", {}).get("notificationPreferences", {}).get("whatsapp", {})
     return JSONResponse(content={"whatsapp_number": wa_prefs.get("number", "")})
+@router.post("/profile", summary="Update User Profile and Onboarding Data")
+async def update_profile_data(
+    request: ProfileUpdateRequest,
+    user_id: str = Depends(PermissionChecker(required_permissions=["write:profile"]))
+):
+    """
+    Updates the user's profile, including personal info, preferences,
+    and the original onboarding answers.
+    """
+    try:
+        update_payload = {
+            "userData.onboardingAnswers": request.onboardingAnswers,
+            "userData.personalInfo": request.personalInfo,
+            "userData.preferences": request.preferences,
+        }
+        success = await mongo_manager.update_user_profile(user_id, update_payload)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update profile.")
+        return JSONResponse(content={"message": "Profile updated successfully."})
+    except Exception as e:
+        logger.error(f"Error updating profile for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")

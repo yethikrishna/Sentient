@@ -1,17 +1,19 @@
 import { NextResponse } from "next/server"
 import { withAuth } from "@lib/api-utils"
 
+const appServerUrl =
+	process.env.NEXT_PUBLIC_ENVIRONMENT === "selfhost"
+		? process.env.INTERNAL_APP_SERVER_URL
+		: process.env.NEXT_PUBLIC_APP_SERVER_URL
+
 // GET handler to fetch current privacy filters
 export const GET = withAuth(async function GET(request, { authHeader }) {
 	try {
 		// We can get this from the get-user-data endpoint
-		const response = await fetch(
-			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/api/get-user-data`,
-			{
-				method: "POST",
-				headers: { "Content-Type": "application/json", ...authHeader }
-			}
-		)
+		const response = await fetch(`${appServerUrl}/api/get-user-data`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json", ...authHeader }
+		})
 
 		if (!response.ok) {
 			throw new Error("Failed to fetch user data from backend.")
@@ -44,7 +46,7 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 		}
 
 		const backendResponse = await fetch(
-			`${process.env.NEXT_PUBLIC_APP_SERVER_URL}/api/settings/privacy-filters`,
+			`${appServerUrl}/api/settings/privacy-filters`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },

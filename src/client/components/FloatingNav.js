@@ -9,7 +9,8 @@ import {
 	IconChecklist,
 	IconHome,
 	IconLogout,
-	IconUser,
+	IconUser, // Keep for fallback
+	IconUserCircle,
 	IconMessage
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
@@ -20,6 +21,7 @@ export default function FloatingNav({ onChatOpen }) {
 	const router = useRouter()
 	const pathname = usePathname()
 	const [userDetails, setUserDetails] = useState(null)
+	const isSelfHost = process.env.NEXT_PUBLIC_ENVIRONMENT === "selfhost"
 	const [unreadCount, setUnreadCount] = useState(0)
 	const wsRef = useRef(null)
 
@@ -179,10 +181,10 @@ export default function FloatingNav({ onChatOpen }) {
 			}
 		},
 		{
-			title: "Settings",
+			title: "Profile",
 			href: "/settings",
 			icon: (
-				<IconAdjustments className="h-full w-full text-neutral-500 dark:text-neutral-300" />
+				<IconUserCircle className="h-full w-full text-neutral-500 dark:text-neutral-300" />
 			)
 		}
 	]
@@ -199,18 +201,12 @@ export default function FloatingNav({ onChatOpen }) {
 	]
 	const allLinks = [...navLinks, ...actionLinks]
 
-	if (userDetails) {
+	if (userDetails && !isSelfHost) {
 		allLinks.push({
-			title: `Logout (${userDetails.given_name || "User"})`,
-			href: "/auth/logout",
-			icon: userDetails?.picture ? (
-				<img
-					src={userDetails.picture}
-					alt={userDetails.given_name || "User"}
-					className="h-full w-full rounded-full object-cover"
-				/>
-			) : (
-				<IconUser className="h-full w-full text-neutral-500 dark:text-neutral-300" />
+			title: "Logout",
+			href: "/api/auth/logout",
+			icon: (
+				<IconLogout className="h-full w-full text-neutral-500 dark:text-neutral-300" />
 			)
 		})
 	}

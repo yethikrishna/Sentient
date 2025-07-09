@@ -4,13 +4,26 @@ import os
 from celery import Celery
 from celery.schedules import crontab
 from dotenv import load_dotenv
+import logging
 
-# Load .env file for 'dev' environment.
-ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev')
-if ENVIRONMENT == 'dev':
-    dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+# --- Environment Loading Logic ---
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
+logging.info(f"[CeleryApp] Initializing configuration for ENVIRONMENT='{ENVIRONMENT}'")
+
+server_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+if ENVIRONMENT == 'dev-local':
+    dotenv_path = os.path.join(server_root, '.env')
+    logging.info(f"[CeleryApp] Loading .env file for 'dev-local' mode from: {dotenv_path}")
     if os.path.exists(dotenv_path):
         load_dotenv(dotenv_path=dotenv_path)
+elif ENVIRONMENT == 'selfhost':
+    dotenv_path = os.path.join(server_root, '.env.selfhost')
+    logging.info(f"[CeleryApp] Loading .env file for 'selfhost' mode from: {dotenv_path}")
+    load_dotenv(dotenv_path=dotenv_path)
+else:
+    logging.info(f"[CeleryApp] Skipping dotenv loading for '{ENVIRONMENT}' mode.")
+
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL')
 CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND')
 

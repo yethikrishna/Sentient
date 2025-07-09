@@ -11,27 +11,143 @@ import {
 	IconBrandGoogleDrive,
 	IconBrandSlack,
 	IconBrandNotion,
+	IconUserCircle,
+	IconDeviceLaptop,
+	IconWorld,
+	IconPalette,
 	IconPlugConnected,
 	IconPlugOff,
 	IconPlus,
 	IconCloud,
 	IconChartPie,
 	IconBrain,
+	IconUser,
 	IconBrandGithub,
 	IconNews,
 	IconFileText,
+	IconClock,
+	IconMapPinFilled,
+	IconBriefcase,
+	IconHeart,
+	IconMoodHappy,
+	IconListCheck,
 	IconPresentation,
 	IconTable,
 	IconMapPin,
 	IconShoppingCart,
 	IconChevronDown,
+	IconChevronUp,
 	IconX,
 	IconBrandWhatsapp
 } from "@tabler/icons-react"
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Tooltip } from "react-tooltip"
-import React from "react"
-import { useSmoothScroll } from "@hooks/useSmoothScroll"
+import { cn } from "@utils/cn"
+
+const questionSections = {
+	essentials: {
+		title: "The Essentials",
+		icon: <IconDeviceLaptop />
+	},
+	context: {
+		title: "About You",
+		icon: <IconWorld />
+	},
+	personality: {
+		title: "AI Personality",
+		icon: <IconPalette />
+	}
+}
+
+const questions = [
+	{
+		id: "user-name",
+		question: "What should I call you?",
+		type: "text-input",
+		required: true,
+		placeholder: "e.g., Alex",
+		section: "essentials",
+		icon: <IconUser />
+	},
+	{
+		id: "timezone",
+		question: "What's your timezone?",
+		type: "select",
+		required: true,
+		options: [
+			{ value: "", label: "Select your timezone...", disabled: true },
+			{ value: "America/New_York", label: "Eastern Time (US & Canada)" },
+			{ value: "America/Chicago", label: "Central Time (US & Canada)" },
+			{ value: "America/Denver", label: "Mountain Time (US & Canada)" },
+			{
+				value: "America/Los_Angeles",
+				label: "Pacific Time (US & Canada)"
+			},
+			{ value: "Europe/London", label: "London, Dublin (GMT/BST)" },
+			{ value: "Europe/Berlin", label: "Berlin, Paris (CET)" },
+			{ value: "Asia/Kolkata", label: "India (IST)" },
+			{ value: "Asia/Singapore", label: "Singapore (SGT)" },
+			{ value: "UTC", label: "Coordinated Universal Time (UTC)" }
+		],
+		section: "essentials",
+		icon: <IconClock />
+	},
+	{
+		id: "location",
+		question: "Where are you located?",
+		type: "location",
+		section: "context",
+		icon: <IconMapPin />
+	},
+	{
+		id: "professional-context",
+		question: "What's your professional world like?",
+		type: "textarea",
+		placeholder:
+			"e.g., I'm a software developer at a startup, aiming to become a team lead...",
+		section: "context",
+		icon: <IconBriefcase />
+	},
+	{
+		id: "personal-context",
+		question: "What about your personal life and hobbies?",
+		type: "textarea",
+		placeholder:
+			"e.g., I enjoy hiking on weekends, I'm learning to play the guitar...",
+		section: "context",
+		icon: <IconHeart />
+	},
+	{
+		id: "communication-style",
+		question: "How would you like me to communicate with you?",
+		type: "single-choice",
+		required: true,
+		options: [
+			"Casual & Friendly",
+			"Professional & Formal",
+			"Concise & To-the-point",
+			"Enthusiastic & Witty"
+		],
+		section: "personality",
+		icon: <IconMoodHappy />
+	},
+	{
+		id: "core-priorities",
+		question: "What are your top priorities? (Select up to 3)",
+		type: "multi-choice",
+		limit: 3,
+		options: [
+			"Career Growth",
+			"Health & Wellness",
+			"Family & Relationships",
+			"Learning & Personal Growth",
+			"Financial Stability",
+			"Hobbies & Leisure"
+		],
+		section: "personality",
+		icon: <IconListCheck />
+	}
+]
 
 const integrationIcons = {
 	gmail: IconMail,
@@ -439,15 +555,285 @@ const PrivacySettings = () => {
 	)
 }
 
-const Settings = () => {
+const ProfileSettings = ({ initialData, onSave, isSaving }) => {
+	const [formData, setFormData] = useState(initialData || {})
+	const [openSections, setOpenSections] = useState({
+		essentials: true,
+		context: true,
+		personality: true
+	})
+
+	useEffect(() => {
+		setFormData(initialData || {})
+	}, [initialData])
+
+	const handleAnswer = (questionId, answer) => {
+		setFormData((prev) => ({ ...prev, [questionId]: answer }))
+	}
+
+	const handleMultiChoice = (questionId, option) => {
+		const currentAnswers = formData[questionId] || []
+		const limit = questions.find((q) => q.id === questionId)?.limit || 1
+		const newAnswers = currentAnswers.includes(option)
+			? currentAnswers.filter((item) => item !== option)
+			: currentAnswers.length < limit
+				? [...currentAnswers, option]
+				: currentAnswers
+		setFormData((prev) => ({ ...prev, [questionId]: newAnswers }))
+	}
+
+	return (
+		<section>
+			<div className="flex justify-between items-center">
+				<h2 className="text-xl font-semibold text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2 flex-grow">
+					About You
+				</h2>
+				<button
+					onClick={() => onSave(formData)}
+					disabled={isSaving}
+					className="ml-4 py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors flex items-center"
+				>
+					{isSaving ? (
+						<IconLoader className="w-5 h-5 animate-spin" />
+					) : (
+						"Save Profile"
+					)}
+				</button>
+			</div>
+			<p className="text-gray-400 text-sm mt-2 mb-6">
+				This information helps me personalize my responses and actions
+				for you.
+			</p>
+
+			<div className="space-y-8">
+				{Object.entries(questionSections).map(
+					([key, { title, icon }]) => (
+						<div key={key}>
+							<button
+								onClick={() =>
+									setOpenSections((p) => ({
+										...p,
+										[key]: !p[key]
+									}))
+								}
+								className="w-full flex justify-between items-center py-2 text-left"
+							>
+								<h3 className="text-lg font-semibold text-gray-300 flex items-center gap-3">
+									{icon}
+									{title}
+								</h3>
+								<IconChevronDown
+									className={cn(
+										"transition-transform duration-200",
+										openSections[key] && "rotate-180"
+									)}
+								/>
+							</button>
+							{openSections[key] && (
+								<div className="space-y-6 mt-4 pl-8 border-l-2 border-[var(--color-primary-surface-elevated)]">
+									{questions
+										.filter((q) => q.section === key)
+										.map((q) => (
+											<div key={q.id}>
+												<label className="block text-sm font-medium text-gray-200 mb-2">
+													{q.question}
+												</label>
+												{(() => {
+													switch (q.type) {
+														case "text-input":
+															return (
+																<input
+																	type="text"
+																	value={
+																		formData[
+																			q.id
+																		] || ""
+																	}
+																	onChange={(
+																		e
+																	) =>
+																		handleAnswer(
+																			q.id,
+																			e
+																				.target
+																				.value
+																		)
+																	}
+																	className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+																	placeholder={
+																		q.placeholder
+																	}
+																/>
+															)
+														case "textarea":
+															return (
+																<textarea
+																	value={
+																		formData[
+																			q.id
+																		] || ""
+																	}
+																	onChange={(
+																		e
+																	) =>
+																		handleAnswer(
+																			q.id,
+																			e
+																				.target
+																				.value
+																		)
+																	}
+																	rows={3}
+																	className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+																	placeholder={
+																		q.placeholder
+																	}
+																/>
+															)
+														case "select":
+															return (
+																<select
+																	value={
+																		formData[
+																			q.id
+																		] || ""
+																	}
+																	onChange={(
+																		e
+																	) =>
+																		handleAnswer(
+																			q.id,
+																			e
+																				.target
+																				.value
+																		)
+																	}
+																	className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+																>
+																	{q.options.map(
+																		(
+																			opt
+																		) => (
+																			<option
+																				key={
+																					opt.value
+																				}
+																				value={
+																					opt.value
+																				}
+																			>
+																				{
+																					opt.label
+																				}
+																			</option>
+																		)
+																	)}
+																</select>
+															)
+														case "single-choice":
+														case "multi-choice":
+															return (
+																<div className="flex flex-wrap gap-2">
+																	{q.options.map(
+																		(
+																			opt
+																		) => (
+																			<button
+																				key={
+																					opt
+																				}
+																				onClick={() =>
+																					q.type ===
+																					"single-choice"
+																						? handleAnswer(
+																								q.id,
+																								opt
+																							)
+																						: handleMultiChoice(
+																								q.id,
+																								opt
+																							)
+																				}
+																				className={cn(
+																					"px-3 py-1.5 rounded-full text-sm font-medium border-2 transition-colors",
+																					(
+																						Array.isArray(
+																							formData[
+																								q
+																									.id
+																							]
+																						)
+																							? formData[
+																									q
+																										.id
+																								].includes(
+																									opt
+																								)
+																							: formData[
+																									q
+																										.id
+																								] ===
+																								opt
+																					)
+																						? "bg-[var(--color-accent-blue)] border-[var(--color-accent-blue)] text-white"
+																						: "bg-transparent border-[var(--color-primary-surface-elevated)] text-gray-300 hover:border-[var(--color-accent-blue)]"
+																				)}
+																			>
+																				{
+																					opt
+																				}
+																			</button>
+																		)
+																	)}
+																</div>
+															)
+														case "location": // Simplified for now
+															return (
+																<input
+																	type="text"
+																	value={
+																		formData[
+																			q.id
+																		] || ""
+																	}
+																	onChange={(
+																		e
+																	) =>
+																		handleAnswer(
+																			q.id,
+																			e
+																				.target
+																				.value
+																		)
+																	}
+																	className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+																	placeholder="City, Country"
+																/>
+															)
+														default:
+															return null
+													}
+												})()}
+											</div>
+										))}
+								</div>
+							)}
+						</div>
+					)
+				)}
+			</div>
+		</section>
+	)
+}
+
+const ProfilePage = () => {
 	const [userIntegrations, setUserIntegrations] = useState([])
 	const [defaultTools, setDefaultTools] = useState([])
 	const [loadingIntegrations, setLoadingIntegrations] = useState(true)
 	const [activeManualIntegration, setActiveManualIntegration] = useState(null)
 	const [processingIntegration, setProcessingIntegration] = useState(null)
-	const scrollRef = useRef(null)
-
-	useSmoothScroll(scrollRef)
+	const [profileData, setProfileData] = useState(null)
+	const [isSavingProfile, setIsSavingProfile] = useState(false)
 
 	// --- CORRECTED: Specific list of Google services ---
 	const googleServices = [
@@ -594,19 +980,60 @@ const Settings = () => {
 		}
 	}
 
-	const fetchData = useCallback(async () => {
-		console.log("Fetching user data...")
+	const handleSaveProfile = async (newOnboardingData) => {
+		setIsSavingProfile(true)
 		try {
-			const response = await fetch("/api/user/data")
+			const payload = {
+				onboardingAnswers: newOnboardingData,
+				personalInfo: {
+					name: newOnboardingData["user-name"],
+					location: newOnboardingData["location"],
+					timezone: newOnboardingData["timezone"]
+				},
+				preferences: {
+					communicationStyle:
+						newOnboardingData["communication-style"],
+					corePriorities: newOnboardingData["core-priorities"]
+				}
+			}
+
+			const response = await fetch("/api/settings/profile", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(payload)
+			})
+
+			if (!response.ok) {
+				const errorData = await response.json()
+				throw new Error(errorData.error || "Failed to save profile")
+			}
+			toast.success("Profile updated successfully!")
+			fetchData() // Refresh data to show changes
+		} catch (error) {
+			toast.error(`Error saving profile: ${error.message}`)
+		} finally {
+			setIsSavingProfile(false)
+		}
+	}
+
+	const fetchData = useCallback(async () => {
+		try {
+			const [response, profileResponse] = await Promise.all([
+				fetch("/api/user/data"),
+				fetch("/api/user/profile")
+			])
 			if (!response.ok) {
 				const errorData = await response.json()
 				throw new Error(
 					errorData.message || "Failed to fetch user data"
 				)
 			}
+			if (!profileResponse.ok)
+				throw new Error("Failed to fetch user profile")
 			const result = await response.json()
+			const profile = await profileResponse.json()
 			if (result.data) {
-				console.log("User data fetched successfully.")
+				setProfileData({ ...profile, ...result.data })
 			}
 		} catch (error) {
 			toast.error(`Failed to fetch user data: ${error.message}`)
@@ -630,20 +1057,36 @@ const Settings = () => {
 		}
 	}, [fetchData, fetchIntegrations])
 
+	const ProfileHeader = () => (
+		<div className="flex items-center gap-6 mb-10">
+			<img
+				src={profileData?.picture || "/images/half-logo-dark.svg"}
+				alt="Profile"
+				className="w-24 h-24 rounded-full border-4 border-[var(--color-primary-surface-elevated)] shadow-lg"
+			/>
+			<div>
+				<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)]">
+					{profileData?.personalInfo?.name || "Your Profile"}
+				</h1>
+				<p className="text-[var(--color-text-secondary)] mt-1">
+					Manage your settings and how Sentient interacts with you.
+				</p>
+			</div>
+		</div>
+	)
+
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
 			<Tooltip id="settings-tooltip" />
 			<div className="flex-1 flex flex-col overflow-hidden h-screen">
-				<header className="flex items-center justify-between p-4 md:px-8 md:py-6 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)]">
-					<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)] flex items-center gap-3">
-						Settings
-					</h1>
-				</header>
-				<main
-					ref={scrollRef}
-					className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 custom-scrollbar"
-				>
+				<main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 custom-scrollbar">
 					<div className="w-full max-w-5xl mx-auto space-y-10">
+						<ProfileHeader />
+						<ProfileSettings
+							initialData={profileData?.onboardingAnswers}
+							onSave={handleSaveProfile}
+							isSaving={isSavingProfile}
+						/>
 						<WhatsAppSettings />
 						<PrivacySettings />
 						<section>
@@ -832,4 +1275,4 @@ const Settings = () => {
 	)
 }
 
-export default Settings
+export default ProfilePage

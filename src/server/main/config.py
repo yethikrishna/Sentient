@@ -1,21 +1,41 @@
 import os
 from dotenv import load_dotenv
-
 import datetime
+import logging
 
-# Load .env file for 'dev' environment. For 'stag' or 'prod', env vars are expected to be set by the platform.
-ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev')
-if ENVIRONMENT == 'dev':
-    dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+
+# --- Environment Loading Logic ---
+# This is the primary determinant of the runtime environment.
+# It should be set in the runtime environment (e.g., Docker `environment` or shell `export`).
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
+logging.info(f"[{datetime.datetime.now()}] [Config] Initializing configuration for ENVIRONMENT='{ENVIRONMENT}'")
+
+server_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+if ENVIRONMENT == 'dev-local':
+    # Local development without Docker. Uses the standard .env file in src/server.
+    dotenv_path = os.path.join(server_root, '.env')
+    logging.info(f"[{datetime.datetime.now()}] [Config] Loading .env file for 'dev-local' mode from: {dotenv_path}")
     if os.path.exists(dotenv_path):
         load_dotenv(dotenv_path=dotenv_path)
+elif ENVIRONMENT == 'selfhost':
+    # Self-hosting with Docker. docker-compose injects variables from src/.env for substitution.
+    # python-dotenv loads .env.selfhost to get the rest of the config.
+    dotenv_path = os.path.join(server_root, '.env.selfhost')
+    logging.info(f"[{datetime.datetime.now()}] [Config] Loading .env file for 'selfhost' mode from: {dotenv_path}")
+    load_dotenv(dotenv_path=dotenv_path)
+else:
+    # For 'dev-cloud', 'stag', 'prod', variables are loaded by start.sh or the cloud environment.
+    logging.info(f"[{datetime.datetime.now()}] [Config] Skipping python-dotenv loading for '{ENVIRONMENT}' mode. Expecting variables from shell environment.")
 
 APP_SERVER_PORT = int(os.getenv("APP_SERVER_PORT", "5000"))
 
 # Auth0 Configuration
 AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN")
 AUTH0_AUDIENCE = os.getenv("AUTH0_AUDIENCE") 
+AUTH0_SCOPE = os.getenv("AUTH0_SCOPE")
 ALGORITHMS = ["RS256"]
+SELF_HOST_AUTH_SECRET = os.getenv("SELF_HOST_AUTH_SECRET")
 # For Management API
 AUTH0_MANAGEMENT_CLIENT_ID = os.getenv("AUTH0_MANAGEMENT_CLIENT_ID")
 AUTH0_MANAGEMENT_CLIENT_SECRET = os.getenv("AUTH0_MANAGEMENT_CLIENT_SECRET")

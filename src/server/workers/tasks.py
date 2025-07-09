@@ -10,6 +10,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Dict, Any, Optional
 
 from workers.config import SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX, SUPPORTED_POLLING_SERVICES
+from main.agents.utils import clean_llm_output
+from json_extractor import JsonExtractor
 from workers.utils.api_client import notify_user
 from workers.celery_app import celery_app
 from workers.planner.llm import get_planner_agent
@@ -131,20 +133,37 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
             agent = get_extractor_agent()
             messages = [{'role': 'user', 'content': llm_input_content}]
             
-            final_response_str = ""
+            final_content_str = ""
             for chunk in agent.run(messages=messages):
                 if isinstance(chunk, list) and chunk:
                     last_message = chunk[-1]
                     if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
-                        content = last_message["content"]
-                        match = re.search(r'```json\n(.*?)\n```', content, re.DOTALL)
-                        final_response_str = match.group(1) if match else content
+                        final_content_str = last_message["content"]
 
-            if not final_response_str:
+            if not final_content_str:
                 logger.error(f"Extractor LLM returned no response for event {event_id}.")
                 return
 
-            extracted_data = json.loads(final_response_str)
+            cleaned_content = clean_llm_output(final_content_str)
+            extracted_data = JsonExtractor.extract_valid_json(cleaned_content)
+            if not extracted_data:
+                logger.error(f"Could not extract valid JSON from LLM response for event {event_id}. Response: '{cleaned_content}'")
+                await db_manager.log_extraction_result(event_id, user_id, 0, 0) # Log to prevent re-processing
+                return
+
+            # FIX: Handle cases where the extractor returns a list containing the dictionary
+            if isinstance(extracted_data, list):
+                if extracted_data and isinstance(extracted_data[0], dict):
+                    extracted_data = extracted_data[0]
+                else:
+                    # The list is empty or doesn't contain a dict, so there's no data.
+                    extracted_data = {} # Set to empty dict to avoid further errors
+
+            if not isinstance(extracted_data, dict):
+                logger.error(f"Extracted JSON is not a dictionary for event {event_id}. Extracted: '{extracted_data}'")
+                await db_manager.log_extraction_result(event_id, user_id, 0, 0)
+                return
+
             memory_items = extracted_data.get("memory_items", [])
             action_items = extracted_data.get("action_items", [])
             short_term_notes = extracted_data.get("short_term_notes", [])
@@ -258,15 +277,17 @@ def process_action_item(user_id: str, action_items: list, source_event_id: str, 
                 if isinstance(chunk, list) and chunk:
                     last_message = chunk[-1]
                     if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
-                        content = last_message["content"]
-                        match = re.search(r'```json\n(.*?)\n```', content, re.DOTALL)
-                        final_response_str = match.group(1) if match else content
-            
+                        final_response_str = last_message["content"]
+
             if not final_response_str:
                 logger.error(f"Planner agent for user {user_id} returned no response.")
                 return
 
-            plan_data = json.loads(final_response_str)
+            cleaned_content = clean_llm_output(final_response_str)
+            plan_data = JsonExtractor.extract_valid_json(cleaned_content)
+            if not plan_data:
+                logger.error(f"Planner for user {user_id} generated invalid JSON: {cleaned_content}")
+                return
             description = plan_data.get("description", "Proactively generated plan")
             plan_steps = plan_data.get("plan", [])
 

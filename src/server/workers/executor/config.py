@@ -3,9 +3,9 @@ import os
 from dotenv import load_dotenv
 
 # Conditionally load .env for local development
-# Load .env file for 'dev' environment.
-ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev')
-if ENVIRONMENT == 'dev':
+# Load .env file for 'dev-local' environment.
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
+if ENVIRONMENT == 'dev-local':
     # The .env file is expected to be in the `src/server` directory
     dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
     if os.path.exists(dotenv_path):

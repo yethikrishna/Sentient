@@ -16,7 +16,8 @@ from fastapi import HTTPException, status, Depends, WebSocket, WebSocketDisconne
 from fastapi.security import OAuth2PasswordBearer
 
 from main.config import (
-    AES_SECRET_KEY, AES_IV,
+    ENVIRONMENT, SELF_HOST_AUTH_SECRET,
+    AES_SECRET_KEY, AES_IV, AUTH0_SCOPE,
     AUTH0_DOMAIN, AUTH0_AUDIENCE, ALGORITHMS,
     AUTH0_MANAGEMENT_CLIENT_ID, AUTH0_MANAGEMENT_CLIENT_SECRET
 )
@@ -44,6 +45,19 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 class AuthHelper:
     async def _validate_token_and_get_payload(self, token: str) -> dict:
+        if ENVIRONMENT == "selfhost":
+            if not SELF_HOST_AUTH_SECRET:
+                print(f"[{datetime.datetime.now()}] [AuthHelper_FATAL_ERROR] selfhost mode is active but SELF_HOST_AUTH_SECRET is not set.")
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Self-host auth secret not configured.")
+            if token == SELF_HOST_AUTH_SECRET:
+                # Return a mock payload with a static user_id and all permissions
+                permissions = AUTH0_SCOPE.split() if AUTH0_SCOPE else []
+                return {
+                    "sub": "self-hosted-user",
+                    "permissions": permissions
+                }
+            else:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid self-host token")
         if not jwks:
             print(f"[{datetime.datetime.now()}] [AuthHelper_VALIDATION_ERROR] JWKS not available.")
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Auth service config error (JWKS).")

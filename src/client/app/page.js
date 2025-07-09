@@ -81,7 +81,7 @@ const Home = () => {
 			console.error("Auth0 authentication error:", authError)
 			toast.error("Authentication failed. Please try again.")
 			// Redirect to login to re-attempt authentication.
-			router.push("/api/auth/login")
+			router.push("/auth/login")
 			return
 		}
 

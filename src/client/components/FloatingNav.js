@@ -21,7 +21,7 @@ export default function FloatingNav({ onChatOpen }) {
 	const router = useRouter()
 	const pathname = usePathname()
 	const [userDetails, setUserDetails] = useState(null)
-	const isSelfHost = process.env.NEXT_PUBLIC_ENVIRONMENT === "SELFHOST"
+	const isSelfHost = process.env.NEXT_PUBLIC_ENVIRONMENT === "selfhost"
 	const [unreadCount, setUnreadCount] = useState(0)
 	const wsRef = useRef(null)
 

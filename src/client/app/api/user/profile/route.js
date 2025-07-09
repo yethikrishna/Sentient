@@ -3,7 +3,7 @@ import { NextResponse } from "next/server"
 import { auth0 } from "@lib/auth0"
 
 export async function GET() {
-	if (process.env.NEXT_PUBLIC_ENVIRONMENT === "SELFHOST") {
+	if (process.env.NEXT_PUBLIC_ENVIRONMENT === "selfhost") {
 		return NextResponse.json({
 			sub: "self-hosted-user",
 			given_name: "User",

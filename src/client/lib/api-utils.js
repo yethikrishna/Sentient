@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth0, getBackendAuthHeader } from "@lib/auth0"
 
-const isSelfHost = process.env.NEXT_PUBLIC_ENVIRONMENT === "SELFHOST"
+const isSelfHost = process.env.NEXT_PUBLIC_ENVIRONMENT === "selfhost"
 
 /**
  * A higher-order function to wrap API route handlers with authentication checks.

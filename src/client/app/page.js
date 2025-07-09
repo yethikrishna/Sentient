@@ -18,7 +18,7 @@ import React from "react"
  */
 const Home = () => {
 	const router = useRouter()
-	const isSelfHost = process.env.NEXT_PUBLIC_ENVIRONMENT === "SELFHOST"
+	const isSelfHost = process.env.NEXT_PUBLIC_ENVIRONMENT === "selfhost"
 	const {
 		user,
 		error: authError,

@@ -4,10 +4,10 @@ import { auth0 } from "@lib/auth0"
 /**
  * API route to securely get a token for authenticating with backend services.
  * - In Auth0 mode, it gets the user's access token from their session.
- * - In SELFHOST mode, it returns the static self-host token.
+ * - In selfhost mode, it returns the static self-host token.
  */
 export async function GET() {
-	if (process.env.NEXT_PUBLIC_ENVIRONMENT === "SELFHOST") {
+	if (process.env.NEXT_PUBLIC_ENVIRONMENT === "selfhost") {
 		const token = process.env.SELF_HOST_AUTH_TOKEN
 		if (!token) {
 			return NextResponse.json(

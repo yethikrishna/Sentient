@@ -3,7 +3,7 @@ import { NextResponse } from "next/server"
 import { withAuth } from "@lib/api-utils"
 
 const appServerUrl =
-	process.env.NEXT_PUBLIC_ENVIRONMENT === "SELFHOST"
+	process.env.NEXT_PUBLIC_ENVIRONMENT === "selfhost"
 		? process.env.INTERNAL_APP_SERVER_URL
 		: process.env.NEXT_PUBLIC_APP_SERVER_URL
 

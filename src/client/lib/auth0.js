@@ -1,6 +1,6 @@
 import { Auth0Client } from "@auth0/nextjs-auth0/server"
 
-const isSelfHost = process.env.NEXT_PUBLIC_ENVIRONMENT === "SELFHOST"
+const isSelfHost = process.env.NEXT_PUBLIC_ENVIRONMENT === "selfhost"
 
 // Initialize the Auth0 client
 export const auth0 = isSelfHost
@@ -26,7 +26,7 @@ export async function getBackendAuthHeader() {
 	if (isSelfHost) {
 		const staticToken = process.env.SELF_HOST_AUTH_TOKEN
 		if (!staticToken) {
-			console.error("SELF_HOST_AUTH_TOKEN is not set for SELFHOST mode.")
+			console.error("SELF_HOST_AUTH_TOKEN is not set for selfhost mode.")
 			return null
 		}
 		return { Authorization: `Bearer ${staticToken}` }

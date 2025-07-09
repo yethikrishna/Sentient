@@ -2,9 +2,10 @@
 import { NextResponse } from "next/server"
 import { withAuth } from "@lib/api-utils"
 
-const appServerUrl = process.env.NEXT_PUBLIC_ENVIRONMENT === 'SELFHOST'
-    ? process.env.INTERNAL_APP_SERVER_URL
-    : process.env.NEXT_PUBLIC_APP_SERVER_URL;
+const appServerUrl =
+	process.env.NEXT_PUBLIC_ENVIRONMENT === "selfhost"
+		? process.env.INTERNAL_APP_SERVER_URL
+		: process.env.NEXT_PUBLIC_APP_SERVER_URL
 
 export const GET = withAuth(async function GET(request, { authHeader }) {
 	try {

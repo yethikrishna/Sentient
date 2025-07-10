@@ -79,7 +79,7 @@ const Home = () => {
 
 		if (authError) {
 			console.error("Auth0 authentication error:", authError)
-			toast.error("Authentication failed. Please try again.")
+			toast.error("Your session has expired. Redirecting to login.")
 			// Redirect to login to re-attempt authentication.
 			router.push("/auth/login")
 			return

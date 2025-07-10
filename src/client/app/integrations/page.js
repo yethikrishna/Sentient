@@ -301,7 +301,13 @@ const PrivacySettings = () => {
 	)
 }
 
-const IntegrationDetailsModal = ({ integration, onClose }) => {
+const IntegrationDetailsModal = ({
+	integration,
+	onClose,
+	onConnect,
+	onDisconnect,
+	isProcessing
+}) => {
 	if (!integration) return null
 
 	const IntegrationIcon = integration.icon || IconSettingsCog
@@ -322,7 +328,7 @@ const IntegrationDetailsModal = ({ integration, onClose }) => {
 				onClick={(e) => e.stopPropagation()}
 				className="bg-gradient-to-br from-[var(--color-primary-surface)] to-[var(--color-primary-background)] p-6 rounded-2xl shadow-xl w-full max-w-2xl border border-[var(--color-primary-surface-elevated)] max-h-[90vh] flex flex-col"
 			>
-				<div className="flex justify-between items-start mb-6">
+				<div className="flex justify-between items-start mb-6 flex-shrink-0">
 					<div className="flex items-center gap-4">
 						<IntegrationIcon className="w-10 h-10 text-[var(--color-accent-blue)]" />
 						<div>
@@ -343,13 +349,45 @@ const IntegrationDetailsModal = ({ integration, onClose }) => {
 						<IconX size={20} />
 					</button>
 				</div>
-				<div className="overflow-y-auto custom-scrollbar pr-2 space-y-6">
-					{showPrivacyFilters ? (
-						<PrivacySettings />
-					) : (
-						<div className="text-center text-gray-400 p-8 bg-[var(--color-primary-surface)]/50 rounded-lg">
-							No privacy filters are available for this tool yet.
+				<div className="overflow-y-auto custom-scrollbar pr-2 space-y-6 flex-grow">
+					<div className="bg-[var(--color-primary-surface)]/50 p-4 rounded-lg border border-[var(--color-primary-surface-elevated)]">
+						<h4 className="text-lg font-semibold text-gray-200 mb-2">
+							Capabilities
+						</h4>
+						<p className="text-gray-400 text-sm">
+							{integration.description}
+						</p>
+					</div>
+
+					{showPrivacyFilters && <PrivacySettings />}
+				</div>
+				<div className="mt-6 pt-4 border-t border-[var(--color-primary-surface-elevated)] flex-shrink-0">
+					{isProcessing ? (
+						<div className="flex justify-center">
+							<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)]" />
 						</div>
+					) : integration.connected ? (
+						<button
+							onClick={(e) => {
+								e.stopPropagation()
+								onDisconnect(integration.name)
+							}}
+							className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-[var(--color-accent-red)]/20 hover:bg-[var(--color-accent-red)]/40 text-[var(--color-accent-red)] text-sm font-medium transition-colors"
+						>
+							<IconPlugOff size={16} />
+							<span>Disconnect</span>
+						</button>
+					) : (
+						<button
+							onClick={(e) => {
+								e.stopPropagation()
+								onConnect(integration)
+							}}
+							className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-[var(--color-accent-blue)]/80 hover:bg-[var(--color-accent-blue)] text-white text-sm font-medium transition-colors"
+						>
+							<IconPlugConnected size={16} />
+							<span>Connect</span>
+						</button>
 					)}
 				</div>
 			</motion.div>
@@ -665,6 +703,11 @@ const IntegrationsPage = () => {
 					<IntegrationDetailsModal
 						integration={selectedIntegration}
 						onClose={() => setSelectedIntegration(null)}
+						onConnect={handleConnect}
+						onDisconnect={handleDisconnect}
+						isProcessing={
+							processingIntegration === selectedIntegration?.name
+						}
 					/>
 				)}
 			</AnimatePresence>

@@ -555,6 +555,7 @@ const OnboardingForm = () => {
 																					disabled={
 																						option.disabled
 																					}
+																					className="text-black bg-white"
 																				>
 																					{
 																						option.label

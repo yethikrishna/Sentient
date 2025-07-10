@@ -185,10 +185,6 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
                 else:
                     process_action_item.delay(user_id, action_items, event_id, event_data)
 
-            for note in short_term_notes:
-                if isinstance(note, str) and note.strip():
-                    add_journal_entry_task.delay(user_id, note)
-
             await db_manager.log_extraction_result(event_id, user_id, len(memory_items), len(action_items))
         
         except Exception as e:
@@ -197,39 +193,6 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
             await db_manager.close()
 
     run_async(async_extract())
-
-@celery_app.task(name="add_journal_entry_task")
-def add_journal_entry_task(user_id: str, content: str, date: Optional[str] = None):
-    """
-    Celery task to add a new entry to the user's journal via the Journal MCP.
-    """
-    logger.info(f"Journal task running for user {user_id}: '{content[:50]}...'")
-
-    async def async_add_entry():
-        mcp_url = os.getenv("JOURNAL_MCP_SERVER_URL", "http://localhost:9018/sse")
-        payload = {
-            "tool": "add_journal_entry",
-            "parameters": {
-                "content": content,
-                "date": date # Will be None if not provided, tool handles default
-            }
-        }
-        headers = {"Content-Type": "application/json", "X-User-ID": user_id}
-
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(mcp_url, json=payload, headers=headers, timeout=20)
-                response.raise_for_status()
-                logger.info(f"Successfully called journal MCP for user {user_id}. Response: {response.text}")
-                return {"status": "success", "response": response.text}
-        except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error calling journal MCP for user {user_id}: {e.response.status_code} - {e.response.text}")
-            return {"status": "failure", "reason": "HTTP error"}
-        except Exception as e:
-            logger.error(f"Error in journal task for user {user_id}: {e}", exc_info=True)
-            return {"status": "failure", "reason": str(e)}
-
-    return run_async(async_add_entry())
 
 # --- Planner Task ---
 @celery_app.task(name="process_action_item")

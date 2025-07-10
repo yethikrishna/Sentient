@@ -11,7 +11,8 @@ import {
 	IconLogout,
 	IconUser, // Keep for fallback
 	IconUserCircle,
-	IconMessage
+	IconMessage,
+	IconPlugConnected
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import { motion } from "framer-motion"
@@ -172,6 +173,13 @@ export default function FloatingNav({ onChatOpen }) {
 			)
 		},
 		{
+			title: "Integrations",
+			href: "/integrations",
+			icon: (
+				<IconPlugConnected className="h-full w-full text-neutral-500 dark:text-neutral-300" />
+			)
+		},
+		{
 			title: "Notifications",
 			href: "/notifications",
 			icon: <NotificationIcon />,
@@ -181,10 +189,10 @@ export default function FloatingNav({ onChatOpen }) {
 			}
 		},
 		{
-			title: "Profile",
+			title: "Settings",
 			href: "/settings",
 			icon: (
-				<IconUserCircle className="h-full w-full text-neutral-500 dark:text-neutral-300" />
+				<IconAdjustments className="h-full w-full text-neutral-500 dark:text-neutral-300" />
 			)
 		}
 	]
@@ -204,7 +212,7 @@ export default function FloatingNav({ onChatOpen }) {
 	if (userDetails && !isSelfHost) {
 		allLinks.push({
 			title: "Logout",
-			href: "/api/auth/logout",
+			href: "/auth/logout",
 			icon: (
 				<IconLogout className="h-full w-full text-neutral-500 dark:text-neutral-300" />
 			)
@@ -215,5 +223,8 @@ export default function FloatingNav({ onChatOpen }) {
 		return null
 	}
 
-	return <FloatingDock items={allLinks} />
+	// Filter out the "Profile" link and replace it with "Settings"
+	const finalLinks = allLinks.filter((link) => link.title !== "Profile")
+
+	return <FloatingDock items={finalLinks} />
 }

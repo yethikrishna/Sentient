@@ -39,6 +39,8 @@ services:
       - sentient_network
     env_file:
       - ./.env
+    ports:
+    - "8000:3000"
     # No ports are exposed to the host. Communication is internal and secure.
 
   # 3. WAHA (WhatsApp HTTP API) Service

@@ -105,7 +105,10 @@ const Tasks = () => {
 	const [isCreatePlanOpen, setCreatePlanOpen] = useState(false)
 	const [createStep, setCreateStep] = useState("generate") // 'generate' or 'review'
 	const [openSections, setOpenSections] = useState({
-		active: true,
+		// By default, only show sections that are likely to need action
+		// The user can expand the others if needed.
+		// This improves the initial view by reducing clutter.
+		active: false, // Recurring tasks are less frequently managed
 		approval_pending: true,
 		processing: true,
 		completed: true
@@ -231,6 +234,24 @@ const Tasks = () => {
 			toast.error(`Plan Generation Failed: ${error.message}`)
 		} finally {
 			setIsGeneratingPlan(false)
+		}
+	}
+
+	const handleUpdateTaskSchedule = async (taskId, schedule) => {
+		if (!taskId) return false
+		try {
+			const response = await fetch("/api/tasks/update", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ taskId, schedule })
+			})
+			if (!response.ok) throw new Error((await response.json()).error)
+			toast.success("Task schedule updated!")
+			await fetchTasksData() // Refresh data
+			return true // Indicate success
+		} catch (error) {
+			toast.error(`Failed to update schedule: ${error.message}`)
+			return false
 		}
 	}
 
@@ -492,6 +513,7 @@ const Tasks = () => {
 									onViewDetails={setViewingTask}
 									onEditTask={handleEditTask}
 									onDeleteTask={handleDeleteTask}
+									onUpdateSchedule={handleUpdateTaskSchedule}
 								/>
 								<CollapsibleSection
 									title="Pending Approval"
@@ -504,6 +526,7 @@ const Tasks = () => {
 									onEditTask={handleEditTask}
 									onDeleteTask={handleDeleteTask}
 									onApproveTask={handleApproveTask}
+									onUpdateSchedule={handleUpdateTaskSchedule}
 									integrations={integrations}
 								/>
 								<CollapsibleSection
@@ -650,6 +673,7 @@ const Tasks = () => {
 					onClose={() => setEditingTask(null)}
 					onSave={handleUpdateTask}
 					setTask={setEditingTask}
+					onUpdateSchedule={handleUpdateTaskSchedule}
 					allTools={allTools}
 					integrations={integrations}
 				/>
@@ -812,6 +836,7 @@ const EditTaskModal = ({
 	onClose,
 	onSave,
 	setTask,
+	onUpdateSchedule,
 	allTools,
 	integrations
 }) => {
@@ -848,9 +873,10 @@ const EditTaskModal = ({
 						plan={task.plan}
 						setPlan={(val) => setTask({ ...task, plan: val })}
 						schedule={safeSchedule}
-						setSchedule={(val) =>
+						setSchedule={(val) => {
+							onUpdateSchedule(task.task_id, val)
 							setTask({ ...task, schedule: val })
-						}
+						}}
 						allTools={allTools}
 						integrations={integrations}
 					/>

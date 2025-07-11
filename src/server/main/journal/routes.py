@@ -57,8 +57,8 @@ async def create_journal_block(
         "created_by": "user",
         "created_at": now,
         "updated_at": now,
-        "linked_task_id": None,
-        "task_status": None,
+        "linked_task_id": request.linked_task_id,
+        "task_status": request.task_status,
         "task_progress": [],
         "task_result": None
     }

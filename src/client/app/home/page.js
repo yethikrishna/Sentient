@@ -144,11 +144,20 @@ const priorityMap = {
 	default: { label: "Unknown", color: "text-[var(--color-text-muted)]" }
 }
 
-const TaskCard = ({ task, integrations, onApproveTask, onDeleteTask }) => {
+const TaskCard = ({
+	task,
+	integrations,
+	onApproveTask,
+	onDeleteTask,
+	onEditTask: onEditTaskProp,
+	onViewDetails: onViewDetailsProp
+}) => {
 	const router = useRouter()
 	const statusInfo = statusMap[task.status] || statusMap.default
 	const priorityInfo = priorityMap[task.priority] || priorityMap.default
 
+	const onEditTask = () => onEditTaskProp(task)
+	const onViewDetails = () => onViewDetailsProp(task)
 	// Check for missing tools
 	let missingTools = []
 	if (task.status === "approval_pending" && integrations) {
@@ -165,9 +174,6 @@ const TaskCard = ({ task, integrations, onApproveTask, onDeleteTask }) => {
 		})
 	}
 
-	const onEditTask = () => router.push("/tasks")
-	const onViewDetails = () => router.push("/tasks")
-
 	return (
 		<motion.div
 			key={task.task_id}
@@ -182,7 +188,7 @@ const TaskCard = ({ task, integrations, onApproveTask, onDeleteTask }) => {
 			onClick={(e) => {
 				if (e.target.closest("button")) return
 				if (missingTools.length > 0) return
-				onViewDetails(task)
+				onViewDetails()
 			}}
 		>
 			<div className="flex flex-col items-center w-16 text-center md:w-20 flex-shrink-0">
@@ -239,7 +245,7 @@ const TaskCard = ({ task, integrations, onApproveTask, onDeleteTask }) => {
 					<IconCircleCheck className="h-5 w-5" />
 				</button>
 				<button
-					onClick={onEditTask}
+					onClick={() => onEditTask(task)}
 					className="p-2 rounded-md text-[var(--color-accent-orange)] hover:bg-[var(--color-accent-orange)]/20"
 					data-tooltip-id="home-tooltip"
 					data-tooltip-content="Edit Plan"

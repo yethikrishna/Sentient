@@ -121,9 +121,22 @@ async def update_task(
         update_data["priority"] = request.priority
     if request.plan is not None:
         update_data["plan"] = [step.dict() for step in request.plan]
+    if request.enabled is not None:
+        update_data["enabled"] = request.enabled
+
     if request.schedule is not None:
         update_data["schedule"] = request.schedule
-        # Handle "run_at" for scheduled-once tasks during update
+        # When a schedule is updated, we need to recalculate the next run time
+        if request.schedule.get("type") == "recurring":
+            # If it's recurring, calculate the next run time
+            update_data["next_execution_at"] = calculate_next_run(request.schedule)
+            # When a schedule is set, ensure the task is active and enabled
+            update_data["status"] = "active"
+            # Let the `enabled` flag from the request take precedence if provided,
+            # otherwise default to True when setting a new recurring schedule.
+            if request.enabled is None:
+                update_data["enabled"] = True
+
         if request.schedule.get("type") == "once" and request.schedule.get("run_at"):
              try:
                 update_data["next_execution_at"] = datetime.datetime.fromisoformat(request.schedule["run_at"]).replace(tzinfo=datetime.timezone.utc)

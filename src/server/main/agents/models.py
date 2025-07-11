@@ -20,6 +20,7 @@ class UpdateTaskRequest(BaseModel):
     priority: Optional[int] = None
     plan: Optional[List[TaskStep]] = None
     schedule: Optional[Dict[str, Any]] = None
+    enabled: Optional[bool] = None
 
 class TaskIdRequest(BaseModel):
     taskId: str

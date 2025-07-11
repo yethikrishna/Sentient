@@ -19,7 +19,9 @@ import {
 	IconCopy,
 	IconClock,
 	IconGripVertical,
-	IconPlugConnected
+	IconPlayerPause,
+	IconPlugConnected,
+	IconSearch
 } from "@tabler/icons-react" // Note: Many more icons will be needed for tasks view
 import {
 	IconPlayerPlay,
@@ -29,7 +31,7 @@ import {
 	IconAlertTriangle,
 	IconRefresh,
 	IconClock as IconClockStatus
-} from "@tabler/icons-react"
+} from "@tabler/icons-react" // eslint-disable-line
 import { Tooltip } from "react-tooltip"
 import { AnimatePresence, motion } from "framer-motion"
 import {
@@ -161,10 +163,10 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 						key={value}
 						onClick={() => handleTypeChange(value)}
 						className={cn(
-							"px-4 py-1.5 rounded-full text-sm",
 							(schedule.type || "once") === value
 								? "bg-[var(--color-accent-blue)] text-white"
-								: "bg-neutral-600 hover:bg-neutral-500"
+								: "bg-neutral-600 hover:bg-neutral-500",
+							"px-4 py-1.5 rounded-full text-sm"
 						)}
 					>
 						{label}
@@ -251,10 +253,10 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 										key={day}
 										onClick={() => handleDayToggle(day)}
 										className={cn(
-											"px-3 py-1.5 rounded-full text-xs font-semibold",
 											(schedule.days || []).includes(day)
 												? "bg-[var(--color-accent-blue)] text-white"
-												: "bg-neutral-600 hover:bg-neutral-500"
+												: "bg-neutral-600 hover:bg-neutral-500",
+											"px-3 py-1.5 rounded-full text-xs font-semibold"
 										)}
 									>
 										{day.substring(0, 3)}
@@ -268,9 +270,107 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 		</div>
 	)
 }
+
+const WorkflowCard = ({ task, onToggleEnable, onDeleteTask }) => {
+	const schedule = task.schedule || {}
+	let scheduleText = "Recurring"
+	if (schedule.frequency === "daily") {
+		scheduleText = `Daily at ${schedule.time || "N/A"}`
+	} else if (schedule.frequency === "weekly") {
+		scheduleText = `Weekly on ${schedule.days?.join(", ") || "N/A"} at ${
+			schedule.time || "N/A"
+		}`
+	}
+
+	return (
+		<div className="group flex flex-col gap-2 bg-gradient-to-br from-[var(--color-primary-background)] to-[var(--color-primary-surface)]/30 p-2.5 rounded-lg shadow-sm border border-transparent hover:border-blue-500/30">
+			<p
+				className="font-medium text-white text-sm truncate"
+				title={task.description}
+			>
+				{task.description}
+			</p>
+			<div className="flex items-center justify-between">
+				<p className="text-xs text-neutral-400 flex items-center gap-1">
+					<IconRefresh size={12} />
+					{scheduleText}
+				</p>
+				<div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+					<button
+						onClick={() =>
+							onToggleEnable(task.task_id, task.enabled)
+						}
+						className={`p-1.5 rounded-md ${task.enabled ? "text-orange-400" : "text-green-400"} hover:bg-neutral-700`}
+						data-tooltip-id="journal-tooltip"
+						data-tooltip-content={task.enabled ? "Pause" : "Resume"}
+					>
+						{task.enabled ? (
+							<IconPlayerPause size={16} />
+						) : (
+							<IconPlayerPlay size={16} />
+						)}
+					</button>
+					<button
+						onClick={() => onDeleteTask(task.task_id)}
+						className="p-1.5 rounded-md text-red-400 hover:bg-red-400/20"
+						data-tooltip-id="journal-tooltip"
+						data-tooltip-content="Delete"
+					>
+						<IconTrash size={16} />
+					</button>
+				</div>
+			</div>
+		</div>
+	)
+}
+
+const TaskSearchResultCard = ({ task, onSelect }) => {
+	const statusInfo = taskStatusColors[task.status] || taskStatusColors.default
+
+	return (
+		<motion.div
+			layout
+			initial={{ opacity: 0, x: -10 }}
+			animate={{ opacity: 1, x: 0 }}
+			whileHover={{
+				y: -3,
+				scale: 1.02,
+				boxShadow:
+					"0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)"
+			}}
+			onClick={() => onSelect(task)}
+			className={cn(
+				"bg-gradient-to-br from-[var(--color-primary-background)] to-[var(--color-primary-surface)]/30 p-3 rounded-lg border cursor-pointer backdrop-blur-sm shadow-sm group",
+				statusInfo
+					? `border-l-4 ${statusInfo.border}`
+					: "border-transparent"
+			)}
+		>
+			<div className="flex items-center gap-3">
+				<div className="flex-shrink-0">
+					<statusInfo.icon
+						className={cn("h-5 w-5", statusInfo.color)}
+					/>
+				</div>
+				<div className="flex-grow min-w-0">
+					<p
+						className="font-medium text-white text-sm truncate"
+						title={task.description}
+					>
+						{task.description}
+					</p>
+					<p className="text-xs text-gray-400 capitalize">
+						Task: {task.status.replace("_", " ")}
+					</p>
+				</div>
+			</div>
+		</motion.div>
+	)
+}
 // Main Journal Page Component
 const OrganizerPage = () => {
 	const [viewDate, setViewDate] = useState(new Date())
+	const [searchQuery, setSearchQuery] = useState("")
 	const [addingToDay, setAddingToDay] = useState(null)
 	const [activeBlock, setActiveBlock] = useState({
 		block: null,
@@ -282,7 +382,7 @@ const OrganizerPage = () => {
 	const [isPanelOpen, setPanelOpen] = useState(true)
 	const [activeTab, setActiveTab] = useState("calendar")
 	const [allJournalEntries, setAllJournalEntries] = useState([])
-	const [allTasks, setAllTasks] = useState([])
+	const [allTasks, setAllTasks] = useState([]) // Combined loading state
 	const [isLoading, setIsLoading] = useState(true) // Combined loading state
 
 	const [integrations, setIntegrations] = useState([]) // For checking connected tools
@@ -291,7 +391,7 @@ const OrganizerPage = () => {
 	useSmoothScroll(mainContentRef)
 
 	// MODIFIED: Fetch data for a 3-day view centered on viewDate
-	const currentViewStart = useMemo(() => subDays(viewDate, 1), [viewDate])
+	const currentViewStart = useMemo(() => subDays(viewDate, 1), [viewDate]) // eslint-disable-line
 
 	// Fetch journal entries and tasks for the current week
 	const fetchDataForView = useCallback(async (centerDate) => {
@@ -337,11 +437,7 @@ const OrganizerPage = () => {
 	}, [])
 
 	useEffect(() => {
-		fetchDataForView(viewDate)
-
-		// Periodically refresh data
-		const intervalId = setInterval(() => fetchDataForView(viewDate), 60000)
-		return () => clearInterval(intervalId)
+		fetchDataForView(viewDate) // Fetch data when the view date changes
 	}, [viewDate, fetchDataForView])
 
 	const changeWeek = (amount) => {
@@ -366,6 +462,32 @@ const OrganizerPage = () => {
 			return acc
 		}, {})
 	}, [allTasks])
+
+	const searchResults = useMemo(() => {
+		if (!searchQuery) return []
+		const lowerQuery = searchQuery.toLowerCase()
+
+		const journalResults = allJournalEntries
+			.filter((e) => e.content.toLowerCase().includes(lowerQuery))
+			.map((e) => ({ ...e, item_type: "journal" }))
+
+		const taskResults = allTasks
+			.filter((t) => t.description.toLowerCase().includes(lowerQuery))
+			.map((t) => ({ ...t, item_type: "task" }))
+
+		return [...journalResults, ...taskResults].sort((a, b) => {
+			const dateA = a.created_at ? new Date(a.created_at) : 0
+			const dateB = b.created_at ? new Date(b.created_at) : 0
+			if (dateA && dateB) {
+				return dateB - dateA
+			}
+			return 0
+		})
+	}, [searchQuery, allJournalEntries, allTasks])
+
+	const isSearching = useMemo(() => {
+		return searchQuery.length > 0
+	}, [searchQuery])
 
 	const recurringTasksByDate = useMemo(() => {
 		if (!allTasks.length) return {}
@@ -452,6 +574,25 @@ const OrganizerPage = () => {
 		}
 	}
 
+	const handleToggleEnableTask = async (taskId, isEnabled) => {
+		try {
+			const response = await fetch("/api/tasks/update", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ taskId, enabled: !isEnabled })
+			})
+			if (!response.ok) {
+				const errorData = await response.json()
+				throw new Error(
+					errorData.error || "Failed to update workflow status."
+				)
+			}
+			toast.success(`Workflow ${!isEnabled ? "resumed" : "paused"}.`)
+			refreshData()
+		} catch (error) {
+			toast.error(error.message)
+		}
+	}
 	const handleDeleteTask = async (taskId) => {
 		if (
 			!taskId ||
@@ -494,26 +635,99 @@ const OrganizerPage = () => {
 		}
 	}
 
-	const handleReRunTask = async (taskId) => {
+	const handleUpdateTaskSchedule = async (taskId, schedule) => {
+		if (!taskId) return false
+		try {
+			const response = await fetch("/api/tasks/update", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ taskId, schedule })
+			})
+			if (!response.ok) throw new Error((await response.json()).error)
+			toast.success("Task schedule updated!")
+			fetchDataForView(viewDate) // Refresh data
+			return true // Indicate success
+		} catch (error) {
+			toast.error(`Failed to update schedule: ${error.message}`)
+			return false
+		}
+	}
+
+	const handleDuplicateEntry = async (originalBlock) => {
+		if (!originalBlock.linked_task_id) {
+			toast.error("This journal entry is not linked to a task.")
+			return
+		}
 		if (
-			!taskId ||
-			!window.confirm("Create a new copy of this task to run again?")
+			!window.confirm("Create a new copy of this task and journal entry?")
 		)
 			return
 
 		try {
-			const response = await fetch("/api/tasks/rerun", {
+			// 1. Rerun the task to get a new task
+			const rerunResponse = await fetch("/api/tasks/rerun", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ taskId })
+				body: JSON.stringify({
+					taskId: originalBlock.linked_task_id
+				})
 			})
-			if (!response.ok) throw new Error((await response.json()).error)
-			toast.success("Task duplicated for approval.")
+			if (!rerunResponse.ok)
+				throw new Error((await rerunResponse.json()).error)
+			const rerunData = await rerunResponse.json()
+			const newTaskId = rerunData.new_task_id
+
+			// 2. Create a new journal entry linked to the new task
+			const newJournalEntry = {
+				content: originalBlock.content,
+				page_date: format(new Date(), "yyyy-MM-dd"), // Create it for today
+				order: 999, // at the end
+				processWithAI: false, // The task is already created
+				linked_task_id: newTaskId,
+				task_status: "approval_pending" // The new task is pending approval
+			}
+
+			const createJournalResponse = await fetch("/api/journal", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(newJournalEntry)
+			})
+			if (!createJournalResponse.ok)
+				throw new Error("Failed to create new journal entry.")
+
+			toast.success("Task and journal entry duplicated successfully!")
 			refreshData()
 		} catch (error) {
-			toast.error(`Failed to re-run task: ${error.message}`)
+			toast.error(`Failed to duplicate: ${error.message}`)
 		}
 	}
+
+	const allItemsByDate = useMemo(() => {
+		const items = { ...journalEntriesByDate }
+
+		// This is where we project recurring tasks as journal-like entries
+		Object.keys(recurringTasksByDate).forEach((date) => {
+			if (!items[date]) {
+				items[date] = []
+			}
+			const recurringForDay = recurringTasksByDate[date].map((task) => ({
+				block_id: `recurring-${task.task_id}-${date}`, // create a unique key
+				content: task.description,
+				isRecurring: true,
+				linked_task_id: task.task_id,
+				page_date: date,
+				order: -1 // To show them at the top
+			}))
+			items[date] = [...recurringForDay, ...items[date]]
+		})
+
+		// Sort all items within each day
+		Object.keys(items).forEach((date) => {
+			items[date].sort((a, b) => a.order - b.order)
+		})
+
+		return items
+	}, [journalEntriesByDate, recurringTasksByDate])
 
 	return (
 		<div className="flex h-screen bg-gradient-to-br from-[var(--color-primary-background)] via-[var(--color-primary-background)] to-[var(--color-primary-surface)]/20 text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
@@ -524,10 +738,12 @@ const OrganizerPage = () => {
 					onWeekChange={changeWeek} // This will now change by 3 days
 					onDayChange={changeDay}
 					onToday={() => setViewDate(new Date())}
+					searchQuery={searchQuery}
+					setSearchQuery={setSearchQuery}
 				/>
 				<main
 					ref={mainContentRef}
-					className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar"
+					className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar relative"
 				>
 					{isLoading ? (
 						<div className="flex justify-center items-center h-full">
@@ -536,8 +752,7 @@ const OrganizerPage = () => {
 					) : (
 						<WeeklyKanban
 							viewDate={viewDate} // This will be used by DayColumn for visibility on mobile
-							entriesByDate={journalEntriesByDate}
-							recurringTasksByDate={recurringTasksByDate}
+							itemsByDate={allItemsByDate}
 							tasksById={tasksById}
 							addingToDay={addingToDay}
 							setAddingToDay={setAddingToDay}
@@ -548,7 +763,32 @@ const OrganizerPage = () => {
 								setActiveBlock({ block, isEditing: true })
 							}
 							onDeleteEntry={(block) => setDeletingBlock(block)}
-							onDuplicateEntry={handleReRunTask}
+							onDuplicateEntry={handleDuplicateEntry}
+							onDataChange={refreshData}
+						/>
+					)}
+					{isSearching && (
+						<SearchOverlay
+							query={searchQuery}
+							results={searchResults}
+							onClose={() => setSearchQuery("")}
+							onResultClick={(item) => {
+								if (item.item_type === "journal") {
+									setActiveBlock({
+										block: item,
+										isEditing: false
+									})
+								} else {
+									setViewingTask(item)
+								}
+								setSearchQuery("") // Close search on selection
+							}}
+							tasksById={tasksById}
+							onEditEntry={(block) =>
+								setActiveBlock({ block, isEditing: true })
+							}
+							onDeleteEntry={(block) => setDeletingBlock(block)}
+							onDuplicateEntry={handleDuplicateEntry}
 							onDataChange={refreshData}
 						/>
 					)}
@@ -569,6 +809,8 @@ const OrganizerPage = () => {
 				onDeleteTask={handleDeleteTask}
 				onApproveTask={handleApproveTask}
 				onViewTask={(task) => setViewingTask(task)}
+				onToggleEnableTask={handleToggleEnableTask}
+				onUpdateSchedule={handleUpdateTaskSchedule}
 			/>
 			<AnimatePresence>
 				{editingTask && (
@@ -578,6 +820,7 @@ const OrganizerPage = () => {
 						onClose={() => setEditingTask(null)}
 						onSave={handleUpdateTask}
 						setTask={setEditingTask} // This is the 'setEditingTask' state setter
+						onUpdateSchedule={handleUpdateTaskSchedule}
 						allTools={allTools}
 						integrations={integrations}
 					/>
@@ -591,6 +834,7 @@ const OrganizerPage = () => {
 						onClose={() =>
 							setActiveBlock({ block: null, isEditing: false })
 						}
+						onUpdateSchedule={handleUpdateTaskSchedule}
 						onDataChange={refreshData}
 						onDeleteRequest={(block) => setDeletingBlock(block)}
 					/>
@@ -620,9 +864,8 @@ const CalendarHeader = ({
 	onWeekChange,
 	onDayChange,
 	onToday,
-	onCalendarOpen,
-	isAdding,
-	onStartAdd
+	searchQuery,
+	setSearchQuery
 }) => {
 	const viewStart = subDays(viewDate, 1)
 	const viewEnd = addDays(viewDate, 1)
@@ -633,15 +876,18 @@ const CalendarHeader = ({
 			transition={{ duration: 0.6, ease: "easeOut" }}
 			className="flex items-center justify-between p-4 md:p-6 border-b border-[var(--color-primary-surface)]/50 backdrop-blur-md bg-[var(--color-primary-background)]/90 shrink-0"
 		>
-			<motion.div // eslint-disable-line
-				className="flex items-center gap-4"
-				whileHover={{ scale: 1.02 }}
-				transition={{ type: "spring", stiffness: 400, damping: 17 }}
-			>
-				<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)] flex items-center gap-3">
-					Organizer
-				</h1>
-			</motion.div>
+			<div className="flex-1">
+				<div className="relative w-full max-w-md">
+					<IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
+					<input
+						type="text"
+						value={searchQuery}
+						onChange={(e) => setSearchQuery(e.target.value)}
+						placeholder="Search journal entries and tasks..."
+						className="w-full bg-neutral-800/50 border border-neutral-700/80 rounded-lg py-2 pl-10 pr-4 transition-colors focus:border-[var(--color-accent-blue)]"
+					/>
+				</div>
+			</div>
 			<div className="flex items-center gap-2 md:gap-6">
 				<motion.button // eslint-disable-line
 					onClick={onToday}
@@ -707,18 +953,75 @@ const CalendarHeader = ({
 	)
 }
 
+const SearchOverlay = ({
+	query,
+	results,
+	onClose,
+	onResultClick,
+	tasksById,
+	onEditEntry,
+	onDeleteEntry,
+	onDuplicateEntry
+}) => {
+	useEffect(() => {
+		const handleKeyDown = (e) => {
+			if (e.key === "Escape") {
+				onClose()
+			}
+		}
+		window.addEventListener("keydown", handleKeyDown)
+		return () => window.removeEventListener("keydown", handleKeyDown)
+	}, [onClose])
+
+	return (
+		<motion.div
+			initial={{ opacity: 0 }}
+			animate={{ opacity: 1 }}
+			exit={{ opacity: 0 }}
+			onClick={onClose}
+			className="absolute inset-0 z-10 bg-black/60 backdrop-blur-sm"
+		>
+			<motion.div
+				initial={{ opacity: 0, y: -20 }}
+				animate={{ opacity: 1, y: 0 }}
+				exit={{ opacity: 0, y: -20 }}
+				className="mx-auto mt-24 max-w-3xl space-y-3"
+				onClick={(e) => e.stopPropagation()}
+			>
+				{results.map((item) =>
+					item.item_type === "journal" ? (
+						<JournalEntryCard
+							key={item.block_id}
+							item={item}
+							linkedTask={tasksById[item.linked_task_id]}
+							onViewEntry={() => onResultClick(item)}
+							onEditEntry={onEditEntry}
+							onDeleteEntry={onDeleteEntry}
+							onDuplicateEntry={onDuplicateEntry}
+						/>
+					) : (
+						<TaskSearchResultCard
+							key={item.task_id}
+							task={item}
+							onSelect={() => onResultClick(item)}
+						/>
+					)
+				)}
+			</motion.div>
+		</motion.div>
+	)
+}
 // Weekly Kanban Board Component
 const WeeklyKanban = ({
 	viewDate,
-	entriesByDate,
-	recurringTasksByDate,
+	itemsByDate,
+	tasksById,
 	addingToDay,
 	setAddingToDay,
 	onViewEntry,
 	onEditEntry,
 	onDeleteEntry,
 	onDuplicateEntry,
-	tasksById,
 	onDataChange
 }) => {
 	const days = useMemo(
@@ -744,13 +1047,7 @@ const WeeklyKanban = ({
 				>
 					<DayColumn
 						day={day}
-						journalEntries={
-							entriesByDate[format(day, "yyyy-MM-dd")] || []
-						}
-						recurringTasks={
-							recurringTasksByDate[format(day, "yyyy-MM-dd")] ||
-							[]
-						}
+						items={itemsByDate[format(day, "yyyy-MM-dd")] || []}
 						tasksById={tasksById}
 						isAdding={addingToDay === format(day, "yyyy-MM-dd")}
 						onStartAdd={() =>
@@ -773,8 +1070,7 @@ const WeeklyKanban = ({
 
 const DayColumn = ({
 	day,
-	journalEntries,
-	recurringTasks,
+	items,
 	isAdding,
 	onStartAdd,
 	onEndAdd,
@@ -822,33 +1118,18 @@ const DayColumn = ({
 				</h3>
 			</div>
 			<div className="p-3 space-y-3 flex-1 overflow-y-auto custom-scrollbar">
-				{recurringTasks.map((task, index) => (
-					<TaskCard
-						key={`task-${task.task_id}-${index}`}
-						item={{
-							...task,
-							content: task.description,
-							type: "task"
-						}}
-						onViewEntry={() =>
-							toast.error(
-								"Recurring task details view not implemented yet."
-							)
-						}
-					/>
-				))}
-				{journalEntries.map((entry) => (
+				{items.map((item) => (
 					<JournalEntryCard
-						key={`journal-${entry.block_id}`}
-						item={{ ...entry, type: "journal" }}
-						linkedTask={tasksById[entry.linked_task_id]}
+						key={item.block_id}
+						item={item}
+						linkedTask={tasksById[item.linked_task_id]}
 						onViewEntry={onViewEntry}
 						onEditEntry={onEditEntry}
 						onDeleteEntry={onDeleteEntry}
 						onDuplicateEntry={onDuplicateEntry}
 					/>
 				))}
-				{recurringTasks.length === 0 && journalEntries.length === 0 && (
+				{items.length === 0 && (
 					<div className="text-center py-10 text-sm text-[var(--color-text-muted)]">
 						No entries.
 					</div>
@@ -877,9 +1158,7 @@ const DayColumn = ({
 
 const InlineAddEntry = ({ day, onSave, onCancel }) => {
 	const [content, setContent] = useState("")
-	const [isSubmitting, setIsSubmitting] = useState(false)
-	const [schedule, setSchedule] = useState({ type: "once", run_at: null })
-	const [isScheduleOpen, setScheduleOpen] = useState(false)
+	const [isSubmitting, setIsSubmitting] = useState(false) // eslint-disable-line
 	const textareaRef = useRef(null)
 
 	useEffect(() => {
@@ -890,56 +1169,19 @@ const InlineAddEntry = ({ day, onSave, onCancel }) => {
 		if (!content.trim()) return
 		setIsSubmitting(true)
 		try {
-			const isScheduled =
-				schedule.type === "recurring" ||
-				(schedule.type === "once" && schedule.run_at)
-
-			if (isScheduled) {
-				// 1. Generate plan
-				const planResponse = await fetch("/api/tasks/generate-plan", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ prompt: content })
+			// Always create a journal entry now
+			const response = await fetch("/api/journal", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					content: content,
+					page_date: format(day, "yyyy-MM-dd"),
+					order: 0,
+					processWithAI: true // Always process as a potential task
 				})
-				const planData = await planResponse.json()
-				if (!planResponse.ok)
-					throw new Error(
-						planData.detail || "Failed to generate plan"
-					)
-
-				// 2. Add task
-				const taskData = {
-					description: planData.description || content,
-					priority: 1, // default priority
-					plan: planData.plan,
-					schedule: schedule
-				}
-				const addTaskResponse = await fetch("/api/tasks/add", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify(taskData)
-				})
-				if (!addTaskResponse.ok)
-					throw new Error(
-						(await addTaskResponse.json()).error ||
-							"Failed to create scheduled task."
-					)
-
-				toast.success("Scheduled task created for approval!")
-			} else {
-				const response = await fetch("/api/journal", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						content: content,
-						page_date: format(day, "yyyy-MM-dd"),
-						order: 0,
-						processWithAI: true // Process as a potential task
-					})
-				})
-				if (!response.ok) throw new Error("Failed to create entry")
-				toast.success("Entry saved and sent for processing.")
-			}
+			})
+			if (!response.ok) throw new Error("Failed to create entry")
+			toast.success("Entry saved and sent for processing.")
 			onSave()
 		} catch (error) {
 			toast.error(error.message)
@@ -958,20 +1200,8 @@ const InlineAddEntry = ({ day, onSave, onCancel }) => {
 				className="w-full bg-transparent p-2 rounded-md resize-none focus:outline-none placeholder:text-neutral-500 text-sm"
 				rows={3}
 			></textarea>
-			{isScheduleOpen && (
-				<ScheduleEditor schedule={schedule} setSchedule={setSchedule} />
-			)}
-			<div className="flex justify-between items-center mt-2">
-				<div className="flex gap-2">
-					<button
-						onClick={() => setScheduleOpen(!isScheduleOpen)}
-						className="p-1.5 rounded-lg text-neutral-400 hover:bg-[var(--color-primary-surface)] hover:text-white transition-colors"
-						data-tooltip-id="journal-tooltip"
-						data-tooltip-content="Schedule or make recurring"
-					>
-						<IconClock size={16} />
-					</button>
-				</div>
+			<div className="flex justify-end items-center mt-2">
+				<div className="flex gap-2"></div>
 				<div className="flex justify-end gap-2">
 					<button
 						onClick={onCancel}
@@ -1020,7 +1250,7 @@ const JournalEntryCard = ({
 			className={cn(
 				"bg-gradient-to-br from-[var(--color-primary-background)] to-[var(--color-primary-surface)]/30 p-3 rounded-lg border cursor-pointer backdrop-blur-sm shadow-sm group",
 				statusInfo
-					? `border-l-4 ${statusInfo.border}`
+					? `border-l-4 ${item.isRecurring ? "border-dashed" : ""} ${statusInfo.border}`
 					: "border-transparent"
 			)}
 		>
@@ -1029,91 +1259,64 @@ const JournalEntryCard = ({
 			</p>
 			<div className="flex items-end justify-between mt-2 pt-2 border-t border-white/5 min-h-[28px]">
 				<div>
-					{taskStatus && (
+					{item.isRecurring ? (
+						<div className="text-xs font-semibold text-gray-400 capitalize flex items-center gap-1.5">
+							<IconRefresh size={12} />
+							<span>Recurring Task</span>
+						</div>
+					) : taskStatus ? (
 						<div className="text-xs font-semibold text-gray-400 capitalize flex items-center gap-1.5">
 							<IconSparkles size={12} />
 							<span>Task: {taskStatus.replace("_", " ")}</span>
 						</div>
-					)}
+					) : null}
 				</div>
-				<div className="relative flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-					{item.linked_task_id && (
+				{!item.isRecurring && (
+					<div className="relative flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+						{item.linked_task_id && (
+							<motion.button
+								whileHover={{ scale: 1.1, zIndex: 10 }}
+								whileTap={{ scale: 0.9 }}
+								onClick={(e) => {
+									e.stopPropagation()
+									onDuplicateEntry(item)
+								}}
+								className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-white hover:bg-[var(--color-primary-surface)] transition-all"
+								data-tooltip-id="journal-tooltip"
+								data-tooltip-content="Duplicate Task"
+							>
+								<IconCopy size={14} />
+							</motion.button>
+						)}
 						<motion.button
 							whileHover={{ scale: 1.1, zIndex: 10 }}
 							whileTap={{ scale: 0.9 }}
 							onClick={(e) => {
 								e.stopPropagation()
-								onDuplicateEntry(item.linked_task_id)
+								onEditEntry(item)
 							}}
 							className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-white hover:bg-[var(--color-primary-surface)] transition-all"
 							data-tooltip-id="journal-tooltip"
-							data-tooltip-content="Duplicate Task"
+							data-tooltip-content="Edit"
 						>
-							<IconCopy size={14} />
+							<IconPencil size={14} />
 						</motion.button>
-					)}
-					<motion.button
-						whileHover={{ scale: 1.1, zIndex: 10 }}
-						whileTap={{ scale: 0.9 }}
-						onClick={(e) => {
-							e.stopPropagation()
-							onEditEntry(item)
-						}}
-						className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-white hover:bg-[var(--color-primary-surface)] transition-all"
-						data-tooltip-id="journal-tooltip"
-						data-tooltip-content="Edit"
-					>
-						<IconPencil size={14} />
-					</motion.button>
-					<motion.button
-						whileHover={{ scale: 1.1, zIndex: 10 }}
-						whileTap={{ scale: 0.9 }}
-						onClick={(e) => {
-							e.stopPropagation()
-							onDeleteEntry(item)
-						}}
-						className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-accent-red)] hover:bg-[var(--color-accent-red)]/10 transition-all"
-						data-tooltip-id="journal-tooltip"
-						data-tooltip-content="Delete"
-					>
-						<IconTrash size={14} />
-					</motion.button>
-				</div>
+						<motion.button
+							whileHover={{ scale: 1.1, zIndex: 10 }}
+							whileTap={{ scale: 0.9 }}
+							onClick={(e) => {
+								e.stopPropagation()
+								onDeleteEntry(item)
+							}}
+							className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-accent-red)] hover:bg-[var(--color-accent-red)]/10 transition-all"
+							data-tooltip-id="journal-tooltip"
+							data-tooltip-content="Delete"
+						>
+							<IconTrash size={14} />
+						</motion.button>
+					</div>
+				)}
 			</div>
-		</motion.div>
-	)
-}
-
-const TaskCard = ({ item, onViewEntry }) => {
-	const statusInfo = taskStatusColors[item.status] || taskStatusColors.default
-
-	return (
-		<motion.div
-			layout
-			initial={{ opacity: 0, x: -10 }}
-			animate={{ opacity: 1, x: 0 }}
-			onClick={() => onViewEntry(item)}
-			className="bg-gradient-to-br from-[var(--color-primary-background)]/50 to-[var(--color-primary-surface)]/20 p-3 rounded-lg cursor-pointer group flex items-start gap-3"
-		>
-			<div className="flex items-center gap-3 flex-grow">
-				<IconBrain size={16} className="text-neutral-500" />
-				<div className="flex-grow">
-					<p className="text-sm font-medium">{item.content}</p>
-					<p className="text-xs text-neutral-400">
-						{format(item.startTime, "h:mm a")}
-					</p>
-				</div>
-			</div>
-			{item.status && (
-				<div className="text-xs font-semibold capitalize flex items-center gap-1.5">
-					<span
-						className={`w-2 h-2 rounded-full ${statusInfo.bg}`}
-					></span>
-					<span className="text-neutral-400">
-						{item.status.replace("_", " ")}
-					</span>
-				</div>
-			)}
 		</motion.div>
 	)
 }
@@ -1142,8 +1345,9 @@ const RightSideCalendar = ({
 		start: startOfWeek(monthStart),
 		end: endOfWeek(monthEnd)
 	})
-	const weekStart = startOfWeek(viewDate, { weekStartsOn: 0 })
-	const weekEnd = endOfWeek(viewDate, { weekStartsOn: 0 })
+	// FIX: Use a 3-day window for highlighting instead of the whole week
+	const viewStart = subDays(viewDate, 1)
+	const viewEnd = addDays(viewDate, 1)
 
 	return (
 		<div className="flex flex-col h-full">
@@ -1173,9 +1377,9 @@ const RightSideCalendar = ({
 			</div>
 			<div className="grid grid-cols-7 gap-1">
 				{daysInMonth.map((day) => {
-					const isSelectedWeek = isWithinInterval(day, {
-						start: weekStart,
-						end: weekEnd
+					const isInView = isWithinInterval(day, {
+						start: viewStart,
+						end: viewEnd
 					})
 					const hasEntry =
 						!!entriesByDate[format(day, "yyyy-MM-dd")] ||
@@ -1190,8 +1394,10 @@ const RightSideCalendar = ({
 									"text-[var(--color-text-muted)]",
 								isToday(day) &&
 									"ring-2 ring-[var(--color-accent-blue)]",
-								isSelectedWeek &&
+								isInView &&
 									"bg-[var(--color-accent-blue)]/20 text-white",
+								isSameDay(day, viewDate) &&
+									"bg-[var(--color-accent-blue)]/40 font-bold",
 								"hover:bg-[var(--color-primary-surface)]"
 							)}
 						>
@@ -1217,29 +1423,32 @@ const RightSideCalendar = ({
 				</div>
 				<div className="flex items-center gap-2">
 					<span className="h-4 w-4 rounded-full bg-[var(--color-accent-blue)]/20"></span>{" "}
-					Selected Week
+					Selected View
 				</div>
 			</div>
 		</div>
 	)
 }
 
-const VerticalTabButton = ({ label, icon, isActive, onClick }) => (
-	<button
-		onClick={onClick}
-		className={cn(
-			"p-2 rounded-lg transition-colors w-full flex flex-col items-center",
-			isActive
-				? "bg-blue-500/30"
-				: "hover:bg-[var(--color-primary-surface)]"
-		)}
-	>
-		{icon}
-		<span className="[writing-mode:vertical-rl] transform rotate-180 text-sm font-semibold tracking-wider mt-2">
-			{label}
-		</span>
-	</button>
-)
+const SidebarTabButton = ({ label, icon, isActive, onClick }) => {
+	return (
+		<button
+			onClick={onClick}
+			className={cn(
+				"p-3 rounded-lg transition-colors w-full flex flex-col items-center",
+				isActive
+					? "bg-blue-500/30 text-white"
+					: "hover:bg-[var(--color-primary-surface)] text-neutral-400 hover:text-white"
+			)}
+			data-tooltip-id="sidebar-tooltip"
+			data-tooltip-content={label}
+		>
+			{React.cloneElement(icon, {
+				className: "transition-transform"
+			})}
+		</button>
+	)
+}
 
 const RightSidebar = ({
 	isOpen,
@@ -1255,14 +1464,22 @@ const RightSidebar = ({
 	onEditTask,
 	onDeleteTask,
 	onApproveTask,
-	onViewTask
+	onViewTask,
+	onUpdateSchedule,
+	onToggleEnableTask
 }) => {
+	// eslint-disable-line
 	const [openSections, setOpenSections] = useState({
 		active: true,
 		approval_pending: true,
 		processing: true,
 		completed: true
 	})
+
+	const recurringTasks = useMemo(
+		() => allTasks.filter((t) => t.schedule?.type === "recurring"),
+		[allTasks]
+	)
 
 	const groupedTasks = useMemo(
 		() => ({
@@ -1294,12 +1511,12 @@ const RightSidebar = ({
 
 	return (
 		<motion.aside
-			animate={{ width: isOpen ? 350 : 60 }}
+			animate={{ width: isOpen ? 400 : 50 }}
 			transition={{ type: "spring", stiffness: 400, damping: 30 }}
 			className="hidden md:flex flex-col h-screen shrink-0 relative"
 		>
 			<div className="flex h-full">
-				{/* Content Panel */}
+				<Tooltip id="sidebar-tooltip" place="left" />
 				<div className="flex-1 overflow-y-auto custom-scrollbar bg-[var(--color-primary-surface)]/50 backdrop-blur-lg">
 					{activeTab === "calendar" && (
 						<div className="p-4">
@@ -1309,6 +1526,29 @@ const RightSidebar = ({
 								entriesByDate={journalEntriesByDate}
 								recurringTasksByDate={recurringTasksByDate}
 							/>
+						</div>
+					)}
+					{activeTab === "workflows" && (
+						<div className="space-y-4 p-4">
+							<h2 className="text-xl font-semibold text-center mb-4">
+								Recurring Workflows
+							</h2>
+							<div className="space-y-2">
+								{recurringTasks.length > 0 ? (
+									recurringTasks.map((task) => (
+										<WorkflowCard
+											key={task.task_id}
+											task={task}
+											onToggleEnable={onToggleEnableTask}
+											onDeleteTask={onDeleteTask}
+										/>
+									))
+								) : (
+									<p className="text-center text-gray-500 py-10">
+										No recurring workflows found.
+									</p>
+								)}
+							</div>
 						</div>
 					)}
 					{activeTab === "tasks" && (
@@ -1323,6 +1563,7 @@ const RightSidebar = ({
 								toggleOpen={() => toggleSection("active")}
 								onEditTask={onEditTask}
 								onDeleteTask={onDeleteTask}
+								onViewDetails={onViewTask}
 							/>
 							<CollapsibleSection
 								title="Pending Approval"
@@ -1344,6 +1585,7 @@ const RightSidebar = ({
 								toggleOpen={() => toggleSection("processing")}
 								onEditTask={onEditTask}
 								onDeleteTask={onDeleteTask}
+								onViewDetails={onViewTask}
 							/>
 							<CollapsibleSection
 								title="Completed"
@@ -1352,24 +1594,31 @@ const RightSidebar = ({
 								toggleOpen={() => toggleSection("completed")}
 								onEditTask={onEditTask}
 								onDeleteTask={onDeleteTask}
+								onViewDetails={onViewTask}
 							/>
 						</div>
 					)}
 				</div>
 
 				{/* Vertical Tab Bar */}
-				<div className="w-[60px] h-full flex flex-col items-center justify-center gap-6 bg-[var(--color-primary-surface)] border-l border-[var(--color-primary-surface-elevated)]">
-					<VerticalTabButton
-						label="Calendar"
-						icon={<IconCalendar size={24} />}
+				<div className="w-[50px] h-full flex flex-col items-center justify-start gap-4 bg-[var(--color-primary-surface)] border-l border-[var(--color-primary-surface-elevated)] pt-6">
+					<SidebarTabButton
+						label="Calendar" // Used for tooltip
+						icon={<IconCalendar size={22} />}
 						isActive={isOpen && activeTab === "calendar"}
 						onClick={() => handleTabClick("calendar")}
 					/>
-					<VerticalTabButton
-						label="Tasks"
-						icon={<IconChecklist size={24} />}
+					<SidebarTabButton
+						label="Tasks" // Used for tooltip
+						icon={<IconChecklist size={22} />}
 						isActive={isOpen && activeTab === "tasks"}
 						onClick={() => handleTabClick("tasks")}
+					/>
+					<SidebarTabButton
+						label="Workflows"
+						icon={<IconRefresh size={22} />}
+						isActive={isOpen && activeTab === "workflows"}
+						onClick={() => handleTabClick("workflows")}
 					/>
 				</div>
 			</div>
@@ -1677,7 +1926,8 @@ const EditTaskModal = ({
 	onSave,
 	setTask,
 	allTools,
-	integrations
+	integrations,
+	onUpdateSchedule
 }) => {
 	const safeSchedule = task.schedule || { type: "once", run_at: null }
 	return (
@@ -1712,9 +1962,10 @@ const EditTaskModal = ({
 						plan={task.plan}
 						setPlan={(val) => setTask({ ...task, plan: val })}
 						schedule={safeSchedule}
-						setSchedule={(val) =>
+						setSchedule={(val) => {
+							onUpdateSchedule(task.task_id, val)
 							setTask({ ...task, schedule: val })
-						}
+						}}
 						allTools={allTools}
 						integrations={integrations}
 					/>
@@ -1922,6 +2173,65 @@ const TaskDetailsModal = ({ task, onClose }) => {
 							</div>
 						</div>
 					)}
+					{(task.result || task.error) && (
+						<div className="pt-4 border-t border-[var(--color-primary-surface-elevated)]">
+							<h4 className="text-lg font-semibold text-white mb-4">
+								Outcome
+							</h4>
+							{task.error ? (
+								<pre className="text-sm bg-red-900/30 p-4 rounded-md text-red-300 whitespace-pre-wrap font-mono border border-[var(--color-accent-red)]/50">
+									{task.error}
+								</pre>
+							) : (
+								<div className="space-y-4 text-gray-300">
+									{thoughts && (
+										<details className="bg-[var(--color-primary-surface)]/50 rounded-lg p-3 border border-[var(--color-primary-surface-elevated)]">
+											<summary
+												className="cursor-pointer text-sm text-[var(--color-text-secondary)] font-semibold hover:text-white flex items-center gap-2"
+												data-tooltip-id="task-details-tooltip"
+												data-tooltip-content="See the step-by-step reasoning the agent used to produce the result."
+											>
+												<IconBrain
+													size={16}
+													className="text-yellow-400"
+												/>{" "}
+												View Agent's Thoughts
+											</summary>
+											<pre className="mt-3 text-xs text-gray-400 whitespace-pre-wrap font-mono">
+												{thoughts}
+											</pre>
+										</details>
+									)}
+									{mainContent &&
+										typeof mainContent === "string" && (
+											<div
+												dangerouslySetInnerHTML={{
+													__html: mainContent.replace(
+														/\n/g,
+														"<br />"
+													)
+												}}
+											/>
+										)}
+									{finalAnswer && (
+										<div className="mt-2 p-4 bg-green-900/30 border border-[var(--color-accent-green)]/50 rounded-lg">
+											<p className="text-sm font-semibold text-green-300 mb-2">
+												Final Answer
+											</p>
+											<div
+												dangerouslySetInnerHTML={{
+													__html: finalAnswer.replace(
+														/\n/g,
+														"<br />"
+													)
+												}}
+											/>
+										</div>
+									)}
+								</div>
+							)}
+						</div>
+					)}
 				</div>
 			</motion.div>
 		</motion.div>
@@ -1935,7 +2245,8 @@ const EntryDetailsModal = ({
 	startInEditMode,
 	onClose,
 	onDataChange,
-	onDeleteRequest
+	onDeleteRequest,
+	onUpdateSchedule
 }) => {
 	const router = useRouter()
 	const linkedTask = useMemo(() => {
@@ -1946,6 +2257,20 @@ const EntryDetailsModal = ({
 	const [editingContent, setEditingContent] = useState(block.content)
 	const [isEditing, setIsEditing] = useState(startInEditMode || false)
 	const [isSubmitting, setIsSubmitting] = useState(false)
+	const [isScheduling, setIsScheduling] = useState(false)
+	const [schedule, setSchedule] = useState(
+		linkedTask?.schedule || { type: "once", run_at: null }
+	)
+
+	const handleSaveSchedule = async () => {
+		if (!linkedTask?.task_id) return
+		setIsSubmitting(true)
+		const success = await onUpdateSchedule(linkedTask.task_id, schedule)
+		setIsSubmitting(false)
+		if (success) {
+			onClose()
+		}
+	}
 
 	const handleUpdate = async () => {
 		if (!editingContent.trim())
@@ -2080,6 +2405,32 @@ const EntryDetailsModal = ({
 							</div>
 						)}
 					</div>
+
+					{/* Task Scheduling Section */}
+					{linkedTask && !isEditing && (
+						<div className="bg-[var(--color-primary-background)]/50 p-4 rounded-lg">
+							<div className="flex justify-between items-center mb-2">
+								<h3 className="font-semibold text-lg flex items-center gap-2">
+									<IconClock size={18} /> Schedule
+								</h3>
+							</div>
+							<ScheduleEditor
+								schedule={schedule}
+								setSchedule={setSchedule}
+							/>
+							<div className="text-right mt-4">
+								<button
+									onClick={handleSaveSchedule}
+									disabled={isSubmitting}
+									className="px-4 py-2 text-sm font-semibold bg-[var(--color-accent-blue)] text-white rounded-md disabled:opacity-50"
+								>
+									{isSubmitting
+										? "Saving..."
+										: "Save Schedule"}
+								</button>
+							</div>
+						</div>
+					)}
 
 					{/* Linked Task Section */}
 					{linkedTask && (

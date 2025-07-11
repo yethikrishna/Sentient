@@ -53,37 +53,7 @@ const integrationIcons = {
 	news: IconNews
 }
 
-// Hardcoded configuration for manual integrations
-const MANUAL_INTEGRATION_CONFIGS = {
-	slack: {
-		instructions: [
-			"1. Go to api.slack.com/apps and create a new app from scratch.",
-			"2. In 'OAuth & Permissions', add User Token Scopes like `chat:write`, `channels:read`.",
-			"3. Install the app and copy the 'User OAuth Token' (starts with `xoxp-`).",
-			"4. Find your 'Team ID' (starts with `T`) from your Slack URL or settings."
-		],
-		fields: [
-			{ id: "token", label: "User OAuth Token", type: "password" },
-			{ id: "team_id", label: "Team ID", type: "text" }
-		]
-	},
-	notion: {
-		instructions: [
-			"Go to notion.so/my-integrations to create a new integration.",
-			"Give it a name and associate it with a workspace.",
-			"On the next screen, copy the 'Internal Integration Token'.",
-			"Go to the Notion pages or databases you want Sentient to access.",
-			"Click the '...' menu, find 'Add connections', and select your new integration."
-		],
-		fields: [
-			{
-				id: "token",
-				label: "Internal Integration Token",
-				type: "password"
-			}
-		]
-	}
-}
+const MANUAL_INTEGRATION_CONFIGS = {} // Manual integrations removed for Slack and Notion
 
 const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {
 	const [credentials, setCredentials] = useState({})
@@ -539,7 +509,9 @@ const IntegrationsPage = () => {
 				gsheets: "https://www.googleapis.com/auth/spreadsheets",
 				gmaps: "https://www.googleapis.com/auth/cloud-platform",
 				gshopping: "https://www.googleapis.com/auth/content",
-				github: "repo user"
+				github: "repo user",
+				notion: "read_content write_content insert_content", // This is not a scope, it's just for user to know. Notion doesn't use scopes in the URL.
+				slack: "channels:history,channels:read,chat:write,users:read,reactions:write"
 			}
 			const scope =
 				scopes[serviceName] ||
@@ -554,6 +526,15 @@ const IntegrationsPage = () => {
 				authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
 					redirectUri
 				)}&scope=${encodeURIComponent(scope)}&state=${serviceName}`
+			} else if (serviceName === "slack") {
+				authUrl = `https://slack.com/oauth/v2/authorize?client_id=${clientId}&user_scope=${encodeURIComponent(
+					scope
+				)}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${serviceName}`
+			} else if (serviceName === "notion") {
+				// Notion's `owner` parameter is important
+				authUrl = `https://api.notion.com/v1/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
+					redirectUri
+				)}&response_type=code&owner=user&state=${serviceName}`
 			}
 			if (authUrl) window.location.href = authUrl
 			else

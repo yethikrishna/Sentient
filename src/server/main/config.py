@@ -48,6 +48,12 @@ GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
 
+# Slack & Notion OAuth Configuration
+SLACK_CLIENT_ID = os.getenv("SLACK_CLIENT_ID")
+SLACK_CLIENT_SECRET = os.getenv("SLACK_CLIENT_SECRET")
+NOTION_CLIENT_ID = os.getenv("NOTION_CLIENT_ID")
+NOTION_CLIENT_SECRET = os.getenv("NOTION_CLIENT_SECRET")
+
 # News API Configuration
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 
@@ -189,20 +195,8 @@ INTEGRATIONS_CONFIG = {
     "slack": { # User-configurable Manual
         "display_name": "Slack",
         "description": "Connect to your Slack workspace. Allows the agent to list channels, post messages, reply in threads, add reactions, read channel history, and get user information.",
-        "auth_type": "manual",
+        "auth_type": "oauth",
         "icon": "IconBrandSlack",
-        "manual_auth_info": {
-            "instructions": [
-                "1. Go to api.slack.com/apps and create a new app from scratch.",
-                "2. In 'OAuth & Permissions', add User Token Scopes like `chat:write`, `channels:read`.",
-                "3. Install the app and copy the 'User OAuth Token' (starts with `xoxp-`).",
-                "4. Find your 'Team ID' (starts with `T`) from your Slack URL or settings."
-            ],
-            "fields": [
-                {"id": "token", "label": "User OAuth Token", "type": "password"},
-                {"id": "team_id", "label": "Team ID", "type": "text"}
-            ]
-        },
         "mcp_server_config": {
             "name": "slack_server",
             "url": os.getenv("SLACK_MCP_SERVER_URL", "http://localhost:9006/sse")
@@ -211,19 +205,8 @@ INTEGRATIONS_CONFIG = {
     "notion": {
         "display_name": "Notion",
         "description": "Connect to your Notion workspace. The agent can search for pages and databases, read page content, create new pages, append content to existing pages, and query databases with filters.",
-        "auth_type": "manual",
+        "auth_type": "oauth",
         "icon": "IconBrandNotion",
-        "manual_auth_info": {
-            "instructions": [
-                "1. Go to notion.so/my-integrations to create a new integration.",
-                "2. Give it a name and associate it with a workspace.",
-                "3. On the next screen, copy the 'Internal Integration Token'.",
-                "4. Share the specific pages or databases you want Sentient to access with your new integration."
-            ],
-            "fields": [
-                {"id": "token", "label": "Internal Integration Token", "type": "password"}
-            ]
-        },
         "mcp_server_config": {
             "name": "notion_server",
             "url": os.getenv("NOTION_MCP_SERVER_URL", "http://localhost:9009/sse")

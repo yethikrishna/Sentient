@@ -37,45 +37,6 @@ const CheckFilled = ({ className }) => (
 	</svg>
 )
 
-const TypingEffect = ({ text, onComplete }) => {
-	const [displayedText, setDisplayedText] = useState("")
-	const timeoutIdRef = useRef(null)
-	const isMounted = useRef(false)
-
-	useEffect(() => {
-		isMounted.current = true
-		setDisplayedText("")
-
-		if (text) {
-			let i = 0
-			const typeCharacter = () => {
-				if (!isMounted.current) {
-					return
-				}
-
-				if (i < text.length) {
-					setDisplayedText((prev) => prev + text.charAt(i))
-					i++
-					timeoutIdRef.current = setTimeout(typeCharacter, 30)
-				} else if (onComplete) {
-					onComplete()
-				}
-			}
-
-			timeoutIdRef.current = setTimeout(typeCharacter, 30)
-
-			return () => {
-				isMounted.current = false
-				if (timeoutIdRef.current) {
-					clearTimeout(timeoutIdRef.current)
-				}
-			}
-		}
-	}, [text, onComplete])
-
-	return <p className="text-lg text-neutral-300">{displayedText}</p>
-}
-
 const BlinkingInstructions = ({ text }) => (
 	<motion.p
 		className="text-center text-sm text-neutral-500 mt-8"
@@ -441,7 +402,7 @@ const OnboardingPage = () => {
 							variants={itemVariants}
 							className="text-xl text-neutral-300 max-w-xl mx-auto"
 						>
-							Your personal AI, ready to get to know you.
+							Your proactive AI, ready to get to know you.
 						</motion.p>
 						<motion.div variants={itemVariants}>
 							<BlinkingInstructions text="Press Enter to begin" />

@@ -43,6 +43,7 @@
 		"remark-gfm": "^4.0.1",
 		"tailwind-merge": "^2.5.4",
 		"tsparticles": "^3.8.1",
+		"typewriter-effect": "^2.22.0",
 		"uuid": "^9.0.0",
 		"vis-network": "^9.1.9",
 		"webrtc-adapter": "^9.0.1"

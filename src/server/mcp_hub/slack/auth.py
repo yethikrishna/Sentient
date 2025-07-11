@@ -72,7 +72,11 @@ async def get_slack_creds(user_id: str) -> Dict[str, str]:
     except Exception as e:
         raise ToolError(f"Failed to decrypt or parse Slack credentials: {e}")
 
-    if not all(key in token_info for key in ["token", "team_id"]):
-        raise ToolError("Invalid Slack token data after decryption. Re-authentication is required.")
+    authed_user = token_info.get("authed_user", {})
+    access_token = authed_user.get("access_token")
+    team_id = token_info.get("team", {}).get("id")
 
-    return token_info
+    if not access_token or not team_id:
+        raise ToolError("Invalid Slack OAuth token data in database. Re-authentication may be required.")
+
+    return {"token": access_token, "team_id": team_id}

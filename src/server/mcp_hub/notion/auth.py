@@ -71,10 +71,11 @@ async def get_notion_creds(user_id: str) -> Dict[str, str]:
     except Exception as e:
         raise ToolError(f"Failed to decrypt or parse token for Notion: {e}")
 
-    if "token" not in token_info:
-        raise ToolError("Invalid token data in database for Notion. Re-authentication may be required.")
+    access_token = token_info.get("access_token")
+    if not access_token:
+        raise ToolError("Invalid token data in database for Notion. 'access_token' not found.")
 
-    return token_info
+    return {"token": access_token}
 
 def authenticate_notion(creds: Dict[str, str]) -> AsyncClient:
     """Authenticates and returns the Notion async client."""

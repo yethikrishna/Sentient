@@ -1,5 +1,6 @@
 import datetime
 import json
+import base64
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
@@ -10,7 +11,8 @@ from main.auth.utils import aes_encrypt
 from main.config import (
     INTEGRATIONS_CONFIG, 
     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
-    GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
+    GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET,
+    SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, NOTION_CLIENT_ID, NOTION_CLIENT_SECRET
 )
 
 router = APIRouter(
@@ -38,6 +40,10 @@ async def get_integration_sources(user_id: str = Depends(auth_helper.get_current
                  source_info["client_id"] = GOOGLE_CLIENT_ID
             elif name == 'github':
                  source_info["client_id"] = GITHUB_CLIENT_ID
+            elif name == 'slack':
+                source_info["client_id"] = SLACK_CLIENT_ID
+            elif name == 'notion':
+                source_info["client_id"] = NOTION_CLIENT_ID
 
         all_sources.append(source_info)
 
@@ -95,12 +101,37 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
             "redirect_uri": request.redirect_uri,
         }
         request_headers = {"Accept": "application/json"}
+    elif service_name == 'slack':
+        token_url = "https://slack.com/api/oauth.v2.access"
+        token_payload = {
+            "client_id": SLACK_CLIENT_ID,
+            "client_secret": SLACK_CLIENT_SECRET,
+            "code": request.code,
+            "redirect_uri": request.redirect_uri,
+        }
+    elif service_name == 'notion':
+        token_url = "https://api.notion.com/v1/oauth/token"
+        auth_string = f"{NOTION_CLIENT_ID}:{NOTION_CLIENT_SECRET}"
+        auth_bytes = auth_string.encode("ascii")
+        base64_string = base64.b64encode(auth_bytes).decode("ascii")
+        request_headers = {
+            "Authorization": f"Basic {base64_string}",
+            "Content-Type": "application/json",
+        }
+        token_payload = {
+            "grant_type": "authorization_code",
+            "code": request.code,
+            "redirect_uri": request.redirect_uri,
+        }
     else:
         raise HTTPException(status_code=400, detail=f"OAuth flow not implemented for {service_name}")
 
     try:
         async with httpx.AsyncClient() as client:
-            token_response = await client.post(token_url, data=token_payload, headers=request_headers)
+            if service_name == 'notion':
+                token_response = await client.post(token_url, json=token_payload, headers=request_headers)
+            else:
+                token_response = await client.post(token_url, data=token_payload, headers=request_headers)
             token_response.raise_for_status()
             token_data = token_response.json()
         
@@ -120,6 +151,15 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
              if "access_token" not in token_data:
                 raise HTTPException(status_code=400, detail=f"GitHub OAuth error: {token_data.get('error_description', 'No access token in response.')}")
              creds_to_save = {"access_token": token_data["access_token"]}
+        elif service_name == 'slack':
+            if not token_data.get("ok"):
+                 raise HTTPException(status_code=400, detail=f"Slack OAuth error: {token_data.get('error', 'Unknown error.')}")
+            # The user token is nested inside authed_user
+            creds_to_save = token_data # Store the whole response for now
+        elif service_name == 'notion':
+             if "access_token" not in token_data:
+                raise HTTPException(status_code=400, detail=f"Notion OAuth error: {token_data.get('error_description', 'No access token in response.')}")
+             creds_to_save = token_data # Store the whole object (access_token, workspace_id, etc.)
 
         encrypted_creds = aes_encrypt(json.dumps(creds_to_save))
 

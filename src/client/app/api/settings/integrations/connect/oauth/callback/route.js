@@ -16,23 +16,23 @@ export async function GET(request) {
 
 	// FIX: Use the public-facing APP_BASE_URL for redirection, not the internal request.url.
 	// This ensures the browser is redirected to the correct, publicly accessible address.
-	const settingsUrl = new URL("/settings", baseUrl)
+	const integrationsUrl = new URL("/integrations", baseUrl)
 
 	if (error) {
 		// User denied access or an error occurred
-		settingsUrl.searchParams.set(
+		integrationsUrl.searchParams.set(
 			"integration_error",
 			`Google authorization failed: ${error}`
 		)
-		return NextResponse.redirect(settingsUrl)
+		return NextResponse.redirect(integrationsUrl)
 	}
 
 	if (!code || !state) {
-		settingsUrl.searchParams.set(
+		integrationsUrl.searchParams.set(
 			"integration_error",
 			"Authorization failed. Missing code or state from Google."
 		)
-		return NextResponse.redirect(settingsUrl)
+		return NextResponse.redirect(integrationsUrl)
 	}
 
 	try {
@@ -65,11 +65,11 @@ export async function GET(request) {
 		}
 
 		// Redirect to settings page with success indicator
-		settingsUrl.searchParams.set("integration_success", state)
-		return NextResponse.redirect(settingsUrl)
+		integrationsUrl.searchParams.set("integration_success", state)
+		return NextResponse.redirect(integrationsUrl)
 	} catch (e) {
 		console.error("OAuth callback error:", e)
-		settingsUrl.searchParams.set("integration_error", e.message)
-		return NextResponse.redirect(settingsUrl)
+		integrationsUrl.searchParams.set("integration_error", e.message)
+		return NextResponse.redirect(integrationsUrl)
 	}
 }

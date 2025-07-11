@@ -43,15 +43,16 @@ def run_async(coro):
 
 # --- Memory Processing Task (Modified for Supermemory) ---
 @celery_app.task(name="process_memory_item")
-def process_memory_item(user_id: str, fact_text: str):
+def process_memory_item(user_id: str, fact_text: str, source_event_id: Optional[str] = None):
     """
     Celery task to process a single memory item by calling the Supermemory MCP
     via a dedicated Qwen agent.
     """
-    logger.info(f"Celery worker received Supermemory task for user {user_id}: '{fact_text[:80]}...'")
+    log_prefix = f"Event {source_event_id}: " if source_event_id else ""
+    logger.info(f"{log_prefix}Celery worker received Supermemory task for user {user_id}: '{fact_text[:80]}...'")
 
     async def async_process_memory():
-        db_manager = get_memory_db_manager()
+        db_manager = get_memory_db_manager() # This is a PlannerMongoManager instance
         try:
             user_profile = await db_manager.user_profiles_collection.find_one({"user_id": user_id})
             if not user_profile:
@@ -99,20 +100,23 @@ def process_memory_item(user_id: str, fact_text: str):
 
 # --- Extractor Task ---
 @celery_app.task(name="extract_from_context")
-def extract_from_context(user_id: str, service_name: str, event_id: str, event_data: Dict[str, Any]):
+def extract_from_context(user_id: str, service_name: str, event_id: str, event_data: Dict[str, Any], current_time_iso: Optional[str] = None):
     """
     Celery task to replace the Extractor worker. It takes context data,
     runs it through an LLM to extract memories and action items,
     and then dispatches further Celery tasks.
     """
-    logger.info(f"Extractor task running for event {event_id} ({service_name}) for user {user_id}")
+    logger.info(f"Extractor task running for event_id: {event_id} (service: {service_name}) for user {user_id}")
     
     async def async_extract():
         db_manager = ExtractorMongoManager()
         try:
             if await db_manager.is_event_processed(user_id, event_id):
-                logger.info(f"Skipping event {event_id} - already processed.")
+                logger.info(f"Skipping event_id: {event_id} - already processed.")
                 return
+
+            current_time = datetime.datetime.fromisoformat(current_time_iso) if current_time_iso else datetime.datetime.now(datetime.timezone.utc)
+            time_context_str = f"The current date and time is {current_time.strftime('%A, %Y-%m-%d %H:%M:%S %Z')}."
 
             llm_input_content = ""
             if service_name == "journal_block":
@@ -126,12 +130,15 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
             elif service_name == "gcalendar":
                 llm_input_content = f"Source: Calendar Event\nSummary: {event_data.get('summary', '')}\n\nDescription:\n{event_data.get('description', '')}"
 
+            # Add time context to the input for the LLM
+            full_llm_input = f"{time_context_str}\n\nPlease analyze the following content:\n\n{llm_input_content}"
+
             if not llm_input_content.strip():
-                logger.warning(f"Skipping event {event_id} due to empty content.")
+                logger.warning(f"Skipping event_id: {event_id} due to empty content.")
                 return
 
             agent = get_extractor_agent()
-            messages = [{'role': 'user', 'content': llm_input_content}]
+            messages = [{'role': 'user', 'content': full_llm_input}]
             
             final_content_str = ""
             for chunk in agent.run(messages=messages):
@@ -141,13 +148,13 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
                         final_content_str = last_message["content"]
 
             if not final_content_str:
-                logger.error(f"Extractor LLM returned no response for event {event_id}.")
+                logger.error(f"Extractor LLM returned no response for event_id: {event_id}.")
                 return
 
             cleaned_content = clean_llm_output(final_content_str)
             extracted_data = JsonExtractor.extract_valid_json(cleaned_content)
             if not extracted_data:
-                logger.error(f"Could not extract valid JSON from LLM response for event {event_id}. Response: '{cleaned_content}'")
+                logger.error(f"Could not extract valid JSON from LLM response for event_id: {event_id}. Response: '{cleaned_content}'")
                 await db_manager.log_extraction_result(event_id, user_id, 0, 0) # Log to prevent re-processing
                 return
 
@@ -160,7 +167,7 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
                     extracted_data = {} # Set to empty dict to avoid further errors
 
             if not isinstance(extracted_data, dict):
-                logger.error(f"Extracted JSON is not a dictionary for event {event_id}. Extracted: '{extracted_data}'")
+                logger.error(f"Extracted JSON is not a dictionary for event_id: {event_id}. Extracted: '{extracted_data}'")
                 await db_manager.log_extraction_result(event_id, user_id, 0, 0)
                 return
 
@@ -170,7 +177,7 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
 
             for fact in memory_items:
                 if isinstance(fact, str) and fact.strip():
-                    process_memory_item.delay(user_id, fact)
+                    process_memory_item.delay(user_id, fact, event_id)
 
             if action_items:
                 # Add block_id to context if it came from a journal
@@ -188,7 +195,7 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
             await db_manager.log_extraction_result(event_id, user_id, len(memory_items), len(action_items))
         
         except Exception as e:
-            logger.error(f"Error in extractor task for event {event_id}: {e}", exc_info=True)
+            logger.error(f"Error in extractor task for event_id: {event_id}: {e}", exc_info=True)
         finally:
             await db_manager.close()
 
@@ -255,12 +262,23 @@ def process_action_item(user_id: str, action_items: list, source_event_id: str, 
             plan_steps = plan_data.get("plan", [])
 
             if plan_steps and all(step.get("tool") in available_tools for step in plan_steps):
+                # Save the plan, which also links it to a journal block if applicable
                 task_id = await db_manager.save_plan_as_task(user_id, description, plan_steps, original_context, source_event_id)
+
+                # If the task did NOT come from a journal block, create a new one for it.
+                if original_context.get("source") != "journal_block":
+                    action_item_text = " ".join(action_items)
+                    match = re.search(r'\b\d{4}-\d{2}-\d{2}\b', action_item_text)
+                    date_str = match.group(0) if match else datetime.datetime.now(user_timezone).strftime("%Y-%m-%d")
+
+                    # Create a new journal entry for this proactively generated task
+                    await db_manager.create_journal_entry_for_task(
+                        user_id=user_id, content=description, date_str=date_str,
+                        task_id=task_id, task_status="approval_pending"
+                    )
+
                 notification_message = f"I've created a new plan to '{description}'. It's ready for your approval."
                 await notify_user(user_id, notification_message, task_id)
-                logger.info(f"Saved plan as task {task_id} for user {user_id}.")
-            else:
-                 logger.warning(f"Planner for user {user_id} generated an empty or invalid plan.")
 
         except Exception as e:
             logger.error(f"Failed to process/save plan for user {user_id}: {e}", exc_info=True)

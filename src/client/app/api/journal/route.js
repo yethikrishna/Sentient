@@ -37,7 +37,9 @@ export const GET = withAuth(async function GET(request, { authHeader }) {
 		)
 		const data = await response.json()
 		if (!response.ok)
-			throw new Error(data.detail || "Failed to fetch blocks")
+			throw new Error(
+				data.detail || data.error || "Failed to fetch blocks"
+			)
 		return NextResponse.json(data)
 	} catch (error) {
 		return NextResponse.json({ error: error.message }, { status: 500 })
@@ -55,7 +57,9 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 		})
 		const data = await response.json()
 		if (!response.ok)
-			throw new Error(data.detail || "Failed to create block")
+			throw new Error(
+				data.detail || data.error || "Failed to create block"
+			)
 		return NextResponse.json(data)
 	} catch (error) {
 		return NextResponse.json({ error: error.message }, { status: 500 })
@@ -85,7 +89,9 @@ export const PUT = withAuth(async function PUT(request, { authHeader }) {
 		)
 		const data = await response.json()
 		if (!response.ok)
-			throw new Error(data.detail || "Failed to update block")
+			throw new Error(
+				data.detail || data.error || "Failed to update block"
+			)
 		return NextResponse.json(data)
 	} catch (error) {
 		return NextResponse.json({ error: error.message }, { status: 500 })

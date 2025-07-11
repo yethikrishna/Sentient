@@ -75,6 +75,29 @@ class PlannerMongoManager:
         
         return task_id
 
+    async def create_journal_entry_for_task(self, user_id: str, content: str, date_str: str, task_id: str, task_status: str):
+        """Creates a journal entry for a proactively generated task."""
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        block_id = str(uuid.uuid4())
+        block_doc = {
+            "block_id": block_id,
+            "user_id": user_id,
+            "page_date": date_str,
+            "content": content,
+            "order": 999,  # Proactive tasks at the bottom
+            "created_by": "sentient",
+            "created_at": now_utc,
+            "updated_at": now_utc,
+            "linked_task_id": task_id,
+            "task_status": task_status,
+            "task_progress": [],
+            "task_result": None,
+        }
+        await self.journal_blocks_collection.insert_one(block_doc)
+        logger.info(f"Created journal entry {block_id} for task {task_id}")
+        return block_id
+
+
     async def close(self):
         if self.client:
             self.client.close()

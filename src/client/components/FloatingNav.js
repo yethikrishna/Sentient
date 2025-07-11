@@ -159,13 +159,6 @@ export default function FloatingNav({ onChatOpen }) {
 			)
 		},
 		{
-			title: "Tasks",
-			href: "/tasks",
-			icon: (
-				<IconChecklist className="h-full w-full text-neutral-500 dark:text-neutral-300" />
-			)
-		},
-		{
 			title: "Journal",
 			href: "/journal",
 			icon: (

@@ -73,6 +73,29 @@ async def add_task(
         "next_execution_at": next_execution_time
     }
     await mongo_manager.task_collection.insert_one(task_doc)
+
+    # Also add a corresponding journal entry
+    page_date_str = now_utc.strftime("%Y-%m-%d")
+    if request.schedule and request.schedule.get("type") == "once" and request.schedule.get("run_at"):
+        try:
+            page_date_str = datetime.datetime.fromisoformat(request.schedule["run_at"]).strftime("%Y-%m-%d")
+        except (ValueError, TypeError):
+            pass # Keep today's date if format is bad
+
+    journal_block = {
+        "block_id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "page_date": page_date_str,
+        "content": f"TASK: {request.description}",
+        "order": 999, # Place at the end of the day
+        "created_by": "user_task",
+        "created_at": now_utc,
+        "updated_at": now_utc,
+        "linked_task_id": task_id,
+        "task_status": "approval_pending"
+    }
+    await mongo_manager.journal_blocks_collection.insert_one(journal_block)
+
     return {"message": "Task created successfully", "task_id": task_id}
 
 @router.post("/fetch-tasks")

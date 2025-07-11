@@ -25,6 +25,7 @@ import {
 	IconChevronUp,
 	IconX,
 	IconMail,
+	IconUsers,
 	IconCalendarEvent,
 	IconWorldSearch
 } from "@tabler/icons-react"
@@ -36,6 +37,7 @@ import { motion, AnimatePresence } from "framer-motion"
 const integrationIcons = {
 	gmail: IconMail,
 	gcalendar: IconCalendarEvent,
+	gpeople: IconUsers,
 	internet_search: IconWorldSearch,
 	gdrive: IconBrandGoogleDrive,
 	gdocs: IconFileText,
@@ -446,7 +448,8 @@ const IntegrationsPage = () => {
 		"gdrive",
 		"gdocs",
 		"gslides",
-		"gsheets"
+		"gsheets",
+		"gpeople"
 	]
 
 	const fetchIntegrations = useCallback(async () => {
@@ -508,6 +511,8 @@ const IntegrationsPage = () => {
 					"https://www.googleapis.com/auth/presentations https://www.googleapis.com/auth/drive",
 				gsheets: "https://www.googleapis.com/auth/spreadsheets",
 				gmaps: "https://www.googleapis.com/auth/cloud-platform",
+				gpeople:
+					"https://www.googleapis.com/auth/contacts",
 				gshopping: "https://www.googleapis.com/auth/content",
 				github: "repo user",
 				notion: "read_content write_content insert_content", // This is not a scope, it's just for user to know. Notion doesn't use scopes in the URL.

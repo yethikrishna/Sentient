@@ -1,16 +1,6 @@
 "use client"
 import React, { useState, useEffect, useRef, useCallback } from "react"
-import {
-	IconSend,
-	IconLoader,
-	IconPlayerStopFilled,
-	IconWorldSearch,
-	IconCloud,
-	IconNews,
-	IconMap,
-	IconShoppingCart,
-	IconX
-} from "@tabler/icons-react"
+import { IconSend, IconLoader, IconPlayerStopFilled, IconX } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import { cn } from "@utils/cn"
 import { Tooltip } from "react-tooltip"
@@ -294,104 +284,6 @@ const ChatOverlay = ({ onClose }) => {
 				</div>
 
 				<div className="p-4 border-t border-[var(--color-primary-surface)]">
-					<div className="flex items-center flex-wrap justify-center gap-4 mb-3 text-xs text-[var(--color-text-secondary)]">
-						{/* Tool Toggles Here */}
-						<label
-							className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
-							data-tooltip-id="chat-overlay-tooltip"
-							data-tooltip-content="Allows the AI to search the web for real-time information."
-						>
-							<IconWorldSearch
-								size={16}
-								className={
-									isInternetEnabled
-										? "text-[var(--color-accent-blue)]"
-										: ""
-								}
-							/>
-							<span>Internet</span>
-							<Switch
-								checked={isInternetEnabled}
-								onCheckedChange={setInternetEnabled}
-							/>
-						</label>
-						<label
-							className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
-							data-tooltip-id="chat-overlay-tooltip"
-							data-tooltip-content="Enables weather forecasts for any location."
-						>
-							<IconCloud
-								size={16}
-								className={
-									isWeatherEnabled
-										? "text-[var(--color-accent-blue)]"
-										: ""
-								}
-							/>
-							<span>Weather</span>
-							<Switch
-								checked={isWeatherEnabled}
-								onCheckedChange={setWeatherEnabled}
-							/>
-						</label>
-						<label
-							className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
-							data-tooltip-id="chat-overlay-tooltip"
-							data-tooltip-content="Enables fetching the latest news headlines."
-						>
-							<IconNews
-								size={16}
-								className={
-									isNewsEnabled
-										? "text-[var(--color-accent-blue)]"
-										: ""
-								}
-							/>
-							<span>News</span>
-							<Switch
-								checked={isNewsEnabled}
-								onCheckedChange={setNewsEnabled}
-							/>
-						</label>
-						<label
-							className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
-							data-tooltip-id="chat-overlay-tooltip"
-							data-tooltip-content="Enables location-based information and directions."
-						>
-							<IconMap
-								size={16}
-								className={
-									isMapsEnabled
-										? "text-[var(--color-accent-blue)]"
-										: ""
-								}
-							/>
-							<span>Maps</span>
-							<Switch
-								checked={isMapsEnabled}
-								onCheckedChange={setMapsEnabled}
-							/>
-						</label>
-						<label
-							className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors"
-							data-tooltip-id="chat-overlay-tooltip"
-							data-tooltip-content="Enables product search and price comparisons."
-						>
-							<IconShoppingCart
-								size={16}
-								className={
-									isShoppingEnabled
-										? "text-[var(--color-accent-blue)]"
-										: ""
-								}
-							/>
-							<span>Shopping</span>
-							<Switch
-								checked={isShoppingEnabled}
-								onCheckedChange={setShoppingEnabled}
-							/>
-						</label>
-					</div>
 					<div className="relative w-full flex flex-row gap-4 items-end px-4 py-2 bg-[var(--color-primary-background)] border-[1px] border-[var(--color-primary-surface-elevated)] rounded-lg">
 						<textarea
 							ref={textareaRef}
@@ -438,3 +330,4 @@ const ChatOverlay = ({ onClose }) => {
 }
 
 export default ChatOverlay
+

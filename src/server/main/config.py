@@ -172,6 +172,16 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("GSHEETS_MCP_SERVER_URL", "http://localhost:9015/sse")
         }
     },
+    "gpeople": {
+        "display_name": "Google People",
+        "description": "Manage your contacts. The agent can search, create, update, and delete contacts in your Google account, helping you keep your address book organized.",
+        "auth_type": "oauth",
+        "icon": "IconUsers",
+        "mcp_server_config": {
+            "name": "gpeople_server",
+            "url": os.getenv("GPEOPLE_MCP_SERVER_URL", "http://localhost:9019/sse")
+        }
+    },
     "gmaps": {
         "display_name": "Google Maps",
         "description": "Search for places and get directions. The agent can look up addresses, points of interest, and find routes for driving, walking, bicycling, or transit.",
@@ -270,6 +280,16 @@ INTEGRATIONS_CONFIG = {
         "mcp_server_config": {
             "name": "chat_tools_server",
             "url": os.getenv("CHAT_TOOLS_MCP_SERVER_URL", "http://localhost:9013/sse")
+        }
+    },
+    "journal": { # Built-in, for chat agent
+        "display_name": "Journal Tools",
+        "description": "Tools for managing the user's Journal. The agent can add new entries, search existing entries by keyword, and get a summary for a specific day.",
+        "auth_type": "builtin",
+        "icon": "IconMessage", # Frontend can map this
+        "mcp_server_config": {
+            "name": "journal_server",
+            "url": os.getenv("JOURNAL_MCP_SERVER_URL", "http://localhost:9018/sse")
         }
     },
     "journal": { # Built-in, for chat agent

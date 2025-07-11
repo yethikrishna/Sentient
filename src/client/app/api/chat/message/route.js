@@ -9,13 +9,8 @@ const appServerUrl =
 export const POST = withAuth(async function POST(request, { authHeader }) {
 	try {
 		const {
-			messages, // Changed from `input`
-			chatId,
-			enable_internet,
-			enable_weather,
-			enable_news,
-			enable_maps,
-			enable_shopping
+			messages,
+			chatId
 		} = await request.json()
 
 		// Fetch user pricing/credits to pass to the backend
@@ -37,13 +32,8 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 				// Pass `messages` array instead of `input`
 				messages,
 				chatId,
-				pricing,
-				credits,
-				enable_internet,
-				enable_weather,
-				enable_news,
-				enable_maps,
-				enable_shopping
+				pricing, // Note: pricing and credits are still sent for backend logic
+				credits
 			}),
 			// IMPORTANT: duplex must be set to 'half' to stream response body in Next.js Edge/Node runtime
 			duplex: "half"

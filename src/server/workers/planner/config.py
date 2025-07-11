@@ -108,6 +108,16 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("GSHEETS_MCP_SERVER_URL", "http://localhost:9015/sse")
         }
     },
+    "gpeople": {
+        "display_name": "Google People",
+        "description": "Manage your contacts. The agent can search, create, update, and delete contacts in your Google account, helping you keep your address book organized.",
+        "auth_type": "oauth",
+        "icon": "IconUsers",
+        "mcp_server_config": {
+            "name": "gpeople_server",
+            "url": os.getenv("GPEOPLE_MCP_SERVER_URL", "http://localhost:9019/sse")
+        }
+    },
     "gmaps": {
         "display_name": "Google Maps",
         "description": "Search for places and get directions. The agent can look up addresses, points of interest, and find routes for driving, walking, bicycling, or transit.",

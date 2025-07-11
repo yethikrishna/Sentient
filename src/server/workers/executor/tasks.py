@@ -217,6 +217,7 @@ async def async_execute_task_plan(task_id: str, user_id: str):
         "3.  **Remember New Information:** If you discover a new, permanent fact about the user during your execution (e.g., you find their manager's email is 'boss@example.com'), you MUST use `supermemory-addToSupermemory` to save it.\n"
         "4.  **Report Progress & Failures:** You MUST call the `progress_updater-update_progress` tool to report your status after each major step or when you encounter an error. If a tool fails, analyze the error, report it, and try an alternative approach to achieve the objective. Do not give up easily.\n"
         "5.  **Provide a Final, Detailed Answer:** Once all steps are completed, you MUST provide a final, comprehensive answer to the user. This is not a tool call. Your final response should be a natural language summary of everything you did and found. Include key results, links to created documents, summaries of information found, and confirmation of actions taken. Do NOT just say 'Task completed.' Be thorough and informative.\n"
+        "6.  **Contact Information:** To find contact details like phone numbers or emails, use the `gpeople` tool before attempting to send an email or make a call.\n"
         "\nNow, begin your work. Think step-by-step and start executing the plan."
     )
     

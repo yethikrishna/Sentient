@@ -1,12 +1,13 @@
 import datetime
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
-from main.agents.models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest, GeneratePlanRequest
+from main.agents.models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest, GeneratePlanRequest, AnswerClarificationRequest
 from main.config import INTEGRATIONS_CONFIG
 from main.dependencies import mongo_manager
 from main.auth.utils import PermissionChecker
 from main.agents.utils import clean_llm_output
-from workers.executor.tasks import execute_task_plan
+from workers.executor.tasks import execute_task_plan # keep for immediate execution
+from workers.tasks import generate_plan_from_context, process_memory_item # new tasks
 from workers.planner.llm import get_planner_agent
 from workers.planner.db import get_all_mcp_descriptions
 from workers.tasks import calculate_next_run
@@ -216,6 +217,48 @@ async def approve_task(
         await mongo_manager.task_collection.update_one({"task_id": request.taskId}, {"$set": update_doc})
         execute_task_plan.delay(request.taskId, user_id)
         return {"message": "Task approved and has been queued for immediate execution."}
+
+@router.post("/answer-clarifications", status_code=status.HTTP_200_OK)
+async def answer_clarifications(
+    request: AnswerClarificationRequest,
+    user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"]))
+):
+    task = await mongo_manager.task_collection.find_one(
+        {"task_id": request.taskId, "user_id": user_id}
+    )
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
+
+    if task.get("status") != "clarification_pending":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task is not awaiting clarification.")
+
+    questions = task.get("clarifying_questions", [])
+
+    # Update answers in DB and send to memory
+    for answer in request.answers:
+        found_question = False
+        for q in questions:
+            if q["question_id"] == answer.question_id:
+                q["answer"] = answer.answer_text
+                found_question = True
+                fact_to_remember = f"Regarding the task '{task.get('description', '')}', the user clarified: Q: '{q['text']}' A: '{answer.answer_text}'"
+                process_memory_item.delay(user_id, fact_to_remember)
+                break
+
+    all_answered = all(q.get("answer") for q in questions)
+
+    update_payload = {"clarifying_questions": questions}
+
+    if all_answered:
+        update_payload["status"] = "planning"
+        generate_plan_from_context.delay(request.taskId)
+
+    await mongo_manager.task_collection.update_one(
+        {"task_id": request.taskId},
+        {"$set": update_payload}
+    )
+
+    return {"message": "Answers submitted successfully. Planning will now proceed."}
 
 
 @router.post("/rerun-task")

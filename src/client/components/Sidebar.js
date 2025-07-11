@@ -275,7 +275,7 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 						<NavLink
 							href="/journal"
 							icon={<IconBook />}
-							label="Journal"
+							label="Organizer"
 						/>
 						<NavLink
 							href="/integrations"

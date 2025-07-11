@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import uuid
 import json
 import re
 import datetime
@@ -14,7 +15,7 @@ from main.agents.utils import clean_llm_output
 from json_extractor import JsonExtractor
 from workers.utils.api_client import notify_user
 from workers.celery_app import celery_app
-from workers.planner.llm import get_planner_agent
+from workers.planner.llm import get_planner_agent # Keep for plan generation
 from workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions
 from workers.supermemory_agent_utils import get_supermemory_qwen_agent, get_db_manager as get_memory_db_manager
 from workers.executor.tasks import execute_task_plan
@@ -173,24 +174,25 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
 
             memory_items = extracted_data.get("memory_items", [])
             action_items = extracted_data.get("action_items", [])
+            topics = extracted_data.get("topics", [])
             short_term_notes = extracted_data.get("short_term_notes", [])
 
             for fact in memory_items:
                 if isinstance(fact, str) and fact.strip():
                     process_memory_item.delay(user_id, fact, event_id)
 
-            if action_items:
+            if action_items and topics:
                 # Add block_id to context if it came from a journal
                 if service_name == "journal_block":
                     original_context_with_block = {
                         "source": "journal_block",
                         "block_id": event_id,
-            "original_content": event_data.get('content', ''),
-            "page_date": event_data.get('page_date')
+                        "original_content": event_data.get('content', ''),
+                        "page_date": event_data.get('page_date')
                     }
-                    process_action_item.delay(user_id, action_items, event_id, original_context_with_block)
+                    process_action_item.delay(user_id, action_items, topics, event_id, original_context_with_block)
                 else:
-                    process_action_item.delay(user_id, action_items, event_id, event_data)
+                    process_action_item.delay(user_id, action_items, topics, event_id, event_data)
 
             await db_manager.log_extraction_result(event_id, user_id, len(memory_items), len(action_items))
         
@@ -201,91 +203,192 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
 
     run_async(async_extract())
 
-# --- Planner Task ---
-@celery_app.task(name="process_action_item")
-def process_action_item(user_id: str, action_items: list, source_event_id: str, original_context: dict):
-    """Celery task to process action items and generate a plan."""
-    logger.info(f"Planner task running for user {user_id} with {len(action_items)} actions.")
+# --- Planner Task Orchestration ---
 
-    async def async_main():
-        db_manager = PlannerMongoManager()
+async def search_topics_in_memory(user_id: str, topics: list, db_manager: PlannerMongoManager):
+    """Uses Supermemory to search for context on a list of topics."""
+    found_context = {}
+    missing_topics = []
+    
+    user_profile = await db_manager.user_profiles_collection.find_one({"user_id": user_id})
+    supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id")
+    if not supermemory_user_id:
+        logger.warning(f"User {user_id} has no Supermemory ID. All topics will be considered missing.")
+        return {}, topics
+
+    supermemory_mcp_url = f"{SUPERMEMORY_MCP_BASE_URL.rstrip('/')}/{supermemory_user_id}{SUPERMEMORY_MCP_ENDPOINT_SUFFIX}"
+    agent = get_supermemory_qwen_agent(supermemory_mcp_url)
+
+    for topic in topics:
+        messages = [{'role': 'user', 'content': f"What do you know about '{topic}'?"}]
+        tool_response_content = ""
         try:
-            # Fetch user's info to provide context to the planner
-            user_profile = await db_manager.user_profiles_collection.find_one(
-                {"user_id": user_id},
-                {"userData.personalInfo": 1} # Projection to get only necessary data
-            )
-            personal_info = user_profile.get("userData", {}).get("personalInfo", {})
-            user_name = personal_info.get("name", "User")
-            user_location_raw = personal_info.get("location", "Not specified")
-            if isinstance(user_location_raw, dict):
-                user_location = f"latitude: {user_location_raw.get('latitude')}, longitude: {user_location_raw.get('longitude')}"
+            for response in agent.run(messages=messages):
+                if response and isinstance(response, list) and response[-1].get("role") == "function":
+                    tool_response_content = response[-1].get("content", "")
+                    break
+            
+            search_result = json.loads(tool_response_content)
+            if search_result.get("status") == "success" and search_result.get("result"):
+                # Check if the result indicates nothing was found
+                if "no memories found" not in search_result["result"].lower():
+                    found_context[topic] = search_result["result"]
+                    logger.info(f"Found context for topic '{topic}' for user {user_id}.")
+                else:
+                    missing_topics.append(topic)
             else:
-                user_location = user_location_raw
-            
-            user_timezone_str = personal_info.get("timezone", "UTC")
-            try:
-                user_timezone = ZoneInfo(user_timezone_str)
-            except ZoneInfoNotFoundError:
-                logger.warning(f"Invalid timezone '{user_timezone_str}' for user {user_id}. Defaulting to UTC.")
-                user_timezone = ZoneInfo("UTC")
-            
-            current_user_time = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
-
-            available_tools = get_all_mcp_descriptions()
-            if not available_tools:
-                logger.warning(f"No tools available for planner task for user {user_id}.")
-                return
-
-            agent = get_planner_agent(available_tools, current_user_time, user_name, user_location)
-            user_prompt_content = "Please create a plan for the following action items:\n- " + "\n- ".join(action_items)
-            messages = [{'role': 'user', 'content': user_prompt_content}]
-
-
-            final_response_str = ""
-            for chunk in agent.run(messages=messages):
-                if isinstance(chunk, list) and chunk:
-                    last_message = chunk[-1]
-                    if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
-                        final_response_str = last_message["content"]
-
-            if not final_response_str:
-                logger.error(f"Planner agent for user {user_id} returned no response.")
-                return
-
-            cleaned_content = clean_llm_output(final_response_str)
-            plan_data = JsonExtractor.extract_valid_json(cleaned_content)
-            if not plan_data:
-                logger.error(f"Planner for user {user_id} generated invalid JSON: {cleaned_content}")
-                return
-            description = plan_data.get("description", "Proactively generated plan")
-            plan_steps = plan_data.get("plan", [])
-
-            if plan_steps and all(step.get("tool") in available_tools for step in plan_steps):
-                # Save the plan, which also links it to a journal block if applicable
-                task_id = await db_manager.save_plan_as_task(user_id, description, plan_steps, original_context, source_event_id)
-
-                # If the task did NOT come from a journal block, create a new one for it.
-                if original_context.get("source") != "journal_block":
-                    action_item_text = " ".join(action_items)
-                    match = re.search(r'\b\d{4}-\d{2}-\d{2}\b', action_item_text)
-                    date_str = match.group(0) if match else datetime.datetime.now(user_timezone).strftime("%Y-%m-%d")
-
-                    # Create a new journal entry for this proactively generated task
-                    await db_manager.create_journal_entry_for_task(
-                        user_id=user_id, content=description, date_str=date_str,
-                        task_id=task_id, task_status="approval_pending"
-                    )
-
-                notification_message = f"I've created a new plan to '{description}'. It's ready for your approval."
-                await notify_user(user_id, notification_message, task_id)
-
+                missing_topics.append(topic)
         except Exception as e:
-            logger.error(f"Failed to process/save plan for user {user_id}: {e}", exc_info=True)
-        finally:
-            await db_manager.close()
+            logger.error(f"Error searching Supermemory for topic '{topic}' for user {user_id}: {e}")
+            missing_topics.append(topic)
+            
+    return found_context, missing_topics
 
-    run_async(async_main())
+async def generate_clarifying_questions(missing_topics: list) -> list:
+    """Uses an LLM to generate questions for missing topics."""
+    # This can use the same planner agent but with a different prompt, or a dedicated one.
+    # For simplicity, we'll use a dedicated prompt with the base planner agent.
+    agent = get_planner_agent({}, "", "", "", {}) # Basic agent
+    
+    prompt = (
+        "I'm trying to complete a task but I'm missing context on the following topics: "
+        f"{', '.join(missing_topics)}. Please generate a short, clear, and direct question for each topic "
+        "to ask the user for clarification. The output MUST be a valid JSON array of strings. "
+        "For example: [\"What is the 'BE Project' about?\", \"Who is Shubham?\"]"
+    )
+    messages = [{'role': 'user', 'content': prompt}]
+    
+    final_response_str = ""
+    for chunk in agent.run(messages=messages):
+        if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
+            final_response_str = chunk[-1].get("content", "")
+
+    try:
+        questions = json.loads(final_response_str)
+        return questions if isinstance(questions, list) else []
+    except json.JSONDecodeError:
+        logger.error(f"Failed to decode questions from LLM: {final_response_str}")
+        # Fallback to generic questions
+        return [f"Can you tell me more about '{topic}'?" for topic in missing_topics]
+
+@celery_app.task(name="process_action_item")
+def process_action_item(user_id: str, action_items: list, topics: list, source_event_id: str, original_context: dict):
+    """Orchestrates the pre-planning phase for a new proactive task."""
+    run_async(async_process_action_item(user_id, action_items, topics, source_event_id, original_context))
+
+async def async_process_action_item(user_id: str, action_items: list, topics: list, source_event_id: str, original_context: dict):
+    """Async logic for the proactive task orchestrator."""
+    db_manager = PlannerMongoManager()
+    task_id = None
+    try:
+        task_description = " ".join(action_items)
+        task_id = await db_manager.create_initial_task(user_id, task_description, action_items, topics, original_context, source_event_id)
+
+        found_context, missing_topics = {}, []
+        if topics:
+            found_context, missing_topics = await search_topics_in_memory(user_id, topics, db_manager)
+
+        if missing_topics:
+            questions_list = await generate_clarifying_questions(missing_topics)
+            questions_for_db = [{"question_id": str(uuid.uuid4()), "text": q, "answer": None} for q in questions_list]
+            await db_manager.update_task_with_questions(task_id, "clarification_pending", questions_for_db)
+            await notify_user(user_id, f"I have a few questions to help me plan: '{task_description[:50]}...'", task_id)
+            logger.info(f"Task {task_id} moved to 'clarification_pending' for topics: {missing_topics}")
+        else:
+            logger.info(f"Task {task_id}: All context found. Triggering plan generation.")
+            await db_manager.update_task_status(task_id, "planning")
+            generate_plan_from_context.delay(task_id)
+
+    except Exception as e:
+        logger.error(f"Error in process_action_item for task {task_id}: {e}", exc_info=True)
+        if task_id:
+            await db_manager.update_task_status(task_id, "error", {"error": str(e)})
+    finally:
+        await db_manager.close()
+
+@celery_app.task(name="generate_plan_from_context")
+def generate_plan_from_context(task_id: str):
+    """Generates a plan for a task once all context is available."""
+    run_async(async_generate_plan(task_id))
+
+async def async_generate_plan(task_id: str):
+    """Async logic for plan generation."""
+    db_manager = PlannerMongoManager()
+    try:
+        task = await db_manager.get_task(task_id)
+        if not task:
+            logger.error(f"Cannot generate plan: Task {task_id} not found.")
+            return
+
+        user_id = task["user_id"]
+        user_profile = await db_manager.user_profiles_collection.find_one(
+            {"user_id": user_id},
+            {"userData.personalInfo": 1} # Projection to get only necessary data
+        )
+        personal_info = user_profile.get("userData", {}).get("personalInfo", {})
+        user_name = personal_info.get("name", "User")
+        user_location_raw = personal_info.get("location", "Not specified")
+        if isinstance(user_location_raw, dict):
+            user_location = f"latitude: {user_location_raw.get('latitude')}, longitude: {user_location_raw.get('longitude')}"
+        else:
+            user_location = user_location_raw
+        
+        user_timezone_str = personal_info.get("timezone", "UTC")
+        try:
+            user_timezone = ZoneInfo(user_timezone_str)
+        except ZoneInfoNotFoundError:
+            logger.warning(f"Invalid timezone '{user_timezone_str}' for user {user_id}. Defaulting to UTC.")
+            user_timezone = ZoneInfo("UTC")
+        
+        current_user_time = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
+
+        retrieved_context = task.get("found_context", {})
+        
+        available_tools = get_all_mcp_descriptions()
+        if not available_tools:
+            logger.warning(f"No tools available for planner task for user {user_id}.")
+            await db_manager.update_task_status(task_id, "error", {"error": "No tools available for planning."})
+            return
+
+        planner_agent = get_planner_agent(available_tools, current_user_time, user_name, user_location, retrieved_context)
+        
+        action_items = task.get("action_items", [])
+        user_prompt_content = "Please create a plan for the following action items:\n- " + "\n- ".join(action_items)
+        messages = [{'role': 'user', 'content': user_prompt_content}]
+
+        final_response_str = ""
+        for chunk in planner_agent.run(messages=messages):
+            if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
+                final_response_str = chunk[-1].get("content", "")
+
+        if not final_response_str:
+            raise Exception("Planner agent returned no response.")
+
+        plan_data = JsonExtractor.extract_valid_json(clean_llm_output(final_response_str))
+        if not plan_data or "plan" not in plan_data:
+            raise Exception(f"Planner agent returned invalid JSON: {final_response_str}")
+
+        await db_manager.update_task_with_plan(task_id, plan_data)
+
+        # If the task did NOT come from a journal block, create a new one for it.
+        if task.get("original_context", {}).get("source") != "journal_block":
+            action_item_text = " ".join(action_items)
+            match = re.search(r'\b\d{4}-\d{2}-\d{2}\b', action_item_text)
+            date_str = match.group(0) if match else datetime.datetime.now(user_timezone).strftime("%Y-%m-%d")
+
+            # Create a new journal entry for this proactively generated task
+            await db_manager.create_journal_entry_for_task(
+                user_id=user_id, content=plan_data.get("description", "Proactively generated plan"), date_str=date_str,
+                task_id=task_id, task_status="approval_pending"
+            )
+
+        await notify_user(user_id, f"I've created a new plan for you: '{plan_data.get('description', '...')[:50]}...'", task_id)
+
+    except Exception as e:
+        logger.error(f"Error generating plan for task {task_id}: {e}", exc_info=True)
+        await db_manager.update_task_status(task_id, "error", {"error": str(e)})
+    finally:
+        await db_manager.close()
 
 # --- Polling Tasks ---
 @celery_app.task(name="poll_gmail_for_user")

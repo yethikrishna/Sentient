@@ -30,7 +30,8 @@ import {
 	IconAlertCircle,
 	IconAlertTriangle,
 	IconRefresh,
-	IconClock as IconClockStatus
+	IconClock as IconClockStatus,
+	IconMessageQuestion
 } from "@tabler/icons-react" // eslint-disable-line
 import { Tooltip } from "react-tooltip"
 import { AnimatePresence, motion } from "framer-motion"
@@ -91,6 +92,13 @@ const taskStatusColors = {
 		border: "border-[var(--color-accent-purple)]",
 		borderColor: "border-yellow-400"
 	},
+	clarification_pending: {
+		icon: IconMessageQuestion,
+		label: "Clarification Needed",
+		color: "text-orange-400",
+		bg: "bg-[var(--color-accent-orange)]/80",
+		border: "border-[var(--color-accent-orange)]"
+	},
 	active: {
 		icon: IconPlayerPlay,
 		color: "text-green-400",
@@ -116,6 +124,73 @@ const priorityMap = {
 	1: { label: "Medium", color: "text-yellow-400" },
 	2: { label: "Low", color: "text-gray-400" },
 	default: { label: "Medium", color: "text-yellow-400" }
+}
+
+const ClarificationCard = ({ task, onSubmitAnswers }) => {
+	const [answers, setAnswers] = useState({})
+	const [isSubmitting, setIsSubmitting] = useState(false)
+
+	const handleAnswerChange = (questionId, text) => {
+		setAnswers((prev) => ({ ...prev, [questionId]: text }))
+	}
+
+	const handleSubmit = async () => {
+		const unansweredQuestions = task.clarifying_questions.filter(
+			(q) => !answers[q.question_id]?.trim()
+		)
+		if (unansweredQuestions.length > 0) {
+			toast.error("Please answer all questions before submitting.")
+			return
+		}
+
+		setIsSubmitting(true)
+		const answersPayload = Object.entries(answers).map(
+			([question_id, answer_text]) => ({
+				question_id,
+				answer_text
+			})
+		)
+		await onSubmitAnswers(task.task_id, answersPayload)
+		setIsSubmitting(false)
+	}
+
+	return (
+		<div className="bg-neutral-800/50 p-3 rounded-lg space-y-3 border border-dashed border-blue-500/50">
+			<p className="font-semibold text-sm text-white">
+				{task.description}
+			</p>
+			<div className="space-y-2">
+				{task.clarifying_questions.map((q) => (
+					<div key={q.question_id}>
+						<label className="text-xs text-gray-400 block mb-1">
+							{q.text}
+						</label>
+						<textarea
+							value={answers[q.question_id] || ""}
+							onChange={(e) =>
+								handleAnswerChange(
+									q.question_id,
+									e.target.value
+								)
+							}
+							rows={1}
+							className="w-full p-2 bg-neutral-700/80 border border-neutral-600 rounded-md text-sm focus:border-blue-500 transition-colors"
+							placeholder="Your answer..."
+						/>
+					</div>
+				))}
+			</div>
+			<div className="flex justify-end">
+				<button
+					onClick={handleSubmit}
+					disabled={isSubmitting}
+					className="px-3 py-1 text-xs font-semibold bg-blue-600 text-white rounded-md hover:bg-blue-500 disabled:opacity-50"
+				>
+					{isSubmitting ? "Submitting..." : "Submit Answers"}
+				</button>
+			</div>
+		</div>
+	)
 }
 
 const ConnectToolButton = ({ toolName }) => {
@@ -574,6 +649,25 @@ const OrganizerPage = () => {
 		}
 	}
 
+	const handleAnswerClarifications = async (taskId, answers) => {
+		if (!taskId || !answers || answers.length === 0) return
+		try {
+			const response = await fetch("/api/tasks/clarify", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ taskId, answers })
+			})
+			if (!response.ok) {
+				const errorData = await response.json()
+				throw new Error(errorData.error || "Failed to submit answers")
+			}
+			toast.success("Answers submitted! Task will now proceed.")
+			refreshData()
+		} catch (error) {
+			toast.error(`Error submitting answers: ${error.message}`)
+		}
+	}
+
 	const handleToggleEnableTask = async (taskId, isEnabled) => {
 		try {
 			const response = await fetch("/api/tasks/update", {
@@ -811,6 +905,7 @@ const OrganizerPage = () => {
 				onViewTask={(task) => setViewingTask(task)}
 				onToggleEnableTask={handleToggleEnableTask}
 				onUpdateSchedule={handleUpdateTaskSchedule}
+				onAnswerClarifications={handleAnswerClarifications}
 			/>
 			<AnimatePresence>
 				{editingTask && (
@@ -1466,7 +1561,8 @@ const RightSidebar = ({
 	onApproveTask,
 	onViewTask,
 	onUpdateSchedule,
-	onToggleEnableTask
+	onToggleEnableTask,
+	onAnswerClarifications
 }) => {
 	// eslint-disable-line
 	const [openSections, setOpenSections] = useState({
@@ -1478,6 +1574,11 @@ const RightSidebar = ({
 
 	const recurringTasks = useMemo(
 		() => allTasks.filter((t) => t.schedule?.type === "recurring"),
+		[allTasks]
+	)
+
+	const clarificationTasks = useMemo(
+		() => allTasks.filter((t) => t.status === "clarification_pending"),
 		[allTasks]
 	)
 
@@ -1551,6 +1652,26 @@ const RightSidebar = ({
 							</div>
 						</div>
 					)}
+					{activeTab === "clarifications" && (
+						<div className="space-y-4 p-4">
+							<h2 className="text-xl font-semibold text-center mb-4">
+								Needs Your Input
+							</h2>
+							{clarificationTasks.length > 0 ? (
+								clarificationTasks.map((task) => (
+									<ClarificationCard
+										key={task.task_id}
+										task={task}
+										onSubmitAnswers={onAnswerClarifications}
+									/>
+								))
+							) : (
+								<p className="text-center text-gray-500 py-10">
+									All clear! No questions waiting.
+								</p>
+							)}
+						</div>
+					)}
 					{activeTab === "tasks" && (
 						<div className="space-y-4 p-4">
 							<h2 className="text-xl font-semibold text-center mb-4">
@@ -1613,6 +1734,12 @@ const RightSidebar = ({
 						icon={<IconChecklist size={22} />}
 						isActive={isOpen && activeTab === "tasks"}
 						onClick={() => handleTabClick("tasks")}
+					/>
+					<SidebarTabButton
+						label="Clarifications"
+						icon={<IconMessageQuestion size={22} />}
+						isActive={isOpen && activeTab === "clarifications"}
+						onClick={() => handleTabClick("clarifications")}
 					/>
 					<SidebarTabButton
 						label="Workflows"

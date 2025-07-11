@@ -159,7 +159,7 @@ export default function FloatingNav({ onChatOpen }) {
 			)
 		},
 		{
-			title: "Journal",
+			title: "Organizer",
 			href: "/journal",
 			icon: (
 				<IconBook className="h-full w-full text-neutral-500 dark:text-neutral-300" />

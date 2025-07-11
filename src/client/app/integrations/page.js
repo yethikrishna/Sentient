@@ -587,7 +587,8 @@ const IntegrationsPage = () => {
 		const success = urlParams.get("integration_success")
 		const error = urlParams.get("integration_error")
 		if (success) {
-			toast.success(`Successfully connected to ${success}!`)
+			const capitalized = success.charAt(0).toUpperCase() + success.slice(1)
+			toast.success(`Successfully connected to ${capitalized}!`)
 			window.history.replaceState({}, document.title, "/integrations")
 		} else if (error) {
 			toast.error(`Connection failed: ${error}`)

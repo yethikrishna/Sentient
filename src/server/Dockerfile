@@ -1,75 +1,83 @@
-# src/server/Dockerfile
-
-# Use a slim Python base image for a smaller final container
+# Use a slim Python base image
 FROM python:3.11-slim
 
-# Set environment variables for Python
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    DEBIAN_FRONTEND=noninteractive
 
 # Install system dependencies
-# - supervisor: to manage all our processes
-# - curl, wget, gnupg, unzip: for installing chrome/chromedriver
+# - supervisor: process manager
+# - nginx: web server
+# - curl, wget, gnupg, unzip: needed for Chrome/Chromedriver install
+# - fonts-liberation: avoid font rendering issues
+# - xvfb: virtual display for headless Selenium
+# - libnss3, libatk-bridge2.0-0: common Chrome runtime deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
     supervisor \
     nginx \
     curl \
-    dos2unix \
-    unzip \
     wget \
+    unzip \
+    dos2unix \
+    ca-certificates \
     gnupg \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Install Google Chrome for Selenium
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
-    && apt-get update \
-    && apt-get install -y google-chrome-stable \
+    xvfb \
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libgtk-3-0 \
+    libasound2 \
+    fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Chromedriver
-# Find the latest stable chromedriver version
-RUN CHROME_DRIVER_VERSION=$(curl -sS https://storage.googleapis.com/chrome-for-testing-public/LATEST_RELEASE_STABLE) \
-    && wget -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_DRIVER_VERSION}/linux64/chromedriver-linux64.zip" \
+# Install Google Chrome
+RUN mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /etc/apt/keyrings/google-chrome.gpg \
+    && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" \
+    > /etc/apt/sources.list.d/google-chrome.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends google-chrome-stable \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Chromedriver (pin to match Chrome version)
+RUN CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+') \
+    && CHROMEDRIVER_URL="https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/${CHROME_VERSION}/linux64/chromedriver-linux64.zip" \
+    && wget -q -O /tmp/chromedriver.zip "$CHROMEDRIVER_URL" \
     && unzip /tmp/chromedriver.zip -d /usr/local/bin/ \
     && mv /usr/local/bin/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver \
     && rm -rf /usr/local/bin/chromedriver-linux64 /tmp/chromedriver.zip \
     && chmod +x /usr/local/bin/chromedriver
 
-# Create necessary directories
+# Create required directories
 RUN mkdir -p /etc/supervisor/conf.d /var/log/supervisor
 
-# Remove the default Nginx site configuration.
-RUN rm /etc/nginx/sites-enabled/default
+# Remove default Nginx site configuration
+RUN rm -f /etc/nginx/sites-enabled/default
 
-# Set the working directory
+# Set working directory
 WORKDIR /app
 
-# Install Python dependencies from the master requirements file
+# Install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
 
-# Copy the supervisor configuration file from the build context (src/server)
+# Copy configuration files and server code
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-
-# Copy our custom Nginx configuration
 COPY nginx.conf /etc/nginx/sites-available/sentient
-
-# Copy all the server-side Python code from the build context (src/server) into the container
 COPY . .
-RUN if [ -f /app/.env ]; then dos2unix /app/.env; fi
 
-# Copy the startup script, fix its line endings, and make it executable
-COPY start.sh .
-RUN dos2unix ./start.sh && chmod +x ./start.sh
+# Fix line endings for .env and start.sh (if present)
+RUN if [ -f /app/.env ]; then dos2unix /app/.env; fi \
+    && dos2unix /app/start.sh \
+    && chmod +x /app/start.sh
 
-# Link our Nginx config to make it active.
+# Enable custom Nginx site
 RUN ln -s /etc/nginx/sites-available/sentient /etc/nginx/sites-enabled/sentient
 
-# Expose the public port for the main FastAPI server
+# Expose port
 EXPOSE 5000
 
-# The command to run when the container starts
+# Start Xvfb and our processes using supervisord
 CMD ["/app/start.sh"]

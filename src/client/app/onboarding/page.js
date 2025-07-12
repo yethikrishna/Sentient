@@ -17,7 +17,8 @@ import {
 	IconListCheck,
 	IconCheck,
 	IconBrandWhatsapp,
-	IconSparkles
+	IconSparkles,
+	IconLink
 } from "@tabler/icons-react"
 
 // --- Helper Components ---
@@ -124,6 +125,16 @@ const questions = [
 		type: "textarea",
 		placeholder: "e.g., I enjoy hiking, learning guitar, and soccer.",
 		icon: <IconHeart />
+	},
+	{
+		id: "linkedin-url",
+		sentientComment:
+			"To get a better professional snapshot, you can also provide your LinkedIn profile URL. This is optional.",
+		question: "What is your LinkedIn Profile URL? (Optional)",
+		type: "text-input",
+		required: false,
+		placeholder: "https://www.linkedin.com/in/your-profile",
+		icon: <IconLink />
 	},
 	{
 		id: "communication-style",

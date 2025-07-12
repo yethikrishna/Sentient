@@ -14,7 +14,7 @@ from main.auth.utils import PermissionChecker, AuthHelper, aes_encrypt, aes_decr
 from main.config import AUTH0_AUDIENCE
 from main.dependencies import mongo_manager, auth_helper, websocket_manager as main_websocket_manager
 from pydantic import BaseModel
-
+from workers.tasks import process_memory_item, process_linkedin_profile
 
 # Google API libraries for validation
 from google.oauth2 import service_account
@@ -51,6 +51,16 @@ async def save_onboarding_data_endpoint(
         ]
 
         onboarding_data = request_body.data
+
+        # --- Handle LinkedIn URL ---
+        linkedin_url = onboarding_data.get("linkedin-url")
+        if linkedin_url and isinstance(linkedin_url, str) and "linkedin.com/in/" in linkedin_url:
+            logger.info(f"LinkedIn URL provided for user {user_id}. Dispatching scraping task.")
+            try:
+                process_linkedin_profile.delay(user_id, linkedin_url)
+            except Exception as celery_dispatch_error:
+                logger.error(f"Failed to dispatch LinkedIn scraping task for user {user_id}: {celery_dispatch_error}", exc_info=True)
+                # This is fail-safe, so we just log and continue.
 
         # --- Prepare data for MongoDB ---
         user_data_to_set: Dict[str, Any] = {

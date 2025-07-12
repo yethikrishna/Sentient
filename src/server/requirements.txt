@@ -43,3 +43,5 @@ fastmcp
 matplotlib
 
 jsonextractor
+linkedin-scraper
+selenium

@@ -7,3 +7,6 @@ class ProfileUpdateRequest(BaseModel):
     onboardingAnswers: Dict[str, Any]
     personalInfo: Dict[str, Any]
     preferences: Dict[str, Any]
+
+class LinkedInUrlRequest(BaseModel):
+    linkedin_url: Optional[str] = ""

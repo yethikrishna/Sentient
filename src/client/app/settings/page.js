@@ -16,8 +16,8 @@ import {
 	IconChevronDown,
 	IconX,
 	IconPlus,
-	
-	IconBrandWhatsapp
+	IconBrandWhatsapp,
+	IconBrandLinkedin
 } from "@tabler/icons-react"
 import { useState, useEffect, useCallback } from "react"
 import { Tooltip } from "react-tooltip"
@@ -236,6 +236,129 @@ const WhatsAppSettings = () => {
 								Save
 							</button>
 							{whatsappNumber && (
+								<button
+									onClick={handleRemove}
+									disabled={isSaving}
+									className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-red)]/80 hover:bg-[var(--color-accent-red)] text-white font-medium transition-colors"
+								>
+									<IconX className="w-4 h-4 mr-2" /> Remove
+								</button>
+							)}
+						</div>
+					</div>
+				)}
+			</div>
+		</section>
+	)
+}
+
+const LinkedInSettings = () => {
+	const [linkedinUrl, setLinkedinUrl] = useState("")
+	const [isLoading, setIsLoading] = useState(true)
+	const [isSaving, setIsSaving] = useState(false)
+
+	const fetchLinkedInUrl = useCallback(async () => {
+		setIsLoading(true)
+		try {
+			const response = await fetch("/api/settings/linkedin")
+			if (!response.ok) throw new Error("Failed to fetch LinkedIn URL.")
+			const data = await response.json()
+			setLinkedinUrl(data.linkedin_url || "")
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsLoading(false)
+		}
+	}, [])
+
+	useEffect(() => {
+		fetchLinkedInUrl()
+	}, [fetchLinkedInUrl])
+
+	const handleSave = async () => {
+		setIsSaving(true)
+		try {
+			const response = await fetch("/api/settings/linkedin", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ linkedin_url: linkedinUrl })
+			})
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(data.error || "Failed to save LinkedIn URL.")
+			}
+			toast.success(data.message || "LinkedIn URL saved successfully!")
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsSaving(false)
+		}
+	}
+
+	const handleRemove = async () => {
+		setIsSaving(true)
+		try {
+			const response = await fetch("/api/settings/linkedin", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ linkedin_url: "" }) // Send empty string to remove
+			})
+			if (!response.ok) throw new Error("Failed to remove URL.")
+			setLinkedinUrl("")
+			toast.success("LinkedIn URL removed.")
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsSaving(false)
+		}
+	}
+
+	const hasUrl = linkedinUrl && linkedinUrl.trim() !== ""
+
+	return (
+		<section>
+			<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2">
+				LinkedIn Profile
+			</h2>
+			<div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)]">
+				<p className="text-gray-400 text-sm mb-4">
+					Connect your LinkedIn profile to help Sentient understand
+					your professional background. This will be used to enrich
+					your personal memory.
+				</p>
+				{isLoading ? (
+					<div className="flex justify-center mt-4">
+						<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)]" />
+					</div>
+				) : (
+					<div className="flex flex-col sm:flex-row gap-2">
+						<div className="relative flex-grow">
+							<IconBrandLinkedin
+								className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-400"
+								size={20}
+							/>
+							<input
+								type="url"
+								value={linkedinUrl}
+								onChange={(e) => setLinkedinUrl(e.target.value)}
+								placeholder="https://www.linkedin.com/in/your-profile"
+								className="w-full pl-10 pr-4 bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+							/>
+						</div>
+						<div className="flex gap-2 justify-end">
+							<button
+								onClick={handleSave}
+								disabled={isSaving}
+								className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors"
+							>
+								{isSaving ? (
+									<IconLoader className="w-4 h-4 mr-2 animate-spin" />
+								) : (
+									<IconPlus className="w-4 h-4 mr-2" />
+								)}
+								{hasUrl ? "Update" : "Save"}
+							</button>
+							{hasUrl && (
 								<button
 									onClick={handleRemove}
 									disabled={isSaving}
@@ -622,6 +745,7 @@ const ProfilePage = () => {
 							isSaving={isSavingProfile}
 						/>
 						<WhatsAppSettings />
+						<LinkedInSettings />
 					</div>
 				</main>
 			</div>

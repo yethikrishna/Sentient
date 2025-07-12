@@ -908,41 +908,44 @@ const OrganizerPage = () => {
 				onAnswerClarifications={handleAnswerClarifications}
 			/>
 			<AnimatePresence>
-				{editingTask && (
+				{editingTask && !viewingTask && !activeBlock.block && (
 					<EditTaskModal
 						key={editingTask.task_id}
 						task={editingTask}
 						onClose={() => setEditingTask(null)}
 						onSave={handleUpdateTask}
-						setTask={setEditingTask} // This is the 'setEditingTask' state setter
+						setTask={setEditingTask}
 						onUpdateSchedule={handleUpdateTaskSchedule}
 						allTools={allTools}
 						integrations={integrations}
 					/>
 				)}
-				{activeBlock.block && (
+				{activeBlock.block && ( // This is the new logic to handle journal entry clicks
 					<EntryDetailsModal
 						key={activeBlock.block.block_id}
 						block={activeBlock.block}
-						tasksById={tasksById}
+						task={
+							activeBlock.block.linked_task_id
+								? tasksById[activeBlock.block.linked_task_id]
+								: null
+						}
 						startInEditMode={activeBlock.isEditing}
 						onClose={() =>
 							setActiveBlock({ block: null, isEditing: false })
 						}
-						onUpdateSchedule={handleUpdateTaskSchedule}
 						onDataChange={refreshData}
 						onDeleteRequest={(block) => setDeletingBlock(block)}
 					/>
 				)}
-				{viewingTask && (
-					<TaskDetailsModal
-						task={viewingTask}
-						onClose={() => setViewingTask(null)}
-						onDataChange={refreshData}
-						onDeleteRequest={(block) => setDeletingBlock(block)}
-					/>
-				)}
-				{deletingBlock && (
+				{viewingTask &&
+					!activeBlock.block && ( // Logic for search result clicks
+						<TaskDetailsModal
+							task={viewingTask}
+							onClose={() => setViewingTask(null)}
+							onDataChange={refreshData}
+						/>
+					)}
+				{deletingBlock && !viewingTask && !activeBlock.block && (
 					<DeleteConfirmationModal
 						block={deletingBlock}
 						onClose={() => setDeletingBlock(null)}
@@ -951,6 +954,144 @@ const OrganizerPage = () => {
 				)}
 			</AnimatePresence>
 		</div>
+	)
+}
+
+const EntryDetailsModal = ({
+	block,
+	task,
+	onClose,
+	startInEditMode,
+	onDataChange,
+	onDeleteRequest
+}) => {
+	const [isEditing, setIsEditing] = useState(startInEditMode)
+	const [content, setContent] = useState(block.content)
+	const [isSaving, setIsSaving] = useState(false)
+
+	const handleSave = async () => {
+		if (content === block.content) {
+			setIsEditing(false)
+			return
+		}
+		setIsSaving(true)
+		try {
+			const response = await fetch(
+				`/api/journal?blockId=${block.block_id}`,
+				{
+					method: "PUT",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ content: content })
+				}
+			)
+			if (!response.ok) throw new Error("Failed to save entry.")
+			toast.success("Entry updated!")
+			onDataChange()
+			setIsEditing(false)
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsSaving(false)
+		}
+	}
+
+	const handleDelete = () => {
+		onClose() // Close this modal first
+		onDeleteRequest(block) // Then trigger the confirmation modal
+	}
+
+	return (
+		<motion.div
+			initial={{ opacity: 0 }}
+			animate={{ opacity: 1 }}
+			exit={{ opacity: 0 }}
+			className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 p-4"
+			onClick={onClose}
+		>
+			<motion.div
+				initial={{ scale: 0.9, y: 20 }}
+				animate={{ scale: 1, y: 0 }}
+				exit={{ scale: 0.9, y: 20 }}
+				className="bg-gradient-to-br from-[var(--color-primary-surface)] to-[var(--color-primary-background)] p-6 rounded-2xl shadow-xl w-full max-w-2xl border border-[var(--color-primary-surface-elevated)] max-h-[90vh] flex flex-col"
+				onClick={(e) => e.stopPropagation()}
+			>
+				<div className="flex justify-between items-center mb-4 flex-shrink-0">
+					<h3 className="text-xl font-semibold">Journal Entry</h3>
+					<button onClick={onClose} className="hover:text-white">
+						<IconX />
+					</button>
+				</div>
+				<div className="overflow-y-auto custom-scrollbar pr-2 space-y-4">
+					{isEditing ? (
+						<textarea
+							value={content}
+							onChange={(e) => setContent(e.target.value)}
+							className="w-full bg-neutral-800/50 p-3 rounded-lg border border-neutral-700 min-h-[150px] focus:border-blue-500"
+						/>
+					) : (
+						<p className="text-base whitespace-pre-wrap p-3 bg-neutral-800/20 rounded-lg">
+							{content}
+						</p>
+					)}
+
+					{task && (
+						<div className="pt-4 border-t border-neutral-700/80">
+							<h4 className="text-lg font-semibold mb-3">
+								Linked Task Details
+							</h4>
+							{/* We render the TaskDetailsModal's content directly to avoid a modal-in-modal */}
+							<TaskDetailsContent task={task} />
+						</div>
+					)}
+				</div>
+				<div className="flex justify-between items-center mt-6 pt-4 border-t border-neutral-700 flex-shrink-0">
+					{!block.isRecurring && (
+						<button
+							onClick={handleDelete}
+							className="py-2 px-4 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/40 text-sm font-semibold flex items-center gap-2"
+						>
+							<IconTrash size={16} /> Delete Entry
+						</button>
+					)}
+					<div className="flex-grow"></div>
+					<div className="flex gap-4">
+						{isEditing ? (
+							<>
+								<button
+									onClick={() => {
+										setIsEditing(false)
+										setContent(block.content)
+									}}
+									className="py-2 px-5 rounded-lg bg-[var(--color-primary-surface-elevated)] hover:bg-[var(--color-primary-surface)] text-sm"
+								>
+									Cancel
+								</button>
+								<button
+									onClick={handleSave}
+									disabled={isSaving}
+									className="py-2 px-5 rounded-lg bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-sm transition-colors disabled:opacity-50 flex items-center justify-center"
+								>
+									{isSaving ? (
+										<IconLoader className="animate-spin h-5 w-5" />
+									) : (
+										"Save Changes"
+									)}
+								</button>
+							</>
+						) : (
+							!block.isRecurring && (
+								<button
+									onClick={() => setIsEditing(true)}
+									className="py-2 px-5 rounded-lg bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-sm font-semibold flex items-center gap-2"
+								>
+									<IconPencil size={16} /> Edit
+								</button>
+							)
+						)}
+					</div>
+				</div>
+			</motion.div>
+		</motion.div>
 	)
 }
 
@@ -2176,7 +2317,7 @@ const DeleteConfirmationModal = ({ block, onClose, onDataChange }) => {
 	)
 }
 
-const TaskDetailsModal = ({ task, onClose }) => {
+const TaskDetailsContent = ({ task }) => {
 	const statusInfo = taskStatusColors[task.status] || taskStatusColors.default
 	const priorityInfo = priorityMap[task.priority] || priorityMap.default
 
@@ -2195,6 +2336,145 @@ const TaskDetailsModal = ({ task, onClose }) => {
 				}
 			: { thoughts: null, finalAnswer: null, mainContent: task.result }
 
+	return (
+		<div className="space-y-6">
+			<div className="flex items-center gap-4 text-sm">
+				<span className="text-[var(--color-text-secondary)]">
+					Status:
+				</span>
+				<span
+					className={cn(
+						"font-semibold py-0.5 px-2 rounded-full text-xs",
+						statusInfo.color,
+						statusInfo.borderColor.replace("border-", "bg-") + "/20"
+					)}
+				>
+					{statusInfo.label}
+				</span>
+				<div className="w-px h-4 bg-[var(--color-primary-surface-elevated)]"></div>
+				<span className="text-[var(--color-text-secondary)]">
+					Priority:
+				</span>
+				<span className={cn("font-semibold", priorityInfo.color)}>
+					{priorityInfo.label}
+				</span>
+			</div>
+			<div>
+				<h4 className="text-lg font-semibold text-white mb-3">Plan</h4>
+				<div className="space-y-2">
+					{task.plan.map((step, index) => (
+						<div
+							key={index}
+							className="flex items-start gap-3 bg-[var(--color-primary-surface)]/70 p-3 rounded-md"
+						>
+							<div className="flex-shrink-0 text-[var(--color-accent-blue)] font-bold mt-0.5">
+								{index + 1}.
+							</div>
+							<div>
+								<p className="font-semibold text-white">
+									{step.tool}
+								</p>
+								<p className="text-sm text-[var(--color-text-secondary)]">
+									{step.description}
+								</p>
+							</div>
+						</div>
+					))}
+				</div>
+			</div>
+			{task.progress_updates?.length > 0 && (
+				<div>
+					<h4 className="text-lg font-semibold text-white mb-4">
+						Progress
+					</h4>
+					<div className="space-y-4">
+						{task.progress_updates.map((update, index) => (
+							<div key={index} className="flex gap-4">
+								<div className="flex flex-col items-center">
+									<div className="w-4 h-4 bg-blue-500 rounded-full border-2 border-neutral-800"></div>
+									{index <
+										task.progress_updates.length - 1 && (
+										<div className="w-0.5 flex-grow bg-[var(--color-primary-surface-elevated)]"></div>
+									)}
+								</div>
+								<div>
+									<p className="text-sm text-white -mt-1">
+										{update.message}
+									</p>
+									<p className="text-xs text-[var(--color-text-muted)] mt-1.5">
+										{new Date(
+											update.timestamp
+										).toLocaleString()}
+									</p>
+								</div>
+							</div>
+						))}
+					</div>
+				</div>
+			)}
+			{(task.result || task.error) && (
+				<div className="pt-4 border-t border-[var(--color-primary-surface-elevated)]">
+					<h4 className="text-lg font-semibold text-white mb-4">
+						Outcome
+					</h4>
+					{task.error ? (
+						<pre className="text-sm bg-red-900/30 p-4 rounded-md text-red-300 whitespace-pre-wrap font-mono border border-[var(--color-accent-red)]/50">
+							{task.error}
+						</pre>
+					) : (
+						<div className="space-y-4 text-gray-300">
+							{thoughts && (
+								<details className="bg-[var(--color-primary-surface)]/50 rounded-lg p-3 border border-[var(--color-primary-surface-elevated)]">
+									<summary
+										className="cursor-pointer text-sm text-[var(--color-text-secondary)] font-semibold hover:text-white flex items-center gap-2"
+										data-tooltip-id="task-details-tooltip"
+										data-tooltip-content="See the step-by-step reasoning the agent used to produce the result."
+									>
+										<IconBrain
+											size={16}
+											className="text-yellow-400"
+										/>{" "}
+										View Agent's Thoughts
+									</summary>
+									<pre className="mt-3 text-xs text-gray-400 whitespace-pre-wrap font-mono">
+										{thoughts}
+									</pre>
+								</details>
+							)}
+							{mainContent && typeof mainContent === "string" && (
+								<div
+									dangerouslySetInnerHTML={{
+										__html: mainContent.replace(
+											/\n/g,
+											"<br />"
+										)
+									}}
+								/>
+							)}
+							{finalAnswer && (
+								<div className="mt-2 p-4 bg-green-900/30 border border-[var(--color-accent-green)]/50 rounded-lg">
+									<p className="text-sm font-semibold text-green-300 mb-2">
+										Final Answer
+									</p>
+									<div
+										dangerouslySetInnerHTML={{
+											__html: finalAnswer.replace(
+												/\n/g,
+												"<br />"
+											)
+										}}
+									/>
+								</div>
+							)}
+						</div>
+					)}
+				</div>
+			)}
+		</div>
+	)
+}
+
+const TaskDetailsModal = ({ task, onClose }) => {
 	return (
 		<motion.div
 			initial={{ opacity: 0 }}
@@ -2220,456 +2500,9 @@ const TaskDetailsModal = ({ task, onClose }) => {
 				<div className="overflow-y-auto custom-scrollbar pr-2 space-y-6">
 					<div className="flex items-center gap-4 text-sm">
 						<span className="text-[var(--color-text-secondary)]">
-							Status:
-						</span>
-						<span
-							className={cn(
-								"font-semibold py-0.5 px-2 rounded-full text-xs",
-								statusInfo.color,
-								statusInfo.borderColor.replace(
-									"border-",
-									"bg-"
-								) + "/20"
-							)}
-						>
-							{statusInfo.label}
-						</span>
-						<div className="w-px h-4 bg-[var(--color-primary-surface-elevated)]"></div>
-						<span className="text-[var(--color-text-secondary)]">
-							Priority:
-						</span>
-						<span
-							className={cn("font-semibold", priorityInfo.color)}
-						>
-							{priorityInfo.label}
+							<TaskDetailsContent task={task} />
 						</span>
 					</div>
-					<div>
-						<h4 className="text-lg font-semibold text-white mb-3">
-							Plan
-						</h4>
-						<div className="space-y-2">
-							{task.plan.map((step, index) => (
-								<div
-									key={index}
-									className="flex items-start gap-3 bg-[var(--color-primary-surface)]/70 p-3 rounded-md"
-								>
-									<div className="flex-shrink-0 text-[var(--color-accent-blue)] font-bold mt-0.5">
-										{index + 1}.
-									</div>
-									<div>
-										<p className="font-semibold text-white">
-											{step.tool}
-										</p>
-										<p className="text-sm text-[var(--color-text-secondary)]">
-											{step.description}
-										</p>
-									</div>
-								</div>
-							))}
-						</div>
-					</div>
-					{task.progress_updates?.length > 0 && (
-						<div>
-							<h4 className="text-lg font-semibold text-white mb-4">
-								Progress
-							</h4>
-							<div className="space-y-4">
-								{task.progress_updates.map((update, index) => (
-									<div key={index} className="flex gap-4">
-										<div className="flex flex-col items-center">
-											<div className="w-4 h-4 bg-blue-500 rounded-full border-2 border-neutral-800"></div>
-											{index <
-												task.progress_updates.length -
-													1 && (
-												<div className="w-0.5 flex-grow bg-[var(--color-primary-surface-elevated)]"></div>
-											)}
-										</div>
-										<div>
-											<p className="text-sm text-white -mt-1">
-												{update.message}
-											</p>
-											<p className="text-xs text-[var(--color-text-muted)] mt-1.5">
-												{new Date(
-													update.timestamp
-												).toLocaleString()}
-											</p>
-										</div>
-									</div>
-								))}
-							</div>
-						</div>
-					)}
-					{(task.result || task.error) && (
-						<div className="pt-4 border-t border-[var(--color-primary-surface-elevated)]">
-							<h4 className="text-lg font-semibold text-white mb-4">
-								Outcome
-							</h4>
-							{task.error ? (
-								<pre className="text-sm bg-red-900/30 p-4 rounded-md text-red-300 whitespace-pre-wrap font-mono border border-[var(--color-accent-red)]/50">
-									{task.error}
-								</pre>
-							) : (
-								<div className="space-y-4 text-gray-300">
-									{thoughts && (
-										<details className="bg-[var(--color-primary-surface)]/50 rounded-lg p-3 border border-[var(--color-primary-surface-elevated)]">
-											<summary
-												className="cursor-pointer text-sm text-[var(--color-text-secondary)] font-semibold hover:text-white flex items-center gap-2"
-												data-tooltip-id="task-details-tooltip"
-												data-tooltip-content="See the step-by-step reasoning the agent used to produce the result."
-											>
-												<IconBrain
-													size={16}
-													className="text-yellow-400"
-												/>{" "}
-												View Agent's Thoughts
-											</summary>
-											<pre className="mt-3 text-xs text-gray-400 whitespace-pre-wrap font-mono">
-												{thoughts}
-											</pre>
-										</details>
-									)}
-									{mainContent &&
-										typeof mainContent === "string" && (
-											<div
-												dangerouslySetInnerHTML={{
-													__html: mainContent.replace(
-														/\n/g,
-														"<br />"
-													)
-												}}
-											/>
-										)}
-									{finalAnswer && (
-										<div className="mt-2 p-4 bg-green-900/30 border border-[var(--color-accent-green)]/50 rounded-lg">
-											<p className="text-sm font-semibold text-green-300 mb-2">
-												Final Answer
-											</p>
-											<div
-												dangerouslySetInnerHTML={{
-													__html: finalAnswer.replace(
-														/\n/g,
-														"<br />"
-													)
-												}}
-											/>
-										</div>
-									)}
-								</div>
-							)}
-						</div>
-					)}
-				</div>
-			</motion.div>
-		</motion.div>
-	)
-}
-
-// Entry Details Modal Component
-const EntryDetailsModal = ({
-	block,
-	tasksById,
-	startInEditMode,
-	onClose,
-	onDataChange,
-	onDeleteRequest,
-	onUpdateSchedule
-}) => {
-	const router = useRouter()
-	const linkedTask = useMemo(() => {
-		if (!block.linked_task_id) return null
-		return tasksById[block.linked_task_id]
-	}, [block, tasksById])
-
-	const [editingContent, setEditingContent] = useState(block.content)
-	const [isEditing, setIsEditing] = useState(startInEditMode || false)
-	const [isSubmitting, setIsSubmitting] = useState(false)
-	const [isScheduling, setIsScheduling] = useState(false)
-	const [schedule, setSchedule] = useState(
-		linkedTask?.schedule || { type: "once", run_at: null }
-	)
-
-	const handleSaveSchedule = async () => {
-		if (!linkedTask?.task_id) return
-		setIsSubmitting(true)
-		const success = await onUpdateSchedule(linkedTask.task_id, schedule)
-		setIsSubmitting(false)
-		if (success) {
-			onClose()
-		}
-	}
-
-	const handleUpdate = async () => {
-		if (!editingContent.trim())
-			return toast.error("Content cannot be empty.")
-		setIsSubmitting(true)
-		try {
-			const response = await fetch(
-				`/api/journal?blockId=${block.block_id}`,
-				{
-					method: "PUT",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ content: editingContent })
-				}
-			)
-			if (!response.ok) throw new Error("Failed to update entry")
-			toast.success("Entry updated and sent for re-processing.")
-			setIsEditing(false)
-			onDataChange()
-			onClose() // Close modal on successful update
-		} catch (error) {
-			toast.error(error.message)
-		} finally {
-			setIsSubmitting(false)
-		}
-	}
-
-	const handleApproveTask = async () => {
-		if (!linkedTask?.task_id) return
-		setIsSubmitting(true)
-		try {
-			const response = await fetch("/api/tasks/approve", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ taskId: linkedTask.task_id })
-			})
-			if (!response.ok) {
-				const errorData = await response.json()
-				throw new Error(errorData.detail || "Approval failed")
-			}
-			toast.success("Plan approved and queued for execution.")
-			onDataChange()
-			onClose()
-		} catch (error) {
-			toast.error(`Error approving task: ${error.message}`)
-		} finally {
-			setIsSubmitting(false)
-		}
-	}
-
-	return (
-		<motion.div
-			initial={{ opacity: 0 }}
-			animate={{ opacity: 1 }}
-			exit={{ opacity: 0 }}
-			className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 p-4"
-		>
-			<motion.div
-				initial={{ scale: 0.9, y: 20 }}
-				animate={{ scale: 1, y: 0 }}
-				exit={{ scale: 0.9, y: 20 }}
-				className="bg-gradient-to-br from-[var(--color-primary-surface)] to-[var(--color-primary-background)] p-6 rounded-2xl shadow-xl w-full max-w-2xl border border-[var(--color-primary-surface-elevated)] max-h-[90vh] flex flex-col"
-			>
-				<div className="flex justify-between items-center mb-4 flex-shrink-0">
-					<h2 className="text-xl font-bold text-[var(--color-accent-blue)]">
-						Journal Entry Details
-					</h2>
-					<motion.button
-						whileHover={{ scale: 1.1, rotate: 90 }}
-						whileTap={{ scale: 0.9 }}
-						onClick={onClose}
-						className="p-1 rounded-full hover:bg-[var(--color-primary-surface-elevated)]"
-					>
-						<IconX size={18} />
-					</motion.button>
-				</div>
-
-				<div className="overflow-y-auto custom-scrollbar pr-2 space-y-6">
-					{/* Journal Content Section */}
-					<div className="bg-[var(--color-primary-background)]/50 p-4 rounded-lg">
-						<div className="flex justify-between items-center mb-2">
-							<h3 className="font-semibold text-lg flex items-center gap-2">
-								<IconBook size={18} /> Content
-							</h3>
-							<div className="flex items-center gap-2">
-								<button
-									onClick={() => setIsEditing(!isEditing)}
-									className="text-xs p-1.5 rounded-md hover:bg-[var(--color-primary-surface)]"
-									data-tooltip-id="journal-tooltip"
-									data-tooltip-content="Edit"
-								>
-									{isEditing ? (
-										<IconX size={14} />
-									) : (
-										<IconPencil size={14} />
-									)}
-								</button>
-								<button
-									onClick={() => onDeleteRequest(block)}
-									className="text-xs p-1.5 rounded-md hover:bg-[var(--color-accent-red)]/20 hover:text-[var(--color-accent-red)]"
-									data-tooltip-id="journal-tooltip"
-									data-tooltip-content="Delete"
-								>
-									<IconTrash size={14} />
-								</button>
-							</div>
-						</div>
-						{isEditing ? (
-							<textarea
-								value={editingContent}
-								onChange={(e) =>
-									setEditingContent(e.target.value)
-								}
-								className="w-full bg-[var(--color-primary-surface)]/50 p-2 rounded-md"
-								rows={5}
-							/>
-						) : (
-							<p className="whitespace-pre-wrap text-[var(--color-text-secondary)] leading-relaxed">
-								{block.content}
-							</p>
-						)}
-						{isEditing && (
-							<div className="text-right mt-2">
-								<button
-									onClick={handleUpdate}
-									disabled={isSubmitting}
-									className="text-xs px-3 py-1 bg-[var(--color-accent-blue)] text-white rounded-md disabled:opacity-50"
-								>
-									{isSubmitting
-										? "Saving..."
-										: "Save Changes"}
-								</button>
-							</div>
-						)}
-					</div>
-
-					{/* Task Scheduling Section */}
-					{linkedTask && !isEditing && (
-						<div className="bg-[var(--color-primary-background)]/50 p-4 rounded-lg">
-							<div className="flex justify-between items-center mb-2">
-								<h3 className="font-semibold text-lg flex items-center gap-2">
-									<IconClock size={18} /> Schedule
-								</h3>
-							</div>
-							<ScheduleEditor
-								schedule={schedule}
-								setSchedule={setSchedule}
-							/>
-							<div className="text-right mt-4">
-								<button
-									onClick={handleSaveSchedule}
-									disabled={isSubmitting}
-									className="px-4 py-2 text-sm font-semibold bg-[var(--color-accent-blue)] text-white rounded-md disabled:opacity-50"
-								>
-									{isSubmitting
-										? "Saving..."
-										: "Save Schedule"}
-								</button>
-							</div>
-						</div>
-					)}
-
-					{/* Linked Task Section */}
-					{linkedTask && (
-						<div className="bg-[var(--color-primary-background)]/50 p-4 rounded-lg">
-							<h3
-								className="font-semibold text-lg mb-3 flex items-center justify-between gap-2"
-								onClick={() => router.push("/tasks")}
-							>
-								<IconSparkles
-									size={18}
-									className="text-[var(--color-accent-blue)]"
-								/>{" "}
-								Linked Task
-								<button
-									className="text-xs text-[var(--color-accent-blue)] hover:underline"
-									onClick={() => router.push("/tasks")}
-								>
-									View in Tasks
-								</button>
-							</h3>
-							<div className="space-y-4">
-								<div>
-									<strong className="text-[var(--color-text-secondary)]">
-										Description:
-									</strong>{" "}
-									{linkedTask.description}
-								</div>
-								<div>
-									<strong className="text-[var(--color-text-secondary)]">
-										Status:
-									</strong>{" "}
-									<span className="capitalize font-semibold">
-										{linkedTask.status.replace("_", " ")}
-									</span>
-								</div>
-
-								<div>
-									<strong className="text-[var(--color-text-secondary)]">
-										Plan:
-									</strong>
-									<ul className="list-decimal list-inside mt-1 space-y-1 text-sm text-[var(--color-text-secondary)]">
-										{linkedTask.plan.map((step, i) => (
-											<li key={i}>
-												<strong>{step.tool}:</strong>{" "}
-												{step.description}
-											</li>
-										))}
-									</ul>
-								</div>
-
-								{block.task_progress?.length > 0 && (
-									<div>
-										<strong className="text-[var(--color-text-secondary)]">
-											Progress:
-										</strong>
-										<ul className="mt-1 space-y-2 text-sm text-[var(--color-text-secondary)]">
-											{block.task_progress.map(
-												(update, i) => (
-													<li
-														key={i}
-														className="flex gap-2"
-													>
-														<span className="text-[var(--color-text-muted)]">
-															{format(
-																parseISO(
-																	update.timestamp
-																),
-																"h:mm a"
-															)}
-															:
-														</span>
-														<span>
-															{update.message}
-														</span>
-													</li>
-												)
-											)}
-										</ul>
-									</div>
-								)}
-
-								{block.task_result && (
-									<div>
-										<strong className="text-[var(--color-text-secondary)]">
-											Outcome:
-										</strong>
-										<pre className="mt-1 p-3 bg-black/20 rounded-md text-xs whitespace-pre-wrap font-mono">
-											{block.task_result}
-										</pre>
-									</div>
-								)}
-							</div>
-						</div>
-					)}
-				</div>
-
-				<div className="flex justify-end gap-3 mt-6 flex-shrink-0">
-					<button
-						onClick={onClose}
-						className="px-6 py-2 text-sm rounded-lg hover:bg-[var(--color-primary-surface-elevated)] bg-[var(--color-primary-surface)]"
-					>
-						Close
-					</button>
-					{linkedTask?.status === "approval_pending" && (
-						<button
-							onClick={handleApproveTask}
-							disabled={isSubmitting}
-							className="px-6 py-2 text-sm font-medium bg-[var(--color-accent-green)] hover:bg-[var(--color-accent-green-hover)] text-white rounded-xl disabled:opacity-50 shadow-lg shadow-[var(--color-accent-green)]/20 transition-colors"
-						>
-							{isSubmitting ? "Approving..." : "Approve Plan"}
-						</button>
-					)}
 				</div>
 			</motion.div>
 		</motion.div>

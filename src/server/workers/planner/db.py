@@ -69,6 +69,14 @@ class PlannerMongoManager:
         logger.info(f"Created initial task {task_id} for user {user_id}")
         return task_id
 
+    async def update_task_field(self, task_id: str, fields: dict):
+        """Updates specific fields of a task document."""
+        await self.tasks_collection.update_one(
+            {"task_id": task_id},
+            {"$set": fields}
+        )
+        logger.info(f"Updated fields for task {task_id}: {list(fields.keys())}")
+
     async def update_task_with_plan(self, task_id: str, plan_data: dict):
         """Updates a task with a generated plan and sets it to pending approval."""
         description = plan_data.get("description", "Proactively generated plan")

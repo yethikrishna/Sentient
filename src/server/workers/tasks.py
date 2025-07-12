@@ -33,6 +33,12 @@ from workers.poller.gcalendar.db import PollerMongoManager as GCalPollerDB
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+def get_date_from_text(text: str) -> str:
+    """Extracts YYYY-MM-DD from text, defaults to today."""
+    match = re.search(r'\b(\d{4}-\d{2}-\d{2})\b', text)
+    if match:
+        return match.group(1)
+    return datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d')
 # Helper to run async code in Celery's sync context
 def run_async(coro):
     try:
@@ -134,7 +140,7 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
             # Add time context to the input for the LLM
             full_llm_input = f"{time_context_str}\n\nPlease analyze the following content:\n\n{llm_input_content}"
 
-            if not llm_input_content.strip():
+            if not llm_input_content or not llm_input_content.strip():
                 logger.warning(f"Skipping event_id: {event_id} due to empty content.")
                 return
 
@@ -148,7 +154,7 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
                     if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
                         final_content_str = last_message["content"]
 
-            if not final_content_str:
+            if not final_content_str.strip():
                 logger.error(f"Extractor LLM returned no response for event_id: {event_id}.")
                 return
 
@@ -156,16 +162,11 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
             extracted_data = JsonExtractor.extract_valid_json(cleaned_content)
             if not extracted_data:
                 logger.error(f"Could not extract valid JSON from LLM response for event_id: {event_id}. Response: '{cleaned_content}'")
-                await db_manager.log_extraction_result(event_id, user_id, 0, 0) # Log to prevent re-processing
+                await db_manager.log_extraction_result(event_id, user_id, 0, 0)
                 return
 
-            # FIX: Handle cases where the extractor returns a list containing the dictionary
             if isinstance(extracted_data, list):
-                if extracted_data and isinstance(extracted_data[0], dict):
-                    extracted_data = extracted_data[0]
-                else:
-                    # The list is empty or doesn't contain a dict, so there's no data.
-                    extracted_data = {} # Set to empty dict to avoid further errors
+                extracted_data = extracted_data[0] if extracted_data and isinstance(extracted_data[0], dict) else {}
 
             if not isinstance(extracted_data, dict):
                 logger.error(f"Extracted JSON is not a dictionary for event_id: {event_id}. Extracted: '{extracted_data}'")
@@ -175,24 +176,23 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
             memory_items = extracted_data.get("memory_items", [])
             action_items = extracted_data.get("action_items", [])
             topics = extracted_data.get("topics", [])
-            short_term_notes = extracted_data.get("short_term_notes", [])
+
+            if service_name in ["gmail", "gcalendar", "chat"]:
+                for item in action_items:
+                    if not isinstance(item, str) or not item.strip():
+                        continue
+                    page_date = get_date_from_text(item)
+                    new_block = await db_manager.create_journal_entry_for_action_item(user_id, item, page_date)
+                    new_block_context = {"source": "journal_block", "block_id": new_block['block_id'], "original_content": item, "page_date": page_date}
+                    process_action_item.delay(user_id, [item], topics, new_block['block_id'], new_block_context)
+                    logger.info(f"Created journal entry {new_block['block_id']} and dispatched for action item: {item}")
+            else: # Existing logic for journal_block source
+                if action_items and topics:
+                    process_action_item.delay(user_id, action_items, topics, event_id, event_data)
 
             for fact in memory_items:
                 if isinstance(fact, str) and fact.strip():
                     process_memory_item.delay(user_id, fact, event_id)
-
-            if action_items and topics:
-                # Add block_id to context if it came from a journal
-                if service_name == "journal_block":
-                    original_context_with_block = {
-                        "source": "journal_block",
-                        "block_id": event_id,
-                        "original_content": event_data.get('content', ''),
-                        "page_date": event_data.get('page_date')
-                    }
-                    process_action_item.delay(user_id, action_items, topics, event_id, original_context_with_block)
-                else:
-                    process_action_item.delay(user_id, action_items, topics, event_id, event_data)
 
             await db_manager.log_extraction_result(event_id, user_id, len(memory_items), len(action_items))
         
@@ -223,23 +223,33 @@ async def search_topics_in_memory(user_id: str, topics: list, db_manager: Planne
         messages = [{'role': 'user', 'content': f"What do you know about '{topic}'?"}]
         tool_response_content = ""
         try:
+            # Run the agent to get the tool call response
             for response in agent.run(messages=messages):
                 if response and isinstance(response, list) and response[-1].get("role") == "function":
                     tool_response_content = response[-1].get("content", "")
                     break
             
-            search_result = json.loads(tool_response_content)
+            # Robustly parse the JSON response from the tool
+            if tool_response_content and isinstance(tool_response_content, str):
+                try:
+                    search_result = json.loads(tool_response_content)
+                except json.JSONDecodeError:
+                    logger.warning(f"Supermemory returned non-JSON response for topic '{topic}': {tool_response_content}")
+                    search_result = {} # Treat as no result
+            else:
+                search_result = {}
+
             if search_result.get("status") == "success" and search_result.get("result"):
                 # Check if the result indicates nothing was found
                 if "no memories found" not in search_result["result"].lower():
                     found_context[topic] = search_result["result"]
                     logger.info(f"Found context for topic '{topic}' for user {user_id}.")
                 else:
-                    missing_topics.append(topic)
-            else:
+                    missing_topics.append(topic) # Topic exists but has no memories
+            else: # Status was not success or result was empty
                 missing_topics.append(topic)
         except Exception as e:
-            logger.error(f"Error searching Supermemory for topic '{topic}' for user {user_id}: {e}")
+            logger.error(f"Error during Supermemory search for topic '{topic}' for user {user_id}: {e}")
             missing_topics.append(topic)
             
     return found_context, missing_topics
@@ -264,9 +274,11 @@ async def generate_clarifying_questions(missing_topics: list) -> list:
             final_response_str = chunk[-1].get("content", "")
 
     try:
-        questions = json.loads(final_response_str)
+        # Clean the response to remove any reasoning blocks before parsing
+        cleaned_response = clean_llm_output(final_response_str)
+        questions = JsonExtractor.extract_valid_json(cleaned_response)
         return questions if isinstance(questions, list) else []
-    except json.JSONDecodeError:
+    except Exception: # Catch broader errors from extractor
         logger.error(f"Failed to decode questions from LLM: {final_response_str}")
         # Fallback to generic questions
         return [f"Can you tell me more about '{topic}'?" for topic in missing_topics]
@@ -285,18 +297,49 @@ async def async_process_action_item(user_id: str, action_items: list, topics: li
         task_id = await db_manager.create_initial_task(user_id, task_description, action_items, topics, original_context, source_event_id)
 
         found_context, missing_topics = {}, []
+
         if topics:
-            found_context, missing_topics = await search_topics_in_memory(user_id, topics, db_manager)
+            # Run search for all topics concurrently for efficiency
+            search_tasks = [search_topics_in_memory(user_id, [topic], db_manager) for topic in topics]
+            results = await asyncio.gather(*search_tasks)
+            
+            for topic, (context, missing) in zip(topics, results):
+                if context:
+                    found_context.update(context)
+                if missing:
+                    missing_topics.extend(missing)
+            
+            # Save the context that was found so it can be used later in planning
+            if found_context:
+                await db_manager.update_task_field(task_id, {"found_context": found_context})
 
         if missing_topics:
+            logger.info(f"Task {task_id}: Missing context for topics: {missing_topics}. Generating clarifying questions.")
             questions_list = await generate_clarifying_questions(missing_topics)
-            questions_for_db = [{"question_id": str(uuid.uuid4()), "text": q, "answer": None} for q in questions_list]
+            
+            # Ensure questions_list is a list of strings
+            if not isinstance(questions_list, list) or not all(isinstance(q, str) for q in questions_list):
+                logger.error(f"generate_clarifying_questions returned invalid format: {questions_list}")
+                # Fallback if the LLM fails to return a proper list
+                questions_list = [f"Can you tell me more about '{topic}'?" for topic in missing_topics]
+
+            questions_for_db = [{"question_id": str(uuid.uuid4()), "text": q.strip(), "answer": None} for q in questions_list if q.strip()]
+            # Create a journal entry to ask the questions
+            clarification_content = f"I need some more information to help with: '{task_description}'. Can you answer these questions?"
+            page_date = get_date_from_text(task_description)
+            clarification_block = await db_manager.create_journal_entry_for_task(
+                user_id=user_id,
+                content=clarification_content,
+                date_str=page_date,
+                task_id=task_id,
+                task_status="clarification_pending"
+            )
             await db_manager.update_task_with_questions(task_id, "clarification_pending", questions_for_db)
             await notify_user(user_id, f"I have a few questions to help me plan: '{task_description[:50]}...'", task_id)
             logger.info(f"Task {task_id} moved to 'clarification_pending' for topics: {missing_topics}")
         else:
             logger.info(f"Task {task_id}: All context found. Triggering plan generation.")
-            await db_manager.update_task_status(task_id, "planning")
+            await db_manager.update_task_status(task_id, "planning", {"block_id": original_context.get("block_id")})
             generate_plan_from_context.delay(task_id)
 
     except Exception as e:
@@ -343,12 +386,17 @@ async def async_generate_plan(task_id: str):
         current_user_time = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
 
         retrieved_context = task.get("found_context", {})
+        # ** NEW ** Add answered questions to the context
+        answered_questions = []
+        if task.get("clarifying_questions"):
+            for q in task["clarifying_questions"]:
+                if q.get("answer"):
+                    answered_questions.append(f"User Clarification: Q: {q['text']} A: {q['answer']}")
+        
+        if answered_questions:
+            retrieved_context["user_clarifications"] = "\n".join(answered_questions)
         
         available_tools = get_all_mcp_descriptions()
-        if not available_tools:
-            logger.warning(f"No tools available for planner task for user {user_id}.")
-            await db_manager.update_task_status(task_id, "error", {"error": "No tools available for planning."})
-            return
 
         planner_agent = get_planner_agent(available_tools, current_user_time, user_name, user_location, retrieved_context)
         
@@ -369,18 +417,6 @@ async def async_generate_plan(task_id: str):
             raise Exception(f"Planner agent returned invalid JSON: {final_response_str}")
 
         await db_manager.update_task_with_plan(task_id, plan_data)
-
-        # If the task did NOT come from a journal block, create a new one for it.
-        if task.get("original_context", {}).get("source") != "journal_block":
-            action_item_text = " ".join(action_items)
-            match = re.search(r'\b\d{4}-\d{2}-\d{2}\b', action_item_text)
-            date_str = match.group(0) if match else datetime.datetime.now(user_timezone).strftime("%Y-%m-%d")
-
-            # Create a new journal entry for this proactively generated task
-            await db_manager.create_journal_entry_for_task(
-                user_id=user_id, content=plan_data.get("description", "Proactively generated plan"), date_str=date_str,
-                task_id=task_id, task_status="approval_pending"
-            )
 
         await notify_user(user_id, f"I've created a new plan for you: '{plan_data.get('description', '...')[:50]}...'", task_id)
 

@@ -55,3 +55,36 @@ def get_planner_agent(available_tools: dict, current_time_str: str, user_name: s
     except Exception as e:
         logger.error(f"Failed to initialize Qwen Planner Agent: {e}", exc_info=True)
         raise
+    
+def get_question_generator_agent(supermemory_mcp_url: str, original_context: dict, topics: list, available_tools: dict):
+    """Initializes a unified Qwen agent to verify context and generate clarifying questions."""
+    original_context_str = json.dumps(original_context, indent=2, default=str)
+    tools_list_str = "\n".join([f"- {name}: {desc}" for name, desc in available_tools.items()])
+    system_prompt = prompts.QUESTION_GENERATOR_SYSTEM_PROMPT.format(
+        original_context=original_context_str,
+        topics=", ".join(topics),
+        available_tools=tools_list_str
+    )
+    if config.LLM_PROVIDER == "OLLAMA":
+        ollama_v1_url = f"{config.OLLAMA_BASE_URL.rstrip('/')}/v1"
+        llm_cfg = {'model': config.OLLAMA_MODEL_NAME, 'model_server': ollama_v1_url, 'api_key': 'ollama'}
+    elif config.LLM_PROVIDER == "NOVITA":
+        llm_cfg = {'model': config.NOVITA_MODEL_NAME, 'model_server': "https://api.novita.ai/v3/openai", 'api_key': config.NOVITA_API_KEY}
+    else:
+        raise ValueError(f"Unsupported LLM_PROVIDER for question generator: {config.LLM_PROVIDER}")
+    
+    tools_config = [{
+        "mcpServers": {
+            "supermemory": {
+                "url": supermemory_mcp_url,
+                "transport": "sse"
+            }
+        }
+    }]
+    
+    agent = Assistant(
+        llm=llm_cfg,
+        system_message=system_prompt,
+        function_list=tools_config
+    )
+    return agent

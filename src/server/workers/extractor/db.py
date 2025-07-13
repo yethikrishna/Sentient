@@ -37,6 +37,16 @@ class ExtractorMongoManager:
         except Exception as e:
             logger.error(f"Error ensuring extractor MongoDB indexes: {e}")
 
+    async def get_user_profile(self, user_id: str) -> Dict | None:
+        """Fetches a user profile by user_id, projecting only necessary fields."""
+        if not self.client:
+            logger.error("DB client not initialized.")
+            return None
+        return await self.processed_log_collection.database['user_profiles'].find_one(
+            {"user_id": user_id},
+            {"userData.personalInfo": 1}
+        )
+
     async def log_extraction_result(self, original_event_id: str, user_id: str, memory_count: int, action_count: int):
         """Logs the result of an extraction process."""
         try:

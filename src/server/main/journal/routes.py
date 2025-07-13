@@ -145,8 +145,9 @@ async def delete_journal_block(
     # If there's a linked task, delete it first
     if linked_task_id := block_to_delete.get("linked_task_id"):
         await mongo_manager.task_collection.delete_one(
-            {"task_id": linked_task_id, "user_id": user_id}
+            {"task_id": linked_task_id, "user_id": user_id},
         )
+        logger.info(f"Deleted linked task {linked_task_id} while deleting journal block {block_id}.")
 
     # Now delete the journal block itself
     result = await mongo_manager.journal_blocks_collection.delete_one(

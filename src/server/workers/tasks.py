@@ -8,14 +8,14 @@ import os
 import httpx
 from dateutil import rrule
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from workers.config import SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX, SUPPORTED_POLLING_SERVICES
 from main.agents.utils import clean_llm_output
 from json_extractor import JsonExtractor
-from workers.utils.api_client import notify_user
+from workers.utils.api_client import notify_user 
 from workers.celery_app import celery_app
-from workers.planner.llm import get_planner_agent # Keep for plan generation
+from workers.planner.llm import get_planner_agent, get_question_generator_agent
 from workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions
 from workers.supermemory_agent_utils import get_supermemory_qwen_agent, get_db_manager as get_memory_db_manager
 from workers.executor.tasks import execute_task_plan
@@ -122,6 +122,17 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
                 logger.info(f"Skipping event_id: {event_id} - already processed.")
                 return
 
+            # Fetch user context to provide to the extractor agent
+            user_profile = await db_manager.get_user_profile(user_id)
+            personal_info = user_profile.get("userData", {}).get("personalInfo", {}) if user_profile else {}
+            user_name = personal_info.get("name", "User")
+            user_location_raw = personal_info.get("location", "Not specified")
+            user_timezone = personal_info.get("timezone", "UTC")
+            if isinstance(user_location_raw, dict) and 'latitude' in user_location_raw:
+                user_location = f"latitude: {user_location_raw.get('latitude')}, longitude: {user_location_raw.get('longitude')}"
+            else:
+                user_location = user_location_raw
+
             current_time = datetime.datetime.fromisoformat(current_time_iso) if current_time_iso else datetime.datetime.now(datetime.timezone.utc)
             time_context_str = f"The current date and time is {current_time.strftime('%A, %Y-%m-%d %H:%M:%S %Z')}."
 
@@ -144,7 +155,7 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
                 logger.warning(f"Skipping event_id: {event_id} due to empty content.")
                 return
 
-            agent = get_extractor_agent()
+            agent = get_extractor_agent(user_name, user_location, user_timezone)
             messages = [{'role': 'user', 'content': full_llm_input}]
             
             final_content_str = ""
@@ -203,147 +214,95 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
 
     run_async(async_extract())
 
-# --- Planner Task Orchestration ---
-
-async def search_topics_in_memory(user_id: str, topics: list, db_manager: PlannerMongoManager):
-    """Uses Supermemory to search for context on a list of topics."""
-    found_context = {}
-    missing_topics = []
-    
-    user_profile = await db_manager.user_profiles_collection.find_one({"user_id": user_id})
-    supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id")
-    if not supermemory_user_id:
-        logger.warning(f"User {user_id} has no Supermemory ID. All topics will be considered missing.")
-        return {}, topics
-
-    supermemory_mcp_url = f"{SUPERMEMORY_MCP_BASE_URL.rstrip('/')}/{supermemory_user_id}{SUPERMEMORY_MCP_ENDPOINT_SUFFIX}"
-    agent = get_supermemory_qwen_agent(supermemory_mcp_url)
-
-    for topic in topics:
-        messages = [{'role': 'user', 'content': f"What do you know about '{topic}'?"}]
-        tool_response_content = ""
-        try:
-            # Run the agent to get the tool call response
-            for response in agent.run(messages=messages):
-                if response and isinstance(response, list) and response[-1].get("role") == "function":
-                    tool_response_content = response[-1].get("content", "")
-                    break
-            
-            # Robustly parse the JSON response from the tool
-            if tool_response_content and isinstance(tool_response_content, str):
-                try:
-                    search_result = json.loads(tool_response_content)
-                except json.JSONDecodeError:
-                    logger.warning(f"Supermemory returned non-JSON response for topic '{topic}': {tool_response_content}")
-                    search_result = {} # Treat as no result
-            else:
-                search_result = {}
-
-            if search_result.get("status") == "success" and search_result.get("result"):
-                # Check if the result indicates nothing was found
-                if "no memories found" not in search_result["result"].lower():
-                    found_context[topic] = search_result["result"]
-                    logger.info(f"Found context for topic '{topic}' for user {user_id}.")
-                else:
-                    missing_topics.append(topic) # Topic exists but has no memories
-            else: # Status was not success or result was empty
-                missing_topics.append(topic)
-        except Exception as e:
-            logger.error(f"Error during Supermemory search for topic '{topic}' for user {user_id}: {e}")
-            missing_topics.append(topic)
-            
-    return found_context, missing_topics
-
-async def generate_clarifying_questions(missing_topics: list) -> list:
-    """Uses an LLM to generate questions for missing topics."""
-    # This can use the same planner agent but with a different prompt, or a dedicated one.
-    # For simplicity, we'll use a dedicated prompt with the base planner agent.
-    agent = get_planner_agent({}, "", "", "", {}) # Basic agent
-    
-    prompt = (
-        "I'm trying to complete a task but I'm missing context on the following topics: "
-        f"{', '.join(missing_topics)}. Please generate a short, clear, and direct question for each topic "
-        "to ask the user for clarification. The output MUST be a valid JSON array of strings. "
-        "For example: [\"What is the 'BE Project' about?\", \"Who is Shubham?\"]"
-    )
-    messages = [{'role': 'user', 'content': prompt}]
-    
-    final_response_str = ""
-    for chunk in agent.run(messages=messages):
-        if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
-            final_response_str = chunk[-1].get("content", "")
-
-    try:
-        # Clean the response to remove any reasoning blocks before parsing
-        cleaned_response = clean_llm_output(final_response_str)
-        questions = JsonExtractor.extract_valid_json(cleaned_response)
-        return questions if isinstance(questions, list) else []
-    except Exception: # Catch broader errors from extractor
-        logger.error(f"Failed to decode questions from LLM: {final_response_str}")
-        # Fallback to generic questions
-        return [f"Can you tell me more about '{topic}'?" for topic in missing_topics]
-
 @celery_app.task(name="process_action_item")
 def process_action_item(user_id: str, action_items: list, topics: list, source_event_id: str, original_context: dict):
     """Orchestrates the pre-planning phase for a new proactive task."""
     run_async(async_process_action_item(user_id, action_items, topics, source_event_id, original_context))
+
+async def get_clarifying_questions(user_id: str, task_description: str, topics: list, original_context: dict, db_manager: PlannerMongoManager) -> List[str]:
+    """
+    Uses a unified agent to search memory and generate clarifying questions if needed.
+    Returns a list of questions, which is empty if no clarification is required.
+    """
+    user_profile = await db_manager.user_profiles_collection.find_one({"user_id": user_id})
+    supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id") if user_profile else None
+
+    if not supermemory_user_id:
+        logger.warning(f"User {user_id} has no Supermemory ID. Cannot verify context.")
+        return [f"Can you tell me more about '{topic}'?" for topic in topics]
+
+    supermemory_mcp_url = f"{SUPERMEMORY_MCP_BASE_URL.rstrip('/')}/{supermemory_user_id}{SUPERMEMORY_MCP_ENDPOINT_SUFFIX}"
+    available_tools = get_all_mcp_descriptions()
+
+    agent = get_question_generator_agent(
+        supermemory_mcp_url=supermemory_mcp_url,
+        original_context=original_context,
+        topics=topics,
+        available_tools=available_tools
+    )
+
+    user_prompt = f"Based on the task '{task_description}' and the provided context, please determine if any clarifying questions are necessary."
+    messages = [{'role': 'user', 'content': user_prompt}]
+
+    final_response_str = ""
+    for chunk in agent.run(messages=messages):
+        if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
+            final_response_str = chunk[-1].get("content", "")
+    
+    response_data = JsonExtractor.extract_valid_json(clean_llm_output(final_response_str))
+    if response_data and isinstance(response_data.get("clarifying_questions"), list):
+        return response_data["clarifying_questions"]
+    else:
+        logger.error(f"Question generator agent returned invalid data: {response_data}. Cannot ask for clarification.")
+        return [] # Default to no questions on failure
 
 async def async_process_action_item(user_id: str, action_items: list, topics: list, source_event_id: str, original_context: dict):
     """Async logic for the proactive task orchestrator."""
     db_manager = PlannerMongoManager()
     task_id = None
     try:
-        task_description = " ".join(action_items)
+        task_description = " ".join(map(str, action_items))
         task_id = await db_manager.create_initial_task(user_id, task_description, action_items, topics, original_context, source_event_id)
 
-        found_context, missing_topics = {}, []
+        questions_list = await get_clarifying_questions(user_id, task_description, topics, original_context, db_manager)
 
-        if topics:
-            # Run search for all topics concurrently for efficiency
-            search_tasks = [search_topics_in_memory(user_id, [topic], db_manager) for topic in topics]
-            results = await asyncio.gather(*search_tasks)
+        if questions_list:
+            logger.info(f"Task {task_id}: Needs clarification. Questions: {questions_list}")
+            questions_for_db = [{"question_id": str(uuid.uuid4()), "text": q.strip(), "answer": None} for q in questions_list]
             
-            for topic, (context, missing) in zip(topics, results):
-                if context:
-                    found_context.update(context)
-                if missing:
-                    missing_topics.extend(missing)
-            
-            # Save the context that was found so it can be used later in planning
-            if found_context:
-                await db_manager.update_task_field(task_id, {"found_context": found_context})
+            block_id_to_update = original_context.get("block_id") if original_context.get("source") == "journal_block" else None
 
-        if missing_topics:
-            logger.info(f"Task {task_id}: Missing context for topics: {missing_topics}. Generating clarifying questions.")
-            questions_list = await generate_clarifying_questions(missing_topics)
+            if block_id_to_update:
+                # Update the existing journal block with the clarification prompt
+                clarification_text = f"I need a bit more information to help with: '{task_description}'. Can you clarify the following for me in the journal?"
+                await db_manager.journal_blocks_collection.update_one(
+                    {"block_id": block_id_to_update, "user_id": user_id},
+                    {"$set": {"task_status": "clarification_pending", "content": clarification_text}}
+                )
+                logger.info(f"Updated journal block {block_id_to_update} to ask for clarification.")
+            else:
+                # Create a new journal entry for today if the source wasn't a journal block
+                clarification_content = f"I need a bit more information to help with: '{task_description}'. Can you clarify the following for me in the journal?"
+                today_date_str = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d')
+                await db_manager.create_journal_entry_for_task(
+                    user_id=user_id,
+                    content=clarification_content,
+                    date_str=today_date_str,
+                    task_id=task_id,
+                    task_status="clarification_pending"
+                )
+                logger.info(f"Task {task_id} needs clarification, created new journal entry for today.")
             
-            # Ensure questions_list is a list of strings
-            if not isinstance(questions_list, list) or not all(isinstance(q, str) for q in questions_list):
-                logger.error(f"generate_clarifying_questions returned invalid format: {questions_list}")
-                # Fallback if the LLM fails to return a proper list
-                questions_list = [f"Can you tell me more about '{topic}'?" for topic in missing_topics]
-
-            questions_for_db = [{"question_id": str(uuid.uuid4()), "text": q.strip(), "answer": None} for q in questions_list if q.strip()]
-            # Create a journal entry to ask the questions
-            clarification_content = f"I need some more information to help with: '{task_description}'. Can you answer these questions?"
-            page_date = get_date_from_text(task_description)
-            clarification_block = await db_manager.create_journal_entry_for_task(
-                user_id=user_id,
-                content=clarification_content,
-                date_str=page_date,
-                task_id=task_id,
-                task_status="clarification_pending"
-            )
             await db_manager.update_task_with_questions(task_id, "clarification_pending", questions_for_db)
             await notify_user(user_id, f"I have a few questions to help me plan: '{task_description[:50]}...'", task_id)
-            logger.info(f"Task {task_id} moved to 'clarification_pending' for topics: {missing_topics}")
+            logger.info(f"Task {task_id} moved to 'clarification_pending'.")
         else:
-            logger.info(f"Task {task_id}: All context found. Triggering plan generation.")
-            await db_manager.update_task_status(task_id, "planning", {"block_id": original_context.get("block_id")})
+            logger.info(f"Task {task_id}: No clarification needed. Triggering plan generation.")
+            await db_manager.update_task_status(task_id, "planning")
             generate_plan_from_context.delay(task_id)
 
     except Exception as e:
-        logger.error(f"Error in process_action_item for task {task_id}: {e}", exc_info=True)
+        logger.error(f"Error in process_action_item for task {task_id or 'unknown'}: {e}", exc_info=True)
         if task_id:
             await db_manager.update_task_status(task_id, "error", {"error": str(e)})
     finally:

@@ -168,18 +168,18 @@ async def delete_task(
     user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"]))
 ):
     # First, delete the task
-    result = await mongo_manager.task_collection.delete_one(
+    delete_result = await mongo_manager.task_collection.delete_one(
         {"task_id": request.taskId, "user_id": user_id}
     )
-    if result.deleted_count == 0:
+    if delete_result.deleted_count == 0:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
 
-    # Now, delete any linked journal entry
-    await mongo_manager.journal_blocks_collection.delete_many(
-        {"linked_task_id": request.taskId, "user_id": user_id}
+    # Now, find and unlink any associated journal entries
+    await mongo_manager.journal_blocks_collection.update_many(
+        {"user_id": user_id, "linked_task_id": request.taskId},
+        {"$unset": {"linked_task_id": "", "task_status": ""}}
     )
-
-    return {"message": "Task and linked journal entries deleted successfully."}
+    return {"message": "Task deleted successfully and unlinked from any journal entries."}
 
 @router.post("/approve-task")
 async def approve_task(

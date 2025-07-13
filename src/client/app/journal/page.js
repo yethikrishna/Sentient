@@ -703,6 +703,7 @@ const OrganizerPage = () => {
 			if (!response.ok) throw new Error((await response.json()).error)
 			toast.success("Task deleted successfully!")
 			refreshData()
+			setViewingTask(null) // Clear the viewing state to prevent stale UI
 		} catch (error) {
 			toast.error(`Error deleting task: ${error.message}`)
 		}
@@ -2318,6 +2319,11 @@ const DeleteConfirmationModal = ({ block, onClose, onDataChange }) => {
 }
 
 const TaskDetailsContent = ({ task }) => {
+	// Defensive check: If task is missing for some reason, don't render.
+	if (!task) {
+		return null
+	}
+
 	const statusInfo = taskStatusColors[task.status] || taskStatusColors.default
 	const priorityInfo = priorityMap[task.priority] || priorityMap.default
 
@@ -2346,7 +2352,7 @@ const TaskDetailsContent = ({ task }) => {
 					className={cn(
 						"font-semibold py-0.5 px-2 rounded-full text-xs",
 						statusInfo.color,
-						statusInfo.borderColor.replace("border-", "bg-") + "/20"
+						statusInfo.border.replace("border-", "bg-") + "/20"
 					)}
 				>
 					{statusInfo.label}

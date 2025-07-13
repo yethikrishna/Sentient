@@ -45,12 +45,23 @@ async def save_onboarding_data_endpoint(
         supermemory_user_id = secrets.token_urlsafe(16)
 
         default_privacy_filters = [
-            "bank statement", "account statement", "OTP", "one-time password",
-            "password reset", "credit card", "debit card", "financial statement",
-            "confidential", "do not share", "ssn", "social security"
+            "bank statement",
+            "account statement",
+            "OTP",
+            "one-time password",
+            "password reset",
+            "credit card",
+            "debit card",
+            "financial statement",
+            "confidential",
+            "do not share",
+            "ssn",
+            "social security",
         ]
 
         onboarding_data = request_body.data
+        # Sanitize empty optional fields
+        onboarding_data["agent-name"] = onboarding_data.get("agent-name", "").strip()
 
         # --- Handle LinkedIn URL ---
         linkedin_url = onboarding_data.get("linkedin-url")
@@ -68,6 +79,18 @@ async def save_onboarding_data_endpoint(
             "onboardingComplete": True,
             "supermemory_user_id": supermemory_user_id,
             "privacyFilters": default_privacy_filters,
+            "preferences": {
+                "agentName": onboarding_data.get("agent-name") or "Sentient",
+                "responseVerbosity": onboarding_data.get("response-verbosity", "Balanced"),
+                # Set defaults for settings not in onboarding
+                "humorLevel": "Balanced",
+                "useEmojis": True,
+                "quietHours": {"enabled": False, "start": "22:00", "end": "08:00"},
+                "notificationControls": {"taskNeedsApproval": True, "taskCompleted": True, "taskFailed": False, "proactiveSummary": False, "importantInsights": False,
+                },
+                "communicationStyle": onboarding_data.get("communication-style", "Casual & Friendly"),
+                "corePriorities": onboarding_data.get("core-priorities", [])
+            }
         }
 
         # Parse specific answers into structured fields
@@ -88,17 +111,11 @@ async def save_onboarding_data_endpoint(
         if personal_info:
             user_data_to_set["personalInfo"] = personal_info
 
-        preferences = {}
-        if "communication-style" in onboarding_data:
-            preferences["communicationStyle"] = onboarding_data["communication-style"]
-        if "core-priorities" in onboarding_data and isinstance(onboarding_data["core-priorities"], list):
-            preferences["corePriorities"] = onboarding_data["core-priorities"]
-
-        if preferences:
-            user_data_to_set["preferences"] = preferences
-
         # Create the final update payload for MongoDB
-        update_payload = {f"userData.{key}": value for key, value in user_data_to_set.items()}
+        # We construct the payload carefully to avoid replacing the entire userData object
+        update_payload = {}
+        for key, value in user_data_to_set.items():
+            update_payload[f"userData.{key}"] = value
         
         # Save to DB
         success = await mongo_manager.update_user_profile(user_id, update_payload)

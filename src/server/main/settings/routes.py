@@ -1,11 +1,12 @@
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Dict, Any
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.responses import JSONResponse
 
 from main.dependencies import mongo_manager
 from main.auth.utils import PermissionChecker
 from main.notifications.whatsapp_client import check_phone_number_exists, send_whatsapp_message
-from main.settings.models import WhatsAppNumberRequest, ProfileUpdateRequest, LinkedInUrlRequest
+from main.settings.models import WhatsAppNumberRequest, ProfileUpdateRequest, LinkedInUrlRequest, AIPersonalitySettingsRequest
 from workers.tasks import process_linkedin_profile
 
 logger = logging.getLogger(__name__)
@@ -120,6 +121,46 @@ async def set_linkedin_url(
     # If URL is invalid but not empty
     return JSONResponse(content={"message": "LinkedIn URL updated."})
 
+@router.get("/ai-personality", summary="Get AI Personality Settings")
+async def get_ai_personality_settings(
+    user_id: str = Depends(PermissionChecker(required_permissions=["read:config"]))
+):
+    profile = await mongo_manager.get_user_profile(user_id)
+    if not profile or "userData" not in profile:
+        raise HTTPException(status_code=404, detail="User profile not found.")
+
+    preferences = profile.get("userData", {}).get("preferences", {})
+
+    # Ensure all keys exist with default values if not present
+    defaults = {
+        "agentName": "Sentient",
+        "responseVerbosity": "Balanced",
+        "humorLevel": "Balanced",
+        "useEmojis": True,
+        "quietHours": {"enabled": False, "start": "22:00", "end": "08:00"},
+        "notificationControls": {
+            "taskNeedsApproval": True, "taskCompleted": True, "taskFailed": False,
+            "proactiveSummary": False, "importantInsights": False
+        }
+    }
+
+    for key, value in defaults.items():
+        if key not in preferences:
+            preferences[key] = value
+
+    return JSONResponse(content=preferences)
+
+
+@router.post("/ai-personality", summary="Update AI Personality Settings")
+async def update_ai_personality_settings(
+    request: AIPersonalitySettingsRequest,
+    user_id: str = Depends(PermissionChecker(required_permissions=["write:config"]))
+):
+    update_payload = {f"userData.preferences.{key}": value for key, value in request.dict().items()}
+    success = await mongo_manager.update_user_profile(user_id, update_payload)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update AI settings.")
+    return JSONResponse(content={"message": "AI settings updated successfully."})
 @router.post("/profile", summary="Update User Profile and Onboarding Data")
 async def update_profile_data(
     request: ProfileUpdateRequest,

@@ -17,6 +17,7 @@ import {
 	IconX,
 	IconFlask,
 	IconPlus,
+	IconMessageChatbot,
 	IconBrandWhatsapp,
 	IconBrandLinkedin
 } from "@tabler/icons-react"
@@ -436,7 +437,7 @@ const TestingTools = () => {
 		}
 	}
 
-	return (
+		return (
 		<section>
 			<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2 flex items-center gap-2">
 				<IconFlask />
@@ -500,7 +501,310 @@ const TestingTools = () => {
 						</button>
 					</div>
 				</form>
+				</div>
+		</section>
+		)
+}
+
+const AIPersonalitySettings = () => {
+	const [settings, setSettings] = useState({
+		agentName: "Sentient",
+		responseVerbosity: "Balanced",
+		humorLevel: "Balanced",
+		useEmojis: true,
+		quietHours: { enabled: false, start: "22:00", end: "08:00" },
+		notificationControls: {
+			taskNeedsApproval: true,
+			taskCompleted: true,
+			taskFailed: false,
+			proactiveSummary: false,
+			importantInsights: false
+		}
+	})
+	const [isLoading, setIsLoading] = useState(true)
+	const [isSaving, setIsSaving] = useState(false)
+	const [isOpen, setIsOpen] = useState(true)
+
+	const fetchSettings = useCallback(async () => {
+		setIsLoading(true)
+		try {
+			const response = await fetch("/api/settings/ai-personality")
+			if (!response.ok) throw new Error("Failed to fetch AI settings.")
+			const data = await response.json()
+			setSettings(data)
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsLoading(false)
+		}
+	}, [])
+
+	useEffect(() => {
+		fetchSettings()
+	}, [fetchSettings])
+
+	const handleSave = async () => {
+		setIsSaving(true)
+		try {
+			const response = await fetch("/api/settings/ai-personality", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(settings)
+			})
+			if (!response.ok) {
+				const errorData = await response.json()
+				throw new Error(errorData.error || "Failed to save settings.")
+			}
+			toast.success("AI settings updated successfully!")
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsSaving(false)
+		}
+	}
+
+	const handleInputChange = (field, value) => {
+		setSettings((prev) => ({ ...prev, [field]: value }))
+	}
+
+	const handleQuietHoursChange = (field, value) => {
+		setSettings((prev) => ({
+			...prev,
+			quietHours: { ...prev.quietHours, [field]: value }
+		}))
+	}
+
+	const handleNotificationChange = (field) => {
+		setSettings((prev) => ({
+			...prev,
+			notificationControls: {
+				...prev.notificationControls,
+				[field]: !prev.notificationControls[field]
+			}
+		}))
+	}
+
+	if (isLoading) {
+		return (
+			<div className="flex justify-center items-center p-8">
+				<IconLoader className="animate-spin" />
 			</div>
+		)
+	}
+
+	return (
+		<section>
+			<div className="flex justify-between items-center mb-5">
+				<button
+					onClick={() => setIsOpen(!isOpen)}
+					className="w-full flex justify-between items-center py-2 text-left"
+				>
+					<h2 className="text-xl font-semibold text-gray-300 flex items-center gap-3">
+						<IconMessageChatbot /> AI Behavior & Personality
+					</h2>
+					<IconChevronDown
+						className={cn(
+							"transition-transform duration-200",
+							isOpen && "rotate-180"
+						)}
+					/>
+				</button>
+			</div>
+			{isOpen && (
+				<div className="space-y-6">
+					{/* Persona Settings */}
+					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+						<div>
+							<label className="block text-sm font-medium text-gray-200 mb-2">
+								Agent Name
+							</label>
+							<input
+								type="text"
+								value={settings.agentName}
+								onChange={(e) =>
+									handleInputChange(
+										"agentName",
+										e.target.value
+									)
+								}
+								className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400"
+							/>
+						</div>
+						<div>
+							<label className="block text-sm font-medium text-gray-200 mb-2">
+								Response Verbosity
+							</label>
+							<select
+								value={settings.responseVerbosity}
+								onChange={(e) =>
+									handleInputChange(
+										"responseVerbosity",
+										e.target.value
+									)
+								}
+								className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white"
+							>
+								<option value="Concise">Concise</option>
+								<option value="Balanced">Balanced</option>
+								<option value="Detailed">Detailed</option>
+							</select>
+						</div>
+						<div>
+							<label className="block text-sm font-medium text-gray-200 mb-2">
+								Humor & Formality
+							</label>
+							<select
+								value={settings.humorLevel}
+								onChange={(e) =>
+									handleInputChange(
+										"humorLevel",
+										e.target.value
+									)
+								}
+								className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white"
+							>
+								<option value="Strictly Formal">
+									Strictly Formal
+								</option>
+								<option value="Balanced">Balanced</option>
+								<option value="Witty & Humorous">
+									Witty & Humorous
+								</option>
+							</select>
+						</div>
+						<div>
+							<label className="block text-sm font-medium text-gray-200 mb-2">
+								Emoji Usage
+							</label>
+							<div className="flex items-center gap-2 p-2 bg-[var(--color-primary-surface-elevated)] rounded-md">
+								<input
+									type="checkbox"
+									id="emoji-toggle"
+									checked={settings.useEmojis}
+									onChange={(e) =>
+										handleInputChange(
+											"useEmojis",
+											e.target.checked
+										)
+									}
+									className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+								/>
+								<label
+									htmlFor="emoji-toggle"
+									className="text-white"
+								>
+									Use emojis in conversations
+								</label>
+							</div>
+						</div>
+					</div>
+					{/* Quiet Hours */}
+					<div>
+						<label className="block text-sm font-medium text-gray-200 mb-2">
+							Quiet Hours (Do Not Disturb)
+						</label>
+						<div className="flex items-center gap-4 bg-[var(--color-primary-surface-elevated)] p-3 rounded-md">
+							<input
+								type="checkbox"
+								id="quiet-hours-toggle"
+								checked={settings.quietHours.enabled}
+								onChange={(e) =>
+									handleQuietHoursChange(
+										"enabled",
+										e.target.checked
+									)
+								}
+								className="h-4 w-4 rounded border-gray-300"
+							/>
+							<label
+								htmlFor="quiet-hours-toggle"
+								className="text-white"
+							>
+								Enable Quiet Hours
+							</label>
+							{settings.quietHours.enabled && (
+								<div className="flex items-center gap-2">
+									<input
+										type="time"
+										value={settings.quietHours.start}
+										onChange={(e) =>
+											handleQuietHoursChange(
+												"start",
+												e.target.value
+											)
+										}
+										className="bg-neutral-700 border border-neutral-600 rounded-md px-2 py-1 text-white"
+									/>
+									<span className="text-gray-400">to</span>
+									<input
+										type="time"
+										value={settings.quietHours.end}
+										onChange={(e) =>
+											handleQuietHoursChange(
+												"end",
+												e.target.value
+											)
+										}
+										className="bg-neutral-700 border border-neutral-600 rounded-md px-2 py-1 text-white"
+									/>
+								</div>
+							)}
+						</div>
+					</div>
+					{/* Notification Controls */}
+					<div>
+						<label className="block text-sm font-medium text-gray-200 mb-2">
+							Granular Notification Controls
+						</label>
+						<div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 bg-[var(--color-primary-surface-elevated)] p-4 rounded-md">
+							{Object.entries({
+								taskNeedsApproval:
+									"When a task needs my approval",
+								taskCompleted:
+									"When a task is completed successfully",
+								taskFailed: "When a task fails",
+								proactiveSummary: "Proactive daily summary",
+								importantInsights:
+									"Important insights found in my data"
+							}).map(([key, label]) => (
+								<div
+									key={key}
+									className="flex items-center gap-2"
+								>
+									<input
+										type="checkbox"
+										id={key}
+										checked={
+											settings.notificationControls[key]
+										}
+										onChange={() =>
+											handleNotificationChange(key)
+										}
+										className="h-4 w-4 rounded border-gray-300"
+									/>
+									<label htmlFor={key} className="text-white">
+										{label}
+									</label>
+								</div>
+							))}
+						</div>
+					</div>
+					{/* Save Button */}
+					<div className="flex justify-end mt-6">
+						<button
+							onClick={handleSave}
+							disabled={isSaving}
+							className="py-2 px-6 rounded-md bg-[var(--color-accent-green)] hover:bg-[var(--color-accent-green-hover)] text-white font-medium transition-colors flex items-center"
+						>
+							{isSaving ? (
+								<IconLoader className="w-5 h-5 animate-spin" />
+							) : (
+								"Save AI Settings"
+							)}
+						</button>
+					</div>
+				</div>
+			)}
 		</section>
 	)
 }
@@ -874,6 +1178,7 @@ const ProfilePage = () => {
 							onSave={handleSaveProfile}
 							isSaving={isSavingProfile}
 						/>
+						<AIPersonalitySettings />
 						<WhatsAppSettings />
 						<LinkedInSettings />
 						{process.env.NEXT_PUBLIC_ENVIRONMENT !== "prod" && (

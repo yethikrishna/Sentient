@@ -17,6 +17,7 @@ import {
 	IconListCheck,
 	IconCheck,
 	IconBrandWhatsapp,
+	IconMessageChatbot,
 	IconSparkles,
 	IconLink
 } from "@tabler/icons-react"
@@ -61,6 +62,16 @@ const questions = [
 		required: true,
 		placeholder: "e.g., Alex",
 		icon: <IconUser />
+	},
+	{
+		id: "agent-name",
+		sentientComment:
+			"Great to meet you, {user-name}! I'm your personal AI. You can call me Sentient, or you can give me a name of your own.",
+		question: "What would you like to call me? (Optional)",
+		type: "text-input",
+		required: false,
+		placeholder: "e.g., Jarvis, Athena, Friday",
+		icon: <IconMessageChatbot />
 	},
 	{
 		id: "timezone",
@@ -137,6 +148,16 @@ const questions = [
 		icon: <IconLink />
 	},
 	{
+		id: "response-verbosity",
+		sentientComment:
+			"This is really helpful! Let's set the right tone for our chats. When I give you an answer, how much detail do you prefer?",
+		question: "Choose your preferred level of detail",
+		type: "single-choice",
+		required: true,
+		options: ["Concise", "Balanced", "Detailed"],
+		icon: <IconMoodHappy />
+	},
+	{
 		id: "communication-style",
 		sentientComment:
 			"This is really helpful! Let's set the right tone for our chats.",
@@ -177,7 +198,7 @@ const OnboardingPage = () => {
 	const [answers, setAnswers] = useState({})
 	const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
 	const [isLoading, setIsLoading] = useState(true)
-	const [isInputVisible, setIsInputVisible] = useState(false)
+	const [isInputVisible, setIsInputVisible] = useState(false) // prettier-ignore
 	const [fullyTyped, setFullyTyped] = useState({})
 	const router = useRouter()
 
@@ -193,6 +214,18 @@ const OnboardingPage = () => {
 
 	const handleAnswer = (questionId, answer) => {
 		setAnswers((prev) => ({ ...prev, [questionId]: answer }))
+		// Auto-advance for single-choice questions to improve flow
+		const currentQuestion = questions[currentQuestionIndex]
+		if (currentQuestion.type === "single-choice") {
+			// Use a small timeout to let the user see their selection
+			setTimeout(() => {
+				if (currentQuestionIndex < questions.length - 1) {
+					handleNext()
+				} else {
+					handleSubmit()
+				}
+			}, 400)
+		}
 	}
 
 	const handleMultiChoice = (questionId, option) => {
@@ -706,34 +739,47 @@ const OnboardingPage = () => {
 																	{currentQuestion.options.map(
 																		(
 																			option
-																		) => (
-																			<button
-																				type="button"
-																				key={
-																					option
-																				}
-																				onClick={() =>
-																					handleAnswer(
-																						currentQuestion.id,
-																						option
-																					)
-																				}
-																				className={cn(
-																					"p-5 rounded-xl border-2 text-center font-semibold transition-all duration-200 text-lg",
-																					answers[
-																						currentQuestion
-																							.id
-																					] ===
-																						option
-																						? "bg-[var(--color-accent-blue)] border-[var(--color-accent-blue)] text-white"
-																						: "bg-transparent border-neutral-600 hover:border-blue-500/50"
-																				)}
-																			>
-																				{
-																					option
-																				}
-																			</button>
-																		)
+																		) => {
+																			const optionValue =
+																				typeof option ===
+																				"object"
+																					? option.value
+																					: option
+																			const optionLabel =
+																				typeof option ===
+																				"object"
+																					? option.label
+																					: option
+
+																			return (
+																				<button
+																					type="button"
+																					key={
+																						optionValue
+																					}
+																					onClick={() =>
+																						handleAnswer(
+																							currentQuestion.id,
+																							option
+																						)
+																					}
+																					className={cn(
+																						"p-5 rounded-xl border-2 text-center font-semibold transition-all duration-200 text-lg",
+																						answers[
+																							currentQuestion
+																								.id
+																						] ===
+																							optionValue
+																							? "bg-[var(--color-accent-blue)] border-[var(--color-accent-blue)] text-white"
+																							: "bg-transparent border-neutral-600 hover:border-blue-500/50"
+																					)}
+																				>
+																					{
+																						optionLabel
+																					}
+																				</button>
+																			)
+																		}
 																	)}
 																</div>
 															)

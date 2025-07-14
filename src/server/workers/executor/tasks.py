@@ -124,9 +124,10 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     logger.info(f"Executor started processing task {task_id} (block_id: {block_id}) for user {user_id}.")
     await update_task_status(db, task_id, "processing", user_id, block_id=block_id)
     await add_progress_update(db, task_id, user_id, "Executor has picked up the task and is starting execution.", block_id=block_id)
-    
+
     user_profile = await db.user_profiles.find_one({"user_id": user_id})
     personal_info = user_profile.get("userData", {}).get("personalInfo", {}) if user_profile else {}
+    preferences = user_profile.get("userData", {}).get("preferences", {}) if user_profile else {}
     user_name = personal_info.get("name", "User")
     user_location_raw = personal_info.get("location", "Not specified")
     if isinstance(user_location_raw, dict):
@@ -134,8 +135,6 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     else:
         user_location = user_location_raw
 
-    supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id") if user_profile else None
-    
     # 1. Determine required and available tools for the user
     required_tools_from_plan = {step['tool'] for step in task.get('plan', [])}
     logger.info(f"Task {task_id}: Plan requires tools: {required_tools_from_plan}")
@@ -200,15 +199,21 @@ async def async_execute_task_plan(task_id: str, user_id: str):
 
     block_id_prompt = f"The block_id for this task is '{block_id}'. You MUST pass this ID to the 'update_progress' tool in the 'block_id' parameter." if block_id else "This task did not originate from a journal block."
 
+    # Incorporate AI Persona into system prompt
+    agent_name = preferences.get('agentName', 'Sentient')
+    verbosity = preferences.get('responseVerbosity', 'Balanced')
+    humor_level = preferences.get('humorLevel', 'Balanced')
+    emoji_usage = "You can use emojis in your final answer." if preferences.get('useEmojis', True) else "You should not use emojis."
+
     full_plan_prompt = (
-        f"You are a resourceful and autonomous executor agent. Your goal is to complete the user's request by intelligently following the provided plan.\n\n"
+        f"You are {agent_name}, a resourceful and autonomous executor agent. Your goal is to complete the user's request by intelligently following the provided plan. Your tone should be **{humor_level}** and your final answer should be **{verbosity}**. {emoji_usage}\n\n"
         f"**User Context:**\n"
         f"- **User's Name:** {user_name}\n"
         f"- **User's Location:** {user_location}\n"
         f"- **Current Date & Time:** {current_user_time}\n\n"
         f"Your task ID is '{task_id}'. {block_id_prompt}\n\n"
         f"The original context that triggered this plan is:\n---BEGIN CONTEXT---\n{original_context_str}\n---END CONTEXT---\n\n"
-        f"**Primary Objective:** '{plan_description}'.\n\n"
+        f"**Primary Objective:** '{plan_description}'\n\n"
         f"**The Plan to Execute:**\n" +
         "\n".join([f"- Step {i+1}: Use the '{step['tool']}' tool to '{step['description']}'" for i, step in enumerate(task.get("plan", []))]) + "\n\n"
         "**EXECUTION STRATEGY:**\n"

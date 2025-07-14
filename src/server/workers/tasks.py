@@ -382,7 +382,11 @@ async def async_generate_plan(task_id: str):
 
         await db_manager.update_task_with_plan(task_id, plan_data)
 
-        await notify_user(user_id, f"I've created a new plan for you: '{plan_data.get('description', '...')[:50]}...'", task_id)
+        # Notify user that a plan is ready for their approval
+        await notify_user(
+            user_id, f"I've created a new plan for you: '{plan_data.get('description', '...')[:50]}...'", task_id,
+            notification_type="taskNeedsApproval"
+        )
 
     except Exception as e:
         logger.error(f"Error generating plan for task {task_id}: {e}", exc_info=True)
@@ -552,6 +556,15 @@ def run_due_tasks():
     """Celery Beat task to check for and queue user-defined tasks (recurring and scheduled-once)."""
     logger.info("Scheduler: Checking for due user-defined tasks...")
     run_async(async_run_due_tasks())
+    # --- Proactivity Check Placeholder ---
+    # To implement proactive tasks (like daily summaries), you would:
+    # 1. Fetch all users from the database.
+    # 2. For each user, check their `preferences.proactivityLevel`.
+    # 3. If the level is 'Proactive' or 'Balanced', check if it's time for their daily summary
+    #    (respecting their timezone and `quietHours`).
+    # 4. If so, dispatch a new Celery task, e.g., `generate_daily_summary.delay(user_id)`.
+    # This `run_due_tasks` function is a good place to trigger that logic on a schedule.
+
 
 async def async_run_due_tasks():
     db_manager = PlannerMongoManager()

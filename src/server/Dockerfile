@@ -40,13 +40,16 @@ RUN mkdir -p /etc/apt/keyrings \
     && apt-get install -y --no-install-recommends google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Chromedriver (pin to match Chrome version)
+# Install matching Chromedriver
 RUN CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+') \
-    && CHROMEDRIVER_URL="https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/${CHROME_VERSION}/linux64/chromedriver-linux64.zip" \
-    && wget -q -O /tmp/chromedriver.zip "$CHROMEDRIVER_URL" \
+    && CHROMEDRIVER_VERSION=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/latest-patch-versions-per-build-with-downloads.json" \
+    | grep -oP "\"$CHROME_VERSION\": \{[^\}]*\}" \
+    | grep -oP '"chromedriver":\s*\{[^\}]*\}' \
+    | grep -oP '"url":\s*"\K[^"]+') \
+    && wget -q -O /tmp/chromedriver.zip "$CHROMEDRIVER_VERSION" \
     && unzip /tmp/chromedriver.zip -d /usr/local/bin/ \
-    && mv /usr/local/bin/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver \
-    && rm -rf /usr/local/bin/chromedriver-linux64 /tmp/chromedriver.zip \
+    && mv /usr/local/bin/chromedriver*/chromedriver /usr/local/bin/chromedriver \
+    && rm -rf /usr/local/bin/chromedriver* /tmp/chromedriver.zip \
     && chmod +x /usr/local/bin/chromedriver
 
 # Create required directories

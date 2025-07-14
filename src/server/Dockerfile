@@ -31,22 +31,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Google Chrome
-RUN mkdir -p /etc/apt/keyrings \
-    && curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /etc/apt/keyrings/google-chrome.gpg \
-    && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" \
-    > /etc/apt/sources.list.d/google-chrome.list \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends google-chrome-stable \
-    && rm -rf /var/lib/apt/lists/*
+ENV CHROME_VERSION=125.0.6422.112
+ENV CHROMEDRIVER_VERSION=125.0.6422.112
 
-# Install matching Chromedriver
-RUN CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+') \
-    && CHROMEDRIVER_VERSION=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/latest-patch-versions-per-build-with-downloads.json" \
-    | grep -oP "\"$CHROME_VERSION\": \{[^\}]*\}" \
-    | grep -oP '"chromedriver":\s*\{[^\}]*\}' \
-    | grep -oP '"url":\s*"\K[^"]+') \
-    && wget -q -O /tmp/chromedriver.zip "$CHROMEDRIVER_VERSION" \
+# Install Chrome
+RUN wget -q https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}-1_amd64.deb \
+    && apt install -y ./google-chrome-stable_${CHROME_VERSION}-1_amd64.deb \
+    && rm google-chrome-stable_${CHROME_VERSION}-1_amd64.deb
+
+# Install Chromedriver
+RUN wget -q -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/${CHROMEDRIVER_VERSION}/linux64/chromedriver-linux64.zip" \
     && unzip /tmp/chromedriver.zip -d /usr/local/bin/ \
     && mv /usr/local/bin/chromedriver*/chromedriver /usr/local/bin/chromedriver \
     && rm -rf /usr/local/bin/chromedriver* /tmp/chromedriver.zip \

@@ -17,7 +17,10 @@ import {
 	IconListCheck,
 	IconCheck,
 	IconBrandWhatsapp,
+	IconPlugConnected,
+	IconBook,
 	IconMessageChatbot,
+	IconArrowRight,
 	IconSparkles,
 	IconLink
 } from "@tabler/icons-react"
@@ -194,7 +197,7 @@ const questions = [
 // --- Main Component ---
 
 const OnboardingPage = () => {
-	const [stage, setStage] = useState("intro") // 'intro', 'questions', 'submitting', 'complete'
+	const [stage, setStage] = useState("intro") // 'intro', 'questions', 'submitting', 'whatsNext', 'complete'
 	const [answers, setAnswers] = useState({})
 	const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
 	const [isLoading, setIsLoading] = useState(true)
@@ -307,8 +310,8 @@ const OnboardingPage = () => {
 					body: JSON.stringify({ whatsapp_number: whatsappNumber })
 				})
 			}
-			setStage("complete")
-			setTimeout(() => router.push("/home"), 2500)
+			setStage("whatsNext") // Go to the new "What's Next" screen
+			// setTimeout(() => router.push("/home"), 2500) // Removed auto-redirect
 		} catch (error) {
 			toast.error(`Error: ${error.message}`)
 			setStage("questions") // Go back to questions on error
@@ -874,6 +877,96 @@ const OnboardingPage = () => {
 						<h1 className="text-3xl font-bold">
 							Personalizing your experience...
 						</h1>
+					</motion.div>
+				)
+
+			case "whatsNext":
+				const nextStepCards = [
+					{
+						icon: (
+							<IconPlugConnected
+								size={32}
+								className="text-blue-400"
+							/>
+						),
+						title: "Connect Your Apps",
+						description:
+							"Unlock Sentient's full power by connecting to Gmail, Calendar, and more.",
+						buttonText: "Go to Integrations",
+						onClick: () => router.push("/integrations")
+					},
+					{
+						icon: (
+							<IconBook size={32} className="text-purple-400" />
+						),
+						title: "Start Your First Journal",
+						description:
+							"Write down your thoughts and let Sentient proactively manage your day.",
+						buttonText: "Go to Organizer",
+						onClick: () => router.push("/journal")
+					},
+					{
+						icon: (
+							<IconSparkles
+								size={32}
+								className="text-yellow-400"
+							/>
+						),
+						title: "Explore What's Possible",
+						description:
+							"See examples of what you can automate and achieve with your new AI.",
+						buttonText: "See Use Cases",
+						onClick: () => router.push("/home")
+					}
+				]
+				return (
+					<motion.div
+						key="whatsNext"
+						initial={{ opacity: 0, y: 20 }}
+						animate={{ opacity: 1, y: 0 }}
+						className="text-center max-w-4xl"
+					>
+						<h1 className="text-5xl font-bold mb-4">
+							You're All Set, {answers["user-name"] || "Friend"}!
+						</h1>
+						<p className="text-xl text-neutral-400 mb-12">
+							Here are a few things you can do to get started.
+						</p>
+						<div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+							{nextStepCards.map((card, i) => (
+								<motion.div
+									key={card.title}
+									initial={{ opacity: 0, y: 20 }}
+									animate={{
+										opacity: 1,
+										y: 0,
+										transition: { delay: 0.2 + i * 0.15 }
+									}}
+									className="bg-neutral-800/50 border border-neutral-700 p-6 rounded-2xl flex flex-col items-center text-center"
+								>
+									<div className="mb-4">{card.icon}</div>
+									<h3 className="text-xl font-semibold mb-2">
+										{card.title}
+									</h3>
+									<p className="text-neutral-400 text-sm flex-grow mb-6">
+										{card.description}
+									</p>
+									<button
+										onClick={card.onClick}
+										className="mt-auto w-full py-2.5 px-4 rounded-lg bg-neutral-700 hover:bg-[var(--color-accent-blue)] text-white font-medium transition-colors flex items-center justify-center gap-2"
+									>
+										{card.buttonText}{" "}
+										<IconArrowRight size={16} />
+									</button>
+								</motion.div>
+							))}
+						</div>
+						<button
+							onClick={() => router.push("/home")}
+							className="text-neutral-400 hover:text-white underline"
+						>
+							Or, just take me to the app
+						</button>
 					</motion.div>
 				)
 

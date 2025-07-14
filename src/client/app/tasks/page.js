@@ -27,7 +27,8 @@ import {
 	IconArrowRight,
 	IconPlugConnected,
 	IconChevronDown,
-	IconChecklist
+	IconChecklist,
+	IconHelpCircle as HelpIcon
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import { Tooltip } from "react-tooltip"
@@ -35,6 +36,18 @@ import "react-tooltip/dist/react-tooltip.css"
 import { cn } from "@utils/cn"
 import { motion, AnimatePresence } from "framer-motion"
 import { useRouter } from "next/navigation"
+
+const HelpTooltip = ({ content }) => (
+	<div className="absolute top-6 right-6 z-40">
+		<button
+			data-tooltip-id="page-help-tooltip"
+			data-tooltip-content={content}
+			className="p-1.5 rounded-full text-neutral-500 hover:text-white hover:bg-[var(--color-primary-surface)] pulse-glow-animation"
+		>
+			<HelpIcon size={22} />
+		</button>
+	</div>
+)
 
 const statusMap = {
 	pending: {
@@ -204,6 +217,17 @@ const Tasks = () => {
 		fetchAllToolsAndIntegrations()
 		const intervalId = setInterval(fetchTasksData, 60000)
 		return () => clearInterval(intervalId)
+	}, [fetchTasksData])
+
+	const handleShortcuts = useCallback((e) => {
+		if (e.ctrlKey && e.key === "Enter") {
+			e.preventDefault()
+			setCreatePlanOpen((prev) => !prev)
+		}
+	}, [])
+	useEffect(() => {
+		window.addEventListener("keydown", handleShortcuts)
+		return () => window.removeEventListener("keydown", handleShortcuts)
 	}, [fetchTasksData])
 
 	const handleGeneratePlan = async () => {
@@ -433,7 +457,9 @@ const Tasks = () => {
 	return (
 		<div className="flex h-screen bg-gradient-to-br from-[var(--color-primary-background)] via-[var(--color-primary-background)] to-[var(--color-primary-surface)]/20 text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
 			<Tooltip id="tasks-tooltip" />
-			<div className="flex-1 flex flex-col overflow-hidden h-screen">
+			<Tooltip id="page-help-tooltip" />
+			<div className="flex-1 flex flex-col overflow-hidden h-screen relative">
+				<HelpTooltip content="This is the Tasks page. Here you can view all your tasks, approve new ones, and create custom multi-step plans (workflows). Press Ctrl + Enter to toggle the plan creator." />
 				<motion.header
 					initial={{ y: -20, opacity: 0 }}
 					animate={{ y: 0, opacity: 1 }}

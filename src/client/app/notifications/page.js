@@ -5,6 +5,7 @@ import {
 	IconBell,
 	IconAlertCircle,
 	IconArrowRight,
+	IconHelpCircle,
 	IconX
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
@@ -12,6 +13,18 @@ import { Tooltip } from "react-tooltip"
 import { cn } from "@utils/cn"
 import { useRouter } from "next/navigation"
 import { useSmoothScroll } from "@hooks/useSmoothScroll"
+
+const HelpTooltip = ({ content }) => (
+	<div className="absolute top-6 right-6 z-40">
+		<button
+			data-tooltip-id="page-help-tooltip"
+			data-tooltip-content={content}
+			className="p-1.5 rounded-full text-neutral-500 hover:text-white hover:bg-[var(--color-primary-surface)] pulse-glow-animation"
+		>
+			<IconHelpCircle size={22} />
+		</button>
+	</div>
+)
 
 const Notifications = () => {
 	const [notifications, setNotifications] = useState([])
@@ -123,8 +136,10 @@ const Notifications = () => {
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
 			<Tooltip id="notifications-tooltip" />
-			<div className="flex-1 flex flex-col overflow-hidden h-screen">
+			<Tooltip id="page-help-tooltip" />
+			<div className="flex-1 flex flex-col overflow-hidden h-screen relative">
 				<header className="flex items-center justify-between p-4 md:px-8 md:py-6 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)]">
+					<HelpTooltip content="This page shows notifications from Sentient, such as when a task is ready for approval or has completed." />
 					<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)] flex items-center gap-3">
 						Notifications
 					</h1>

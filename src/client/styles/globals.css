@@ -92,3 +92,18 @@ button,
 .cursor-pointer {
 	@apply transition-all duration-150 ease-out;
 }
+
+@keyframes pulse-glow {
+	0%,
+	100% {
+		opacity: 0.8;
+		box-shadow: 0 0 4px var(--color-accent-blue);
+	}
+	50% {
+		opacity: 1;
+		box-shadow: 0 0 12px var(--color-accent-blue);
+	}
+}
+.pulse-glow-animation {
+	animation: pulse-glow 2.5s infinite ease-in-out;
+}

@@ -26,6 +26,7 @@ import {
 	IconX,
 	IconMail,
 	IconUsers,
+	IconHelpCircle,
 	IconCalendarEvent,
 	IconWorldSearch
 } from "@tabler/icons-react"
@@ -33,6 +34,18 @@ import { Tooltip } from "react-tooltip"
 import { cn } from "@utils/cn"
 import ModalDialog from "@components/ModalDialog"
 import { motion, AnimatePresence } from "framer-motion"
+
+const HelpTooltip = ({ content }) => (
+	<div className="absolute top-6 right-6 z-40">
+		<button
+			data-tooltip-id="page-help-tooltip"
+			data-tooltip-content={content}
+			className="p-1.5 rounded-full text-neutral-500 hover:text-white hover:bg-[var(--color-primary-surface)] pulse-glow-animation"
+		>
+			<IconHelpCircle size={22} />
+		</button>
+	</div>
+)
 
 const integrationIcons = {
 	gmail: IconMail,
@@ -511,8 +524,7 @@ const IntegrationsPage = () => {
 					"https://www.googleapis.com/auth/presentations https://www.googleapis.com/auth/drive",
 				gsheets: "https://www.googleapis.com/auth/spreadsheets",
 				gmaps: "https://www.googleapis.com/auth/cloud-platform",
-				gpeople:
-					"https://www.googleapis.com/auth/contacts",
+				gpeople: "https://www.googleapis.com/auth/contacts",
 				gshopping: "https://www.googleapis.com/auth/content",
 				github: "repo user",
 				notion: "read_content write_content insert_content", // This is not a scope, it's just for user to know. Notion doesn't use scopes in the URL.
@@ -589,10 +601,13 @@ const IntegrationsPage = () => {
 	useEffect(() => {
 		fetchIntegrations()
 		const urlParams = new URLSearchParams(window.location.search)
+		// Use `get` which returns the first value, which is fine here.
 		const success = urlParams.get("integration_success")
 		const error = urlParams.get("integration_error")
+
 		if (success) {
-			const capitalized = success.charAt(0).toUpperCase() + success.slice(1)
+			const capitalized =
+				success.charAt(0).toUpperCase() + success.slice(1)
 			toast.success(`Successfully connected to ${capitalized}!`)
 			window.history.replaceState({}, document.title, "/integrations")
 		} else if (error) {
@@ -604,8 +619,10 @@ const IntegrationsPage = () => {
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
 			<Tooltip id="integrations-tooltip" />
-			<div className="flex-1 flex flex-col overflow-hidden h-screen">
+			<Tooltip id="page-help-tooltip" />
+			<div className="flex-1 flex flex-col overflow-hidden h-screen relative">
 				<header className="flex items-center justify-between p-4 md:px-8 md:py-6 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)]">
+					<HelpTooltip content="Connect your apps here. This allows Sentient to access information and perform actions on your behalf." />
 					<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)] flex items-center gap-3">
 						Integrations
 					</h1>

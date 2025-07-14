@@ -23,13 +23,36 @@ import {
 	IconMail,
 	IconCalendarEvent,
 	IconMessage,
-	IconChevronUp
+	IconChevronUp,
+	IconBulb,
+	IconSettings,
+	IconRepeat
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
-import { motion, useMotionValue, useTransform, useSpring } from "framer-motion"
+import {
+	motion,
+	AnimatePresence,
+	useMotionValue,
+	useTransform,
+	useSpring
+} from "framer-motion"
 import { Tooltip } from "react-tooltip"
 import { cn } from "@utils/cn"
 import { useSmoothScroll } from "@hooks/useSmoothScroll"
+import EditTaskModal from "@components/journal/EditTaskModal"
+import TaskDetailsModal from "@components/journal/TaskDetailsModal"
+
+const HelpTooltip = ({ content }) => (
+	<div className="absolute top-6 right-6 z-40">
+		<button
+			data-tooltip-id="page-help-tooltip"
+			data-tooltip-content={content}
+			className="p-1.5 rounded-full text-neutral-500 hover:text-white hover:bg-[var(--color-primary-surface)] pulse-glow-animation"
+		>
+			<IconHelpCircle size={22} />
+		</button>
+	</div>
+)
 
 const PreviewColumn = ({
 	title,
@@ -154,6 +177,7 @@ const TaskCard = ({
 }) => {
 	const router = useRouter()
 	const statusInfo = statusMap[task.status] || statusMap.default
+
 	const priorityInfo = priorityMap[task.priority] || priorityMap.default
 
 	const onEditTask = () => onEditTaskProp(task)
@@ -281,15 +305,42 @@ const JournalPreviewCard = ({ entry, ...props }) => {
 	)
 }
 
+const IdeaCard = ({ icon, title, description, onClick, cta }) => (
+	<motion.div
+		whileHover={{ y: -5, boxShadow: "0 10px 20px rgba(0,0,0,0.2)" }}
+		className="bg-gradient-to-br from-[var(--color-primary-surface)] to-neutral-800/60 p-6 rounded-2xl border border-[var(--color-primary-surface-elevated)] flex flex-col cursor-pointer"
+		onClick={onClick}
+	>
+		<div className="flex items-center gap-4 mb-4">
+			<div className="p-2 bg-[var(--color-accent-blue)]/20 rounded-lg text-[var(--color-accent-blue)]">
+				{icon}
+			</div>
+			<h4 className="text-lg font-semibold text-white">{title}</h4>
+		</div>
+		<p className="text-sm text-[var(--color-text-secondary)] flex-grow mb-6">
+			{description}
+		</p>
+		<div className="text-right">
+			<span className="text-sm font-semibold text-[var(--color-accent-blue)] hover:underline">
+				{cta} &rarr;
+			</span>
+		</div>
+	</motion.div>
+)
+
 const HomePage = () => {
 	const [userDetails, setUserDetails] = useState(null)
 	const [tasks, setTasks] = useState([])
 	const [integrations, setIntegrations] = useState([])
 	const [todaysJournal, setTodaysJournal] = useState([])
-	const [loading, setLoading] = useState(true)
+	const [loading, setLoading] = useState(true) // For main data
 	const [openSections, setOpenSections] = useState({
 		pendingApproval: true
 	})
+	const router = useRouter()
+	const [editingTask, setEditingTask] = useState(null)
+	const [viewingTask, setViewingTask] = useState(null)
+	const [allTools, setAllTools] = useState([])
 
 	const scrollRef = useRef(null)
 
@@ -330,11 +381,16 @@ const HomePage = () => {
 			const integrationsData = await integrationsResponse.json()
 			const journalData = await journalResponse.json()
 
-			if (Array.isArray(tasksData.tasks)) {
-				setTasks(tasksData.tasks)
-			}
 			if (Array.isArray(integrationsData.integrations)) {
 				setIntegrations(integrationsData.integrations)
+				const tools = integrationsData.integrations.map((i) => ({
+					name: i.name,
+					display_name: i.display_name
+				}))
+				setAllTools(tools)
+			}
+			if (Array.isArray(tasksData.tasks)) {
+				setTasks(tasksData.tasks)
 			}
 			if (Array.isArray(journalData.blocks)) {
 				setTodaysJournal(journalData.blocks)
@@ -381,6 +437,26 @@ const HomePage = () => {
 			fetchData()
 		} catch (error) {
 			toast.error(`Failed to delete task: ${error.message}`)
+		}
+	}
+
+	const handleUpdateTask = async () => {
+		if (!editingTask) return
+		try {
+			const response = await fetch("/api/tasks/update", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					...editingTask,
+					taskId: editingTask.task_id
+				})
+			})
+			if (!response.ok) throw new Error((await response.json()).error)
+			toast.success("Task updated successfully!")
+			setEditingTask(null)
+			fetchData() // Refresh data
+		} catch (error) {
+			toast.error(`Failed to update task: ${error.message}`)
 		}
 	}
 
@@ -447,7 +523,9 @@ const HomePage = () => {
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
 			<Tooltip id="home-tooltip" />
-			<div className="flex-1 flex flex-col overflow-hidden h-screen">
+			<Tooltip id="page-help-tooltip" />
+			<div className="flex-1 flex flex-col overflow-hidden h-screen relative">
+				<HelpTooltip content="This is your Home page. See tasks pending your approval and get a glimpse of your day's agenda and journal entries." />
 				<main
 					ref={scrollRef}
 					className="flex-1 overflow-y-auto p-4 lg:p-8 custom-scrollbar flex items-center justify-center"
@@ -473,7 +551,7 @@ const HomePage = () => {
 								transition={{ duration: 0.5, delay: 0.1 }}
 								className="text-lg text-[var(--color-text-secondary)]"
 							>
-								I’m all ears. What’s next?
+								I'm all ears. What’s next?
 							</motion.p>
 						</div>
 
@@ -522,6 +600,8 @@ const HomePage = () => {
 													handleApproveTask
 												}
 												onDeleteTask={handleDeleteTask}
+												onEditTask={setEditingTask}
+												onViewDetails={setViewingTask}
 											/>
 										))
 									) : (
@@ -556,9 +636,68 @@ const HomePage = () => {
 								icon={<IconBook />}
 							/>
 						</div>
+
+						{/* Use Cases Section */}
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ duration: 0.5, delay: 0.4 }}
+							className="mt-12 lg:mt-16"
+						>
+							<h2 className="text-2xl font-semibold text-center mb-8 text-[var(--color-text-primary)]">
+								What's Possible with Sentient?
+							</h2>
+							<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+								<IdeaCard
+									icon={<IconRepeat size={24} />}
+									title="Automate Reports"
+									description="Set up a recurring task to search your Gmail for weekly reports and summarize them in a Google Doc."
+									cta="Create a recurring task"
+									onClick={() => router.push("/tasks")}
+								/>
+								<IdeaCard
+									icon={<IconSettings size={24} />}
+									title="Personalize Your AI"
+									description="Teach Sentient about your communication style and preferences in the Settings page."
+									cta="Customize personality"
+									onClick={() => router.push("/settings")}
+								/>
+								<IdeaCard
+									icon={<IconBulb size={24} />}
+									title="Never Forget an Idea"
+									description="Use the Journal to jot down thoughts, and let Sentient proactively create tasks and reminders for you."
+									cta="Go to Journal"
+									onClick={() => router.push("/journal")}
+								/>
+							</div>
+						</motion.div>
 					</div>
 				</main>
 			</div>
+			<AnimatePresence>
+				{editingTask && (
+					<EditTaskModal
+						key={editingTask.task_id}
+						task={editingTask}
+						onClose={() => setEditingTask(null)}
+						onSave={handleUpdateTask}
+						setTask={setEditingTask}
+						allTools={allTools}
+						integrations={integrations}
+					/>
+				)}
+				{viewingTask && (
+					<TaskDetailsModal
+						task={viewingTask}
+						onClose={() => setViewingTask(null)}
+						onApprove={(taskId) => {
+							handleApproveTask(taskId)
+							setViewingTask(null)
+						}}
+						integrations={integrations}
+					/>
+				)}
+			</AnimatePresence>
 		</div>
 	)
 }

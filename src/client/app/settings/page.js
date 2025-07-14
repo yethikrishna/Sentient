@@ -19,11 +19,24 @@ import {
 	IconPlus,
 	IconMessageChatbot,
 	IconBrandWhatsapp,
-	IconBrandLinkedin
+	IconBrandLinkedin,
+	IconHelpCircle
 } from "@tabler/icons-react"
 import { useState, useEffect, useCallback } from "react"
 import { Tooltip } from "react-tooltip"
 import { cn } from "@utils/cn"
+
+const HelpTooltip = ({ content }) => (
+	<div className="absolute top-6 right-6 z-40">
+		<button
+			data-tooltip-id="page-help-tooltip"
+			data-tooltip-content={content}
+			className="p-1.5 rounded-full text-neutral-500 hover:text-white hover:bg-[var(--color-primary-surface)] pulse-glow-animation"
+		>
+			<IconHelpCircle size={22} />
+		</button>
+	</div>
+)
 
 const questionSections = {
 	essentials: {
@@ -437,7 +450,7 @@ const TestingTools = () => {
 		}
 	}
 
-		return (
+	return (
 		<section>
 			<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2 flex items-center gap-2">
 				<IconFlask />
@@ -501,9 +514,9 @@ const TestingTools = () => {
 						</button>
 					</div>
 				</form>
-				</div>
+			</div>
 		</section>
-		)
+	)
 }
 
 const AIPersonalitySettings = () => {
@@ -888,7 +901,10 @@ const ProfileSettings = ({ initialData, onSave, isSaving }) => {
 									{questions
 										.filter((q) => q.section === key)
 										.map((q) => (
-											<div key={q.id}>
+											<div
+												key={q.id}
+												className="min-h-[68px]"
+											>
 												<label className="block text-sm font-medium text-gray-200 mb-2">
 													{q.question}
 												</label>
@@ -896,6 +912,7 @@ const ProfileSettings = ({ initialData, onSave, isSaving }) => {
 													switch (q.type) {
 														case "text-input":
 															return (
+																// eslint-disable-line
 																<input
 																	type="text"
 																	value={
@@ -921,6 +938,7 @@ const ProfileSettings = ({ initialData, onSave, isSaving }) => {
 															)
 														case "textarea":
 															return (
+																// eslint-disable-line
 																<textarea
 																	value={
 																		formData[
@@ -946,6 +964,7 @@ const ProfileSettings = ({ initialData, onSave, isSaving }) => {
 															)
 														case "select":
 															return (
+																// eslint-disable-line
 																<select
 																	value={
 																		formData[
@@ -1042,6 +1061,44 @@ const ProfileSettings = ({ initialData, onSave, isSaving }) => {
 																</div>
 															)
 														case "location": // Simplified for now
+															const locationValue =
+																formData[q.id]
+															const isGpsLocation =
+																typeof locationValue ===
+																	"object" &&
+																locationValue !==
+																	null &&
+																locationValue.latitude
+
+															if (isGpsLocation) {
+																return (
+																	<div className="flex items-center gap-2">
+																		<p className="w-full bg-[var(--color-primary-surface)] border border-neutral-700 rounded-md px-3 py-2 text-gray-300">
+																			{`Lat: ${locationValue.latitude?.toFixed(
+																				4
+																			)}, Lon: ${locationValue.longitude?.toFixed(
+																				4
+																			)} (Detected)`}
+																		</p>
+																		<button
+																			onClick={() =>
+																				handleAnswer(
+																					q.id,
+																					""
+																				)
+																			}
+																			className="p-2 text-gray-400 hover:text-white hover:bg-neutral-600 rounded-md"
+																			title="Clear and enter manually"
+																		>
+																			<IconX
+																				size={
+																					18
+																				}
+																			/>
+																		</button>
+																	</div>
+																)
+															}
 															return (
 																<input
 																	type="text"
@@ -1169,8 +1226,10 @@ const ProfilePage = () => {
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
 			<Tooltip id="settings-tooltip" />
-			<div className="flex-1 flex flex-col overflow-hidden h-screen">
+			<Tooltip id="page-help-tooltip" />
+			<div className="flex-1 flex flex-col overflow-hidden h-screen relative">
 				<main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 custom-scrollbar">
+					<HelpTooltip content="Customize your experience here. Teach Sentient about yourself, change its personality, manage notifications, and connect your LinkedIn profile." />
 					<div className="w-full max-w-5xl mx-auto space-y-10">
 						<ProfileHeader />
 						<ProfileSettings

@@ -34,10 +34,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV CHROME_VERSION=125.0.6422.112
 ENV CHROMEDRIVER_VERSION=125.0.6422.112
 
-# Install Chrome
-RUN wget -q https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}-1_amd64.deb \
-    && apt install -y ./google-chrome-stable_${CHROME_VERSION}-1_amd64.deb \
-    && rm google-chrome-stable_${CHROME_VERSION}-1_amd64.deb
+# Add Google’s signing key and repository
+RUN mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /etc/apt/keyrings/google.gpg \
+    && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list
+
+# Install pinned Chrome version
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends google-chrome-stable=125.0.6422.112-1 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Chromedriver
 RUN wget -q -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/${CHROMEDRIVER_VERSION}/linux64/chromedriver-linux64.zip" \

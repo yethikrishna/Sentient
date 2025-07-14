@@ -47,10 +47,9 @@ RUN apt-get update \
 
 # Install Chromedriver
 RUN wget -q -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/${CHROMEDRIVER_VERSION}/linux64/chromedriver-linux64.zip" \
-    && unzip /tmp/chromedriver.zip -d /usr/local/bin/ \
-    && mv /usr/local/bin/chromedriver*/chromedriver /usr/local/bin/chromedriver \
-    && rm -rf /usr/local/bin/chromedriver* /tmp/chromedriver.zip \
-    && chmod +x /usr/local/bin/chromedriver
+    && unzip -j /tmp/chromedriver.zip '*/chromedriver' -d /usr/local/bin/ \
+    && chmod +x /usr/local/bin/chromedriver \
+    && rm -f /tmp/chromedriver.zip
 
 # Create required directories
 RUN mkdir -p /etc/supervisor/conf.d /var/log/supervisor

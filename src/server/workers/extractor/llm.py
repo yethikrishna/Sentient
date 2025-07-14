@@ -7,11 +7,18 @@ from workers.extractor import prompts
 
 logger = logging.getLogger(__name__)
 
-def get_extractor_agent():
+def get_extractor_agent(user_name: str, user_location: str, user_timezone: str):
     """
     Initializes and returns a Qwen Assistant agent configured for extraction.
     """
     llm_cfg = {}
+
+    system_prompt = prompts.SYSTEM_PROMPT.format(
+        user_name=user_name,
+        user_location=user_location,
+        user_timezone=user_timezone
+    )
+
     if config.LLM_PROVIDER == "OLLAMA":
         ollama_v1_url = f"{config.OLLAMA_BASE_URL.rstrip('/')}/v1"
         llm_cfg = {
@@ -34,7 +41,7 @@ def get_extractor_agent():
     try:
         agent = Assistant(
             llm=llm_cfg,
-            system_message=prompts.SYSTEM_PROMPT,
+            system_message=system_prompt,
             function_list=[] # No tools, just structured output
         )
         logger.info("Qwen Extractor Agent initialized successfully.")

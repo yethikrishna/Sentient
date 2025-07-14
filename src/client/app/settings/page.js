@@ -15,6 +15,7 @@ import {
 	IconMapPin,
 	IconChevronDown,
 	IconX,
+	IconFlask,
 	IconPlus,
 	IconBrandWhatsapp,
 	IconBrandLinkedin
@@ -370,6 +371,135 @@ const LinkedInSettings = () => {
 						</div>
 					</div>
 				)}
+			</div>
+		</section>
+	)
+}
+
+const TestingTools = () => {
+	const [serviceName, setServiceName] = useState("gmail")
+	const [eventData, setEventData] = useState(
+		'{\n  "subject": "Project Alpha Kick-off",\n  "body": "Hi team, let\'s schedule a meeting for next Tuesday to discuss the Project Alpha kick-off. John, please prepare the presentation."\n}'
+	)
+	const [isSubmitting, setIsSubmitting] = useState(false)
+
+	const handleSubmit = async (e) => {
+		e.preventDefault()
+		setIsSubmitting(true)
+		let parsedData
+		try {
+			parsedData = JSON.parse(eventData)
+		} catch (error) {
+			toast.error("Invalid JSON in event data.")
+			setIsSubmitting(false)
+			return
+		}
+
+		try {
+			const response = await fetch("/api/testing/inject-context", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					service_name: serviceName,
+					event_data: parsedData
+				})
+			})
+			const result = await response.json()
+			if (!response.ok) {
+				throw new Error(result.error || "Failed to inject event.")
+			}
+			toast.success(
+				`Event injected successfully! Event ID: ${result.event_id}`
+			)
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsSubmitting(false)
+		}
+	}
+
+	const handleServiceChange = (e) => {
+		const newService = e.target.value
+		setServiceName(newService)
+		if (newService === "gmail") {
+			setEventData(
+				'{\n  "subject": "Project Alpha Kick-off",\n  "body": "Hi team, let\'s schedule a meeting for next Tuesday to discuss the Project Alpha kick-off. John, please prepare the presentation."\n}'
+			)
+		} else if (newService === "gcalendar") {
+			setEventData(
+				'{\n  "summary": "Finalize Q3 report",\n  "description": "Need to finalize the Q3 sales report with Sarah before the end of the week."\n}'
+			)
+		} else if (newService === "journal_block") {
+			setEventData(
+				'{\n  "content": "Remind me to call the dentist tomorrow to book an appointment.",\n  "page_date": "2024-07-26"\n}'
+			)
+		}
+	}
+
+	return (
+		<section>
+			<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2 flex items-center gap-2">
+				<IconFlask />
+				Developer Tools
+			</h2>
+			<div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)]">
+				<h3 className="font-semibold text-lg text-white mb-2">
+					Inject Context Event
+				</h3>
+				<p className="text-gray-400 text-sm mb-4">
+					Simulate a polling event by manually injecting context data
+					into the processing pipeline. This is useful for testing the
+					extractor and planner workers.
+				</p>
+				<form onSubmit={handleSubmit} className="space-y-4">
+					<div>
+						<label
+							htmlFor="serviceName"
+							className="block text-sm font-medium text-gray-300 mb-1"
+						>
+							Service
+						</label>
+						<select
+							id="serviceName"
+							value={serviceName}
+							onChange={handleServiceChange}
+							className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+						>
+							<option value="gmail">Gmail</option>
+							<option value="gcalendar">Google Calendar</option>
+							<option value="journal_block">Journal</option>
+						</select>
+					</div>
+					<div>
+						<label
+							htmlFor="eventData"
+							className="block text-sm font-medium text-gray-300 mb-1"
+						>
+							Event Data (JSON)
+						</label>
+						<textarea
+							id="eventData"
+							value={eventData}
+							onChange={(e) => setEventData(e.target.value)}
+							rows={8}
+							className="w-full font-mono text-xs bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+							placeholder='e.g., { "subject": "Hello", "body": "World" }'
+						/>
+					</div>
+					<div className="flex justify-end">
+						<button
+							type="submit"
+							disabled={isSubmitting}
+							className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors disabled:opacity-50"
+						>
+							{isSubmitting ? (
+								<IconLoader className="w-5 h-5 animate-spin" />
+							) : (
+								"Inject Event"
+							)}
+						</button>
+					</div>
+				</form>
 			</div>
 		</section>
 	)
@@ -746,6 +876,9 @@ const ProfilePage = () => {
 						/>
 						<WhatsAppSettings />
 						<LinkedInSettings />
+						{process.env.NEXT_PUBLIC_ENVIRONMENT !== "prod" && (
+							<TestingTools />
+						)}
 					</div>
 				</main>
 			</div>

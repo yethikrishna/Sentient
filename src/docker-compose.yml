@@ -13,6 +13,9 @@ services:
       args:
         # Pass env vars from the root .env file at build time
         - NEXT_PUBLIC_APP_SERVER_URL=${NEXT_PUBLIC_APP_SERVER_URL}
+        - INTERNAL_APP_SERVER_URL=${INTERNAL_APP_SERVER_URL}
+        - INTERNAL_CLIENT_URL=${INTERNAL_CLIENT_URL}
+        - APP_BASE_URL=${APP_BASE_URL}
         - NEXT_PUBLIC_ENVIRONMENT=${NEXT_PUBLIC_ENVIRONMENT}
         - SELF_HOST_AUTH_TOKEN=${SELF_HOST_AUTH_TOKEN}
         # Pass Auth0 vars as empty strings for the build to succeed

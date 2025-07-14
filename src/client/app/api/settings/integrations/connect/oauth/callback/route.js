@@ -8,15 +8,23 @@ export async function GET(request) {
 	const state = searchParams.get("state") // This will be 'gdrive', 'gcalendar', etc.
 	const error = searchParams.get("error")
 
-	const baseUrl = process.env.APP_BASE_URL
-	if (!baseUrl) {
+	const publicBaseUrl = process.env.APP_BASE_URL
+	if (!publicBaseUrl) {
 		console.error("APP_BASE_URL environment variable is not set.")
 		return new Response("Server configuration error.", { status: 500 })
 	}
 
+	// Determine the correct URL for server-side fetching.
+	// In a docker-compose self-host setup, containers communicate via internal service names.
+	// In all other environments (local dev, cloud), use the public URL.
+	const isSelfHostDocker = process.env.NEXT_PUBLIC_ENVIRONMENT === "selfhost"
+	const apiUrlForFetch = isSelfHostDocker
+		? process.env.INTERNAL_CLIENT_URL
+		: publicBaseUrl
+
 	// FIX: Use the public-facing APP_BASE_URL for redirection, not the internal request.url.
 	// This ensures the browser is redirected to the correct, publicly accessible address.
-	const integrationsUrl = new URL("/integrations", baseUrl)
+	const integrationsUrl = new URL("/integrations", publicBaseUrl)
 
 	if (error) {
 		// User denied access or an error occurred
@@ -41,7 +49,7 @@ export async function GET(request) {
 		// The browser session (cookie) is automatically forwarded by Next.js server-side fetch,
 		// which authenticates the user to our own API proxy.
 		const apiResponse = await fetch(
-			`${baseUrl}/api/settings/integrations/connect/oauth`,
+			`${apiUrlForFetch}/api/settings/integrations/connect/oauth`,
 			{
 				method: "POST",
 				headers: {
@@ -51,7 +59,7 @@ export async function GET(request) {
 				body: JSON.stringify({
 					service_name: state,
 					code: code,
-					redirect_uri: `${baseUrl}/api/settings/integrations/connect/oauth/callback`
+					redirect_uri: `${publicBaseUrl}/api/settings/integrations/connect/oauth/callback`
 				})
 			}
 		)

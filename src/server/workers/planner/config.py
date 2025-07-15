@@ -1,5 +1,6 @@
 import os
 from dotenv import load_dotenv
+from datetime import datetime
 
 import logging
 
@@ -10,10 +11,13 @@ logging.info(f"[PlannerConfig] Initializing configuration for ENVIRONMENT='{ENVI
 server_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 if ENVIRONMENT == 'dev-local':
+    # Prefer .env.local, fall back to .env
+    dotenv_local_path = os.path.join(server_root, '.env.local')
     dotenv_path = os.path.join(server_root, '.env')
-    logging.info(f"[PlannerConfig] Loading .env file for 'dev-local' mode from: {dotenv_path}")
-    if os.path.exists(dotenv_path):
-        load_dotenv(dotenv_path=dotenv_path)
+    load_path = dotenv_local_path if os.path.exists(dotenv_local_path) else dotenv_path
+    logging.info(f"[{datetime.now()}] [PlannerConfig] Loading .env file for 'dev-local' mode from: {load_path}")
+    if os.path.exists(load_path):
+        load_dotenv(dotenv_path=load_path)
 elif ENVIRONMENT == 'selfhost':
     dotenv_path = os.path.join(server_root, '.env.selfhost')
     logging.info(f"[PlannerConfig] Loading .env file for 'selfhost' mode from: {dotenv_path}")

@@ -48,6 +48,11 @@ export async function GET(request) {
 		const cookie = headersList.get("cookie") // Now this is safe to call
 		// The browser session (cookie) is automatically forwarded by Next.js server-side fetch,
 		// which authenticates the user to our own API proxy.
+		const bodyPayload = {
+			service_name: state,
+			code: code,
+			redirect_uri: `${publicBaseUrl}/api/settings/integrations/connect/oauth/callback`
+		}
 		const apiResponse = await fetch(
 			`${apiUrlForFetch}/api/settings/integrations/connect/oauth`,
 			{
@@ -56,11 +61,7 @@ export async function GET(request) {
 					"Content-Type": "application/json",
 					...(cookie && { Cookie: cookie }) // Forward the session cookie
 				},
-				body: JSON.stringify({
-					service_name: state,
-					code: code,
-					redirect_uri: `${publicBaseUrl}/api/settings/integrations/connect/oauth/callback`
-				})
+				body: JSON.stringify(bodyPayload)
 			}
 		)
 

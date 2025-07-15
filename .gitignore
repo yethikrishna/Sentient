@@ -254,3 +254,7 @@ token.json
 celerybeat-schedule.dat
 celerybeat-schedule.dir
 celerybeat-schedule.bak
+dump.rdb
+gows.db-shm 
+gows.db-wal
+gows.db

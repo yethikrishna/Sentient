@@ -450,6 +450,80 @@ const TestingTools = () => {
 		}
 	}
 
+	const [whatsAppNumber, setWhatsAppNumber] = useState("")
+	const [isVerifying, setIsVerifying] = useState(false)
+	const [isSending, setIsSending] = useState(false)
+	const [verificationResult, setVerificationResult] = useState({
+		status: null,
+		message: ""
+	})
+
+	const handleVerifyWhatsApp = async () => {
+		if (!whatsAppNumber) {
+			toast.error("Please enter a phone number to verify.")
+			return
+		}
+		setIsVerifying(true)
+		setVerificationResult({ status: null, message: "Verifying..." })
+		try {
+			const response = await fetch("/api/testing/whatsapp/verify", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ phone_number: whatsAppNumber })
+			})
+			const result = await response.json()
+			if (!response.ok) {
+				throw new Error(result.detail || "Verification request failed.")
+			}
+
+			if (result.numberExists) {
+				toast.success("Verification successful!")
+				setVerificationResult({
+					status: "success",
+					message: `Number is valid. Chat ID: ${result.chatId}`
+				})
+			} else {
+				toast.error("Number not found on WhatsApp.")
+				setVerificationResult({
+					status: "failure",
+					message:
+						"This phone number does not appear to be registered on WhatsApp."
+				})
+			}
+		} catch (error) {
+			toast.error(error.message)
+			setVerificationResult({ status: "failure", message: error.message })
+		} finally {
+			setIsVerifying(false)
+		}
+	}
+
+	const handleSendTestWhatsApp = async () => {
+		if (!whatsAppNumber) {
+			toast.error("Please enter a phone number to send a message to.")
+			return
+		}
+		setIsSending(true)
+		try {
+			const response = await fetch("/api/testing/whatsapp", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ phone_number: whatsAppNumber })
+			})
+			const result = await response.json()
+			if (!response.ok) {
+				throw new Error(
+					result.detail || "Failed to send test notification."
+				)
+			}
+			toast.success("Test notification sent successfully!")
+		} catch (error) {
+			toast.error(`Send failed: ${error.message}`)
+		} finally {
+			setIsSending(false)
+		}
+	}
+
 	return (
 		<section>
 			<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2 flex items-center gap-2">
@@ -514,6 +588,74 @@ const TestingTools = () => {
 						</button>
 					</div>
 				</form>
+			</div>
+			{/* WhatsApp Test Tools */}
+			<div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)] mt-6">
+				<h3 className="font-semibold text-lg text-white mb-2">
+					Test WhatsApp Integration
+				</h3>
+				<p className="text-gray-400 text-sm mb-4">
+					Verify a phone number's existence on WhatsApp and then send
+					a test message. The number must include the country code
+					(e.g., +14155552671).
+				</p>
+				<div className="flex flex-col sm:flex-row gap-2">
+					<div className="relative flex-grow">
+						<IconBrandWhatsapp
+							className="absolute left-3 top-1/2 -translate-y-1/2 text-green-500"
+							size={20}
+						/>
+						<input
+							type="tel"
+							value={whatsAppNumber}
+							onChange={(e) => {
+								setWhatsAppNumber(e.target.value)
+								setVerificationResult({
+									status: null,
+									message: ""
+								}) // Reset on change
+							}}
+							placeholder="Enter WhatsApp Number with country code"
+							className="w-full pl-10 pr-4 bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+						/>
+					</div>
+					<div className="flex gap-2 justify-end">
+						<button
+							onClick={handleVerifyWhatsApp}
+							disabled={isVerifying || isSending}
+							className="flex items-center justify-center py-2 px-4 rounded-md bg-purple-600 hover:bg-purple-500 text-white font-medium transition-colors disabled:opacity-50"
+						>
+							{isVerifying ? (
+								<IconLoader className="w-5 h-5 animate-spin" />
+							) : (
+								"Verify"
+							)}
+						</button>
+						<button
+							onClick={handleSendTestWhatsApp}
+							disabled={isSending || isVerifying}
+							className="flex items-center justify-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors disabled:opacity-50"
+						>
+							{isSending ? (
+								<IconLoader className="w-5 h-5 animate-spin" />
+							) : (
+								"Send Test"
+							)}
+						</button>
+					</div>
+				</div>
+				{verificationResult.message && (
+					<p
+						className={cn(
+							"text-sm mt-3",
+							verificationResult.status === "success"
+								? "text-green-400"
+								: "text-red-400"
+						)}
+					>
+						{verificationResult.message}
+					</p>
+				)}
 			</div>
 		</section>
 	)

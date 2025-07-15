@@ -19,7 +19,7 @@ ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
 if ENVIRONMENT == 'dev-local':
     dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
     if os.path.exists(dotenv_path):
-        load_dotenv(dotenv_path=dotenv_path)
+        load_dotenv(dotenv_path=dotenv_path, override=True)
 
 MONGO_URI = os.getenv("MONGO_URI")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
@@ -73,7 +73,7 @@ async def get_google_creds(user_id: str) -> Credentials:
     
     user_data = user_doc["userData"]
     gcal_data = user_data.get("integrations", {}).get("gcalendar")
-    if not gcal_data or not gcal_data.get("connected") or "credentials" not in gcal_data:
+    if not gcal_data or not gcal_data.get("connected") or not gcal_data.get("credentials"):
         raise ToolError(f"Google Calendar integration not connected. Please use the default connect flow.")
 
     try:

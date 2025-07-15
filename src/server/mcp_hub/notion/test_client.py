@@ -12,7 +12,7 @@ llm_cfg = {
 mcp_server_url = "http://127.0.0.1:9009/sse"
 
 # IMPORTANT: Replace with a valid User ID from your MongoDB that has Notion credentials
-USER_ID = "kabeer"
+USER_ID = "YOUR_USER_ID_HERE"
 
 # --- Agent Setup ---
 tools = [{
@@ -41,46 +41,45 @@ def run_agent_interaction():
     print("\n--- Notion Agent Ready ---")
     print("You can now interact with your Notion workspace.")
     print("Type 'quit' or 'exit' to end the session.")
-    print("\nExample commands:")
-    print("  - search for a page titled 'Meeting Notes'")
-    print("  - find a page about 'Q3 planning' and then tell me its contents")
-    print("  - create a new page titled 'My Awesome New Page' inside the page with ID '...'. Add a heading 'Welcome' and a paragraph 'This is a test.'")
-    print("  - append a to-do item 'Follow up with team' to the page with ID '...'")
+    print("\nExample Commands:")
+    print("  - list the available databases")
+    print("  - create a page titled 'My New Test Page' under parent page ID '...'")
+    print("  - get the page with ID '...'")
+    print("  - add a comment 'This is a test comment' to page with ID '...'")
     print("-" * 25)
 
     messages = []
     while True:
         try:
-            user_input = input("You: ")
-            if user_input.lower() in ["quit", "exit"]:
+            print("\nYou: ", end="")
+            user_input = input()
+            if user_input.lower() in ["quit", "exit", "q"]:
+                print("\n👋  Goodbye!")
                 break
 
             messages.append({'role': 'user', 'content': user_input})
-            print("\n--- Agent is processing... ---")
+            print("\nAgent: ", end="", flush=True)
             
-            final_response = None
+            last_assistant_text = ""
+            final_response_from_run = None
             for response in agent.run(messages=messages):
-                final_response = response
+                if isinstance(response, list) and response and response[-1].get("role") == "assistant":
+                    current_text = response[-1].get("content", "")
+                    if isinstance(current_text, str):
+                        delta = current_text[len(last_assistant_text):]
+                        print(delta, end="", flush=True)
+                        last_assistant_text = current_text
+                final_response_from_run = response
 
-            if final_response:
-                print("\n--- Full Internal History ---")
-                print(json.dumps(final_response, indent=2))
-                print("-----------------------------\n")
-
-                messages = final_response
-                
-                final_answer = "No textual answer from agent."
-                if messages and messages[-1]['role'] == 'assistant':
-                    content = messages[-1].get('content')
-                    if isinstance(content, str):
-                        final_answer = content
-                
-                print(f"Agent: {final_answer}")
+            print()
+            if final_response_from_run:
+                messages = final_response_from_run
             else:
-                print("Agent: I could not process that request.")
+                print("I could not process that request.")
                 messages.pop()
 
         except KeyboardInterrupt:
+            print("\n👋  Goodbye!")
             break
         except Exception as e:
             print(f"\nAn error occurred: {e}")

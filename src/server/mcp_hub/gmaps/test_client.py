@@ -33,7 +33,7 @@ agent = Assistant(
 def run_agent_interaction():
     print("\n--- Google Maps Agent Ready ---")
     print("Ask me to find places or get directions.")
-    print("Type 'quit' or 'exit' to end the session.")
+    print("Type 'quit', 'exit', or 'q' to end the session.")
     print("\nExample commands:")
     print("  - find cafes near the Eiffel Tower")
     print("  - get driving directions from Los Angeles, CA to Las Vegas, NV")
@@ -42,36 +42,35 @@ def run_agent_interaction():
     messages = []
     while True:
         try:
-            user_input = input("You: ")
-            if user_input.lower() in ["quit", "exit"]:
+            print("\nYou: ", end="")
+            user_input = input()
+            if user_input.lower() in ["quit", "exit", "q"]:
+                print("\n👋  Goodbye!")
                 break
 
             messages.append({'role': 'user', 'content': user_input})
-            print("\n--- Agent is processing... ---")
+            print("\nAgent: ", end="", flush=True)
             
-            final_response = None
+            last_assistant_text = ""
+            final_response_from_run = None
             for response in agent.run(messages=messages):
-                final_response = response
+                if isinstance(response, list) and response and response[-1].get("role") == "assistant":
+                    current_text = response[-1].get("content", "")
+                    if isinstance(current_text, str):
+                        delta = current_text[len(last_assistant_text):]
+                        print(delta, end="", flush=True)
+                        last_assistant_text = current_text
+                final_response_from_run = response
 
-            if final_response:
-                print("\n--- Full Internal History ---")
-                print(json.dumps(final_response, indent=2))
-                print("-----------------------------\n")
-
-                messages = final_response
-                
-                final_answer = "No final textual answer from agent."
-                if messages and messages[-1]['role'] == 'assistant':
-                    content = messages[-1].get('content')
-                    if isinstance(content, str):
-                        final_answer = content
-                
-                print(f"Agent: {final_answer}")
+            print() # Newline after agent's response
+            if final_response_from_run:
+                messages = final_response_from_run
             else:
-                print("Agent: I could not process that request.")
+                print("I could not process that request.")
                 messages.pop()
 
         except KeyboardInterrupt:
+            print("\n👋  Goodbye!")
             break
         except Exception as e:
             print(f"\nAn error occurred: {e}")

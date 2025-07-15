@@ -17,7 +17,7 @@ ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
 if ENVIRONMENT == 'dev-local':
     dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
     if os.path.exists(dotenv_path):
-        load_dotenv(dotenv_path=dotenv_path)
+        load_dotenv(dotenv_path=dotenv_path, override=True)
 # Default keys from .env
 DEFAULT_GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 DEFAULT_GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")

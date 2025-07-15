@@ -88,3 +88,20 @@ def simplify_database_pages(response: Dict) -> List[Dict]:
             "properties": simplified_props,
         })
     return simplified_pages
+def _simplify_user(user: Dict) -> Dict:
+    """Simplifies a Notion user object."""
+    return {
+        "id": user.get("id"),
+        "name": user.get("name"),
+        "type": user.get("type"),
+        "email": user.get("person", {}).get("email") if user.get("type") == "person" else None
+    }
+
+def _simplify_comment(comment: Dict) -> Dict:
+    """Simplifies a Notion comment object."""
+    return {
+        "id": comment.get("id"),
+        "text": _simplify_rich_text(comment.get("rich_text", [])),
+        "created_by": _simplify_user(comment.get("created_by", {})),
+        "created_time": comment.get("created_time")
+    }

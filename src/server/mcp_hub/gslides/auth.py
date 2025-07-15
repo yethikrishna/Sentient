@@ -19,7 +19,7 @@ ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
 if ENVIRONMENT == 'dev-local':
     dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
     if os.path.exists(dotenv_path):
-        load_dotenv(dotenv_path=dotenv_path)
+        load_dotenv(dotenv_path=dotenv_path, override=True)
 MONGO_URI = os.getenv("MONGO_URI")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
 AES_SECRET_KEY_HEX = os.getenv("AES_SECRET_KEY")
@@ -60,7 +60,7 @@ async def get_google_creds(user_id: str) -> Credentials:
 
     user_data = user_doc["userData"]
     gslides_data = user_data.get("integrations", {}).get("gslides")
-    if not gslides_data or not gslides_data.get("connected") or "credentials" not in gslides_data:
+    if not gslides_data or not gslides_data.get("connected") or not gslides_data.get("credentials"):
         raise ToolError(f"Google Slides integration not connected. Please use the default connect flow.")
     
     try:

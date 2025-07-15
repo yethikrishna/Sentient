@@ -1,11 +1,13 @@
 "use client"
 
 import React, { useState, useEffect, useRef } from "react"
+import { usePostHog } from "posthog-js/react"
 import toast from "react-hot-toast"
 import { format } from "date-fns"
 
 const InlineAddEntry = ({ day, onSave, onCancel }) => {
 	const [content, setContent] = useState("")
+	const posthog = usePostHog()
 	const [isSubmitting, setIsSubmitting] = useState(false) // eslint-disable-line
 	const textareaRef = useRef(null)
 
@@ -29,6 +31,7 @@ const InlineAddEntry = ({ day, onSave, onCancel }) => {
 				})
 			})
 			if (!response.ok) throw new Error("Failed to create entry")
+			posthog.capture("journal_entry_created")
 			toast.success("Entry saved and sent for processing.")
 			onSave()
 		} catch (error) {

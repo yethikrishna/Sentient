@@ -32,6 +32,7 @@ import {
 } from "@tabler/icons-react"
 import { Tooltip } from "react-tooltip"
 import { cn } from "@utils/cn"
+import { usePostHog } from "posthog-js/react"
 import ModalDialog from "@components/ModalDialog"
 import { motion, AnimatePresence } from "framer-motion"
 
@@ -73,6 +74,7 @@ const MANUAL_INTEGRATION_CONFIGS = {} // Manual integrations removed for Slack a
 const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {
 	const [credentials, setCredentials] = useState({})
 	const [isSubmitting, setIsSubmitting] = useState(false)
+	const posthog = usePostHog()
 
 	if (!integration) return null
 
@@ -119,6 +121,10 @@ const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {
 				)
 			}
 
+			posthog.capture("integration_connected", {
+				integration_name: integration.name,
+				auth_type: "manual"
+			})
 			toast.success(`${integration.display_name} connected successfully!`)
 			onSuccess()
 			onClose()
@@ -454,6 +460,7 @@ const IntegrationsPage = () => {
 	const [activeManualIntegration, setActiveManualIntegration] = useState(null)
 	const [processingIntegration, setProcessingIntegration] = useState(null)
 	const [selectedIntegration, setSelectedIntegration] = useState(null)
+	const posthog = usePostHog()
 
 	const googleServices = [
 		"gmail",
@@ -589,6 +596,9 @@ const IntegrationsPage = () => {
 			)
 			if (!response.ok)
 				throw new Error(`Failed to disconnect ${displayName}`)
+			posthog.capture("integration_disconnected", {
+				integration_name: integrationName
+			})
 			toast.success(`${displayName} disconnected.`)
 			fetchIntegrations()
 		} catch (error) {
@@ -608,6 +618,10 @@ const IntegrationsPage = () => {
 		if (success) {
 			const capitalized =
 				success.charAt(0).toUpperCase() + success.slice(1)
+			posthog.capture("integration_connected", {
+				integration_name: success,
+				auth_type: "oauth"
+			})
 			toast.success(`Successfully connected to ${capitalized}!`)
 			window.history.replaceState({}, document.title, "/integrations")
 		} else if (error) {

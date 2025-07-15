@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@utils/cn"
 import toast from "react-hot-toast"
+import { usePostHog } from "posthog-js/react"
 import Typewriter from "typewriter-effect"
 import { useRouter } from "next/navigation"
 import {
@@ -203,6 +204,7 @@ const OnboardingPage = () => {
 	const [isLoading, setIsLoading] = useState(true)
 	const [isInputVisible, setIsInputVisible] = useState(false) // prettier-ignore
 	const [fullyTyped, setFullyTyped] = useState({})
+	const posthog = usePostHog()
 	const router = useRouter()
 
 	const [locationState, setLocationState] = useState({
@@ -310,6 +312,7 @@ const OnboardingPage = () => {
 					body: JSON.stringify({ whatsapp_number: whatsappNumber })
 				})
 			}
+			posthog.capture("onboarding_completed")
 			setStage("whatsNext") // Go to the new "What's Next" screen
 			// setTimeout(() => router.push("/home"), 2500) // Removed auto-redirect
 		} catch (error) {

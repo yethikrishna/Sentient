@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import toast from "react-hot-toast"
+import { usePostHog } from "posthog-js/react"
 import { IconLoader } from "@tabler/icons-react"
 import { Tooltip } from "react-tooltip"
 import { AnimatePresence } from "framer-motion"
@@ -38,6 +39,7 @@ const OrganizerPage = () => {
 	const [deletingBlock, setDeletingBlock] = useState(null)
 	const [isPanelOpen, setPanelOpen] = useState(true)
 	const [activeTab, setActiveTab] = useState("calendar")
+	const posthog = usePostHog()
 	const [allJournalEntries, setAllJournalEntries] = useState([])
 	const [allTasks, setAllTasks] = useState([]) // Combined loading state
 	const [isLoading, setIsLoading] = useState(true) // Combined loading state
@@ -247,6 +249,7 @@ const OrganizerPage = () => {
 				const errorData = await response.json()
 				throw new Error(errorData.error || "Approval failed")
 			}
+			posthog.capture("task_approved", { task_id: taskId })
 			toast.success("Plan approved! Task has been queued for execution.")
 			refreshData()
 		} catch (error) {
@@ -299,6 +302,8 @@ const OrganizerPage = () => {
 		)
 			return
 
+		const taskToDelete = allTasks.find((t) => t.task_id === taskId)
+
 		try {
 			const response = await fetch("/api/tasks/delete", {
 				method: "POST",
@@ -306,6 +311,9 @@ const OrganizerPage = () => {
 				body: JSON.stringify({ taskId })
 			})
 			if (!response.ok) throw new Error((await response.json()).error)
+			if (taskToDelete?.status === "approval_pending") {
+				posthog.capture("task_disapproved", { task_id: taskId })
+			}
 			toast.success("Task deleted successfully!")
 			refreshData()
 			setViewingTask(null) // Clear the viewing state to prevent stale UI
@@ -327,6 +335,10 @@ const OrganizerPage = () => {
 				})
 			})
 			if (!response.ok) throw new Error((await response.json()).error)
+			posthog.capture("task_edited", {
+				task_id: editingTask.task_id,
+				is_recurring: editingTask.schedule?.type === "recurring"
+			})
 			toast.success("Task updated successfully!")
 			setEditingTask(null)
 			refreshData()

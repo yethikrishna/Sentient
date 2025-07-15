@@ -1,9 +1,15 @@
 "use client"
 import React, { useState, useEffect, useRef, useCallback } from "react"
-import { IconSend, IconLoader, IconPlayerStopFilled, IconX } from "@tabler/icons-react"
+import {
+	IconSend,
+	IconLoader,
+	IconPlayerStopFilled,
+	IconX
+} from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import { cn } from "@utils/cn"
 import { Tooltip } from "react-tooltip"
+import { usePostHog } from "posthog-js/react"
 import { motion, AnimatePresence } from "framer-motion"
 import ChatBubble from "@components/ChatBubble"
 
@@ -42,6 +48,7 @@ const ChatOverlay = ({ onClose }) => {
 	const textareaRef = useRef(null)
 	const chatEndRef = useRef(null)
 	const abortControllerRef = useRef(null) // To abort fetch requests
+	const posthog = usePostHog()
 	const scrollContainerRef = useRef(null) // For scrolling
 	// Reset state when overlay is closed
 	// This effect now correctly handles cleanup on unmount
@@ -67,6 +74,9 @@ const ChatOverlay = ({ onClose }) => {
 
 	const sendMessage = async () => {
 		if (input.trim() === "") return
+		posthog.capture("chat_message_sent", {
+			message_length: input.length
+		})
 		const newUserMessage = {
 			role: "user",
 			content: input,
@@ -330,4 +340,3 @@ const ChatOverlay = ({ onClose }) => {
 }
 
 export default ChatOverlay
-

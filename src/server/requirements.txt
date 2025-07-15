@@ -36,6 +36,9 @@ google-auth-oauthlib
 PyGithub
 notion-client
 
+# --- Analytics ---
+posthog
+
 # --- MCP Framework ---
 fastmcp
 

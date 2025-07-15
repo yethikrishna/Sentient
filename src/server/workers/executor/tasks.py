@@ -7,6 +7,7 @@ import logging
 from typing import Dict, Any, List, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from main.analytics import capture_event
 from qwen_agent.agents import Assistant
 from workers.celery_app import celery_app
 from workers.utils.api_client import notify_user
@@ -253,6 +254,11 @@ async def async_execute_task_plan(task_id: str, user_id: str):
 
         logger.info(f"Task {task_id}: Final result: {final_content}")
         await add_progress_update(db, task_id, user_id, "Execution script finished.", block_id=block_id)
+        capture_event(user_id, "task_execution_succeeded", {
+            "task_id": task_id,
+            "tool_count": len(task.get("plan", [])),
+            "is_recurring": task.get("schedule", {}).get("type") == "recurring"
+        })
         await update_task_status(db, task_id, "completed", user_id, details={"result": final_content}, block_id=block_id)
 
         return {"status": "success", "result": final_content}

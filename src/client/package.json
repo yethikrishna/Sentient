@@ -32,6 +32,8 @@
 		"neo4j-driver": "^5.28.1",
 		"next": "^15.1.7",
 		"node-fetch": "^3.3.2",
+		"posthog-js": "^1.257.0",
+		"posthog-node": "^5.5.0",
 		"react": "^19.0.0",
 		"react-dom": "^19.0.0",
 		"react-hot-toast": "^2.5.2",

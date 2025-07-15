@@ -26,7 +26,8 @@ import {
 	IconChevronUp,
 	IconBulb,
 	IconSettings,
-	IconRepeat
+	IconRepeat,
+	IconRepeat as HelpIcon
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import {
@@ -38,6 +39,7 @@ import {
 } from "framer-motion"
 import { Tooltip } from "react-tooltip"
 import { cn } from "@utils/cn"
+import { usePostHog } from "posthog-js/react"
 import { useSmoothScroll } from "@hooks/useSmoothScroll"
 import EditTaskModal from "@components/journal/EditTaskModal"
 import TaskDetailsModal from "@components/journal/TaskDetailsModal"
@@ -341,6 +343,7 @@ const HomePage = () => {
 	const [editingTask, setEditingTask] = useState(null)
 	const [viewingTask, setViewingTask] = useState(null)
 	const [allTools, setAllTools] = useState([])
+	const posthog = usePostHog()
 
 	const scrollRef = useRef(null)
 
@@ -414,6 +417,7 @@ const HomePage = () => {
 				const errorData = await response.json()
 				throw new Error(errorData.error || "Approval failed")
 			}
+			posthog.capture("task_approved", { task_id: taskId })
 			toast.success("Plan approved! Task has been queued for execution.")
 			fetchData() // Refresh data
 		} catch (error) {
@@ -424,15 +428,19 @@ const HomePage = () => {
 
 	const handleDeleteTask = async (taskId) => {
 		if (!taskId) return
+		const taskToDelete = tasks.find((t) => t.task_id === taskId)
 		if (!window.confirm("Are you sure you want to delete this task?"))
 			return
 		try {
 			const response = await fetch("/api/tasks/delete", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ taskId })
+				body: JSON.stringify({ taskId: taskId })
 			})
 			if (!response.ok) throw new Error("Failed to delete task")
+			if (taskToDelete?.status === "approval_pending") {
+				posthog.capture("task_disapproved", { task_id: taskId })
+			}
 			toast.success("Task deleted successfully!")
 			fetchData()
 		} catch (error) {

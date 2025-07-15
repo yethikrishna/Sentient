@@ -36,6 +36,7 @@ import "react-tooltip/dist/react-tooltip.css"
 import { cn } from "@utils/cn"
 import { motion, AnimatePresence } from "framer-motion"
 import { useRouter } from "next/navigation"
+import { usePostHog } from "posthog-js/react"
 
 const HelpTooltip = ({ content }) => (
 	<div className="absolute top-6 right-6 z-40">
@@ -141,6 +142,7 @@ const Tasks = () => {
 	const [allTools, setAllTools] = useState([])
 	const [integrations, setIntegrations] = useState([])
 	const [loadingIntegrations, setLoadingIntegrations] = useState(true)
+	const posthog = usePostHog()
 
 	const fetchTasksData = useCallback(async () => {
 		setError(null)
@@ -311,6 +313,11 @@ const Tasks = () => {
 				throw new Error(data.error || "Failed to add task")
 			}
 			toast.success("New plan created successfully!")
+			posthog.capture("workflow_created", {
+				plan_steps: taskData.plan.length,
+				is_recurring: taskData.schedule.type === "recurring",
+				priority: taskData.priority
+			})
 			setGenerationPrompt("")
 			setNewTaskDescription("")
 			setNewTaskPriority(1)
@@ -364,6 +371,11 @@ const Tasks = () => {
 				})
 			})
 			if (!response.ok) throw new Error((await response.json()).error)
+			posthog.capture("task_edited", {
+				task_id: editingTask.task_id,
+				is_recurring: editingTask.schedule?.type === "recurring"
+			})
+			if (!response.ok) throw new Error((await response.json()).error)
 			toast.success("Task updated successfully!")
 			setEditingTask(null)
 			await fetchTasksData()
@@ -373,6 +385,7 @@ const Tasks = () => {
 	}
 	const handleDeleteTask = async (taskId) => {
 		if (!taskId || !window.confirm("Delete this task forever?")) return
+		const taskToDelete = tasks.find((t) => t.task_id === taskId)
 		try {
 			const response = await fetch("/api/tasks/delete", {
 				method: "POST",
@@ -382,6 +395,9 @@ const Tasks = () => {
 			if (!response.ok) throw new Error((await response.json()).error)
 			toast.success("Task deleted!")
 			setViewingTask(null)
+			if (taskToDelete?.status === "approval_pending") {
+				posthog.capture("task_disapproved", { task_id: taskId })
+			}
 			await fetchTasksData()
 		} catch (error) {
 			toast.error(`Failed to delete task: ${error.message}`)
@@ -401,6 +417,7 @@ const Tasks = () => {
 					toast.error(errorData.detail, { duration: 6000 })
 				else throw new Error(errorData.error || "Approval failed")
 			} else {
+				posthog.capture("task_approved", { task_id: taskId })
 				toast.success("Plan approved and queued for execution.")
 			}
 			setViewingTask(null)
@@ -422,6 +439,7 @@ const Tasks = () => {
 				body: JSON.stringify({ taskId })
 			})
 			if (!response.ok) throw new Error((await response.json()).error)
+			posthog.capture("task_rerun", { original_task_id: taskId })
 			toast.success("Task duplicated for approval.")
 			await fetchTasksData()
 		} catch (error) {

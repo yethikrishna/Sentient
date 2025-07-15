@@ -9,6 +9,7 @@ import httpx
 from dateutil import rrule
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Dict, Any, Optional, List
+from main.analytics import capture_event
 
 from workers.config import SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX, SUPPORTED_POLLING_SERVICES
 from main.agents.utils import clean_llm_output
@@ -300,6 +301,10 @@ async def async_process_action_item(user_id: str, action_items: list, topics: li
             
             await db_manager.update_task_with_questions(task_id, "clarification_pending", questions_for_db)
             await notify_user(user_id, f"I have a few questions to help me plan: '{task_description[:50]}...'", task_id)
+            capture_event(user_id, "clarification_needed", {
+                "task_id": task_id,
+                "question_count": len(questions_list)
+            })
             logger.info(f"Task {task_id} moved to 'clarification_pending'.")
         else:
             logger.info(f"Task {task_id}: No clarification needed. Triggering plan generation.")
@@ -381,6 +386,11 @@ async def async_generate_plan(task_id: str):
             raise Exception(f"Planner agent returned invalid JSON: {final_response_str}")
 
         await db_manager.update_task_with_plan(task_id, plan_data)
+        capture_event(user_id, "proactive_task_generated", {
+            "task_id": task_id,
+            "source": task.get("original_context", {}).get("source", "unknown"),
+            "plan_steps": len(plan_data.get("plan", []))
+        })
 
         # Notify user that a plan is ready for their approval
         await notify_user(

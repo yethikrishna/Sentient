@@ -132,8 +132,8 @@ const Notifications = () => {
 	// --- Render Logic ---
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
-			<Tooltip id="notifications-tooltip" />
-			<Tooltip id="page-help-tooltip" />
+			<Tooltip id="notifications-tooltip" style={{ zIndex: 9999 }} />
+			<Tooltip id="page-help-tooltip" style={{ zIndex: 9999 }} />
 			<div className="flex-1 flex flex-col overflow-hidden relative">
 				<header className="flex items-center justify-between p-4 md:px-8 md:py-6 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)]">
 					<HelpTooltip content="This page shows notifications from Sentient, such as when a task is ready for approval or has completed." />

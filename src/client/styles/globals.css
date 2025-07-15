@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "react-tooltip/dist/react-tooltip.css";
 
 @config "../tailwind.config.js";
 

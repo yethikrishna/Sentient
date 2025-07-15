@@ -632,17 +632,16 @@ const IntegrationsPage = () => {
 
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
-			<Tooltip id="integrations-tooltip" />
-			<Tooltip id="page-help-tooltip" />
+			<Tooltip id="integrations-tooltip" style={{ zIndex: 9999 }} />
+			<Tooltip id="page-help-tooltip" style={{ zIndex: 9999 }} />
 			<div className="flex-1 flex flex-col overflow-hidden relative">
 				<header className="flex items-center justify-between p-4 md:px-8 md:py-6 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)]">
 					<HelpTooltip content="Connect your apps here. This allows Sentient to access information and perform actions on your behalf." />
 					<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)] flex items-center gap-3">
 						Integrations
 					</h1>
-					<p className="text-gray-400 mr-10">
-						Connect your apps to unlock Sentient's full potential.
-					</p>
+					{/* This empty div is to help the justify-between on the header */}
+					<div className="w-10"></div>
 				</header>
 				<main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 custom-scrollbar">
 					<div className="w-full max-w-7xl mx-auto">
@@ -676,13 +675,18 @@ const IntegrationsPage = () => {
 								</section>
 
 								<section className="mt-12">
-									<h2
-										className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2"
-										data-tooltip-id="integrations-tooltip"
-										data-tooltip-content="These tools are built-in and always available."
-									>
-										Built-in Tools
-									</h2>
+									<div className="flex items-center gap-2 mb-5 border-b border-[var(--color-primary-surface-elevated)] pb-2">
+										<h2 className="text-xl font-semibold text-gray-300">
+											Built-in Tools
+										</h2>
+										<span
+											data-tooltip-id="integrations-tooltip"
+											data-tooltip-content="These tools are built-in and always available."
+											className="cursor-help text-neutral-400 hover:text-white"
+										>
+											<IconHelpCircle size={18} />
+										</span>
+									</div>
 									<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 										{defaultTools.map((tool) => {
 											const ToolIcon =

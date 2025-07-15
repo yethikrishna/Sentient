@@ -1,7 +1,6 @@
 "use client"
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
-import "react-tooltip/dist/react-tooltip.css"
 import { useRouter } from "next/navigation"
 import { format, getDay, isSameDay, parseISO } from "date-fns"
 import {

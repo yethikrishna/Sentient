@@ -32,7 +32,6 @@ import {
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import { Tooltip } from "react-tooltip"
-import "react-tooltip/dist/react-tooltip.css"
 import { cn } from "@utils/cn"
 import { motion, AnimatePresence } from "framer-motion"
 import { useRouter } from "next/navigation"

@@ -15,7 +15,6 @@ import {
 	setHours,
 	setMinutes
 } from "date-fns"
-import { useSmoothScroll } from "@hooks/useSmoothScroll"
 import CalendarHeader from "@components/journal/CalendarHeader"
 import WeeklyKanban from "@components/journal/WeeklyKanban"
 import SearchOverlay from "@components/journal/SearchOverlay"
@@ -46,8 +45,6 @@ const OrganizerPage = () => {
 
 	const [integrations, setIntegrations] = useState([]) // For checking connected tools
 	const [allTools, setAllTools] = useState([])
-	const mainContentRef = useRef(null)
-	useSmoothScroll(mainContentRef)
 
 	// MODIFIED: Fetch data for a 3-day view centered on viewDate
 	const currentViewStart = useMemo(() => subDays(viewDate, 1), [viewDate]) // eslint-disable-line
@@ -445,7 +442,7 @@ const OrganizerPage = () => {
 		<div className="flex h-screen bg-gradient-to-br from-[var(--color-primary-background)] via-[var(--color-primary-background)] to-[var(--color-primary-surface)]/20 text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
 			<Tooltip id="journal-tooltip" />
 			<Tooltip id="journal-help" style={{ zIndex: 9999 }} />
-			<div className="flex-1 flex flex-col overflow-hidden h-screen relative">
+			<div className="flex-1 flex flex-col overflow-hidden relative">
 				<CalendarHeader
 					viewDate={viewDate}
 					onWeekChange={changeWeek} // This will now change by 3 days
@@ -454,10 +451,7 @@ const OrganizerPage = () => {
 					searchQuery={searchQuery}
 					setSearchQuery={setSearchQuery}
 				/>
-				<main
-					ref={mainContentRef}
-					className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar relative"
-				>
+				<main className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar relative">
 					{isLoading ? (
 						<div className="flex justify-center items-center h-full">
 							<IconLoader className="w-10 h-10 animate-spin text-[var(--color-accent-blue)]" />

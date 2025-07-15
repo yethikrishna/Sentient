@@ -634,13 +634,13 @@ const IntegrationsPage = () => {
 		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
 			<Tooltip id="integrations-tooltip" />
 			<Tooltip id="page-help-tooltip" />
-			<div className="flex-1 flex flex-col overflow-hidden h-screen relative">
+			<div className="flex-1 flex flex-col overflow-hidden relative">
 				<header className="flex items-center justify-between p-4 md:px-8 md:py-6 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)]">
 					<HelpTooltip content="Connect your apps here. This allows Sentient to access information and perform actions on your behalf." />
 					<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)] flex items-center gap-3">
 						Integrations
 					</h1>
-					<p className="text-gray-400">
+					<p className="text-gray-400 mr-10">
 						Connect your apps to unlock Sentient's full potential.
 					</p>
 				</header>

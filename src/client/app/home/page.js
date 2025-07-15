@@ -40,7 +40,6 @@ import {
 import { Tooltip } from "react-tooltip"
 import { cn } from "@utils/cn"
 import { usePostHog } from "posthog-js/react"
-import { useSmoothScroll } from "@hooks/useSmoothScroll"
 import EditTaskModal from "@components/journal/EditTaskModal"
 import TaskDetailsModal from "@components/journal/TaskDetailsModal"
 
@@ -345,10 +344,6 @@ const HomePage = () => {
 	const [allTools, setAllTools] = useState([])
 	const posthog = usePostHog()
 
-	const scrollRef = useRef(null)
-
-	useSmoothScroll(scrollRef)
-
 	const fetchUserDetails = useCallback(async () => {
 		try {
 			const response = await fetch("/api/user/data")
@@ -532,13 +527,10 @@ const HomePage = () => {
 		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
 			<Tooltip id="home-tooltip" />
 			<Tooltip id="page-help-tooltip" />
-			<div className="flex-1 flex flex-col overflow-hidden h-screen relative">
+			<div className="flex-1 flex flex-col overflow-hidden relative">
 				<HelpTooltip content="This is your Home page. See tasks pending your approval and get a glimpse of your day's agenda and journal entries." />
-				<main
-					ref={scrollRef}
-					className="flex-1 overflow-y-auto p-4 lg:p-8 custom-scrollbar flex items-center justify-center"
-				>
-					<div className="max-w-7xl w-full">
+				<main className="flex-1 overflow-y-auto p-4 lg:p-8 custom-scrollbar">
+					<div className="max-w-7xl w-full mx-auto">
 						{/* Header Section */}
 						<div className="mb-8 lg:mb-12">
 							<motion.div

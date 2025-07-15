@@ -12,7 +12,6 @@ import toast from "react-hot-toast"
 import { Tooltip } from "react-tooltip"
 import { cn } from "@utils/cn"
 import { useRouter } from "next/navigation"
-import { useSmoothScroll } from "@hooks/useSmoothScroll"
 
 const HelpTooltip = ({ content }) => (
 	<div className="absolute top-6 right-6 z-40">
@@ -30,8 +29,6 @@ const Notifications = () => {
 	const [notifications, setNotifications] = useState([])
 	const [isLoading, setIsLoading] = useState(true) // Start loading initially
 	const [error, setError] = useState(null) // State for storing fetch errors
-	const scrollRef = useRef(null)
-	useSmoothScroll(scrollRef)
 
 	const router = useRouter()
 
@@ -137,7 +134,7 @@ const Notifications = () => {
 		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
 			<Tooltip id="notifications-tooltip" />
 			<Tooltip id="page-help-tooltip" />
-			<div className="flex-1 flex flex-col overflow-hidden h-screen relative">
+			<div className="flex-1 flex flex-col overflow-hidden relative">
 				<header className="flex items-center justify-between p-4 md:px-8 md:py-6 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)]">
 					<HelpTooltip content="This page shows notifications from Sentient, such as when a task is ready for approval or has completed." />
 					<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)] flex items-center gap-3">
@@ -181,10 +178,7 @@ const Notifications = () => {
 						</div>
 					) : (
 						// Display notification list
-						<div
-							ref={scrollRef}
-							className="flex-1 overflow-y-auto space-y-3 pr-2 no-scrollbar"
-						>
+						<div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
 							{notifications.map((notif) => (
 								<div // eslint-disable-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
 									key={notif.id ?? Math.random()}

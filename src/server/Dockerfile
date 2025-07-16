@@ -5,7 +5,9 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
-    DEBIAN_FRONTEND=noninteractive
+    DEBIAN_FRONTEND=noninteractive \
+    CHROME_VERSION=125.0.6422.141-1 \
+    CHROMEDRIVER_VERSION=125.0.6422.141
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -31,18 +33,13 @@ RUN mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /etc/apt/keyrings/google.gpg \
     && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list
 
-# Install latest Google Chrome
+# Install specific version of Google Chrome
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends google-chrome-stable \
+    && apt-get install -y --no-install-recommends google-chrome-stable=$CHROME_VERSION \
     && rm -rf /var/lib/apt/lists/*
 
-# Download and install Chromedriver matching the installed Chrome version
-RUN CHROME_VERSION=$(google-chrome --version | awk '{print $3}') \
-    && echo "Detected Chrome version: $CHROME_VERSION" \
-    && CHROMEDRIVER_VERSION=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE_$CHROME_VERSION") \
-    || CHROMEDRIVER_VERSION=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE") \
-    && echo "Detected Chromedriver version: $CHROMEDRIVER_VERSION" \
-    && wget -q -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/${CHROMEDRIVER_VERSION}/linux64/chromedriver-linux64.zip" \
+# Install matching Chromedriver
+RUN wget -q -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/${CHROMEDRIVER_VERSION}/linux64/chromedriver-linux64.zip" \
     && unzip -j /tmp/chromedriver.zip '*/chromedriver' -d /usr/local/bin/ \
     && chmod +x /usr/local/bin/chromedriver \
     && rm -f /tmp/chromedriver.zip

@@ -83,7 +83,7 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
     request_headers = {}
     creds_to_save = {}
 
-    if service_name.startswith('g'): # Google Services
+    if service_name.startswith('g') and service_name != 'github': # Google Services
         token_url = "https://oauth2.googleapis.com/token"
         token_payload = {
             "client_id": GOOGLE_CLIENT_ID,
@@ -135,7 +135,7 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
             token_response.raise_for_status()
             token_data = token_response.json()
         
-        if service_name.startswith('g'):
+        if service_name.startswith('g') and service_name != 'github':
             # Extract granted scopes from the token response
             granted_scopes = token_data.get("scope", "").split(" ")
             # Update the credentials object to include scopes

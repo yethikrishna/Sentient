@@ -25,6 +25,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libatk-bridge2.0-0 \
     libgtk-3-0 \
     libasound2 \
+    libgbm1 \
+    libxshmfence1 \
     fonts-liberation \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*

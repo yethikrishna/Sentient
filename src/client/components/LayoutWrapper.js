@@ -1,6 +1,7 @@
 "use client"
 import React, { useState, useEffect, useCallback } from "react"
 import ChatOverlay from "@components/ChatOverlay"
+import NotificationsOverlay from "@components/NotificationsOverlay"
 import FloatingNav from "@components/FloatingNav"
 import {
 	IconMessage,
@@ -10,22 +11,21 @@ import {
 } from "@tabler/icons-react"
 import { usePathname, useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "framer-motion"
-import { cn } from "@utils/cn"
 
 const ShortcutLegendModal = ({ onClose }) => {
 	const shortcuts = {
 		Global: [
-			{ keys: ["Ctrl", "?"], description: "Toggle Shortcuts Legend" },
 			{ keys: ["Ctrl", "M"], description: "Open Chat" },
+			{ keys: ["Ctrl", "B"], description: "Toggle Notifications" },
+			{ keys: ["Ctrl", "?"], description: "Toggle Shortcuts Legend" },
 			{ keys: ["Esc"], description: "Close Modal / Chat" }
 		],
 		Navigation: [
 			{ keys: ["Ctrl", "H"], description: "Go to Home" },
 			{ keys: ["Ctrl", "J"], description: "Go to Organizer" },
-			{ keys: ["Ctrl", "T"], description: "Go to Tasks" },
+			{ keys: ["Ctrl", "A"], description: "Go to Tasks" },
 			{ keys: ["Ctrl", "I"], description: "Go to Integrations" },
-			{ keys: ["Ctrl", "S"], description: "Go to Settings" },
-			{ keys: ["Ctrl", "N"], description: "Go to Notifications" }
+			{ keys: ["Ctrl", "S"], description: "Go to Settings" }
 		]
 	}
 
@@ -115,6 +115,7 @@ const ShortcutIndicator = ({ onClick }) => (
 export default function LayoutWrapper({ children }) {
 	const [isChatOpen, setChatOpen] = useState(false)
 	const [isLegendOpen, setLegendOpen] = useState(false)
+	const [isNotificationsOpen, setNotificationsOpen] = useState(false)
 	const pathname = usePathname()
 	const router = useRouter()
 
@@ -137,10 +138,10 @@ export default function LayoutWrapper({ children }) {
 						router.push("/integrations")
 						break
 					case "s":
-						router.push("/settings")
+						router.push("/settings/profile")
 						break
-					case "n":
-						router.push("/notifications")
+					case "b":
+						setNotificationsOpen(true)
 						break
 					case "m":
 						setChatOpen(true)
@@ -157,9 +158,10 @@ export default function LayoutWrapper({ children }) {
 			} else if (e.key === "Escape") {
 				if (isChatOpen) setChatOpen(false)
 				if (isLegendOpen) setLegendOpen(false)
+				if (isNotificationsOpen) setNotificationsOpen(false)
 			}
 		},
-		[router, isChatOpen, isLegendOpen]
+		[router, isChatOpen, isLegendOpen, isNotificationsOpen]
 	)
 
 	useEffect(() => {
@@ -169,13 +171,22 @@ export default function LayoutWrapper({ children }) {
 
 	return (
 		<>
-			<FloatingNav onChatOpen={() => setChatOpen(true)} />
+			<FloatingNav
+				onChatOpen={() => setChatOpen(true)}
+				onNotificationsOpen={() => setNotificationsOpen(true)}
+			/>
 			{children}
 			<AnimatePresence>
 				{isChatOpen && (
 					<ChatOverlay
 						key="chat-overlay"
 						onClose={() => setChatOpen(false)}
+					/>
+				)}
+				{isNotificationsOpen && (
+					<NotificationsOverlay
+						key="notifications-overlay"
+						onClose={() => setNotificationsOpen(false)}
 					/>
 				)}
 				{isLegendOpen && (
@@ -185,9 +196,12 @@ export default function LayoutWrapper({ children }) {
 					/>
 				)}
 			</AnimatePresence>
-			{showChatButton && !isLegendOpen && !isChatOpen && (
-				<ShortcutIndicator onClick={() => setLegendOpen(true)} />
-			)}
+			{showChatButton &&
+				!isLegendOpen &&
+				!isChatOpen &&
+				!isNotificationsOpen && (
+					<ShortcutIndicator onClick={() => setLegendOpen(true)} />
+				)}
 		</>
 	)
 }

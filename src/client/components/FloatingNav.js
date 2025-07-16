@@ -18,7 +18,7 @@ import toast from "react-hot-toast"
 import { motion } from "framer-motion"
 import { cn } from "@utils/cn"
 
-export default function FloatingNav({ onChatOpen }) {
+export default function FloatingNav({ onChatOpen, onNotificationsOpen }) {
 	const router = useRouter()
 	const pathname = usePathname()
 	const [userDetails, setUserDetails] = useState(null)
@@ -174,11 +174,11 @@ export default function FloatingNav({ onChatOpen }) {
 		},
 		{
 			title: "Notifications",
-			href: "/notifications",
+			href: "#",
 			icon: <NotificationIcon />,
 			onClick: () => {
 				setUnreadCount(0)
-				router.push("/notifications")
+				onNotificationsOpen()
 			}
 		},
 		{

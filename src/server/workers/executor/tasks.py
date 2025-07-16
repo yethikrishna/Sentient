@@ -49,24 +49,20 @@ async def update_task_status(db, task_id: str, status: str, user_id: str, detail
     if details:
         if "result" in details:
             update_doc["result"] = details["result"]
-            if block_id:
-                await db.journal_blocks.update_one(
-                    {"block_id": block_id, "user_id": user_id}, 
-                    {"$set": {"task_result": details["result"], "task_status": status}}
-                )
         if "error" in details:
             update_doc["error"] = details["error"]
-            if block_id:
-                await db.journal_blocks.update_one(
-                    {"block_id": block_id, "user_id": user_id}, 
-                    {"$set": {"task_result": details["error"], "task_status": status}}
-                )
     
     # Also update the block's status field even if there are no details
     if block_id:
-        await db.journal_blocks.update_one(
+        journal_update = {"task_status": status}
+        if details:
+            if "result" in details:
+                journal_update["task_result"] = details["result"]
+            if "error" in details:
+                journal_update["task_result"] = details["error"] # Store error in result field for journal
+        await db.journal_blocks_collection.update_one(
             {"block_id": block_id, "user_id": user_id},
-            {"$set": {"task_status": status}}
+            {"$set": journal_update}
         )
 
     task_doc = await db.tasks.find_one({"task_id": task_id}, {"description": 1})
@@ -81,7 +77,8 @@ async def update_task_status(db, task_id: str, status: str, user_id: str, detail
 
     if status in ["completed", "error"]:
         notification_message = f"Task '{task_description}' has finished with status: {status}."
-        await notify_user(user_id, notification_message, task_id)
+        notification_type = "taskCompleted" if status == "completed" else "taskFailed"
+        await notify_user(user_id, notification_message, task_id, notification_type=notification_type)
 
 async def add_progress_update(db, task_id: str, user_id: str, message: str, block_id: Optional[str] = None):
     logger.info(f"Adding progress update to task {task_id}: '{message}'")
@@ -92,7 +89,7 @@ async def add_progress_update(db, task_id: str, user_id: str, message: str, bloc
         {"$push": {"progress_updates": progress_update}}
     )
     if block_id:
-        await db.journal_blocks.update_one(
+        await db.journal_blocks_collection.update_one(
             {"block_id": block_id, "user_id": user_id},
             {"$push": {"task_progress": progress_update}}
         )

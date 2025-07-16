@@ -10,24 +10,35 @@ const nextConfig = {
 		removeConsole: false
 	},
 	async rewrites() {
-		return [
-			{
-				source: "/ingest/static/:path*",
-				destination: "https://us-assets.i.posthog.com/static/:path*",
-			},
-			{
-				source: "/ingest/:path*",
-				destination: "https://us.i.posthog.com/:path*",
-			},
-			{
-				source: "/ingest/decide",
-				destination: "https://us.i.posthog.com/decide",
-			},
-		];
+		if (process.env.NEXT_PUBLIC_POSTHOG_KEY) {
+			if (process.env.NEXT_PUBLIC_POSTHOG_HOST) {
+				// Self-hosted or custom instance
+				return [
+					{
+						source: "/ingest/:path*",
+						destination: `${process.env.NEXT_PUBLIC_POSTHOG_HOST}/:path*`
+					}
+				]
+			} else {
+				// Default to PostHog US cloud
+				return [
+					{
+						source: "/ingest/static/:path*",
+						destination:
+							"https://us-assets.i.posthog.com/static/:path*"
+					},
+					{
+						source: "/ingest/:path*",
+						destination: "https://us.i.posthog.com/:path*"
+					}
+				]
+			}
+		}
+		return []
 	},
 	// This is required to support PostHog trailing slash API requests
-	skipTrailingSlashRedirect: true,
-};
+	skipTrailingSlashRedirect: true
+}
 
 if (process.env.NODE_ENV === "production") {
 	nextConfig.output = "standalone"

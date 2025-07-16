@@ -312,7 +312,7 @@ const Tasks = () => {
 				throw new Error(data.error || "Failed to add task")
 			}
 			toast.success("New plan created successfully!")
-			posthog.capture("workflow_created", {
+			posthog?.capture("workflow_created", {
 				plan_steps: taskData.plan.length,
 				is_recurring: taskData.schedule.type === "recurring",
 				priority: taskData.priority
@@ -370,7 +370,7 @@ const Tasks = () => {
 				})
 			})
 			if (!response.ok) throw new Error((await response.json()).error)
-			posthog.capture("task_edited", {
+			posthog?.capture("task_edited", {
 				task_id: editingTask.task_id,
 				is_recurring: editingTask.schedule?.type === "recurring"
 			})
@@ -395,7 +395,7 @@ const Tasks = () => {
 			toast.success("Task deleted!")
 			setViewingTask(null)
 			if (taskToDelete?.status === "approval_pending") {
-				posthog.capture("task_disapproved", { task_id: taskId })
+				posthog?.capture("task_disapproved", { task_id: taskId })
 			}
 			await fetchTasksData()
 		} catch (error) {
@@ -416,7 +416,7 @@ const Tasks = () => {
 					toast.error(errorData.detail, { duration: 6000 })
 				else throw new Error(errorData.error || "Approval failed")
 			} else {
-				posthog.capture("task_approved", { task_id: taskId })
+				posthog?.capture("task_approved", { task_id: taskId })
 				toast.success("Plan approved and queued for execution.")
 			}
 			setViewingTask(null)
@@ -438,7 +438,7 @@ const Tasks = () => {
 				body: JSON.stringify({ taskId })
 			})
 			if (!response.ok) throw new Error((await response.json()).error)
-			posthog.capture("task_rerun", { original_task_id: taskId })
+			posthog?.capture("task_rerun", { original_task_id: taskId })
 			toast.success("Task duplicated for approval.")
 			await fetchTasksData()
 		} catch (error) {

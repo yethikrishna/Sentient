@@ -121,7 +121,7 @@ const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {
 				)
 			}
 
-			posthog.capture("integration_connected", {
+			posthog?.capture("integration_connected", {
 				integration_name: integration.name,
 				auth_type: "manual"
 			})
@@ -667,7 +667,7 @@ const IntegrationsPage = () => {
 			)
 			if (!response.ok)
 				throw new Error(`Failed to disconnect ${displayName}`)
-			posthog.capture("integration_disconnected", {
+			posthog?.capture("integration_disconnected", {
 				integration_name: integrationName
 			})
 			toast.success(`${displayName} disconnected.`)
@@ -689,7 +689,7 @@ const IntegrationsPage = () => {
 		if (success) {
 			const capitalized =
 				success.charAt(0).toUpperCase() + success.slice(1)
-			posthog.capture("integration_connected", {
+			posthog?.capture("integration_connected", {
 				integration_name: success,
 				auth_type: "oauth"
 			})

@@ -17,6 +17,8 @@ services:
         - AUTH0_CLIENT_SECRET=${AUTH0_CLIENT_SECRET}
         - AUTH0_AUDIENCE=${AUTH0_AUDIENCE}
         - AUTH0_SCOPE=${AUTH0_SCOPE}
+        - NEXT_PUBLIC_POSTHOG_KEY=${NEXT_PUBLIC_POSTHOG_KEY}
+        - NEXT_PUBLIC_POSTHOG_HOST=${NEXT_PUBLIC_POSTHOG_HOST}
       # -------------------------
     container_name: sentient-client
     restart: unless-stopped

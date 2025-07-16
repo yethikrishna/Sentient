@@ -31,7 +31,7 @@ const InlineAddEntry = ({ day, onSave, onCancel }) => {
 				})
 			})
 			if (!response.ok) throw new Error("Failed to create entry")
-			posthog.capture("journal_entry_created")
+			posthog?.capture("journal_entry_created")
 			toast.success("Entry saved and sent for processing.")
 			onSave()
 		} catch (error) {

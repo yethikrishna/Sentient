@@ -411,7 +411,7 @@ const HomePage = () => {
 				const errorData = await response.json()
 				throw new Error(errorData.error || "Approval failed")
 			}
-			posthog.capture("task_approved", { task_id: taskId })
+			posthog?.capture("task_approved", { task_id: taskId })
 			toast.success("Plan approved! Task has been queued for execution.")
 			fetchData() // Refresh data
 		} catch (error) {
@@ -433,7 +433,7 @@ const HomePage = () => {
 			})
 			if (!response.ok) throw new Error("Failed to delete task")
 			if (taskToDelete?.status === "approval_pending") {
-				posthog.capture("task_disapproved", { task_id: taskId })
+				posthog?.capture("task_disapproved", { task_id: taskId })
 			}
 			toast.success("Task deleted successfully!")
 			fetchData()

@@ -74,7 +74,7 @@ const ChatOverlay = ({ onClose }) => {
 
 	const sendMessage = async () => {
 		if (input.trim() === "") return
-		posthog.capture("chat_message_sent", {
+		posthog?.capture("chat_message_sent", {
 			message_length: input.length
 		})
 		const newUserMessage = {

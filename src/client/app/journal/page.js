@@ -246,7 +246,7 @@ const OrganizerPage = () => {
 				const errorData = await response.json()
 				throw new Error(errorData.error || "Approval failed")
 			}
-			posthog.capture("task_approved", { task_id: taskId })
+			posthog?.capture("task_approved", { task_id: taskId })
 			toast.success("Plan approved! Task has been queued for execution.")
 			refreshData()
 		} catch (error) {
@@ -309,7 +309,7 @@ const OrganizerPage = () => {
 			})
 			if (!response.ok) throw new Error((await response.json()).error)
 			if (taskToDelete?.status === "approval_pending") {
-				posthog.capture("task_disapproved", { task_id: taskId })
+				posthog?.capture("task_disapproved", { task_id: taskId })
 			}
 			toast.success("Task deleted successfully!")
 			refreshData()
@@ -332,7 +332,7 @@ const OrganizerPage = () => {
 				})
 			})
 			if (!response.ok) throw new Error((await response.json()).error)
-			posthog.capture("task_edited", {
+			posthog?.capture("task_edited", {
 				task_id: editingTask.task_id,
 				is_recurring: editingTask.schedule?.type === "recurring"
 			})

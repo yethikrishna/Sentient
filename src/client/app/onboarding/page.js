@@ -312,7 +312,7 @@ const OnboardingPage = () => {
 					body: JSON.stringify({ whatsapp_number: whatsappNumber })
 				})
 			}
-			posthog.capture("onboarding_completed")
+			posthog?.capture("onboarding_completed")
 			setStage("whatsNext") // Go to the new "What's Next" screen
 			// setTimeout(() => router.push("/home"), 2500) // Removed auto-redirect
 		} catch (error) {

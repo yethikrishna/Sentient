@@ -6,11 +6,11 @@ POSTHOG_API_KEY = os.getenv("POSTHOG_API_KEY")
 POSTHOG_HOST = os.getenv("POSTHOG_HOST")
 
 posthog_client = None
-if POSTHOG_API_KEY:
+if POSTHOG_API_KEY and POSTHOG_HOST:
     posthog_client = Posthog(project_api_key=POSTHOG_API_KEY, host=POSTHOG_HOST)
     print("PostHog client initialized for backend tracking.")
 else:
-    print("PostHog API key not found. Backend event tracking is disabled.")
+    print("PostHog API key or host not found. Backend event tracking is disabled.")
 
 def capture_event(user_id: str, event_name: str, properties: dict = None):
     """

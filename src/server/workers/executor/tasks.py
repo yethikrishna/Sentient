@@ -13,29 +13,19 @@ from workers.celery_app import celery_app
 from workers.utils.api_client import notify_user
 
 # Load environment variables for the worker from its own config
-from workers.executor.config import (
-    MONGO_URI, MONGO_DB_NAME, INTEGRATIONS_CONFIG, LLM_PROVIDER,
-    OLLAMA_BASE_URL, OLLAMA_MODEL_NAME, SUPERMEMORY_MCP_BASE_URL,
-    SUPERMEMORY_MCP_ENDPOINT_SUFFIX
-)
+from workers.executor.config import (MONGO_URI, MONGO_DB_NAME,
+                                     INTEGRATIONS_CONFIG, OPENAI_API_BASE_URL,
+                                     OPENAI_API_KEY, OPENAI_MODEL_NAME, SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX)
 
 # Setup logger for this module
 logger = logging.getLogger(__name__)
 
 # --- LLM Config for Executor ---
-if LLM_PROVIDER == "OLLAMA":
-    llm_cfg = {
-        'model': OLLAMA_MODEL_NAME,
-        'model_server': f"{OLLAMA_BASE_URL.rstrip('/')}/v1/",
-        'api_key': 'ollama', # Ollama doesn't require a key
-    }
-elif LLM_PROVIDER == "NOVITA":
-    from workers.executor.config import NOVITA_API_KEY, NOVITA_MODEL_NAME
-    llm_cfg = {
-        "model": NOVITA_MODEL_NAME,
-        "api_key": NOVITA_API_KEY,
-        "model_server": "https://api.novita.ai/v3/openai"
-    }
+llm_cfg = {
+    'model': OPENAI_MODEL_NAME,
+    'model_server': f"{OPENAI_API_BASE_URL.rstrip('/')}/v1",
+    'api_key': OPENAI_API_KEY,
+}
 
 
 # --- Database Connection within Celery Task ---

@@ -13,12 +13,10 @@ if ENVIRONMENT == 'dev-local':
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_dev_db")
 
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "OLLAMA")
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL_NAME = os.getenv("OLLAMA_MODEL_NAME", "qwen3:4b")
-NOVITA_API_KEY = os.getenv("NOVITA_API_KEY")
-NOVITA_MODEL_NAME = os.getenv("NOVITA_MODEL_NAME", "qwen/qwen3-4b-fp8")
-
+# OpenAI API Standard Configuration
+OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL", "http://localhost:11434")
+OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "qwen2:1.5b")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ollama")
 SUPERMEMORY_MCP_BASE_URL = os.getenv("SUPERMEMORY_MCP_BASE_URL", "https://mcp.supermemory.ai/")
 SUPERMEMORY_MCP_ENDPOINT_SUFFIX = os.getenv("SUPERMEMORY_MCP_ENDPOINT_SUFFIX", "/sse")
 

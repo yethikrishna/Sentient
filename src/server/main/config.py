@@ -315,24 +315,13 @@ INTEGRATIONS_CONFIG = {
     }
 }
 
-# --- Service Provider Configuration ---
-# These variables allow for flexible switching between different service providers.
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "OLLAMA") # Options: "OLLAMA", "NOVITA"
-# STT_PROVIDER = os.getenv("STT_PROVIDER", "FASTER_WHISPER") # Voice removed
-# TTS_PROVIDER = os.getenv("TTS_PROVIDER", "ORPHEUS") # Voice removed
-
-# --- Service-Specific API Keys and Paths ---
-# ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY") # Voice removed
-# ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb") # Voice removed
-
-# Voice related model paths and settings removed
-
-
 # LLM Endpoint Configuration
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434") 
-OLLAMA_MODEL_NAME = os.getenv("OLLAMA_MODEL_NAME", "qwen3:4b") 
-NOVITA_API_KEY = os.getenv("NOVITA_API_KEY")
-NOVITA_MODEL_NAME = os.getenv("NOVITA_MODEL_NAME", "qwen/qwen3-4b-fp8")
+# --- OpenAI API Standard Configuration ---
+# This can point to OpenAI, Ollama, Groq, or any other compatible service.
+OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL", "http://localhost:11434")
+OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "qwen2:1.5b")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ollama") # Default key for Ollama
+
 # MCP Server URLs
 PROGRESS_UPDATER_MCP_SERVER_URL=os.getenv("PROGRESS_UPDATER_MCP_SERVER_URL", "http://localhost:9011/sse")
 CHAT_TOOLS_MCP_SERVER_URL=os.getenv("CHAT_TOOLS_MCP_SERVER_URL", "http://localhost:9013/sse") # For agent action handoff
@@ -340,6 +329,5 @@ SUPERMEMORY_MCP_BASE_URL = os.getenv("SUPERMEMORY_MCP_BASE_URL", "https://mcp.su
 SUPERMEMORY_MCP_ENDPOINT_SUFFIX = os.getenv("SUPERMEMORY_MCP_ENDPOINT_SUFFIX", "/sse")
 
 print(f"[{datetime.datetime.now()}] [MainServer_Config] Configuration loaded. AUTH0_DOMAIN: {'SET' if AUTH0_DOMAIN else 'NOT SET'}")
-print(f"[{datetime.datetime.now()}] [MainServer_Config] LLM Provider: {LLM_PROVIDER}")
-# print(f"[{datetime.datetime.now()}] [MainServer_Config] STT Provider: {STT_PROVIDER}") # Voice removed
-# print(f"[{datetime.datetime.now()}] [MainServer_Config] TTS Provider: {TTS_PROVIDER}") # Voice removed
+print(f"[{datetime.datetime.now()}] [MainServer_Config] LLM Endpoint: {OPENAI_API_BASE_URL}")
+print(f"[{datetime.datetime.now()}] [MainServer_Config] LLM Model: {OPENAI_MODEL_NAME}")

@@ -28,21 +28,11 @@ def get_planner_agent(available_tools: dict, current_time_str: str, user_name: s
     )
 
     llm_cfg = {}
-    if config.LLM_PROVIDER == "OLLAMA":
-        ollama_v1_url = f"{config.OLLAMA_BASE_URL.rstrip('/')}/v1"
-        llm_cfg = {
-            'model': config.OLLAMA_MODEL_NAME,
-            'model_server': ollama_v1_url,
-            'api_key': 'ollama',
-        }
-    elif config.LLM_PROVIDER == "NOVITA":
-        llm_cfg = {
-            'model': config.NOVITA_MODEL_NAME,
-            'model_server': "https://api.novita.ai/v3/openai",
-            'api_key': config.NOVITA_API_KEY,
-        }
-    else: # Add NOVITA provider
-        raise ValueError(f"Unsupported LLM_PROVIDER for planner: {config.LLM_PROVIDER}. Must be 'OLLAMA' or 'NOVITA'")
+    llm_cfg = {
+        'model': config.OPENAI_MODEL_NAME,
+        'model_server': f"{config.OPENAI_API_BASE_URL.rstrip('/')}/v1",
+        'api_key': config.OPENAI_API_KEY,
+    }
 
     try:
         agent = Assistant(
@@ -65,13 +55,11 @@ def get_question_generator_agent(supermemory_mcp_url: str, original_context: dic
         topics=", ".join(topics),
         available_tools=tools_list_str
     )
-    if config.LLM_PROVIDER == "OLLAMA":
-        ollama_v1_url = f"{config.OLLAMA_BASE_URL.rstrip('/')}/v1"
-        llm_cfg = {'model': config.OLLAMA_MODEL_NAME, 'model_server': ollama_v1_url, 'api_key': 'ollama'}
-    elif config.LLM_PROVIDER == "NOVITA":
-        llm_cfg = {'model': config.NOVITA_MODEL_NAME, 'model_server': "https://api.novita.ai/v3/openai", 'api_key': config.NOVITA_API_KEY}
-    else:
-        raise ValueError(f"Unsupported LLM_PROVIDER for question generator: {config.LLM_PROVIDER}")
+    llm_cfg = {
+        'model': config.OPENAI_MODEL_NAME,
+        'model_server': f"{config.OPENAI_API_BASE_URL.rstrip('/')}/v1",
+        'api_key': config.OPENAI_API_KEY,
+    }
     
     tools_config = [{
         "mcpServers": {

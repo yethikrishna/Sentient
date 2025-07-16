@@ -19,25 +19,12 @@ def get_extractor_agent(user_name: str, user_location: str, user_timezone: str):
         user_timezone=user_timezone
     )
 
-    if config.LLM_PROVIDER == "OLLAMA":
-        ollama_v1_url = f"{config.OLLAMA_BASE_URL.rstrip('/')}/v1"
-        llm_cfg = {
-            'model': config.OLLAMA_MODEL_NAME,
-            'model_server': ollama_v1_url,
-            'api_key': 'ollama',
-        }
-        logger.info(f"Qwen Agent configured for OLLAMA: model={config.OLLAMA_MODEL_NAME}")
-    elif config.LLM_PROVIDER == "NOVITA":
-        novita_v1_url = "https://api.novita.ai/v3/openai"
-        llm_cfg = {
-            'model': config.NOVITA_MODEL_NAME,
-            'model_server': novita_v1_url,
-            'api_key': config.NOVITA_API_KEY,
-        }
-        logger.info(f"Qwen Agent configured for NOVITA: model={config.NOVITA_MODEL_NAME}")
-    else:
-        raise ValueError(f"Invalid LLM_PROVIDER: {config.LLM_PROVIDER}. Must be 'OLLAMA' or 'NOVITA'")
-
+    llm_cfg = {
+        'model': config.OPENAI_MODEL_NAME,
+        'model_server': f"{config.OPENAI_API_BASE_URL.rstrip('/')}/v1",
+        'api_key': config.OPENAI_API_KEY,
+    }
+    logger.info(f"Extractor agent configured for model='{config.OPENAI_MODEL_NAME}' and server='{llm_cfg['model_server']}'")
     try:
         agent = Assistant(
             llm=llm_cfg,

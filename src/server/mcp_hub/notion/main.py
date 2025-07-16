@@ -3,7 +3,7 @@ import json
 from typing import Dict, Any, Optional, List
 
 from dotenv import load_dotenv
-from fastmcp import FastMCP, Context
+from fastmcp import FastMCP, Context, ToolError
 from fastmcp.prompts.prompt import Message
 from notion_client.helpers import is_full_page_or_database
 
@@ -39,116 +39,154 @@ async def _execute_tool(ctx: Context, func, **kwargs) -> Dict[str, Any]:
     try:
         user_id = auth.get_user_id_from_context(ctx)
         creds = await auth.get_notion_creds(user_id)
-        notion = auth.authenticate_notion(creds)
+        notion_client = auth.authenticate_notion(creds)
         
-        result = await func(notion, **kwargs)
+        # Pass the authenticated client to the synchronous function
+        result = await asyncio.to_thread(func, notion_client, **kwargs)
         return {"status": "success", "result": result}
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
-# --- Tool Implementations ---
-async def _search(notion, query: str):
-    response = await notion.search(query=query)
-    # The Notion search response is complex, we need to simplify it for the LLM.
-    simplified_results = []
-    for item in response.get("results", []):
-        if is_full_page_or_database(item):
-            obj_type = item.get("object")
-            title_text = "Untitled"
-            if obj_type == "page" and item.get("properties"):
-                # Find the title property
-                for prop_name, prop_value in item["properties"].items():
-                    if prop_value.get("type") == "title":
-                        title_text = utils._simplify_rich_text(prop_value["title"])
-                        break
-            elif obj_type == "database" and item.get("title"):
-                 title_text = utils._simplify_rich_text(item["title"])
-            
-            simplified_results.append({
-                "id": item.get("id"),
-                "type": obj_type,
-                "title": title_text,
-                "last_edited": item.get("last_edited_time"),
-            })
-    return {"search_results": simplified_results}
+# --- Synchronous Implementations for Tools ---
 
-async def _get_page_content(notion, page_id: str):
-    response = await notion.blocks.children.list(block_id=page_id)
-    content = utils.simplify_block_children(response)
-    return {"page_id": page_id, "content": content}
-
-async def _create_page(notion, parent_page_id: Optional[str] = None, parent_database_id: Optional[str] = None, title: str = "Untitled", content: Optional[List[Dict]] = None):
+def _create_page_sync(client, parent_page_id: Optional[str], parent_database_id: Optional[str], title: str, content: Optional[List[Dict]]):
     if not parent_page_id and not parent_database_id:
-        raise ValueError("Either parent_page_id or parent_database_id must be provided.")
-
+        raise ToolError("Either parent_page_id or parent_database_id must be provided.")
     parent_key = "page_id" if parent_page_id else "database_id"
     parent_value = parent_page_id or parent_database_id
     parent = {parent_key: parent_value}
-
-    # Default properties for database pages
     properties = {"title": {"title": [{"text": {"content": title}}]}}
-    if parent_database_id:
-        # This is a simplified property structure. The LLM would need to know the target DB's schema
-        # for more complex properties. For now, we only set the title.
-        pass
-
-    children_blocks = content or [] # content should be Notion block objects
-    
-    response = await notion.pages.create(parent=parent, properties=properties, children=children_blocks)
+    children_blocks = content or []
+    response = client.pages.create(parent=parent, properties=properties, children=children_blocks)
     return {"page_id": response.get("id"), "url": response.get("url")}
 
-async def _query_database(notion, database_id: str, filter_json: Optional[str] = None):
-    filter_obj = json.loads(filter_json) if filter_json else None
-    response = await notion.databases.query(database_id=database_id, filter=filter_obj)
-    simplified_pages = utils.simplify_database_pages(response)
-    return {"pages": simplified_pages}
+def _get_pages_sync(client, page_id: Optional[str], query: Optional[str]):
+    if page_id:
+        response = client.pages.retrieve(page_id=page_id)
+        return utils.simplify_block_children(client.blocks.children.list(block_id=page_id))
+    else:
+        response = client.search(query=query, filter={"value": "page", "property": "object"})
+        return [utils._simplify_database_pages({"results": [p]})[0] for p in response.get("results", [])]
 
-async def _append_to_page(notion, page_id: str, content_blocks: List[Dict]):
-    """Appends content blocks to a page."""
-    response = await notion.blocks.children.append(block_id=page_id, children=content_blocks)
+def _query_database_sync(client, database_id: str, filter_json: Optional[str]):
+    filter_obj = json.loads(filter_json) if filter_json else None
+    response = client.databases.query(database_id=database_id, filter=filter_obj)
+    return utils.simplify_database_pages(response)
+
+def _update_block_sync(client, block_id: str, content: Dict):
+    response = client.blocks.update(block_id=block_id, **content)
+    return {"block_id": response.get("id"), "last_edited_time": response.get("last_edited_time")}
+
+def _get_block_children_sync(client, block_id: str):
+    response = client.blocks.children.list(block_id=block_id)
+    return utils.simplify_block_children(response)
+
+def _get_comments_sync(client, block_id: str):
+    response = client.comments.list(block_id=block_id)
+    return [utils._simplify_comment(c) for c in response.get("results", [])]
+
+def _get_workspace_sync(client):
+    response = client.bots.me()
+    return response.get("owner", {})
+
+def _update_page_sync(client, page_id: str, properties_json: str):
+    properties = json.loads(properties_json)
+    response = client.pages.update(page_id=page_id, properties=properties)
+    return {"page_id": response.get("id"), "url": response.get("url")}
+
+def _get_databases_sync(client, query: Optional[str]):
+    response = client.search(query=query, filter={"value": "database", "property": "object"})
+    return [utils.simplify_database_pages({"results": [db]})[0] for db in response.get("results", [])]
+
+def _create_block_sync(client, parent_block_id: str, content_blocks: List[Dict]):
+    response = client.blocks.children.append(block_id=parent_block_id, children=content_blocks)
     return {"status": "ok", "appended_block_count": len(response.get("results", []))}
+
+def _delete_block_sync(client, block_id: str):
+    response = client.blocks.delete(block_id=block_id)
+    return {"block_id": response.get("id"), "archived": response.get("archived")}
+
+def _create_comment_sync(client, page_id: str, comment_text: str):
+    comment_obj = {"rich_text": [{"text": {"content": comment_text}}]}
+    response = client.comments.create(parent={"page_id": page_id}, rich_text=comment_obj['rich_text'])
+    return utils._simplify_comment(response)
+
+def _list_users_sync(client):
+    response = client.users.list()
+    return [utils._simplify_user(u) for u in response.get("results", [])]
 
 
 # --- Tool Definitions ---
 @mcp.tool
-async def search_notion(ctx: Context, query: str) -> Dict:
-    """Searches for pages and databases in Notion matching a query."""
-    return await _execute_tool(ctx, _search, query=query)
-
-@mcp.tool
-async def get_notion_page_content(ctx: Context, page_id: str) -> Dict:
-    """Retrieves the content (blocks) of a specific Notion page by its ID."""
-    return await _execute_tool(ctx, _get_page_content, page_id=page_id)
-
-@mcp.tool
-async def create_notion_page(ctx: Context, title: str, parent_page_id: Optional[str] = None, parent_database_id: Optional[str] = None, content_blocks_json: Optional[str] = None) -> Dict:
+async def createPage(ctx: Context, title: str, parent_page_id: Optional[str] = None, parent_database_id: Optional[str] = None, content_blocks_json: Optional[str] = None) -> Dict:
     """
     Creates a new page in Notion, either inside another page or in a database.
     `content_blocks_json` should be a JSON string representing a list of Notion block objects.
-    Example: '[{"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"text": {"content": "Hello World"}}]}}]'
     """
     content_blocks = json.loads(content_blocks_json) if content_blocks_json else []
-    return await _execute_tool(ctx, _create_page, title=title, parent_page_id=parent_page_id, parent_database_id=parent_database_id, content=content_blocks)
+    return await _execute_tool(ctx, _create_page_sync, parent_page_id=parent_page_id, parent_database_id=parent_database_id, title=title, content=content_blocks)
 
 @mcp.tool
-async def append_to_notion_page(ctx: Context, page_id: str, content_blocks_json: str) -> Dict:
-    """
-    Appends new content blocks to an existing Notion page.
-    `content_blocks_json` MUST be a JSON string of a list of Notion block objects.
-    Example: '[{"object": "block", "type": "heading_2", "heading_2": {"rich_text": [{"text": {"content": "New Section"}}]}}]'
-    """
+async def getPages(ctx: Context, page_id: Optional[str] = None, query: Optional[str] = None) -> Dict:
+    """Get a Notion page by ID or list pages with optional filtering by query."""
+    return await _execute_tool(ctx, _get_pages_sync, page_id=page_id, query=query)
+
+@mcp.tool
+async def queryDatabase(ctx: Context, database_id: str, filter_json: Optional[str] = None) -> Dict:
+    """Queries a Notion database with an optional filter JSON string."""
+    return await _execute_tool(ctx, _query_database_sync, database_id=database_id, filter_json=filter_json)
+
+@mcp.tool
+async def updateBlock(ctx: Context, block_id: str, content_json: str) -> Dict:
+    """Update an existing content block. `content_json` is a JSON string of the block type object (e.g., '{"paragraph": ...}')."""
+    content = json.loads(content_json)
+    return await _execute_tool(ctx, _update_block_sync, block_id=block_id, content=content)
+
+@mcp.tool
+async def getBlockChildren(ctx: Context, block_id: str) -> Dict:
+    """Get all children blocks of a parent block (like a page or a toggle)."""
+    return await _execute_tool(ctx, _get_block_children_sync, block_id=block_id)
+
+@mcp.tool
+async def getComments(ctx: Context, block_id: str) -> Dict:
+    """Get comments for a page or block."""
+    return await _execute_tool(ctx, _get_comments_sync, block_id=block_id)
+
+@mcp.tool
+async def getWorkspace(ctx: Context) -> Dict:
+    """Get information about the current Notion workspace (organization)."""
+    return await _execute_tool(ctx, _get_workspace_sync)
+
+@mcp.tool
+async def updatePage(ctx: Context, page_id: str, properties_json: str) -> Dict:
+    """Update an existing Notion page by modifying its properties."""
+    return await _execute_tool(ctx, _update_page_sync, page_id=page_id, properties_json=properties_json)
+
+@mcp.tool
+async def getDatabases(ctx: Context, query: Optional[str] = None) -> Dict:
+    """List available Notion databases that the integration has access to, with an optional query."""
+    return await _execute_tool(ctx, _get_databases_sync, query=query)
+
+@mcp.tool
+async def createBlock(ctx: Context, parent_block_id: str, content_blocks_json: str) -> Dict:
+    """Add content blocks to an existing page or block."""
     content_blocks = json.loads(content_blocks_json)
-    return await _execute_tool(ctx, _append_to_page, page_id=page_id, content_blocks=content_blocks)
-
+    return await _execute_tool(ctx, _create_block_sync, parent_block_id=parent_block_id, content_blocks=content_blocks)
 
 @mcp.tool
-async def query_notion_database(ctx: Context, database_id: str, filter_json: Optional[str] = None) -> Dict:
-    """
-    Queries a Notion database with an optional filter.
-    `filter_json` should be a JSON string representing a valid Notion API filter object.
-    Example for filtering by a 'Status' property: '{"property": "Status", "select": {"equals": "Done"}}'
-    """
-    return await _execute_tool(ctx, _query_database, database_id=database_id, filter_json=filter_json)
+async def deleteBlock(ctx: Context, block_id: str) -> Dict:
+    """Delete a content block."""
+    return await _execute_tool(ctx, _delete_block_sync, block_id=block_id)
+
+@mcp.tool
+async def createComment(ctx: Context, page_id: str, comment_text: str) -> Dict:
+    """Add a comment to a page or block."""
+    return await _execute_tool(ctx, _create_comment_sync, page_id=page_id, comment_text=comment_text)
+
+@mcp.tool
+async def listUsers(ctx: Context) -> Dict:
+    """List all users who have access to the workspace."""
+    return await _execute_tool(ctx, _list_users_sync)
 
 # --- Server Execution ---
 if __name__ == "__main__":

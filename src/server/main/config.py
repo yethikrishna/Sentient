@@ -11,13 +11,14 @@ ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
 logging.info(f"[{datetime.datetime.now()}] [Config] Initializing configuration for ENVIRONMENT='{ENVIRONMENT}'")
 
 server_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-
 if ENVIRONMENT == 'dev-local':
-    # Local development without Docker. Uses the standard .env file in src/server.
+    # Prefer .env.local, fall back to .env
+    dotenv_local_path = os.path.join(server_root, '.env.local')
     dotenv_path = os.path.join(server_root, '.env')
-    logging.info(f"[{datetime.datetime.now()}] [Config] Loading .env file for 'dev-local' mode from: {dotenv_path}")
-    if os.path.exists(dotenv_path):
-        load_dotenv(dotenv_path=dotenv_path)
+    load_path = dotenv_local_path if os.path.exists(dotenv_local_path) else dotenv_path
+    logging.info(f"[{datetime.datetime.now()}] [Config] Loading .env file for 'dev-local' mode from: {load_path}")
+    if os.path.exists(load_path):
+        load_dotenv(dotenv_path=load_path)
 elif ENVIRONMENT == 'selfhost':
     # Self-hosting with Docker. docker-compose injects variables from src/.env for substitution.
     # python-dotenv loads .env.selfhost to get the rest of the config.

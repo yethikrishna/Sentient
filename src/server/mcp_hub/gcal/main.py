@@ -1,7 +1,7 @@
 import os
 import asyncio
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timezone
+from datetime import datetime
 
 
 from dotenv import load_dotenv
@@ -44,140 +44,251 @@ def build_gcal_user_prompt(query: str, username: str, previous_tool_response: st
 
 
 # --- Tool Definitions ---
-# Each tool uses asyncio.to_thread to run synchronous Google API calls without blocking.
 
 @mcp.tool()
-async def list_upcoming_events(ctx: Context, max_results: int = 10) -> Dict[str, Any]:
-    """Lists the next upcoming events from the user's primary calendar."""
+async def createEvent(ctx: Context, summary: str, start_time: str, end_time: str, calendar_id: str = "primary", location: Optional[str] = None, description: Optional[str] = None, attendees: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Create a new calendar event with specified details, time, and attendees."""
     try:
         user_id = auth.get_user_id_from_context(ctx)
         creds = await auth.get_google_creds(user_id)
+        user_info = await auth.get_user_info(user_id)
         service = auth.authenticate_gcal(creds)
-        
-        def _execute_sync_list():
-            now = datetime.utcnow().isoformat() + "Z"  # 'Z' indicates UTC time
-            events_result = service.events().list(
-                calendarId="primary", timeMin=now,
-                maxResults=max_results, singleEvents=True,
-                orderBy="startTime"
-            ).execute()
-            events = events_result.get("items", [])
-            
-            event_list = []
-            for event in events:
-                start = event["start"].get("dateTime", event["start"].get("date"))
-                event_list.append(f"- {event['summary']} (at {start})")
-            return "\n".join(event_list) if event_list else "No upcoming events found."
 
-        result_text = await asyncio.to_thread(_execute_sync_list)
-        return {"status": "success", "result": result_text}
-    except Exception as e:
-        return {"status": "failure", "error": str(e)}
-
-@mcp.tool()
-async def add_event(ctx: Context, summary: str, start_time: str, end_time: str, location: Optional[str] = None, description: Optional[str] = None) -> Dict[str, Any]:
-    """Adds a new event to the primary calendar."""
-    try:
-        user_id = auth.get_user_id_from_context(ctx)
-        creds = await auth.get_google_creds(user_id)
-        user_timezone = await auth.get_user_timezone(user_id) # Fetch timezone
-        service = auth.authenticate_gcal(creds)
-        
         event = {
             "summary": summary,
             "location": location,
             "description": description,
-            "start": {"dateTime": start_time, "timeZone": user_timezone},
-            "end": {"dateTime": end_time, "timeZone": user_timezone},
+            "start": {"dateTime": start_time, "timeZone": user_info['timezone']},
+            "end": {"dateTime": end_time, "timeZone": user_info['timezone']},
         }
+        if attendees:
+            event["attendees"] = [{"email": email} for email in attendees]
 
         def _execute_sync_insert():
-            return service.events().insert(calendarId="primary", body=event).execute()
+            return service.events().insert(calendarId=calendar_id, body=event, sendUpdates="all").execute()
 
         created_event = await asyncio.to_thread(_execute_sync_insert)
-        return {"status": "success", "result": f"Event created successfully. View at: {created_event.get('htmlLink')}"}
+        return {"status": "success", "result": f"Event created. View at: {created_event.get('htmlLink')}"}
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
 @mcp.tool()
-async def search_events(ctx: Context, query: str, time_min: Optional[str] = None, time_max: Optional[str] = None) -> Dict[str, Any]:
-    """Searches for events matching a query within an optional time range."""
+async def updateEvent(ctx: Context, event_id: str, calendar_id: str = "primary", new_summary: Optional[str] = None, new_start_time: Optional[str] = None, new_end_time: Optional[str] = None, new_location: Optional[str] = None, new_description: Optional[str] = None) -> Dict[str, Any]:
+    """Modify an existing calendar event by changing any of its properties."""
+    try:
+        user_id = auth.get_user_id_from_context(ctx)
+        creds = await auth.get_google_creds(user_id)
+        user_info = await auth.get_user_info(user_id)
+        service = auth.authenticate_gcal(creds)
+
+        def _get_event_sync():
+            return service.events().get(calendarId=calendar_id, eventId=event_id).execute()
+
+        event_to_update = await asyncio.to_thread(_get_event_sync)
+
+        update_body = {}
+        if new_summary: update_body["summary"] = new_summary
+        if new_location: update_body["location"] = new_location
+        if new_description: update_body["description"] = new_description
+        if new_start_time: update_body["start"] = {"dateTime": new_start_time, "timeZone": user_info['timezone']}
+        if new_end_time: update_body["end"] = {"dateTime": new_end_time, "timeZone": user_info['timezone']}
+
+        if not update_body:
+            return {"status": "failure", "error": "No new information provided to update the event."}
+
+        def _execute_sync_patch():
+            return service.events().patch(calendarId=calendar_id, eventId=event_id, body=update_body, sendUpdates="all").execute()
+
+        updated_event = await asyncio.to_thread(_execute_sync_patch)
+        return {"status": "success", "result": f"Event updated. View at: {updated_event.get('htmlLink')}"}
+    except Exception as e:
+        return {"status": "failure", "error": str(e)}
+
+@mcp.tool()
+async def getCalendars(ctx: Context) -> Dict[str, Any]:
+    """List all calendars accessible to the authenticated user."""
     try:
         user_id = auth.get_user_id_from_context(ctx)
         creds = await auth.get_google_creds(user_id)
         service = auth.authenticate_gcal(creds)
 
-        def _execute_sync_search():
+        def _execute_sync_list():
+            calendar_list = service.calendarList().list().execute()
+            return [utils._simplify_calendar_list_entry(c) for c in calendar_list.get("items", [])]
+
+        simplified_calendars = await asyncio.to_thread(_execute_sync_list)
+        return {"status": "success", "result": {"calendars": simplified_calendars}}
+    except Exception as e:
+        return {"status": "failure", "error": str(e)}
+
+@mcp.tool()
+async def createCalendar(ctx: Context, summary: str) -> Dict[str, Any]:
+    """Create a new secondary calendar."""
+    try:
+        user_id = auth.get_user_id_from_context(ctx)
+        creds = await auth.get_google_creds(user_id)
+        service = auth.authenticate_gcal(creds)
+
+        calendar_body = {'summary': summary}
+
+        def _execute_sync_insert():
+            return service.calendars().insert(body=calendar_body).execute()
+
+        created_calendar = await asyncio.to_thread(_execute_sync_insert)
+        return {"status": "success", "result": {"calendar_id": created_calendar.get("id"), "summary": created_calendar.get("summary")}}
+    except Exception as e:
+        return {"status": "failure", "error": str(e)}
+
+@mcp.tool()
+async def deleteCalendar(ctx: Context, calendar_id: str) -> Dict[str, Any]:
+    """Delete a secondary calendar (primary calendar cannot be deleted)."""
+    if calendar_id.lower() == "primary":
+        return {"status": "failure", "error": "The primary calendar cannot be deleted."}
+    try:
+        user_id = auth.get_user_id_from_context(ctx)
+        creds = await auth.get_google_creds(user_id)
+        service = auth.authenticate_gcal(creds)
+
+        def _execute_sync_delete():
+            service.calendars().delete(calendarId=calendar_id).execute()
+
+        await asyncio.to_thread(_execute_sync_delete)
+        return {"status": "success", "result": f"Calendar with ID {calendar_id} has been deleted."}
+    except Exception as e:
+        return {"status": "failure", "error": str(e)}
+
+@mcp.tool()
+async def getEvents(ctx: Context, calendar_id: str = "primary", time_min: Optional[str] = None, time_max: Optional[str] = None, query: Optional[str] = None) -> Dict[str, Any]:
+    """Retrieve calendar events within a specified time range with optional filtering."""
+    try:
+        user_id = auth.get_user_id_from_context(ctx)
+        creds = await auth.get_google_creds(user_id)
+        service = auth.authenticate_gcal(creds)
+
+        def _execute_sync_list():
             start_time = time_min or datetime.utcnow().isoformat() + "Z"
             events_result = service.events().list(
-                calendarId="primary", q=query, timeMin=start_time, timeMax=time_max,
+                calendarId=calendar_id,
+                q=query,
+                timeMin=start_time,
+                timeMax=time_max,
+                maxResults=25,
                 singleEvents=True, orderBy="startTime"
             ).execute()
             events = events_result.get("items", [])
-            
-            event_list = []
-            for event in events:
-                start = event["start"].get("dateTime", event["start"].get("date"))
-                event_list.append({"summary": event['summary'], "id": event['id'], "start_time": start})
-            return event_list
+            return [utils._simplify_event(e) for e in events]
 
-        search_result = await asyncio.to_thread(_execute_sync_search)
-        if not search_result:
-            return {"status": "success", "result": f"No events found matching '{query}'."}
-            
-        return {"status": "success", "result": {"events_found": search_result}}
+        event_list = await asyncio.to_thread(_execute_sync_list)
+
+        if not event_list:
+            return {"status": "success", "result": "No events found matching the criteria."}
+
+        return {"status": "success", "result": {"events": event_list}}
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
 @mcp.tool()
-async def delete_event(ctx: Context, query: str) -> Dict[str, Any]:
-    """Finds an event by query and deletes it."""
+async def deleteEvent(ctx: Context, event_id: str, calendar_id: str = "primary") -> Dict[str, Any]:
+    """Remove a calendar event permanently."""
     try:
         user_id = auth.get_user_id_from_context(ctx)
         creds = await auth.get_google_creds(user_id)
         service = auth.authenticate_gcal(creds)
-        
-        match = await utils.find_event_by_query(service, query)
-        if match["status"] != "success":
-            return match
-        
-        event_id = match["event"]["id"]
         
         def _execute_sync_delete():
-            service.events().delete(calendarId="primary", eventId=event_id).execute()
+            service.events().delete(calendarId=calendar_id, eventId=event_id, sendUpdates="all").execute()
             
         await asyncio.to_thread(_execute_sync_delete)
-        return {"status": "success", "result": f"Event '{match['event']['summary']}' deleted successfully."}
+        return {"status": "success", "result": f"Event {event_id} deleted successfully."}
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
 @mcp.tool()
-async def update_event(ctx: Context, query: str, new_summary: Optional[str] = None, new_start_time: Optional[str] = None, new_end_time: Optional[str] = None, new_location: Optional[str] = None) -> Dict[str, Any]:
-    """Finds an event by query and updates its details."""
+async def getCalendar(ctx: Context, calendar_id: str = "primary") -> Dict[str, Any]:
+    """Get detailed information about a specific calendar."""
     try:
         user_id = auth.get_user_id_from_context(ctx)
         creds = await auth.get_google_creds(user_id)
-        user_timezone = await auth.get_user_timezone(user_id) # Fetch timezone
         service = auth.authenticate_gcal(creds)
 
-        match = await utils.find_event_by_query(service, query)
-        if match["status"] != "success":
-            return match
-        
-        event_to_update = match["event"]
-        event_id = event_to_update["id"]
+        def _execute_sync_get():
+            return service.calendars().get(calendarId=calendar_id).execute()
 
-        # Update fields if new values are provided
-        if new_summary: event_to_update["summary"] = new_summary
-        if new_location: event_to_update["location"] = new_location
-        if new_start_time: event_to_update["start"] = {"dateTime": new_start_time, "timeZone": user_timezone}
-        if new_end_time: event_to_update["end"] = {"dateTime": new_end_time, "timeZone": user_timezone}
-        
-        def _execute_sync_update():
-            return service.events().update(calendarId="primary", eventId=event_id, body=event_to_update).execute()
+        calendar_data = await asyncio.to_thread(_execute_sync_get)
+        return {"status": "success", "result": calendar_data}
+    except Exception as e:
+        return {"status": "failure", "error": str(e)}
 
-        updated_event = await asyncio.to_thread(_execute_sync_update)
-        return {"status": "success", "result": f"Event updated. View at: {updated_event.get('htmlLink')}"}
+@mcp.tool()
+async def updateCalendar(ctx: Context, calendar_id: str, new_summary: Optional[str] = None, new_description: Optional[str] = None) -> Dict[str, Any]:
+    """Update the properties of an existing calendar."""
+    if calendar_id.lower() == "primary":
+        return {"status": "failure", "error": "The primary calendar's properties cannot be updated this way."}
+    try:
+        user_id = auth.get_user_id_from_context(ctx)
+        creds = await auth.get_google_creds(user_id)
+        service = auth.authenticate_gcal(creds)
+
+        def _get_calendar_sync():
+            return service.calendars().get(calendarId=calendar_id).execute()
+
+        calendar_to_update = await asyncio.to_thread(_get_calendar_sync)
+
+        update_body = {}
+        if new_summary:
+            update_body["summary"] = new_summary
+        if new_description:
+            update_body["description"] = new_description
+
+        if not update_body:
+            return {"status": "failure", "error": "No new properties provided to update."}
+
+        def _execute_sync_patch():
+            return service.calendars().patch(calendarId=calendar_id, body=update_body).execute()
+
+        updated_calendar = await asyncio.to_thread(_execute_sync_patch)
+        return {"status": "success", "result": utils._simplify_calendar_list_entry(updated_calendar)}
+    except Exception as e:
+        return {"status": "failure", "error": str(e)}
+
+@mcp.tool()
+async def respondToEvent(ctx: Context, event_id: str, response_status: str, calendar_id: str = "primary") -> Dict[str, Any]:
+    """Update your response status for a calendar event (accepted, declined, tentative)."""
+    valid_statuses = ["accepted", "declined", "tentative"]
+    if response_status not in valid_statuses:
+        return {"status": "failure", "error": f"Invalid response status. Must be one of: {', '.join(valid_statuses)}"}
+    try:
+        user_id = auth.get_user_id_from_context(ctx)
+        creds = await auth.get_google_creds(user_id)
+        user_info = await auth.get_user_info(user_id)
+        service = auth.authenticate_gcal(creds)
+
+        def _get_event_sync():
+            return service.events().get(calendarId=calendar_id, eventId=event_id).execute()
+
+        event = await asyncio.to_thread(_get_event_sync)
+
+        attendees = event.get('attendees', [])
+        user_email = user_info.get("email")
+
+        if not user_email:
+             return {"status": "failure", "error": "Could not determine user's email to update attendance."}
+
+        attendee_found = False
+        for attendee in attendees:
+            if attendee.get('email') == user_email:
+                attendee['responseStatus'] = response_status
+                attendee_found = True
+                break
+
+        if not attendee_found:
+            return {"status": "failure", "error": "You are not listed as an attendee for this event."}
+
+        def _execute_sync_patch():
+            return service.events().patch(calendarId=calendar_id, eventId=event_id, body={'attendees': attendees}, sendUpdates="all").execute()
+
+        updated_event = await asyncio.to_thread(_execute_sync_patch)
+        return {"status": "success", "result": f"Your response for '{updated_event.get('summary')}' has been updated to '{response_status}'."}
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 

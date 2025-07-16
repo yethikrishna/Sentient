@@ -1,6 +1,5 @@
 # src/server/workers/extractor/config.py
 import os
-
 import logging
 from dotenv import load_dotenv
 

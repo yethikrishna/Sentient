@@ -614,13 +614,11 @@ const IntegrationsPage = () => {
 			if (googleServices.includes(serviceName)) {
 				authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(
 					redirectUri
-				)}&response_type=code&scope=${encodeURIComponent(
-					scope
-				)}&access_type=offline&prompt=consent&state=${serviceName}`
+				)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=consent&state=${serviceName}`
 			} else if (serviceName === "github") {
-				authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
-					redirectUri
-				)}&scope=${encodeURIComponent(scope)}&state=${serviceName}`
+				// For GitHub, it's safer to omit the redirect_uri and let it use the default
+				// configured in the OAuth App settings to avoid mismatches.
+				authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&scope=${encodeURIComponent(scope)}&state=${serviceName}`
 			} else if (serviceName === "slack") {
 				authUrl = `https://slack.com/oauth/v2/authorize?client_id=${clientId}&user_scope=${encodeURIComponent(
 					scope

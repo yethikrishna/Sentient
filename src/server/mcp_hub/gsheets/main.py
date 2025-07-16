@@ -8,6 +8,7 @@ from fastmcp import FastMCP, Context
 from qwen_agent.agents import Assistant
 from json_extractor import JsonExtractor
 
+from .tools import register_tools
 from . import auth, prompts, utils
 
 # --- LLM and Environment Configuration ---
@@ -33,6 +34,9 @@ mcp = FastMCP(
     name="GSheetsServer",
     instructions="This server provides tools to create Google Sheets in a two-step process.",
 )
+
+# Register all 19 Google-Sheets tools
+register_tools(mcp)
 
 @mcp.resource("prompt://gsheets-agent-system")
 def get_gsheets_system_prompt() -> str:

@@ -19,7 +19,7 @@ ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
 if ENVIRONMENT == 'dev-local':
     dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
     if os.path.exists(dotenv_path):
-        load_dotenv(dotenv_path=dotenv_path)
+        load_dotenv(dotenv_path=dotenv_path, override=True)
 
 MONGO_URI = os.getenv("MONGO_URI")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
@@ -63,7 +63,7 @@ async def get_google_creds(user_id: str) -> Credentials:
     
     user_data = user_doc["userData"]
     gpeople_data = user_data.get("integrations", {}).get("gpeople")
-    if not gpeople_data or not gpeople_data.get("connected") or "credentials" not in gpeople_data:
+    if not gpeople_data or not gpeople_data.get("connected") or not gpeople_data.get("credentials"):
         raise ToolError(f"Google People integration not connected. Please use the default connect flow.")
 
     try:

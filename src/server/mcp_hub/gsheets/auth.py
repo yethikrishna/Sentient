@@ -60,7 +60,7 @@ async def get_google_creds(user_id: str) -> Credentials:
 
     user_data = user_doc["userData"]
     gsheets_data = user_data.get("integrations", {}).get("gsheets")
-    if not gsheets_data or not gsheets_data.get("connected") or "credentials" not in gsheets_data:
+    if not gsheets_data or not gsheets_data.get("connected") or not gsheets_data.get("credentials"):
         raise ToolError(f"Google Sheets integration not connected. Please use the default connect flow.")
     
     try:

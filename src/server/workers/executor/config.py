@@ -6,10 +6,13 @@ from dotenv import load_dotenv
 # Load .env file for 'dev-local' environment.
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
 if ENVIRONMENT == 'dev-local':
-    # The .env file is expected to be in the `src/server` directory
-    dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
-    if os.path.exists(dotenv_path):
-        load_dotenv(dotenv_path=dotenv_path)
+    # Prefer .env.local, fall back to .env
+    server_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+    dotenv_local_path = os.path.join(server_root, '.env.local')
+    dotenv_path = os.path.join(server_root, '.env')
+    load_path = dotenv_local_path if os.path.exists(dotenv_local_path) else dotenv_path
+    if os.path.exists(load_path):
+        load_dotenv(dotenv_path=load_path)
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_dev_db")
 

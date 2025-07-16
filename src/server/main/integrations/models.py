@@ -1,6 +1,6 @@
 # src/server/main/integrations/models.py
 from pydantic import BaseModel, Field
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 class ManualConnectRequest(BaseModel):
     service_name: str
@@ -9,7 +9,7 @@ class ManualConnectRequest(BaseModel):
 class OAuthConnectRequest(BaseModel):
     service_name: str
     code: str
-    redirect_uri: str
+    redirect_uri: Optional[str] = None
 
 class DisconnectRequest(BaseModel):
     service_name: str

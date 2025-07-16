@@ -94,3 +94,4 @@ async def summarize_emails_with_gemini(emails: List[Dict]) -> str:
         response = client.generate_content(prompt)
         return response.text
     except Exception as e:
+        return {"status": "failure", "error": str(e)}

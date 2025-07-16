@@ -1,13 +1,14 @@
 import os
 import asyncio
+import json
 from typing import Dict, Any, Optional, List
-from qwen_agent.agents import Assistant
-from .tools import register_tools
-from . import auth, prompts, utils
+
 from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from googleapiclient.errors import HttpError
 
+
+from . import auth, prompts
 
 # --- LLM and Environment Configuration ---
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
@@ -16,25 +17,10 @@ if ENVIRONMENT == 'dev-local':
     if os.path.exists(dotenv_path):
         load_dotenv(dotenv_path=dotenv_path)
 
-OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL", "http://localhost:11434")
-OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "qwen3:4b")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ollama")
-
-def get_generator_agent():
-    """Initializes a Qwen agent specifically for generating JSON outlines internally."""
-    llm_cfg = {
-        'model': OPENAI_MODEL_NAME,
-        'model_server': f"{OPENAI_API_BASE_URL.rstrip('/')}/v1",
-        'api_key': OPENAI_API_KEY,
-    }
-    return Assistant(llm=llm_cfg, system_message=prompts.JSON_GENERATOR_SYSTEM_PROMPT, function_list=[])
-
 mcp = FastMCP(
     name="GDocsServer",
     instructions="This server provides tools to create and manage Google Docs.",
 )
-
-register_tools(mcp)
 
 @mcp.resource("prompt://gdocs-agent-system")
 def get_gdocs_system_prompt() -> str:

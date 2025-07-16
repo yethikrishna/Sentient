@@ -3,7 +3,8 @@ import json
 from typing import Dict, Any, Optional, List
 
 from dotenv import load_dotenv
-from fastmcp import FastMCP, Context, ToolError
+from fastmcp import FastMCP, Context
+from fastmcp.exceptions import ToolError
 from fastmcp.prompts.prompt import Message
 from notion_client.helpers import is_full_page_or_database
 

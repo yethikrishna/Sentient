@@ -8,12 +8,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DEBIAN_FRONTEND=noninteractive
 
 # Install system dependencies
-# - supervisor: process manager
-# - nginx: web server
-# - curl, wget, gnupg, unzip: needed for Chrome/Chromedriver install
-# - fonts-liberation: avoid font rendering issues
-# - xvfb: virtual display for headless Selenium
-# - libnss3, libatk-bridge2.0-0: common Chrome runtime deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
     supervisor \
     nginx \
@@ -29,24 +23,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgtk-3-0 \
     libasound2 \
     fonts-liberation \
+    python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-ENV CHROME_VERSION=125.0.6422.112
-ENV CHROMEDRIVER_VERSION=125.0.6422.112
-
-# Add Google’s signing key and repository
+# Add Google’s signing key and repository for Chrome
 RUN mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /etc/apt/keyrings/google.gpg \
     && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list
 
-# Install Google Chrome
+# Install latest Google Chrome
 RUN apt-get update \
     && apt-get install -y --no-install-recommends google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-
-# Install Chromedriver
-RUN wget -q -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/${CHROMEDRIVER_VERSION}/linux64/chromedriver-linux64.zip" \
+# Dynamically fetch and install matching Chromedriver
+RUN CHROME_VERSION=$(google-chrome --version | awk '{print $3}') \
+    && echo "Detected Chrome version: $CHROME_VERSION" \
+    && MAJOR_VERSION=$(echo $CHROME_VERSION | cut -d '.' -f 1) \
+    && echo "Detected Chrome major version: $MAJOR_VERSION" \
+    && DRIVER_URL=$(curl -sSL "https://googlechromelabs.github.io/chrome-for-testing/latest-patch-versions-per-build-with-downloads.json" | \
+    python3 -c "import sys, json; print(json.load(sys.stdin)['$MAJOR_VERSION']['downloads']['chromedriver'][0]['url'])") \
+    && echo "Downloading Chromedriver from: $DRIVER_URL" \
+    && wget -q -O /tmp/chromedriver.zip "$DRIVER_URL" \
     && unzip -j /tmp/chromedriver.zip '*/chromedriver' -d /usr/local/bin/ \
     && chmod +x /usr/local/bin/chromedriver \
     && rm -f /tmp/chromedriver.zip

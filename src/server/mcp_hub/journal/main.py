@@ -3,19 +3,30 @@ import datetime
 from typing import Dict, Any, Optional
 
 from dotenv import load_dotenv
+from celery import Celery
 from fastmcp import FastMCP, Context
 from . import auth, utils
 
 # Load .env file for 'dev-local' environment.
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
 if ENVIRONMENT == 'dev-local':
-    dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+    dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', '.env')
     if os.path.exists(dotenv_path):
         load_dotenv(dotenv_path=dotenv_path)
+
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
 
 mcp = FastMCP(
     name="JournalServer",
     instructions="This server provides tools to read from and write to the user's daily journal."
+)
+
+# Celery app for dispatching tasks
+celery_app = Celery(
+    'journal_mcp_client',
+    broker=CELERY_BROKER_URL,
+    backend=CELERY_RESULT_BACKEND
 )
 
 db_manager = utils.JournalDBManager()
@@ -32,8 +43,16 @@ async def add_journal_entry(ctx: Context, content: str, date: Optional[str] = No
             sort=[("order", -1)]
         )
         new_order = (last_block["order"] + 1) if last_block else 0
-        
+
         new_block = await db_manager.add_block(user_id, content, date_str, new_order)
+
+        # Dispatch task to extractor worker to process the new journal entry
+        event_data = {
+            "content": new_block.get('content', ''),
+            "page_date": new_block.get('page_date', '')
+        }
+        celery_app.send_task('extract_from_context', args=[user_id, "journal_block", new_block['block_id'], event_data])
+
         return {"status": "success", "result": f"New journal block added with ID: {new_block['block_id']}"}
     except Exception as e:
         return {"status": "failure", "error": str(e)}

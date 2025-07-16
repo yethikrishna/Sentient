@@ -14,7 +14,7 @@ from main.auth.utils import PermissionChecker, AuthHelper, aes_encrypt, aes_decr
 from main.config import AUTH0_AUDIENCE
 from main.dependencies import mongo_manager, auth_helper, websocket_manager as main_websocket_manager
 from pydantic import BaseModel
-
+from workers.tasks import process_memory_item, process_linkedin_profile
 
 # Google API libraries for validation
 from google.oauth2 import service_account
@@ -24,8 +24,9 @@ from googleapiclient.errors import HttpError
 # For dispatching memory tasks
 from workers.tasks import process_memory_item
 
-class PrivacyFiltersRequest(BaseModel):
-    filters: List[str]
+class UpdatePrivacyFiltersRequest(BaseModel):
+    service: str
+    filters: Dict[str, List[str]]
 
 logger = logging.getLogger(__name__)
 
@@ -44,13 +45,36 @@ async def save_onboarding_data_endpoint(
         # Generate and add supermemory_user_id
         supermemory_user_id = secrets.token_urlsafe(16)
 
-        default_privacy_filters = [
-            "bank statement", "account statement", "OTP", "one-time password",
-            "password reset", "credit card", "debit card", "financial statement",
-            "confidential", "do not share", "ssn", "social security"
-        ]
+        default_privacy_filters = {
+            "gmail": {
+                "keywords": [
+                    "bank statement", "account statement", "OTP", "one-time password",
+                    "password reset", "credit card", "debit card", "financial statement",
+                    "confidential", "do not share", "ssn", "social security"
+                ],
+                "emails": [],
+                "labels": []
+            },
+            "gcalendar": {
+                "keywords": [
+                    "confidential"
+                ]
+            }
+        }
 
         onboarding_data = request_body.data
+        # Sanitize empty optional fields
+        onboarding_data["agent-name"] = onboarding_data.get("agent-name", "").strip()
+
+        # --- Handle LinkedIn URL ---
+        linkedin_url = onboarding_data.get("linkedin-url")
+        if linkedin_url and isinstance(linkedin_url, str) and "linkedin.com/in/" in linkedin_url:
+            logger.info(f"LinkedIn URL provided for user {user_id}. Dispatching scraping task.")
+            try:
+                process_linkedin_profile.delay(user_id, linkedin_url)
+            except Exception as celery_dispatch_error:
+                logger.error(f"Failed to dispatch LinkedIn scraping task for user {user_id}: {celery_dispatch_error}", exc_info=True)
+                # This is fail-safe, so we just log and continue.
 
         # --- Prepare data for MongoDB ---
         user_data_to_set: Dict[str, Any] = {
@@ -58,6 +82,18 @@ async def save_onboarding_data_endpoint(
             "onboardingComplete": True,
             "supermemory_user_id": supermemory_user_id,
             "privacyFilters": default_privacy_filters,
+            "preferences": {
+                "agentName": onboarding_data.get("agent-name") or "Sentient",
+                "responseVerbosity": onboarding_data.get("response-verbosity", "Balanced"),
+                # Set defaults for settings not in onboarding
+                "humorLevel": "Balanced",
+                "useEmojis": True,
+                "quietHours": {"enabled": False, "start": "22:00", "end": "08:00"},
+                "notificationControls": {"taskNeedsApproval": True, "taskCompleted": True, "taskFailed": False, "proactiveSummary": False, "importantInsights": False,
+                },
+                "communicationStyle": onboarding_data.get("communication-style", "Casual & Friendly"),
+                "corePriorities": onboarding_data.get("core-priorities", [])
+            }
         }
 
         # Parse specific answers into structured fields
@@ -78,17 +114,11 @@ async def save_onboarding_data_endpoint(
         if personal_info:
             user_data_to_set["personalInfo"] = personal_info
 
-        preferences = {}
-        if "communication-style" in onboarding_data:
-            preferences["communicationStyle"] = onboarding_data["communication-style"]
-        if "core-priorities" in onboarding_data and isinstance(onboarding_data["core-priorities"], list):
-            preferences["corePriorities"] = onboarding_data["core-priorities"]
-
-        if preferences:
-            user_data_to_set["preferences"] = preferences
-
         # Create the final update payload for MongoDB
-        update_payload = {f"userData.{key}": value for key, value in user_data_to_set.items()}
+        # We construct the payload carefully to avoid replacing the entire userData object
+        update_payload = {}
+        for key, value in user_data_to_set.items():
+            update_payload[f"userData.{key}"] = value
         
         # Save to DB
         success = await mongo_manager.update_user_profile(user_id, update_payload)
@@ -225,24 +255,27 @@ async def user_activity_heartbeat_endpoint(user_id: str = Depends(PermissionChec
         return JSONResponse(content={"message": "User activity timestamp updated."})
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update user activity.")
 
-@router.get("/settings/privacy-filters", summary="Get User Privacy Filters")
-async def get_privacy_filters_endpoint(
-    user_id: str = Depends(PermissionChecker(required_permissions=["read:config"]))
-):
-    profile = await mongo_manager.get_user_profile(user_id)
-    filters = []
-    if profile and profile.get("userData"):
-        filters = profile["userData"].get("privacyFilters", [])
-    
-    return JSONResponse(content={"filters": filters})
-
 @router.post("/settings/privacy-filters", summary="Update User Privacy Filters")
 async def update_privacy_filters_endpoint(
-    request: PrivacyFiltersRequest,
+    request: UpdatePrivacyFiltersRequest,
     user_id: str = Depends(PermissionChecker(required_permissions=["write:config"]))
 ):
-    update_payload = {"userData.privacyFilters": request.filters}
+    if not request.service:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Service name must be provided.")
+    
+    # Validate the structure of the filters
+    if not isinstance(request.filters, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Filters must be a dictionary.")
+    
+    for key, value in request.filters.items():
+        if not isinstance(value, list) or not all(isinstance(i, str) for i in value):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Filter '{key}' must be a list of strings.")
+
+    update_path = f"userData.privacyFilters.{request.service}"
+    update_payload = {update_path: request.filters}
+    
     success = await mongo_manager.update_user_profile(user_id, update_payload)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to update privacy filters.")
+        
     return JSONResponse(content={"message": "Privacy filters updated successfully."})

@@ -17,24 +17,34 @@ import {
 	IconAlertCircle,
 	IconFilter,
 	IconChevronUp,
-	IconPlus,
 	IconGripVertical,
 	IconBrain,
 	IconBook,
 	IconMail,
 	IconCalendarEvent,
 	IconMessage,
-	IconArrowRight,
 	IconPlugConnected,
-	IconChevronDown,
-	IconChecklist
+	IconChecklist,
+	IconHelpCircle as HelpIcon
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import { Tooltip } from "react-tooltip"
-import "react-tooltip/dist/react-tooltip.css"
 import { cn } from "@utils/cn"
 import { motion, AnimatePresence } from "framer-motion"
 import { useRouter } from "next/navigation"
+import { usePostHog } from "posthog-js/react"
+
+const HelpTooltip = ({ content }) => (
+	<div className="absolute top-6 right-6 z-40">
+		<button
+			data-tooltip-id="page-help-tooltip"
+			data-tooltip-content={content}
+			className="p-1.5 rounded-full text-neutral-500 hover:text-white hover:bg-[var(--color-primary-surface)] pulse-glow-animation"
+		>
+			<HelpIcon size={22} />
+		</button>
+	</div>
+)
 
 const statusMap = {
 	pending: {
@@ -99,32 +109,18 @@ const Tasks = () => {
 	const [error, setError] = useState(null)
 	const [editingTask, setEditingTask] = useState(null)
 	const [filterStatus, setFilterStatus] = useState("all")
-	const [isGeneratingPlan, setIsGeneratingPlan] = useState(false)
 	const [searchTerm, setSearchTerm] = useState("")
 	const [viewingTask, setViewingTask] = useState(null)
-	const [isCreatePlanOpen, setCreatePlanOpen] = useState(false)
-	const [createStep, setCreateStep] = useState("generate") // 'generate' or 'review'
 	const [openSections, setOpenSections] = useState({
-		active: true,
+		active: false, // Recurring tasks are less frequently managed
 		approval_pending: true,
 		processing: true,
 		completed: true
 	})
-	const [isAdding, setIsAdding] = useState(false)
-	const [generationPrompt, setGenerationPrompt] = useState("")
-	const [newTaskDescription, setNewTaskDescription] = useState("")
-	const [newTaskPriority, setNewTaskPriority] = useState(1)
-	const [newTaskPlan, setNewTaskPlan] = useState([])
-	const [newSchedule, setNewSchedule] = useState({
-		type: "once",
-		run_at: null,
-		frequency: "daily",
-		time: "09:00",
-		days: []
-	})
 	const [allTools, setAllTools] = useState([])
 	const [integrations, setIntegrations] = useState([])
 	const [loadingIntegrations, setLoadingIntegrations] = useState(true)
+	const posthog = usePostHog()
 
 	const fetchTasksData = useCallback(async () => {
 		setError(null)
@@ -201,93 +197,26 @@ const Tasks = () => {
 		fetchAllToolsAndIntegrations()
 		const intervalId = setInterval(fetchTasksData, 60000)
 		return () => clearInterval(intervalId)
-	}, [fetchTasksData])
-
-	const handleGeneratePlan = async () => {
-		if (!generationPrompt.trim()) {
-			toast.error("Please enter a goal for your plan.")
-			return
-		}
-		setIsGeneratingPlan(true)
-		try {
-			const response = await fetch("/api/tasks/generate-plan", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ prompt: generationPrompt })
-			})
-			const data = await response.json()
-			if (!response.ok) throw new Error(data.detail)
-			if (!data.plan || data.plan.length === 0) {
-				toast.error(
-					"The agent could not generate a plan for this goal. Please try rephrasing."
-				)
-			} else {
-				setNewTaskDescription(data.description || generationPrompt)
-				setNewTaskPlan(data.plan)
-				setCreateStep("review")
-				toast.success("Plan generated! Review and save it below.")
-			}
-		} catch (error) {
-			toast.error(`Plan Generation Failed: ${error.message}`)
-		} finally {
-			setIsGeneratingPlan(false)
-		}
-	}
-
-	const handleAddTask = async () => {
-		if (!newTaskDescription.trim())
-			return toast.error("Please enter a task description.")
-		if (newTaskPlan.some((step) => !step.tool || !step.description.trim()))
-			return toast.error(
-				"All plan steps must have a tool and description."
-			)
-		setIsAdding(true)
-		try {
-			// Clean up schedule object before sending
-			const schedulePayload =
-				newSchedule.type === "once"
-					? { type: "once", run_at: newSchedule.run_at || null }
-					: newSchedule
-
-			const taskData = {
-				description: newTaskDescription,
-				priority: newTaskPriority,
-				plan: newTaskPlan,
-				schedule: schedulePayload
-			}
-
-			const response = await fetch("/api/tasks/add", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(taskData)
-			})
-			if (!response.ok) {
-				const data = await response.json()
-				throw new Error(data.error || "Failed to add task")
-			}
-			toast.success("New plan created successfully!")
-			setGenerationPrompt("")
-			setNewTaskDescription("")
-			setNewTaskPriority(1)
-			setNewTaskPlan([])
-			setNewSchedule({
-				type: "once",
-				run_at: null,
-				frequency: "daily",
-				time: "09:00",
-				days: []
-			})
-			setCreateStep("generate")
-			setCreatePlanOpen(false)
-			await fetchTasksData()
-		} catch (error) {
-			toast.error(`Failed to add task: ${error.message}`)
-		} finally {
-			setIsAdding(false)
-		}
-	}
+	}, [])
 
 	const handleEditTask = (task) => setEditingTask({ ...task })
+	const handleUpdateTaskSchedule = async (taskId, schedule) => {
+		if (!taskId) return false
+		try {
+			const response = await fetch("/api/tasks/update", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ taskId, schedule })
+			})
+			if (!response.ok) throw new Error((await response.json()).error)
+			toast.success("Task schedule updated!")
+			await fetchTasksData() // Refresh data
+			return true // Indicate success
+		} catch (error) {
+			toast.error(`Failed to update schedule: ${error.message}`)
+			return false
+		}
+	}
 	const handleUpdateTask = async () => {
 		if (
 			!editingTask ||
@@ -319,6 +248,11 @@ const Tasks = () => {
 				})
 			})
 			if (!response.ok) throw new Error((await response.json()).error)
+			posthog?.capture("task_edited", {
+				task_id: editingTask.task_id,
+				is_recurring: editingTask.schedule?.type === "recurring"
+			})
+			if (!response.ok) throw new Error((await response.json()).error)
 			toast.success("Task updated successfully!")
 			setEditingTask(null)
 			await fetchTasksData()
@@ -328,6 +262,7 @@ const Tasks = () => {
 	}
 	const handleDeleteTask = async (taskId) => {
 		if (!taskId || !window.confirm("Delete this task forever?")) return
+		const taskToDelete = tasks.find((t) => t.task_id === taskId)
 		try {
 			const response = await fetch("/api/tasks/delete", {
 				method: "POST",
@@ -337,6 +272,9 @@ const Tasks = () => {
 			if (!response.ok) throw new Error((await response.json()).error)
 			toast.success("Task deleted!")
 			setViewingTask(null)
+			if (taskToDelete?.status === "approval_pending") {
+				posthog?.capture("task_disapproved", { task_id: taskId })
+			}
 			await fetchTasksData()
 		} catch (error) {
 			toast.error(`Failed to delete task: ${error.message}`)
@@ -356,6 +294,7 @@ const Tasks = () => {
 					toast.error(errorData.detail, { duration: 6000 })
 				else throw new Error(errorData.error || "Approval failed")
 			} else {
+				posthog?.capture("task_approved", { task_id: taskId })
 				toast.success("Plan approved and queued for execution.")
 			}
 			setViewingTask(null)
@@ -377,6 +316,7 @@ const Tasks = () => {
 				body: JSON.stringify({ taskId })
 			})
 			if (!response.ok) throw new Error((await response.json()).error)
+			posthog?.capture("task_rerun", { original_task_id: taskId })
 			toast.success("Task duplicated for approval.")
 			await fetchTasksData()
 		} catch (error) {
@@ -412,7 +352,9 @@ const Tasks = () => {
 	return (
 		<div className="flex h-screen bg-gradient-to-br from-[var(--color-primary-background)] via-[var(--color-primary-background)] to-[var(--color-primary-surface)]/20 text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
 			<Tooltip id="tasks-tooltip" />
-			<div className="flex-1 flex flex-col overflow-hidden h-screen">
+			<Tooltip id="page-help-tooltip" />
+			<div className="flex-1 flex flex-col overflow-hidden relative">
+				<HelpTooltip content="This is the Tasks page. Here you can view all your tasks and approve new ones." />
 				<motion.header
 					initial={{ y: -20, opacity: 0 }}
 					animate={{ y: 0, opacity: 1 }}
@@ -469,7 +411,7 @@ const Tasks = () => {
 				</motion.header>
 
 				<main className="flex-1 w-full max-w-3xl mx-auto flex flex-col overflow-y-auto custom-scrollbar px-4">
-					<div className="space-y-2 pt-6 pb-36">
+					<div className="space-y-2 pt-6 pb-6">
 						{loading || loadingIntegrations ? (
 							<div className="flex justify-center items-center h-full">
 								<IconLoader className="w-12 h-12 animate-spin text-[var(--color-accent-blue)]" />
@@ -480,7 +422,7 @@ const Tasks = () => {
 							</div>
 						) : filteredTasks.length === 0 ? (
 							<p className="text-gray-500 text-center py-20 mt-5">
-								No tasks found. Create a new plan below!
+								No tasks found.
 							</p>
 						) : (
 							<>
@@ -492,6 +434,7 @@ const Tasks = () => {
 									onViewDetails={setViewingTask}
 									onEditTask={handleEditTask}
 									onDeleteTask={handleDeleteTask}
+									onUpdateSchedule={handleUpdateTaskSchedule}
 								/>
 								<CollapsibleSection
 									title="Pending Approval"
@@ -504,6 +447,7 @@ const Tasks = () => {
 									onEditTask={handleEditTask}
 									onDeleteTask={handleDeleteTask}
 									onApproveTask={handleApproveTask}
+									onUpdateSchedule={handleUpdateTaskSchedule}
 									integrations={integrations}
 								/>
 								<CollapsibleSection
@@ -530,111 +474,6 @@ const Tasks = () => {
 						)}
 					</div>
 				</main>
-
-				<div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/50 via-neutral-900/80 to-transparent backdrop-blur-sm border-t border-neutral-700/50 z-20">
-					<div className="max-w-3xl mx-auto">
-						<div
-							onClick={() => setCreatePlanOpen(!isCreatePlanOpen)}
-							className="flex justify-between items-center cursor-pointer"
-						>
-							<h3 className="text-lg font-semibold text-white">
-								Create a New Plan
-							</h3>
-							<IconChevronDown
-								className={cn(
-									"transform transition-transform duration-200",
-									!isCreatePlanOpen && "rotate-180"
-								)}
-							/>
-						</div>
-						<AnimatePresence>
-							{isCreatePlanOpen && (
-								<motion.div
-									key="create-plan-panel"
-									initial={{ height: 0, opacity: 0 }}
-									animate={{ height: "auto", opacity: 1 }}
-									exit={{ height: 0, opacity: 0 }}
-									className="overflow-hidden"
-								>
-									{createStep === "generate" ? (
-										<div className="space-y-4 pt-4">
-											<label className="text-sm font-medium text-gray-300 mb-1 block">
-												What is your goal?
-											</label>
-											<textarea
-												placeholder="e.g., Send a daily summary of my calendar to my boss"
-												value={generationPrompt}
-												onChange={(e) =>
-													setGenerationPrompt(
-														e.target.value
-													)
-												}
-												rows={3}
-												className="w-full p-3 bg-neutral-800/50 border border-neutral-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 backdrop-blur-sm transition-colors"
-											/>
-											<div className="flex justify-end">
-												<button
-													onClick={handleGeneratePlan}
-													disabled={isGeneratingPlan}
-													className="p-3 px-6 bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] rounded-lg text-white font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
-												>
-													{isGeneratingPlan ? (
-														<IconLoader className="w-5 h-5 animate-spin" />
-													) : (
-														<>
-															Next: Review Plan{" "}
-															<IconArrowRight className="w-4 h-4" />
-														</>
-													)}
-												</button>
-											</div>
-										</div>
-									) : (
-										// REVIEW STEP
-										<div className="space-y-6 pt-4">
-											<PlanEditor
-												description={newTaskDescription}
-												setDescription={
-													setNewTaskDescription
-												}
-												priority={newTaskPriority}
-												setPriority={setNewTaskPriority}
-												plan={newTaskPlan}
-												setPlan={setNewTaskPlan}
-												schedule={newSchedule}
-												setSchedule={setNewSchedule}
-												allTools={allTools}
-												integrations={integrations}
-											/>
-											<div className="flex justify-between items-center">
-												<button
-													onClick={() =>
-														setCreateStep(
-															"generate"
-														)
-													}
-													className="py-2.5 px-6 rounded-lg bg-[var(--color-primary-surface-elevated)] hover:bg-[var(--color-primary-surface)] text-white text-sm font-semibold"
-												>
-													Back
-												</button>
-												<button
-													onClick={handleAddTask}
-													disabled={isAdding}
-													className="py-2.5 px-6 rounded-lg bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
-												>
-													{isAdding && (
-														<IconLoader className="h-5 h-5 animate-spin" />
-													)}
-													Save New Plan
-												</button>
-											</div>
-										</div>
-									)}
-								</motion.div>
-							)}
-						</AnimatePresence>
-					</div>
-				</div>
 			</div>
 			{viewingTask && (
 				<TaskDetailsModal
@@ -650,6 +489,7 @@ const Tasks = () => {
 					onClose={() => setEditingTask(null)}
 					onSave={handleUpdateTask}
 					setTask={setEditingTask}
+					onUpdateSchedule={handleUpdateTaskSchedule}
 					allTools={allTools}
 					integrations={integrations}
 				/>
@@ -794,7 +634,7 @@ const PlanEditor = ({
 					onClick={handleAddStep}
 					className="flex items-center gap-1.5 py-1.5 px-3 rounded-full bg-[var(--color-primary-surface-elevated)] hover:bg-[var(--color-primary-surface)] text-xs"
 				>
-					<IconPlus className="h-4 w-4" /> Add Step
+					<IconGripVertical className="h-4 w-4" /> Add Step
 				</button>
 			</div>
 			<div>
@@ -812,6 +652,7 @@ const EditTaskModal = ({
 	onClose,
 	onSave,
 	setTask,
+	onUpdateSchedule,
 	allTools,
 	integrations
 }) => {
@@ -848,9 +689,10 @@ const EditTaskModal = ({
 						plan={task.plan}
 						setPlan={(val) => setTask({ ...task, plan: val })}
 						schedule={safeSchedule}
-						setSchedule={(val) =>
+						setSchedule={(val) => {
+							onUpdateSchedule(task.task_id, val)
 							setTask({ ...task, schedule: val })
-						}
+						}}
 						allTools={allTools}
 						integrations={integrations}
 					/>

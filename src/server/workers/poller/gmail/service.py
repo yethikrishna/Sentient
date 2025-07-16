@@ -1,10 +1,10 @@
-# src/server/workers/pollers/gmail/service.py
 import asyncio
 import datetime
 from datetime import timezone
 import traceback
 import time # For sleep
 import logging # Import logging
+import re
 
 from workers.poller.gmail.config import POLLING_INTERVALS_WORKER as POLL_CFG
 from workers.poller.gmail.db import PollerMongoManager
@@ -69,7 +69,12 @@ class GmailPollingService:
                 updated_state["next_scheduled_poll_time"] = datetime.datetime.now(timezone.utc) + datetime.timedelta(days=1)
                 return
 
-            privacy_filters = user_profile.get("userData", {}).get("privacyFilters", [])
+            all_privacy_filters = user_profile.get("userData", {}).get("privacyFilters", {})
+            gmail_filters = all_privacy_filters.get("gmail", {})
+            keyword_filters = gmail_filters.get("keywords", [])
+            email_filters = [email.lower() for email in gmail_filters.get("emails", [])]
+            label_filters = [label.lower() for label in gmail_filters.get("labels", [])]
+
             creds = await get_gmail_credentials(user_id, self.db_manager)
             if not creds:
                 logger.error(f"No valid Gmail credentials for user {user_id}. Disabling polling.")
@@ -86,10 +91,25 @@ class GmailPollingService:
 
             for email in emails:
                 email_item_id = email["id"]
-
+                
+                # Keyword check
                 content_to_check = (email.get("subject", "") + " " + email.get("body", "")).lower()
-                if any(word.lower() in content_to_check for word in privacy_filters):
-                    logger.info(f"Skipping email {email['id']} for user {user_id} due to privacy filter match.")
+                if any(word.lower() in content_to_check for word in keyword_filters):
+                    logger.info(f"Skipping email {email['id']} for user {user_id} due to keyword filter match.")
+                    continue
+                
+                # Sender email check
+                sender_header = email.get("from", "")
+                sender_match = re.search(r'<(.+?)>', sender_header)
+                sender_email = sender_match.group(1).lower() if sender_match else sender_header.lower()
+                if any(blocked_email in sender_email for blocked_email in email_filters):
+                    logger.info(f"Skipping email {email['id']} for user {user_id} due to sender filter match: {sender_email}")
+                    continue
+
+                # Label check
+                email_labels = [label.lower() for label in email.get("labels", [])]
+                if any(blocked_label in email_labels for blocked_label in label_filters):
+                    logger.info(f"Skipping email {email['id']} for user {user_id} due to label filter match.")
                     continue
 
                 if not await self.db_manager.is_item_processed(user_id, self.service_name, email_item_id):

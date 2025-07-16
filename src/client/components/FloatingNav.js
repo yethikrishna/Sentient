@@ -11,13 +11,14 @@ import {
 	IconLogout,
 	IconUser, // Keep for fallback
 	IconUserCircle,
-	IconMessage
+	IconMessage,
+	IconPlugConnected
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import { motion } from "framer-motion"
 import { cn } from "@utils/cn"
 
-export default function FloatingNav({ onChatOpen }) {
+export default function FloatingNav({ onChatOpen, onNotificationsOpen }) {
 	const router = useRouter()
 	const pathname = usePathname()
 	const [userDetails, setUserDetails] = useState(null)
@@ -158,33 +159,33 @@ export default function FloatingNav({ onChatOpen }) {
 			)
 		},
 		{
-			title: "Tasks",
-			href: "/tasks",
-			icon: (
-				<IconChecklist className="h-full w-full text-neutral-500 dark:text-neutral-300" />
-			)
-		},
-		{
-			title: "Journal",
+			title: "Organizer",
 			href: "/journal",
 			icon: (
 				<IconBook className="h-full w-full text-neutral-500 dark:text-neutral-300" />
 			)
 		},
 		{
+			title: "Integrations",
+			href: "/integrations",
+			icon: (
+				<IconPlugConnected className="h-full w-full text-neutral-500 dark:text-neutral-300" />
+			)
+		},
+		{
 			title: "Notifications",
-			href: "/notifications",
+			href: "#",
 			icon: <NotificationIcon />,
 			onClick: () => {
 				setUnreadCount(0)
-				router.push("/notifications")
+				onNotificationsOpen()
 			}
 		},
 		{
-			title: "Profile",
+			title: "Settings",
 			href: "/settings",
 			icon: (
-				<IconUserCircle className="h-full w-full text-neutral-500 dark:text-neutral-300" />
+				<IconAdjustments className="h-full w-full text-neutral-500 dark:text-neutral-300" />
 			)
 		}
 	]
@@ -204,7 +205,7 @@ export default function FloatingNav({ onChatOpen }) {
 	if (userDetails && !isSelfHost) {
 		allLinks.push({
 			title: "Logout",
-			href: "/api/auth/logout",
+			href: "/auth/logout",
 			icon: (
 				<IconLogout className="h-full w-full text-neutral-500 dark:text-neutral-300" />
 			)
@@ -215,5 +216,8 @@ export default function FloatingNav({ onChatOpen }) {
 		return null
 	}
 
-	return <FloatingDock items={allLinks} />
+	// Filter out the "Profile" link and replace it with "Settings"
+	const finalLinks = allLinks.filter((link) => link.title !== "Profile")
+
+	return <FloatingDock items={finalLinks} />
 }

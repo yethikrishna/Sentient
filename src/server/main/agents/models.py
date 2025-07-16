@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, List
 
 class TaskStep(BaseModel):
     tool: str
@@ -20,6 +20,14 @@ class UpdateTaskRequest(BaseModel):
     priority: Optional[int] = None
     plan: Optional[List[TaskStep]] = None
     schedule: Optional[Dict[str, Any]] = None
+    enabled: Optional[bool] = None
 
 class TaskIdRequest(BaseModel):
     taskId: str
+class AnswerItem(BaseModel):
+    question_id: str
+    answer_text: str
+
+class AnswerClarificationRequest(BaseModel):
+    taskId: str
+    answers: List[AnswerItem]

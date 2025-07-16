@@ -57,8 +57,8 @@ async def create_journal_block(
         "created_by": "user",
         "created_at": now,
         "updated_at": now,
-        "linked_task_id": None,
-        "task_status": None,
+        "linked_task_id": request.linked_task_id,
+        "task_status": request.task_status,
         "task_progress": [],
         "task_result": None
     }
@@ -133,10 +133,28 @@ async def delete_journal_block(
     block_id: str,
     user_id: str = Depends(PermissionChecker(required_permissions=["write:journal"]))
 ):
-    """Deletes a journal block."""
+    """Deletes a journal block and any linked task."""
+    # Find the block first to get the linked task ID
+    block_to_delete = await mongo_manager.journal_blocks_collection.find_one(
+        {"user_id": user_id, "block_id": block_id}
+    )
+
+    if not block_to_delete:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Block not found")
+
+    # If there's a linked task, delete it first
+    if linked_task_id := block_to_delete.get("linked_task_id"):
+        await mongo_manager.task_collection.delete_one(
+            {"task_id": linked_task_id, "user_id": user_id},
+        )
+        logger.info(f"Deleted linked task {linked_task_id} while deleting journal block {block_id}.")
+
+    # Now delete the journal block itself
     result = await mongo_manager.journal_blocks_collection.delete_one(
         {"user_id": user_id, "block_id": block_id}
     )
     if result.deleted_count == 0:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Block not found")
+        # This case should be rare since we found it above, but good for safety
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Block not found during deletion.")
+
     return

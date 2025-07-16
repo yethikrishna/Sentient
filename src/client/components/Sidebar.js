@@ -12,7 +12,8 @@ import {
 	IconPlus,
 	IconSearch,
 	IconUser,
-	IconX
+	IconX,
+	IconPlugConnected
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import { AnimatePresence, motion } from "framer-motion"
@@ -274,7 +275,12 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 						<NavLink
 							href="/journal"
 							icon={<IconBook />}
-							label="Journal"
+							label="Organizer"
+						/>
+						<NavLink
+							href="/integrations"
+							icon={<IconPlugConnected />}
+							label="Integrations"
 						/>
 						<NavLink
 							href="/notifications"

@@ -49,6 +49,19 @@ try {
     if (-not (Test-Path -Path $mcpHubPath)) { throw "The 'src/server/mcp_hub' directory was not found." }
     if (-not (Test-Path -Path $venvActivatePath)) { throw "The venv activation script was not found at '$venvActivatePath'." }
 
+    $envFilePath = Join-Path -Path $serverPath -ChildPath ".env"
+    $redisPassword = ""
+    if (Test-Path $envFilePath) {
+        $envContent = Get-Content $envFilePath
+        $passwordLine = $envContent | Select-String -Pattern "^\s*REDIS_PASSWORD\s*=\s*(.+)"
+        if ($passwordLine) {
+            $redisPassword = $passwordLine.Matches[0].Groups[1].Value.Trim()
+        }
+    }
+    if (-not $redisPassword) {
+        throw "Could not find REDIS_PASSWORD in the src/server/.env file."
+    }
+
     # Helper function to start a process in a new terminal window
     function Start-NewTerminal {
         param(
@@ -81,7 +94,8 @@ try {
 
     # Start Redis Server (for Celery)
     Write-Host "🚀 Launching Redis Server (in WSL)..." -ForegroundColor Yellow
-    Start-NewTerminal -WindowTitle "SERVICE - Redis" -Command "wsl -d $wslDistroName -e redis-server --bind 0.0.0.0"
+    $redisStartCommand = "wsl -d $wslDistroName -e redis-server --bind 0.0.0.0 --requirepass `"$redisPassword`""
+    Start-NewTerminal -WindowTitle "SERVICE - Redis" -Command $redisStartCommand
     Start-Sleep -Seconds 2
 
     # --- 2. Start MCP Servers ---

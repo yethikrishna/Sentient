@@ -174,10 +174,7 @@ function IconContainer({ mouseY, title, icon, href, onClick, pathname }) {
 	const isActive = href === pathname
 
 	const newIcon = React.cloneElement(icon, {
-		className: cn(
-			icon.props.className,
-			isActive && "text-white"
-		)
+		className: cn(icon.props.className, isActive && "text-white")
 	})
 
 	return (
@@ -195,7 +192,12 @@ function IconContainer({ mouseY, title, icon, href, onClick, pathname }) {
 				style={{ width, height }}
 				onMouseEnter={() => setHovered(true)}
 				onMouseLeave={() => setHovered(false)}
-				className="relative flex aspect-square items-center justify-center rounded-full bg-[var(--color-primary-surface-elevated)] hover:bg-[var(--color-accent-blue)]/20 transition-all duration-200 border border-[var(--color-primary-surface-elevated)] shadow-md hover:shadow-lg"
+				className={cn(
+					"relative flex aspect-square items-center justify-center rounded-full bg-[var(--color-primary-surface-elevated)] transition-all duration-200 border border-[var(--color-primary-surface-elevated)] shadow-md hover:shadow-lg",
+					isActive
+						? "bg-[var(--color-accent-blue)]"
+						: "hover:bg-[var(--color-accent-blue)]/20"
+				)}
 			>
 				<AnimatePresence>
 					{hovered && (
@@ -219,4 +221,3 @@ function IconContainer({ mouseY, title, icon, href, onClick, pathname }) {
 		</a>
 	)
 }
-

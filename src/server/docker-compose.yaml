@@ -3,64 +3,68 @@
 # This file defines how to run your application using Docker Compose.
 # It now orchestrates the main application, Redis, and the WAHA service.
 
-version: "3.8"
-
 services:
-  # 1. The Main Sentient Application (FastAPI, Nginx, Celery, MCPs)
-  sentient-app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: sentient-app
-    restart: unless-stopped
-    env_file:
-      - ./.env
-    ports:
-      # Exposes Nginx (running on port 80 in the container) to port 5000 on the host.
-      # This is the primary public-facing port for your entire application.
-      - "5000:80"
-    depends_on:
-      - redis
-      - waha
-    networks:
-      - sentient_network
+    # 1. The Main Sentient Application (FastAPI, Nginx, Celery, MCPs)
+    sentient-app:
+        build:
+            context: .
+            dockerfile: Dockerfile
+            # Pass variables from the .env file as build arguments for conditional builds
+            args:
+                - OPENAI_API_KEY=${OPENAI_API_KEY}
+                - OPENAI_MODEL_NAME=${OPENAI_MODEL_NAME}
+        container_name: sentient-app
+        restart: unless-stopped
+        env_file:
+            - ./.env
+        ports:
+            # Exposes Nginx (running on port 80 in the container) to port 5000 on the host.
+            # This is the primary public-facing port for your entire application.
+            - "5000:80"
+        depends_on:
+            - redis
+            - waha
+        networks:
+            - sentient_network
 
-  # 2. Redis for Celery Broker & Backend
-  redis:
-    image: redis:7-alpine
-    container_name: redis-db
-    restart: unless-stopped
-    # Use the password from the .env file, ensuring it's quoted
-    command: redis-server --requirepass "${REDIS_PASSWORD}"
-    volumes:
-      # Use a named volume for persistent Redis data
-      - redis-data:/data
-    networks:
-      - sentient_network
-    env_file:
-      - ./.env
-    # No ports are exposed to the host. Communication is internal and secure.
+    # 2. Redis for Celery Broker & Backend
+    redis:
+        image: redis:7-alpine
+        container_name: redis-db
+        restart: unless-stopped
+        # Use the password from the .env file, ensuring it's quoted
+        command: redis-server --requirepass "${REDIS_PASSWORD}"
+        volumes:
+            # Use a named volume for persistent Redis data
+            - redis-data:/data
+        networks:
+            - sentient_network
+        env_file:
+            - ./.env
+        # No ports are exposed to the host. Communication is internal and secure.
 
-  # 3. WAHA (WhatsApp HTTP API) Service
-  waha:
-    image: devlikeapro/waha:noweb
-    container_name: waha-notifier
-    restart: unless-stopped
-    volumes:
-      # Use a named volume for persistent WhatsApp session data
-      - waha-sessions:/app/.sessions
-    networks:
-      - sentient_network
-    env_file:
-      - ./.env
-    # No ports are exposed to the host. The sentient-app communicates with it internally.
+    # 3. WAHA (WhatsApp HTTP API) Service
+    waha:
+        image: devlikeapro/waha:noweb
+        container_name: waha-notifier
+        restart: unless-stopped
+        volumes:
+            # Use a named volume for persistent WhatsApp session data
+            - waha-sessions:/app/.sessions
+        networks:
+            - sentient_network
+        env_file:
+            - ./.env
+        ports:
+            - "8000:3000"
+        # No ports are exposed to the host. The sentient-app communicates with it internally.
 
 # Defines the shared network for all services
 networks:
-  sentient_network:
-    driver: bridge
+    sentient_network:
+        driver: bridge
 
 # Defines the named volumes for data persistence
 volumes:
-  redis-data:
-  waha-sessions:
+    redis-data:
+    waha-sessions:

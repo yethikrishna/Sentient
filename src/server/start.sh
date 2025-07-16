@@ -1,31 +1,31 @@
 #!/bin/sh
 set -e
 
-# This script runs inside the Docker container to load environment variables
-# from a file before starting supervisord. This ensures all supervisord-managed
-# processes inherit the same environment.
+# This script runs inside the Docker container to start supervisord.
+# For self-hosting, environment variables are injected directly by Docker Compose.
+# For other environments (dev-cloud, stag), it sources /app/.env.
 
-ENV_FILE="/app/.env"
-TEMP_ENV_FILE="/tmp/filtered.env"
-
-if [ -f "$ENV_FILE" ]; then
-    echo "start.sh: Found $ENV_FILE, sourcing variables for supervisord..."
-    # Ensure Unix line endings for compatibility.
-    dos2unix "$ENV_FILE" >/dev/null 2>&1 || true
-    
-    # Filter out comments and empty lines, and write to a temporary file
-    grep -v -e '^\s*#' -e '^\s*$' "$ENV_FILE" > "$TEMP_ENV_FILE"
-
-    # Set the 'allexport' option to export all subsequent variable definitions.
-    # Then, source the temporary file.
-    set -a
-    . "$TEMP_ENV_FILE"
-    set +a
-
-    # Clean up the temporary file
-    rm "$TEMP_ENV_FILE"
+# Docker Compose for self-hosting sets ENVIRONMENT=selfhost.
+# In this case, we MUST NOT source a local .env file, as it would
+# overwrite the correct self-host configuration.
+if [ "$ENVIRONMENT" = "selfhost" ]; then
+    echo "start.sh: Self-host mode detected. Bypassing .env file sourcing."
 else
-    echo "start.sh: WARNING - $ENV_FILE not found. Relying on container's environment."
+    # This block is for non-selfhost deployments like dev-cloud/stag
+    ENV_FILE="/app/.env"
+    TEMP_ENV_FILE="/tmp/filtered.env"
+
+    if [ -f "$ENV_FILE" ]; then
+        echo "start.sh: Found $ENV_FILE, sourcing variables for supervisord..."
+        dos2unix "$ENV_FILE" >/dev/null 2>&1 || true
+        grep -v -e '^\s*#' -e '^\s*$' "$ENV_FILE" > "$TEMP_ENV_FILE"
+        set -a
+        . "$TEMP_ENV_FILE"
+        set +a
+        rm "$TEMP_ENV_FILE"
+    else
+        echo "start.sh: WARNING - $ENV_FILE not found. Relying on container's environment."
+    fi
 fi
 
 echo "start.sh: Launching supervisord for ENVIRONMENT='${ENVIRONMENT:-unknown}'..."

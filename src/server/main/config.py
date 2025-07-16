@@ -48,6 +48,12 @@ GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
 
+# Slack & Notion OAuth Configuration
+SLACK_CLIENT_ID = os.getenv("SLACK_CLIENT_ID")
+SLACK_CLIENT_SECRET = os.getenv("SLACK_CLIENT_SECRET")
+NOTION_CLIENT_ID = os.getenv("NOTION_CLIENT_ID")
+NOTION_CLIENT_SECRET = os.getenv("NOTION_CLIENT_SECRET")
+
 # News API Configuration
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 
@@ -166,6 +172,16 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("GSHEETS_MCP_SERVER_URL", "http://localhost:9015/sse")
         }
     },
+    "gpeople": {
+        "display_name": "Google People",
+        "description": "Manage your contacts. The agent can search, create, update, and delete contacts in your Google account, helping you keep your address book organized.",
+        "auth_type": "oauth",
+        "icon": "IconUsers",
+        "mcp_server_config": {
+            "name": "gpeople_server",
+            "url": os.getenv("GPEOPLE_MCP_SERVER_URL", "http://localhost:9019/sse")
+        }
+    },
     "gmaps": {
         "display_name": "Google Maps",
         "description": "Search for places and get directions. The agent can look up addresses, points of interest, and find routes for driving, walking, bicycling, or transit.",
@@ -189,20 +205,8 @@ INTEGRATIONS_CONFIG = {
     "slack": { # User-configurable Manual
         "display_name": "Slack",
         "description": "Connect to your Slack workspace. Allows the agent to list channels, post messages, reply in threads, add reactions, read channel history, and get user information.",
-        "auth_type": "manual",
+        "auth_type": "oauth",
         "icon": "IconBrandSlack",
-        "manual_auth_info": {
-            "instructions": [
-                "1. Go to api.slack.com/apps and create a new app from scratch.",
-                "2. In 'OAuth & Permissions', add User Token Scopes like `chat:write`, `channels:read`.",
-                "3. Install the app and copy the 'User OAuth Token' (starts with `xoxp-`).",
-                "4. Find your 'Team ID' (starts with `T`) from your Slack URL or settings."
-            ],
-            "fields": [
-                {"id": "token", "label": "User OAuth Token", "type": "password"},
-                {"id": "team_id", "label": "Team ID", "type": "text"}
-            ]
-        },
         "mcp_server_config": {
             "name": "slack_server",
             "url": os.getenv("SLACK_MCP_SERVER_URL", "http://localhost:9006/sse")
@@ -211,19 +215,8 @@ INTEGRATIONS_CONFIG = {
     "notion": {
         "display_name": "Notion",
         "description": "Connect to your Notion workspace. The agent can search for pages and databases, read page content, create new pages, append content to existing pages, and query databases with filters.",
-        "auth_type": "manual",
+        "auth_type": "oauth",
         "icon": "IconBrandNotion",
-        "manual_auth_info": {
-            "instructions": [
-                "1. Go to notion.so/my-integrations to create a new integration.",
-                "2. Give it a name and associate it with a workspace.",
-                "3. On the next screen, copy the 'Internal Integration Token'.",
-                "4. Share the specific pages or databases you want Sentient to access with your new integration."
-            ],
-            "fields": [
-                {"id": "token", "label": "Internal Integration Token", "type": "password"}
-            ]
-        },
         "mcp_server_config": {
             "name": "notion_server",
             "url": os.getenv("NOTION_MCP_SERVER_URL", "http://localhost:9009/sse")
@@ -299,6 +292,16 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("JOURNAL_MCP_SERVER_URL", "http://localhost:9018/sse")
         }
     },
+    "journal": { # Built-in, for chat agent
+        "display_name": "Journal Tools",
+        "description": "Tools for managing the user's Journal. The agent can add new entries, search existing entries by keyword, and get a summary for a specific day.",
+        "auth_type": "builtin",
+        "icon": "IconMessage", # Frontend can map this
+        "mcp_server_config": {
+            "name": "journal_server",
+            "url": os.getenv("JOURNAL_MCP_SERVER_URL", "http://localhost:9018/sse")
+        }
+    },
     "supermemory": {
         "display_name": "Long-Term Memory",
         "description": "The agent's long-term memory about the user. Use 'search' to recall facts, relationships, and preferences. Use 'addToSupermemory' to save new, permanent information about the user. This is critical for personalization.",
@@ -312,24 +315,13 @@ INTEGRATIONS_CONFIG = {
     }
 }
 
-# --- Service Provider Configuration ---
-# These variables allow for flexible switching between different service providers.
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "OLLAMA") # Options: "OLLAMA", "NOVITA"
-# STT_PROVIDER = os.getenv("STT_PROVIDER", "FASTER_WHISPER") # Voice removed
-# TTS_PROVIDER = os.getenv("TTS_PROVIDER", "ORPHEUS") # Voice removed
-
-# --- Service-Specific API Keys and Paths ---
-# ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY") # Voice removed
-# ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb") # Voice removed
-
-# Voice related model paths and settings removed
-
-
 # LLM Endpoint Configuration
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434") 
-OLLAMA_MODEL_NAME = os.getenv("OLLAMA_MODEL_NAME", "qwen3:4b") 
-NOVITA_API_KEY = os.getenv("NOVITA_API_KEY")
-NOVITA_MODEL_NAME = os.getenv("NOVITA_MODEL_NAME", "qwen/qwen3-4b-fp8")
+# --- OpenAI API Standard Configuration ---
+# This can point to OpenAI, Ollama, Groq, or any other compatible service.
+OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL", "http://localhost:11434")
+OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "qwen3:4b")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ollama") # Default key for Ollama
+
 # MCP Server URLs
 PROGRESS_UPDATER_MCP_SERVER_URL=os.getenv("PROGRESS_UPDATER_MCP_SERVER_URL", "http://localhost:9011/sse")
 CHAT_TOOLS_MCP_SERVER_URL=os.getenv("CHAT_TOOLS_MCP_SERVER_URL", "http://localhost:9013/sse") # For agent action handoff
@@ -337,6 +329,5 @@ SUPERMEMORY_MCP_BASE_URL = os.getenv("SUPERMEMORY_MCP_BASE_URL", "https://mcp.su
 SUPERMEMORY_MCP_ENDPOINT_SUFFIX = os.getenv("SUPERMEMORY_MCP_ENDPOINT_SUFFIX", "/sse")
 
 print(f"[{datetime.datetime.now()}] [MainServer_Config] Configuration loaded. AUTH0_DOMAIN: {'SET' if AUTH0_DOMAIN else 'NOT SET'}")
-print(f"[{datetime.datetime.now()}] [MainServer_Config] LLM Provider: {LLM_PROVIDER}")
-# print(f"[{datetime.datetime.now()}] [MainServer_Config] STT Provider: {STT_PROVIDER}") # Voice removed
-# print(f"[{datetime.datetime.now()}] [MainServer_Config] TTS Provider: {TTS_PROVIDER}") # Voice removed
+print(f"[{datetime.datetime.now()}] [MainServer_Config] LLM Endpoint: {OPENAI_API_BASE_URL}")
+print(f"[{datetime.datetime.now()}] [MainServer_Config] LLM Model: {OPENAI_MODEL_NAME}")

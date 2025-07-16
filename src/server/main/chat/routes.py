@@ -45,12 +45,8 @@ async def chat_endpoint(
                 user_id,
                 request_body.messages,
                 user_context,
-                mongo_manager,
-                enable_internet=request_body.enable_internet,
-                enable_weather=request_body.enable_weather,
-                enable_news=request_body.enable_news,
-                enable_maps=request_body.enable_maps,
-                enable_shopping=request_body.enable_shopping
+                preferences,
+                db_manager=mongo_manager
             ):
                 if not event:
                     continue

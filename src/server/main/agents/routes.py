@@ -1,12 +1,13 @@
 import datetime
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
-from main.agents.models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest, GeneratePlanRequest
+from main.agents.models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest, GeneratePlanRequest, AnswerClarificationRequest
 from main.config import INTEGRATIONS_CONFIG
 from main.dependencies import mongo_manager
 from main.auth.utils import PermissionChecker
 from main.agents.utils import clean_llm_output
-from workers.executor.tasks import execute_task_plan
+from workers.executor.tasks import execute_task_plan # keep for immediate execution
+from workers.tasks import generate_plan_from_context, process_memory_item # new tasks
 from workers.planner.llm import get_planner_agent
 from workers.planner.db import get_all_mcp_descriptions
 from workers.tasks import calculate_next_run
@@ -73,6 +74,29 @@ async def add_task(
         "next_execution_at": next_execution_time
     }
     await mongo_manager.task_collection.insert_one(task_doc)
+
+    # Also add a corresponding journal entry
+    page_date_str = now_utc.strftime("%Y-%m-%d")
+    if request.schedule and request.schedule.get("type") == "once" and request.schedule.get("run_at"):
+        try:
+            page_date_str = datetime.datetime.fromisoformat(request.schedule["run_at"]).strftime("%Y-%m-%d")
+        except (ValueError, TypeError):
+            pass # Keep today's date if format is bad
+
+    journal_block = {
+        "block_id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "page_date": page_date_str,
+        "content": f"TASK: {request.description}",
+        "order": 999, # Place at the end of the day
+        "created_by": "user_task",
+        "created_at": now_utc,
+        "updated_at": now_utc,
+        "linked_task_id": task_id,
+        "task_status": "approval_pending"
+    }
+    await mongo_manager.journal_blocks_collection.insert_one(journal_block)
+
     return {"message": "Task created successfully", "task_id": task_id}
 
 @router.post("/fetch-tasks")
@@ -98,9 +122,22 @@ async def update_task(
         update_data["priority"] = request.priority
     if request.plan is not None:
         update_data["plan"] = [step.dict() for step in request.plan]
+    if request.enabled is not None:
+        update_data["enabled"] = request.enabled
+
     if request.schedule is not None:
         update_data["schedule"] = request.schedule
-        # Handle "run_at" for scheduled-once tasks during update
+        # When a schedule is updated, we need to recalculate the next run time
+        if request.schedule.get("type") == "recurring":
+            # If it's recurring, calculate the next run time
+            update_data["next_execution_at"] = calculate_next_run(request.schedule)
+            # When a schedule is set, ensure the task is active and enabled
+            update_data["status"] = "active"
+            # Let the `enabled` flag from the request take precedence if provided,
+            # otherwise default to True when setting a new recurring schedule.
+            if request.enabled is None:
+                update_data["enabled"] = True
+
         if request.schedule.get("type") == "once" and request.schedule.get("run_at"):
              try:
                 update_data["next_execution_at"] = datetime.datetime.fromisoformat(request.schedule["run_at"]).replace(tzinfo=datetime.timezone.utc)
@@ -130,12 +167,19 @@ async def delete_task(
     request: TaskIdRequest,
     user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"]))
 ):
-    result = await mongo_manager.task_collection.delete_one(
+    # First, delete the task
+    delete_result = await mongo_manager.task_collection.delete_one(
         {"task_id": request.taskId, "user_id": user_id}
     )
-    if result.deleted_count == 0:
+    if delete_result.deleted_count == 0:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
-    return {"message": "Task deleted successfully."}
+
+    # Now, find and unlink any associated journal entries
+    await mongo_manager.journal_blocks_collection.update_many(
+        {"user_id": user_id, "linked_task_id": request.taskId},
+        {"$unset": {"linked_task_id": "", "task_status": ""}}
+    )
+    return {"message": "Task deleted successfully and unlinked from any journal entries."}
 
 @router.post("/approve-task")
 async def approve_task(
@@ -180,6 +224,48 @@ async def approve_task(
         await mongo_manager.task_collection.update_one({"task_id": request.taskId}, {"$set": update_doc})
         execute_task_plan.delay(request.taskId, user_id)
         return {"message": "Task approved and has been queued for immediate execution."}
+
+@router.post("/answer-clarifications", status_code=status.HTTP_200_OK)
+async def answer_clarifications(
+    request: AnswerClarificationRequest,
+    user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"]))
+):
+    task = await mongo_manager.task_collection.find_one(
+        {"task_id": request.taskId, "user_id": user_id}
+    )
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
+
+    if task.get("status") != "clarification_pending":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task is not awaiting clarification.")
+
+    questions = task.get("clarifying_questions", [])
+
+    # Update answers in DB and send to memory
+    for answer in request.answers:
+        found_question = False
+        for q in questions:
+            if q["question_id"] == answer.question_id:
+                q["answer"] = answer.answer_text
+                found_question = True
+                fact_to_remember = f"Regarding the task '{task.get('description', '')}', the user clarified: Q: '{q['text']}' A: '{answer.answer_text}'"
+                process_memory_item.delay(user_id, fact_to_remember)
+                break
+
+    all_answered = all(q.get("answer") for q in questions)
+
+    update_payload = {"clarifying_questions": questions}
+
+    if all_answered:
+        update_payload["status"] = "planning"
+        generate_plan_from_context.delay(request.taskId)
+
+    await mongo_manager.task_collection.update_one(
+        {"task_id": request.taskId},
+        {"$set": update_payload}
+    )
+
+    return {"message": "Answers submitted successfully. Planning will now proceed."}
 
 
 @router.post("/rerun-task")

@@ -7,34 +7,25 @@ import logging
 from typing import Dict, Any, List, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from main.analytics import capture_event
 from qwen_agent.agents import Assistant
 from workers.celery_app import celery_app
 from workers.utils.api_client import notify_user
 
 # Load environment variables for the worker from its own config
-from workers.executor.config import (
-    MONGO_URI, MONGO_DB_NAME, INTEGRATIONS_CONFIG, LLM_PROVIDER,
-    OLLAMA_BASE_URL, OLLAMA_MODEL_NAME, SUPERMEMORY_MCP_BASE_URL,
-    SUPERMEMORY_MCP_ENDPOINT_SUFFIX
-)
+from workers.executor.config import (MONGO_URI, MONGO_DB_NAME,
+                                     INTEGRATIONS_CONFIG, OPENAI_API_BASE_URL,
+                                     OPENAI_API_KEY, OPENAI_MODEL_NAME, SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX)
 
 # Setup logger for this module
 logger = logging.getLogger(__name__)
 
 # --- LLM Config for Executor ---
-if LLM_PROVIDER == "OLLAMA":
-    llm_cfg = {
-        'model': OLLAMA_MODEL_NAME,
-        'model_server': f"{OLLAMA_BASE_URL.rstrip('/')}/v1/",
-        'api_key': 'ollama', # Ollama doesn't require a key
-    }
-elif LLM_PROVIDER == "NOVITA":
-    from workers.executor.config import NOVITA_API_KEY, NOVITA_MODEL_NAME
-    llm_cfg = {
-        "model": NOVITA_MODEL_NAME,
-        "api_key": NOVITA_API_KEY,
-        "model_server": "https://api.novita.ai/v3/openai"
-    }
+llm_cfg = {
+    'model': OPENAI_MODEL_NAME,
+    'model_server': f"{OPENAI_API_BASE_URL.rstrip('/')}/v1",
+    'api_key': OPENAI_API_KEY,
+}
 
 
 # --- Database Connection within Celery Task ---
@@ -48,24 +39,20 @@ async def update_task_status(db, task_id: str, status: str, user_id: str, detail
     if details:
         if "result" in details:
             update_doc["result"] = details["result"]
-            if block_id:
-                await db.journal_blocks.update_one(
-                    {"block_id": block_id, "user_id": user_id}, 
-                    {"$set": {"task_result": details["result"], "task_status": status}}
-                )
         if "error" in details:
             update_doc["error"] = details["error"]
-            if block_id:
-                await db.journal_blocks.update_one(
-                    {"block_id": block_id, "user_id": user_id}, 
-                    {"$set": {"task_result": details["error"], "task_status": status}}
-                )
     
     # Also update the block's status field even if there are no details
     if block_id:
-        await db.journal_blocks.update_one(
+        journal_update = {"task_status": status}
+        if details:
+            if "result" in details:
+                journal_update["task_result"] = details["result"]
+            if "error" in details:
+                journal_update["task_result"] = details["error"] # Store error in result field for journal
+        await db.journal_blocks_collection.update_one(
             {"block_id": block_id, "user_id": user_id},
-            {"$set": {"task_status": status}}
+            {"$set": journal_update}
         )
 
     task_doc = await db.tasks.find_one({"task_id": task_id}, {"description": 1})
@@ -80,7 +67,8 @@ async def update_task_status(db, task_id: str, status: str, user_id: str, detail
 
     if status in ["completed", "error"]:
         notification_message = f"Task '{task_description}' has finished with status: {status}."
-        await notify_user(user_id, notification_message, task_id)
+        notification_type = "taskCompleted" if status == "completed" else "taskFailed"
+        await notify_user(user_id, notification_message, task_id, notification_type=notification_type)
 
 async def add_progress_update(db, task_id: str, user_id: str, message: str, block_id: Optional[str] = None):
     logger.info(f"Adding progress update to task {task_id}: '{message}'")
@@ -91,7 +79,7 @@ async def add_progress_update(db, task_id: str, user_id: str, message: str, bloc
         {"$push": {"progress_updates": progress_update}}
     )
     if block_id:
-        await db.journal_blocks.update_one(
+        await db.journal_blocks_collection.update_one(
             {"block_id": block_id, "user_id": user_id},
             {"$push": {"task_progress": progress_update}}
         )
@@ -124,9 +112,10 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     logger.info(f"Executor started processing task {task_id} (block_id: {block_id}) for user {user_id}.")
     await update_task_status(db, task_id, "processing", user_id, block_id=block_id)
     await add_progress_update(db, task_id, user_id, "Executor has picked up the task and is starting execution.", block_id=block_id)
-    
+
     user_profile = await db.user_profiles.find_one({"user_id": user_id})
     personal_info = user_profile.get("userData", {}).get("personalInfo", {}) if user_profile else {}
+    preferences = user_profile.get("userData", {}).get("preferences", {}) if user_profile else {}
     user_name = personal_info.get("name", "User")
     user_location_raw = personal_info.get("location", "Not specified")
     if isinstance(user_location_raw, dict):
@@ -134,8 +123,6 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     else:
         user_location = user_location_raw
 
-    supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id") if user_profile else None
-    
     # 1. Determine required and available tools for the user
     required_tools_from_plan = {step['tool'] for step in task.get('plan', [])}
     logger.info(f"Task {task_id}: Plan requires tools: {required_tools_from_plan}")
@@ -200,15 +187,21 @@ async def async_execute_task_plan(task_id: str, user_id: str):
 
     block_id_prompt = f"The block_id for this task is '{block_id}'. You MUST pass this ID to the 'update_progress' tool in the 'block_id' parameter." if block_id else "This task did not originate from a journal block."
 
+    # Incorporate AI Persona into system prompt
+    agent_name = preferences.get('agentName', 'Sentient')
+    verbosity = preferences.get('responseVerbosity', 'Balanced')
+    humor_level = preferences.get('humorLevel', 'Balanced')
+    emoji_usage = "You can use emojis in your final answer." if preferences.get('useEmojis', True) else "You should not use emojis."
+
     full_plan_prompt = (
-        f"You are a resourceful and autonomous executor agent. Your goal is to complete the user's request by intelligently following the provided plan.\n\n"
+        f"You are {agent_name}, a resourceful and autonomous executor agent. Your goal is to complete the user's request by intelligently following the provided plan. Your tone should be **{humor_level}** and your final answer should be **{verbosity}**. {emoji_usage}\n\n"
         f"**User Context:**\n"
         f"- **User's Name:** {user_name}\n"
         f"- **User's Location:** {user_location}\n"
         f"- **Current Date & Time:** {current_user_time}\n\n"
         f"Your task ID is '{task_id}'. {block_id_prompt}\n\n"
         f"The original context that triggered this plan is:\n---BEGIN CONTEXT---\n{original_context_str}\n---END CONTEXT---\n\n"
-        f"**Primary Objective:** '{plan_description}'.\n\n"
+        f"**Primary Objective:** '{plan_description}'\n\n"
         f"**The Plan to Execute:**\n" +
         "\n".join([f"- Step {i+1}: Use the '{step['tool']}' tool to '{step['description']}'" for i, step in enumerate(task.get("plan", []))]) + "\n\n"
         "**EXECUTION STRATEGY:**\n"
@@ -217,6 +210,7 @@ async def async_execute_task_plan(task_id: str, user_id: str):
         "3.  **Remember New Information:** If you discover a new, permanent fact about the user during your execution (e.g., you find their manager's email is 'boss@example.com'), you MUST use `supermemory-addToSupermemory` to save it.\n"
         "4.  **Report Progress & Failures:** You MUST call the `progress_updater-update_progress` tool to report your status after each major step or when you encounter an error. If a tool fails, analyze the error, report it, and try an alternative approach to achieve the objective. Do not give up easily.\n"
         "5.  **Provide a Final, Detailed Answer:** Once all steps are completed, you MUST provide a final, comprehensive answer to the user. This is not a tool call. Your final response should be a natural language summary of everything you did and found. Include key results, links to created documents, summaries of information found, and confirmation of actions taken. Do NOT just say 'Task completed.' Be thorough and informative.\n"
+        "6.  **Contact Information:** To find contact details like phone numbers or emails, use the `gpeople` tool before attempting to send an email or make a call.\n"
         "\nNow, begin your work. Think step-by-step and start executing the plan."
     )
     
@@ -247,6 +241,11 @@ async def async_execute_task_plan(task_id: str, user_id: str):
 
         logger.info(f"Task {task_id}: Final result: {final_content}")
         await add_progress_update(db, task_id, user_id, "Execution script finished.", block_id=block_id)
+        capture_event(user_id, "task_execution_succeeded", {
+            "task_id": task_id,
+            "tool_count": len(task.get("plan", [])),
+            "is_recurring": task.get("schedule", {}).get("type") == "recurring"
+        })
         await update_task_status(db, task_id, "completed", user_id, details={"result": final_content}, block_id=block_id)
 
         return {"status": "success", "result": final_content}

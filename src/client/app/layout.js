@@ -4,6 +4,7 @@ import "@styles/globals.css" // Import global styles for the application
 import { Toaster } from "react-hot-toast" // Import Toaster component for displaying toast notifications
 import React from "react"
 import LayoutWrapper from "@components/LayoutWrapper"
+import { PostHogProvider } from "@components/PostHogProvider"
 
 /**
  * Metadata for the RootLayout component.
@@ -31,8 +32,10 @@ export default function RootLayout({ children }) {
 		<html lang="en" suppressHydrationWarning>
 			<Auth0Provider>
 				<body className="font-Inter">
-					<Toaster position="bottom-right" />
-					<LayoutWrapper>{children}</LayoutWrapper>
+					<PostHogProvider>
+						<Toaster position="bottom-right" />
+						<LayoutWrapper>{children}</LayoutWrapper>
+					</PostHogProvider>
 				</body>
 			</Auth0Provider>
 		</html>

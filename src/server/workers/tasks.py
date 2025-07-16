@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import uuid
 import json
 import re
 import datetime
@@ -7,14 +8,15 @@ import os
 import httpx
 from dateutil import rrule
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+from main.analytics import capture_event
 
 from workers.config import SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX, SUPPORTED_POLLING_SERVICES
 from main.agents.utils import clean_llm_output
 from json_extractor import JsonExtractor
-from workers.utils.api_client import notify_user
+from workers.utils.api_client import notify_user 
 from workers.celery_app import celery_app
-from workers.planner.llm import get_planner_agent
+from workers.planner.llm import get_planner_agent, get_question_generator_agent
 from workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions
 from workers.supermemory_agent_utils import get_supermemory_qwen_agent, get_db_manager as get_memory_db_manager
 from workers.executor.tasks import execute_task_plan
@@ -29,9 +31,20 @@ from workers.poller.gcalendar.service import GCalendarPollingService
 from workers.poller.gmail.db import PollerMongoManager as GmailPollerDB
 from workers.poller.gcalendar.db import PollerMongoManager as GCalPollerDB
 
+# Imports for LinkedIn scraping
+from linkedin_scraper import Person, actions
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+def get_date_from_text(text: str) -> str:
+    """Extracts YYYY-MM-DD from text, defaults to today."""
+    match = re.search(r'\b(\d{4}-\d{2}-\d{2})\b', text)
+    if match:
+        return match.group(1)
+    return datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d')
 # Helper to run async code in Celery's sync context
 def run_async(coro):
     try:
@@ -43,15 +56,16 @@ def run_async(coro):
 
 # --- Memory Processing Task (Modified for Supermemory) ---
 @celery_app.task(name="process_memory_item")
-def process_memory_item(user_id: str, fact_text: str):
+def process_memory_item(user_id: str, fact_text: str, source_event_id: Optional[str] = None):
     """
     Celery task to process a single memory item by calling the Supermemory MCP
     via a dedicated Qwen agent.
     """
-    logger.info(f"Celery worker received Supermemory task for user {user_id}: '{fact_text[:80]}...'")
+    log_prefix = f"Event {source_event_id}: " if source_event_id else ""
+    logger.info(f"{log_prefix}Celery worker received Supermemory task for user {user_id}: '{fact_text[:80]}...'")
 
     async def async_process_memory():
-        db_manager = get_memory_db_manager()
+        db_manager = get_memory_db_manager() # This is a PlannerMongoManager instance
         try:
             user_profile = await db_manager.user_profiles_collection.find_one({"user_id": user_id})
             if not user_profile:
@@ -99,20 +113,34 @@ def process_memory_item(user_id: str, fact_text: str):
 
 # --- Extractor Task ---
 @celery_app.task(name="extract_from_context")
-def extract_from_context(user_id: str, service_name: str, event_id: str, event_data: Dict[str, Any]):
+def extract_from_context(user_id: str, service_name: str, event_id: str, event_data: Dict[str, Any], current_time_iso: Optional[str] = None):
     """
     Celery task to replace the Extractor worker. It takes context data,
     runs it through an LLM to extract memories and action items,
     and then dispatches further Celery tasks.
     """
-    logger.info(f"Extractor task running for event {event_id} ({service_name}) for user {user_id}")
+    logger.info(f"Extractor task running for event_id: {event_id} (service: {service_name}) for user {user_id}")
     
     async def async_extract():
         db_manager = ExtractorMongoManager()
         try:
             if await db_manager.is_event_processed(user_id, event_id):
-                logger.info(f"Skipping event {event_id} - already processed.")
+                logger.info(f"Skipping event_id: {event_id} - already processed.")
                 return
+
+            # Fetch user context to provide to the extractor agent
+            user_profile = await db_manager.get_user_profile(user_id)
+            personal_info = user_profile.get("userData", {}).get("personalInfo", {}) if user_profile else {}
+            user_name = personal_info.get("name", "User")
+            user_location_raw = personal_info.get("location", "Not specified")
+            user_timezone = personal_info.get("timezone", "UTC")
+            if isinstance(user_location_raw, dict) and 'latitude' in user_location_raw:
+                user_location = f"latitude: {user_location_raw.get('latitude')}, longitude: {user_location_raw.get('longitude')}"
+            else:
+                user_location = user_location_raw
+
+            current_time = datetime.datetime.fromisoformat(current_time_iso) if current_time_iso else datetime.datetime.now(datetime.timezone.utc)
+            time_context_str = f"The current date and time is {current_time.strftime('%A, %Y-%m-%d %H:%M:%S %Z')}."
 
             llm_input_content = ""
             if service_name == "journal_block":
@@ -126,12 +154,15 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
             elif service_name == "gcalendar":
                 llm_input_content = f"Source: Calendar Event\nSummary: {event_data.get('summary', '')}\n\nDescription:\n{event_data.get('description', '')}"
 
-            if not llm_input_content.strip():
-                logger.warning(f"Skipping event {event_id} due to empty content.")
+            # Add time context to the input for the LLM
+            full_llm_input = f"{time_context_str}\n\nPlease analyze the following content:\n\n{llm_input_content}"
+
+            if not llm_input_content or not llm_input_content.strip():
+                logger.warning(f"Skipping event_id: {event_id} due to empty content.")
                 return
 
-            agent = get_extractor_agent()
-            messages = [{'role': 'user', 'content': llm_input_content}]
+            agent = get_extractor_agent(user_name, user_location, user_timezone)
+            messages = [{'role': 'user', 'content': full_llm_input}]
             
             final_content_str = ""
             for chunk in agent.run(messages=messages):
@@ -140,171 +171,323 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
                     if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
                         final_content_str = last_message["content"]
 
-            if not final_content_str:
-                logger.error(f"Extractor LLM returned no response for event {event_id}.")
+            if not final_content_str.strip():
+                logger.error(f"Extractor LLM returned no response for event_id: {event_id}.")
                 return
 
             cleaned_content = clean_llm_output(final_content_str)
             extracted_data = JsonExtractor.extract_valid_json(cleaned_content)
             if not extracted_data:
-                logger.error(f"Could not extract valid JSON from LLM response for event {event_id}. Response: '{cleaned_content}'")
-                await db_manager.log_extraction_result(event_id, user_id, 0, 0) # Log to prevent re-processing
+                logger.error(f"Could not extract valid JSON from LLM response for event_id: {event_id}. Response: '{cleaned_content}'")
+                await db_manager.log_extraction_result(event_id, user_id, 0, 0)
                 return
 
-            # FIX: Handle cases where the extractor returns a list containing the dictionary
             if isinstance(extracted_data, list):
-                if extracted_data and isinstance(extracted_data[0], dict):
-                    extracted_data = extracted_data[0]
-                else:
-                    # The list is empty or doesn't contain a dict, so there's no data.
-                    extracted_data = {} # Set to empty dict to avoid further errors
+                extracted_data = extracted_data[0] if extracted_data and isinstance(extracted_data[0], dict) else {}
 
             if not isinstance(extracted_data, dict):
-                logger.error(f"Extracted JSON is not a dictionary for event {event_id}. Extracted: '{extracted_data}'")
+                logger.error(f"Extracted JSON is not a dictionary for event_id: {event_id}. Extracted: '{extracted_data}'")
                 await db_manager.log_extraction_result(event_id, user_id, 0, 0)
                 return
 
             memory_items = extracted_data.get("memory_items", [])
             action_items = extracted_data.get("action_items", [])
-            short_term_notes = extracted_data.get("short_term_notes", [])
+            topics = extracted_data.get("topics", [])
+
+            if service_name in ["gmail", "gcalendar", "chat"]:
+                for item in action_items:
+                    if not isinstance(item, str) or not item.strip():
+                        continue
+                    page_date = get_date_from_text(item)
+                    new_block = await db_manager.create_journal_entry_for_action_item(user_id, item, page_date)
+                    new_block_context = {"source": "journal_block", "block_id": new_block['block_id'], "original_content": item, "page_date": page_date}
+                    process_action_item.delay(user_id, [item], topics, new_block['block_id'], new_block_context)
+                    logger.info(f"Created journal entry {new_block['block_id']} and dispatched for action item: {item}")
+            else: # Existing logic for journal_block source
+                if action_items and topics:
+                    process_action_item.delay(user_id, action_items, topics, event_id, event_data)
 
             for fact in memory_items:
                 if isinstance(fact, str) and fact.strip():
-                    process_memory_item.delay(user_id, fact)
-
-            if action_items:
-                # Add block_id to context if it came from a journal
-                if service_name == "journal_block":
-                    original_context_with_block = {
-                        "source": "journal_block",
-                        "block_id": event_id,
-            "original_content": event_data.get('content', ''),
-            "page_date": event_data.get('page_date')
-                    }
-                    process_action_item.delay(user_id, action_items, event_id, original_context_with_block)
-                else:
-                    process_action_item.delay(user_id, action_items, event_id, event_data)
-
-            for note in short_term_notes:
-                if isinstance(note, str) and note.strip():
-                    add_journal_entry_task.delay(user_id, note)
+                    process_memory_item.delay(user_id, fact, event_id)
 
             await db_manager.log_extraction_result(event_id, user_id, len(memory_items), len(action_items))
         
         except Exception as e:
-            logger.error(f"Error in extractor task for event {event_id}: {e}", exc_info=True)
+            logger.error(f"Error in extractor task for event_id: {event_id}: {e}", exc_info=True)
         finally:
             await db_manager.close()
 
     run_async(async_extract())
 
-@celery_app.task(name="add_journal_entry_task")
-def add_journal_entry_task(user_id: str, content: str, date: Optional[str] = None):
-    """
-    Celery task to add a new entry to the user's journal via the Journal MCP.
-    """
-    logger.info(f"Journal task running for user {user_id}: '{content[:50]}...'")
-
-    async def async_add_entry():
-        mcp_url = os.getenv("JOURNAL_MCP_SERVER_URL", "http://localhost:9018/sse")
-        payload = {
-            "tool": "add_journal_entry",
-            "parameters": {
-                "content": content,
-                "date": date # Will be None if not provided, tool handles default
-            }
-        }
-        headers = {"Content-Type": "application/json", "X-User-ID": user_id}
-
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(mcp_url, json=payload, headers=headers, timeout=20)
-                response.raise_for_status()
-                logger.info(f"Successfully called journal MCP for user {user_id}. Response: {response.text}")
-                return {"status": "success", "response": response.text}
-        except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error calling journal MCP for user {user_id}: {e.response.status_code} - {e.response.text}")
-            return {"status": "failure", "reason": "HTTP error"}
-        except Exception as e:
-            logger.error(f"Error in journal task for user {user_id}: {e}", exc_info=True)
-            return {"status": "failure", "reason": str(e)}
-
-    return run_async(async_add_entry())
-
-# --- Planner Task ---
 @celery_app.task(name="process_action_item")
-def process_action_item(user_id: str, action_items: list, source_event_id: str, original_context: dict):
-    """Celery task to process action items and generate a plan."""
-    logger.info(f"Planner task running for user {user_id} with {len(action_items)} actions.")
+def process_action_item(user_id: str, action_items: list, topics: list, source_event_id: str, original_context: dict):
+    """Orchestrates the pre-planning phase for a new proactive task."""
+    run_async(async_process_action_item(user_id, action_items, topics, source_event_id, original_context))
 
-    async def async_main():
-        db_manager = PlannerMongoManager()
+async def get_clarifying_questions(user_id: str, task_description: str, topics: list, original_context: dict, db_manager: PlannerMongoManager) -> List[str]:
+    """
+    Uses a unified agent to search memory and generate clarifying questions if needed.
+    Returns a list of questions, which is empty if no clarification is required.
+    """
+    user_profile = await db_manager.user_profiles_collection.find_one({"user_id": user_id})
+    supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id") if user_profile else None
+
+    if not supermemory_user_id:
+        logger.warning(f"User {user_id} has no Supermemory ID. Cannot verify context.")
+        return [f"Can you tell me more about '{topic}'?" for topic in topics]
+
+    supermemory_mcp_url = f"{SUPERMEMORY_MCP_BASE_URL.rstrip('/')}/{supermemory_user_id}{SUPERMEMORY_MCP_ENDPOINT_SUFFIX}"
+    available_tools = get_all_mcp_descriptions()
+
+    agent = get_question_generator_agent(
+        supermemory_mcp_url=supermemory_mcp_url,
+        original_context=original_context,
+        topics=topics,
+        available_tools=available_tools
+    )
+
+    user_prompt = f"Based on the task '{task_description}' and the provided context, please determine if any clarifying questions are necessary."
+    messages = [{'role': 'user', 'content': user_prompt}]
+
+    final_response_str = ""
+    for chunk in agent.run(messages=messages):
+        if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
+            final_response_str = chunk[-1].get("content", "")
+    
+    response_data = JsonExtractor.extract_valid_json(clean_llm_output(final_response_str))
+    if response_data and isinstance(response_data.get("clarifying_questions"), list):
+        return response_data["clarifying_questions"]
+    else:
+        logger.error(f"Question generator agent returned invalid data: {response_data}. Cannot ask for clarification.")
+        return [] # Default to no questions on failure
+
+async def async_process_action_item(user_id: str, action_items: list, topics: list, source_event_id: str, original_context: dict):
+    """Async logic for the proactive task orchestrator."""
+    db_manager = PlannerMongoManager()
+    task_id = None
+    try:
+        task_description = " ".join(map(str, action_items))
+        task_id = await db_manager.create_initial_task(user_id, task_description, action_items, topics, original_context, source_event_id)
+
+        questions_list = await get_clarifying_questions(user_id, task_description, topics, original_context, db_manager)
+
+        if questions_list:
+            logger.info(f"Task {task_id}: Needs clarification. Questions: {questions_list}")
+            questions_for_db = [{"question_id": str(uuid.uuid4()), "text": q.strip(), "answer": None} for q in questions_list]
+            
+            block_id_to_update = original_context.get("block_id") if original_context.get("source") == "journal_block" else None
+
+            if block_id_to_update:
+                # Update the existing journal block with the clarification prompt
+                clarification_text = f"I need a bit more information to help with: '{task_description}'. Can you clarify the following for me in the journal?"
+                await db_manager.journal_blocks_collection.update_one(
+                    {"block_id": block_id_to_update, "user_id": user_id},
+                    {"$set": {"task_status": "clarification_pending", "content": clarification_text}}
+                )
+                logger.info(f"Updated journal block {block_id_to_update} to ask for clarification.")
+            else:
+                # Create a new journal entry for today if the source wasn't a journal block
+                clarification_content = f"I need a bit more information to help with: '{task_description}'. Can you clarify the following for me in the journal?"
+                today_date_str = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d')
+                await db_manager.create_journal_entry_for_task(
+                    user_id=user_id,
+                    content=clarification_content,
+                    date_str=today_date_str,
+                    task_id=task_id,
+                    task_status="clarification_pending"
+                )
+                logger.info(f"Task {task_id} needs clarification, created new journal entry for today.")
+            
+            await db_manager.update_task_with_questions(task_id, "clarification_pending", questions_for_db)
+            await notify_user(user_id, f"I have a few questions to help me plan: '{task_description[:50]}...'", task_id)
+            capture_event(user_id, "clarification_needed", {
+                "task_id": task_id,
+                "question_count": len(questions_list)
+            })
+            logger.info(f"Task {task_id} moved to 'clarification_pending'.")
+        else:
+            logger.info(f"Task {task_id}: No clarification needed. Triggering plan generation.")
+            await db_manager.update_task_status(task_id, "planning")
+            generate_plan_from_context.delay(task_id)
+
+    except Exception as e:
+        logger.error(f"Error in process_action_item for task {task_id or 'unknown'}: {e}", exc_info=True)
+        if task_id:
+            await db_manager.update_task_status(task_id, "error", {"error": str(e)})
+    finally:
+        await db_manager.close()
+
+@celery_app.task(name="generate_plan_from_context")
+def generate_plan_from_context(task_id: str):
+    """Generates a plan for a task once all context is available."""
+    run_async(async_generate_plan(task_id))
+
+async def async_generate_plan(task_id: str):
+    """Async logic for plan generation."""
+    db_manager = PlannerMongoManager()
+    try:
+        task = await db_manager.get_task(task_id)
+        if not task:
+            logger.error(f"Cannot generate plan: Task {task_id} not found.")
+            return
+
+        user_id = task["user_id"]
+        user_profile = await db_manager.user_profiles_collection.find_one(
+            {"user_id": user_id},
+            {"userData.personalInfo": 1} # Projection to get only necessary data
+        )
+        personal_info = user_profile.get("userData", {}).get("personalInfo", {})
+        user_name = personal_info.get("name", "User")
+        user_location_raw = personal_info.get("location", "Not specified")
+        if isinstance(user_location_raw, dict):
+            user_location = f"latitude: {user_location_raw.get('latitude')}, longitude: {user_location_raw.get('longitude')}"
+        else:
+            user_location = user_location_raw
+        
+        user_timezone_str = personal_info.get("timezone", "UTC")
         try:
-            # Fetch user's info to provide context to the planner
-            user_profile = await db_manager.user_profiles_collection.find_one(
-                {"user_id": user_id},
-                {"userData.personalInfo": 1} # Projection to get only necessary data
-            )
-            personal_info = user_profile.get("userData", {}).get("personalInfo", {})
-            user_name = personal_info.get("name", "User")
-            user_location_raw = personal_info.get("location", "Not specified")
-            if isinstance(user_location_raw, dict):
-                user_location = f"latitude: {user_location_raw.get('latitude')}, longitude: {user_location_raw.get('longitude')}"
-            else:
-                user_location = user_location_raw
+            user_timezone = ZoneInfo(user_timezone_str)
+        except ZoneInfoNotFoundError:
+            logger.warning(f"Invalid timezone '{user_timezone_str}' for user {user_id}. Defaulting to UTC.")
+            user_timezone = ZoneInfo("UTC")
+        
+        current_user_time = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
+
+        retrieved_context = task.get("found_context", {})
+        # ** NEW ** Add answered questions to the context
+        answered_questions = []
+        if task.get("clarifying_questions"):
+            for q in task["clarifying_questions"]:
+                if q.get("answer"):
+                    answered_questions.append(f"User Clarification: Q: {q['text']} A: {q['answer']}")
+        
+        if answered_questions:
+            retrieved_context["user_clarifications"] = "\n".join(answered_questions)
+        
+        available_tools = get_all_mcp_descriptions()
+
+        planner_agent = get_planner_agent(available_tools, current_user_time, user_name, user_location, retrieved_context)
+        
+        action_items = task.get("action_items", [])
+        user_prompt_content = "Please create a plan for the following action items:\n- " + "\n- ".join(action_items)
+        messages = [{'role': 'user', 'content': user_prompt_content}]
+
+        final_response_str = ""
+        for chunk in planner_agent.run(messages=messages):
+            if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
+                final_response_str = chunk[-1].get("content", "")
+
+        if not final_response_str:
+            raise Exception("Planner agent returned no response.")
+
+        plan_data = JsonExtractor.extract_valid_json(clean_llm_output(final_response_str))
+        if not plan_data or "plan" not in plan_data:
+            raise Exception(f"Planner agent returned invalid JSON: {final_response_str}")
+
+        await db_manager.update_task_with_plan(task_id, plan_data)
+        capture_event(user_id, "proactive_task_generated", {
+            "task_id": task_id,
+            "source": task.get("original_context", {}).get("source", "unknown"),
+            "plan_steps": len(plan_data.get("plan", []))
+        })
+
+        # Notify user that a plan is ready for their approval
+        await notify_user(
+            user_id, f"I've created a new plan for you: '{plan_data.get('description', '...')[:50]}...'", task_id,
+            notification_type="taskNeedsApproval"
+        )
+
+    except Exception as e:
+        logger.error(f"Error generating plan for task {task_id}: {e}", exc_info=True)
+        await db_manager.update_task_status(task_id, "error", {"error": str(e)})
+    finally:
+        await db_manager.close()
+
+# --- LinkedIn Scraping Task ---
+@celery_app.task(name="process_linkedin_profile")
+def process_linkedin_profile(user_id: str, linkedin_url: str):
+    """
+    Scrapes a LinkedIn profile, formats the data, and sends it to Supermemory.
+    This is a fail-safe task that should not raise exceptions that would cause a retry loop.
+    """
+    logger.info(f"Starting LinkedIn scraping for user {user_id} at URL: {linkedin_url}")
+    
+    linkedin_cookie = os.getenv("LINKEDIN_COOKIE")
+
+    if not linkedin_cookie:
+        logger.error("LINKEDIN_COOKIE environment variable is not set. Cannot scrape LinkedIn.")
+        return {"status": "failure", "reason": "LinkedIn cookie not configured."}
+
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--incognito")
+    
+    driver = None
+    try:
+        # Let Selenium/Chromedriver manage the user data directory automatically
+        # by NOT specifying --user-data-dir.
+        driver = webdriver.Chrome(options=chrome_options)
+        
+        logger.info(f"Logging into LinkedIn using session cookie...")
+        actions.login(driver, cookie=linkedin_cookie)
+        logger.info("LinkedIn login successful via cookie.")
+
+        person = Person(linkedin_url, driver=driver, scrape=True, close_on_complete=False)
+        
+        if not person or not person.name:
+             logger.error(f"Failed to scrape data for LinkedIn URL: {linkedin_url}")
+             return {"status": "failure", "reason": "Scraping returned no data."}
+
+        logger.info(f"Successfully scraped profile for: {person.name}")
+        
+        facts_to_remember = []
+        if person.name and person.name.strip():
+            facts_to_remember.append(f"The user's full name is {person.name}.")
+        if person.about and person.about.strip():
+            facts_to_remember.append(f"The user's LinkedIn 'About' section says: \"{person.about.strip()}\"")
+        if person.job_title and person.company and person.job_title.strip() and person.company.strip():
+             facts_to_remember.append(f"The user's current role is {person.job_title} at {person.company}.")
+
+        for exp in person.experiences:
+            pos_title = getattr(exp, 'position_title', 'a role')
+            inst_name = getattr(exp, 'institution_name', 'a company')
+            from_date = getattr(exp, 'from_date', 'an unknown start date')
+            to_date = getattr(exp, 'to_date', 'an unknown end date')
+            desc = getattr(exp, 'description', '')
             
-            user_timezone_str = personal_info.get("timezone", "UTC")
-            try:
-                user_timezone = ZoneInfo(user_timezone_str)
-            except ZoneInfoNotFoundError:
-                logger.warning(f"Invalid timezone '{user_timezone_str}' for user {user_id}. Defaulting to UTC.")
-                user_timezone = ZoneInfo("UTC")
-            
-            current_user_time = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
+            exp_str = f"The user has experience as a {pos_title} at {inst_name} from {from_date} to {to_date}."
+            if desc and str(desc).strip():
+                clean_desc = ' '.join(str(desc).split())
+                exp_str += f" Description: {clean_desc[:250]}..."
+            facts_to_remember.append(exp_str)
 
-            available_tools = get_all_mcp_descriptions()
-            if not available_tools:
-                logger.warning(f"No tools available for planner task for user {user_id}.")
-                return
+        for edu in person.educations:
+            inst_name = getattr(edu, 'institution_name', 'an institution')
+            degree = getattr(edu, 'degree', 'a degree')
+            from_date = getattr(edu, 'from_date', 'an unknown start date')
+            to_date = getattr(edu, 'to_date', 'an unknown end date')
+            edu_str = f"The user studied at {inst_name}, pursuing {degree} from {from_date} to {to_date}."
+            facts_to_remember.append(edu_str)
+        
+        logger.info(f"Formatted {len(facts_to_remember)} facts from LinkedIn profile.")
 
-            agent = get_planner_agent(available_tools, current_user_time, user_name, user_location)
-            user_prompt_content = "Please create a plan for the following action items:\n- " + "\n- ".join(action_items)
-            messages = [{'role': 'user', 'content': user_prompt_content}]
+        for fact in facts_to_remember:
+            process_memory_item.delay(user_id, fact)
+        
+        logger.info(f"Dispatched {len(facts_to_remember)} facts to Supermemory for user {user_id}.")
+        return {"status": "success", "facts_generated": len(facts_to_remember)}
 
-
-            final_response_str = ""
-            for chunk in agent.run(messages=messages):
-                if isinstance(chunk, list) and chunk:
-                    last_message = chunk[-1]
-                    if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
-                        final_response_str = last_message["content"]
-
-            if not final_response_str:
-                logger.error(f"Planner agent for user {user_id} returned no response.")
-                return
-
-            cleaned_content = clean_llm_output(final_response_str)
-            plan_data = JsonExtractor.extract_valid_json(cleaned_content)
-            if not plan_data:
-                logger.error(f"Planner for user {user_id} generated invalid JSON: {cleaned_content}")
-                return
-            description = plan_data.get("description", "Proactively generated plan")
-            plan_steps = plan_data.get("plan", [])
-
-            if plan_steps and all(step.get("tool") in available_tools for step in plan_steps):
-                task_id = await db_manager.save_plan_as_task(user_id, description, plan_steps, original_context, source_event_id)
-                notification_message = f"I've created a new plan to '{description}'. It's ready for your approval."
-                await notify_user(user_id, notification_message, task_id)
-                logger.info(f"Saved plan as task {task_id} for user {user_id}.")
-            else:
-                 logger.warning(f"Planner for user {user_id} generated an empty or invalid plan.")
-
-        except Exception as e:
-            logger.error(f"Failed to process/save plan for user {user_id}: {e}", exc_info=True)
-        finally:
-            await db_manager.close()
-
-    run_async(async_main())
+    except Exception as e:
+        logger.error(f"An error occurred during LinkedIn scraping for user {user_id}: {e}", exc_info=True)
+        return {"status": "failure", "reason": str(e)}
+    finally:
+        if driver:
+            driver.quit()
+            logger.info("WebDriver for LinkedIn scraping has been quit.")
 
 # --- Polling Tasks ---
 @celery_app.task(name="poll_gmail_for_user")
@@ -387,6 +570,15 @@ def run_due_tasks():
     """Celery Beat task to check for and queue user-defined tasks (recurring and scheduled-once)."""
     logger.info("Scheduler: Checking for due user-defined tasks...")
     run_async(async_run_due_tasks())
+    # --- Proactivity Check Placeholder ---
+    # To implement proactive tasks (like daily summaries), you would:
+    # 1. Fetch all users from the database.
+    # 2. For each user, check their `preferences.proactivityLevel`.
+    # 3. If the level is 'Proactive' or 'Balanced', check if it's time for their daily summary
+    #    (respecting their timezone and `quietHours`).
+    # 4. If so, dispatch a new Celery task, e.g., `generate_daily_summary.delay(user_id)`.
+    # This `run_due_tasks` function is a good place to trigger that logic on a schedule.
+
 
 async def async_run_due_tasks():
     db_manager = PlannerMongoManager()

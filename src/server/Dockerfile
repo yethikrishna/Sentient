@@ -36,15 +36,13 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-# Dynamically fetch and install matching Chromedriver
+# Download and install Chromedriver matching the installed Chrome version
 RUN CHROME_VERSION=$(google-chrome --version | awk '{print $3}') \
     && echo "Detected Chrome version: $CHROME_VERSION" \
-    && MAJOR_VERSION=$(echo $CHROME_VERSION | cut -d '.' -f 1) \
-    && echo "Detected Chrome major version: $MAJOR_VERSION" \
-    && DRIVER_URL=$(curl -sSL "https://googlechromelabs.github.io/chrome-for-testing/latest-patch-versions-per-build-with-downloads.json" | \
-    python3 -c "import sys, json; print(json.load(sys.stdin)['$MAJOR_VERSION']['downloads']['chromedriver'][0]['url'])") \
-    && echo "Downloading Chromedriver from: $DRIVER_URL" \
-    && wget -q -O /tmp/chromedriver.zip "$DRIVER_URL" \
+    && CHROMEDRIVER_VERSION=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE_$CHROME_VERSION") \
+    || CHROMEDRIVER_VERSION=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE") \
+    && echo "Detected Chromedriver version: $CHROMEDRIVER_VERSION" \
+    && wget -q -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/${CHROMEDRIVER_VERSION}/linux64/chromedriver-linux64.zip" \
     && unzip -j /tmp/chromedriver.zip '*/chromedriver' -d /usr/local/bin/ \
     && chmod +x /usr/local/bin/chromedriver \
     && rm -f /tmp/chromedriver.zip

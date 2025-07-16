@@ -7,7 +7,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app \
     DEBIAN_FRONTEND=noninteractive \
     CHROME_VERSION=138.0.7204.157 \
-    CHROMEDRIVER_VERSION=138.0.7204.157
+    CHROMEDRIVER_VERSION=138.0.7204.157 \
+    CHROME_BIN=/opt/chrome/chrome
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -28,15 +29,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-# Add Google’s signing key and repository for Chrome
-RUN mkdir -p /etc/apt/keyrings \
-    && curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /etc/apt/keyrings/google.gpg \
-    && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list
-
-# Install specific version of Google Chrome
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends google-chrome-stable=$CHROME_VERSION \
-    && rm -rf /var/lib/apt/lists/*
+# Download and install Chrome-for-Testing
+RUN mkdir -p /opt/chrome \
+    && wget -q -O /tmp/chrome-linux64.zip "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chrome-linux64.zip" \
+    && unzip -q /tmp/chrome-linux64.zip -d /opt/ \
+    && mv /opt/chrome-linux64/* /opt/chrome/ \
+    && chmod +x /opt/chrome/chrome \
+    && rm -rf /tmp/chrome-linux64.zip
 
 # Install matching Chromedriver
 RUN wget -q -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/${CHROMEDRIVER_VERSION}/linux64/chromedriver-linux64.zip" \

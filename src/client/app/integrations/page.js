@@ -184,43 +184,100 @@ const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {
 	)
 }
 
-const PrivacySettings = () => {
-	const [filters, setFilters] = useState([])
-	const [newFilter, setNewFilter] = useState("")
+const FilterInputSection = ({
+	title,
+	description,
+	items,
+	onAdd,
+	onDelete,
+	placeholder
+}) => {
+	const [inputValue, setInputValue] = useState("")
+
+	const handleAdd = () => {
+		if (inputValue.trim()) {
+			onAdd(inputValue)
+			setInputValue("")
+		}
+	}
+
+	return (
+		<div className="bg-[var(--color-primary-surface)]/50 p-4 rounded-lg border border-[var(--color-primary-surface-elevated)]">
+			<h4 className="text-lg font-semibold text-gray-200 mb-2">
+				{title}
+			</h4>
+			{description && (
+				<p className="text-gray-400 text-sm mb-4">{description}</p>
+			)}
+			<div className="flex gap-2 mb-4">
+				<input
+					type="text"
+					value={inputValue}
+					onChange={(e) => setInputValue(e.target.value)}
+					onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+					placeholder={placeholder}
+					className="flex-grow bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+				/>
+				<button
+					onClick={handleAdd}
+					className="flex flex-row items-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors"
+				>
+					<IconPlus className="w-4 h-4 mr-2" /> Add
+				</button>
+			</div>
+			<div className="flex flex-wrap gap-2">
+				{items.length > 0 ? (
+					items.map((item, index) => (
+						<div
+							key={index}
+							className="flex items-center gap-2 bg-[var(--color-primary-surface-elevated)] rounded-full py-1.5 px-3 text-sm text-gray-200"
+						>
+							<span>{item}</span>
+							<button onClick={() => onDelete(item)}>
+								<IconX
+									size={14}
+									className="text-gray-500 hover:text-red-400"
+								/>
+							</button>
+						</div>
+					))
+				) : (
+					<p className="text-sm text-gray-500">
+						No filters added yet.
+					</p>
+				)}
+			</div>
+		</div>
+	)
+}
+
+const PrivacySettings = ({ serviceName }) => {
+	const [filters, setFilters] = useState({
+		keywords: [],
+		emails: [],
+		labels: []
+	})
 	const [isLoading, setIsLoading] = useState(true)
 
 	const fetchFilters = useCallback(async () => {
 		setIsLoading(true)
 		try {
-			const response = await fetch("/api/settings/privacy-filters")
+			const response = await fetch(
+				`/api/settings/privacy-filters?service=${serviceName}`
+			)
 			if (!response.ok) throw new Error("Failed to fetch filters.")
 			const data = await response.json()
-			setFilters(data.filters || [])
+			setFilters(data.filters)
 		} catch (error) {
 			toast.error(error.message)
 		} finally {
 			setIsLoading(false)
 		}
-	}, [])
+	}, [serviceName])
 
 	useEffect(() => {
 		fetchFilters()
 	}, [fetchFilters])
-
-	const handleAddFilter = async () => {
-		if (!newFilter.trim()) {
-			toast.error("Filter cannot be empty.")
-			return
-		}
-		const updatedFilters = [...filters, newFilter.trim()]
-		await handleSaveFilters(updatedFilters)
-		setNewFilter("")
-	}
-
-	const handleDeleteFilter = async (filterToDelete) => {
-		const updatedFilters = filters.filter((f) => f !== filterToDelete)
-		await handleSaveFilters(updatedFilters)
-	}
 
 	const handleSaveFilters = async (updatedFilters) => {
 		setIsLoading(true)
@@ -228,7 +285,10 @@ const PrivacySettings = () => {
 			const response = await fetch("/api/settings/privacy-filters", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ filters: updatedFilters })
+				body: JSON.stringify({
+					service: serviceName,
+					filters: updatedFilters
+				})
 			})
 			if (!response.ok) throw new Error("Failed to save filters.")
 			toast.success("Privacy filters updated.")
@@ -240,53 +300,62 @@ const PrivacySettings = () => {
 		}
 	}
 
+	const handleAddItem = (type, value) => {
+		if (!filters[type].includes(value)) {
+			const updatedFilters = {
+				...filters,
+				[type]: [...filters[type], value]
+			}
+			handleSaveFilters(updatedFilters)
+		}
+	}
+
+	const handleDeleteItem = (type, value) => {
+		const updatedFilters = {
+			...filters,
+			[type]: filters[type].filter((item) => item !== value)
+		}
+		handleSaveFilters(updatedFilters)
+	}
+
+	if (isLoading) {
+		return (
+			<div className="flex justify-center p-8">
+				<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)]" />
+			</div>
+		)
+	}
+
 	return (
-		<div className="bg-[var(--color-primary-surface)]/50 p-4 rounded-lg border border-[var(--color-primary-surface-elevated)]">
-			<h4 className="text-lg font-semibold text-gray-200 mb-2">
-				Keyword Filters
-			</h4>
-			<p className="text-gray-400 text-sm mb-4">
-				Add keywords to prevent emails or events containing them from
-				being processed by the proactive memory pipeline. This helps
-				protect your privacy.
-			</p>
-			<div className="flex gap-2 mb-4">
-				<input
-					type="text"
-					value={newFilter}
-					onChange={(e) => setNewFilter(e.target.value)}
-					onKeyDown={(e) => e.key === "Enter" && handleAddFilter()}
-					placeholder="Add a new filter keyword..."
-					className="flex-grow bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
-				/>
-				<button
-					onClick={handleAddFilter}
-					disabled={isLoading}
-					className="flex flex-row items-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors"
-				>
-					<IconPlus className="w-4 h-4 mr-2" /> Add
-				</button>
-			</div>
-			<div className="flex flex-wrap gap-2">
-				{filters.map((filter, index) => (
-					<div
-						key={index}
-						className="flex items-center gap-2 bg-[var(--color-primary-surface-elevated)] rounded-full py-1.5 px-3 text-sm text-gray-200"
-					>
-						<span>{filter}</span>
-						<button onClick={() => handleDeleteFilter(filter)}>
-							<IconX
-								size={14}
-								className="text-gray-500 hover:text-red-400"
-							/>
-						</button>
-					</div>
-				))}
-			</div>
-			{isLoading && (
-				<div className="flex justify-center mt-4">
-					<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)]" />
-				</div>
+		<div className="space-y-6">
+			<FilterInputSection
+				title="Keyword Filters"
+				description="Emails or events containing these keywords will be ignored by the proactive memory pipeline."
+				items={filters.keywords}
+				onAdd={(value) => handleAddItem("keywords", value)}
+				onDelete={(value) => handleDeleteItem("keywords", value)}
+				placeholder="Add a new keyword..."
+			/>
+
+			{serviceName === "gmail" && (
+				<>
+					<FilterInputSection
+						title="Blocked Email Senders"
+						description="Emails from these addresses (or containing these partial addresses) will be ignored."
+						items={filters.emails}
+						onAdd={(value) => handleAddItem("emails", value)}
+						onDelete={(value) => handleDeleteItem("emails", value)}
+						placeholder="Add an email address..."
+					/>
+					<FilterInputSection
+						title="Blocked Labels"
+						description="Emails with these labels will be ignored. Enter the full label name (e.g., 'Promotions', 'Social')."
+						items={filters.labels}
+						onAdd={(value) => handleAddItem("labels", value)}
+						onDelete={(value) => handleDeleteItem("labels", value)}
+						placeholder="Add a Gmail label..."
+					/>
+				</>
 			)}
 		</div>
 	)
@@ -350,7 +419,9 @@ const IntegrationDetailsModal = ({
 						</p>
 					</div>
 
-					{showPrivacyFilters && <PrivacySettings />}
+					{showPrivacyFilters && (
+						<PrivacySettings serviceName={integration.name} />
+					)}
 				</div>
 				<div className="mt-6 pt-4 border-t border-[var(--color-primary-surface-elevated)] flex-shrink-0">
 					{isProcessing ? (

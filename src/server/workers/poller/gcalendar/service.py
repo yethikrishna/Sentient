@@ -67,7 +67,10 @@ class GCalendarPollingService:
                 updated_state["next_scheduled_poll_time"] = datetime.datetime.now(timezone.utc) + datetime.timedelta(days=1)
                 return
 
-            privacy_filters = user_profile.get("userData", {}).get("privacyFilters", [])
+            all_privacy_filters = user_profile.get("userData", {}).get("privacyFilters", {})
+            calendar_filters = all_privacy_filters.get("gcalendar", {})
+            keyword_filters = calendar_filters.get("keywords", [])
+            
             creds = await get_gcalendar_credentials(user_id, self.db_manager)
             if not creds:
                 logger.error(f"No valid GCalendar credentials for user {user_id}. Disabling polling.")
@@ -84,7 +87,7 @@ class GCalendarPollingService:
                 event_id = event["id"]
 
                 content_to_check = (event.get("summary", "") + " " + event.get("description", "")).lower()
-                if any(word.lower() in content_to_check for word in privacy_filters):
+                if any(word.lower() in content_to_check for word in keyword_filters):
                     logger.info(f"Skipping event {event_id} for user {user_id} due to privacy filter match.")
                     # Log as processed to avoid re-checking
                     continue
@@ -112,7 +115,6 @@ class GCalendarPollingService:
                 logger.error(f"Disabling GCalendar polling for user {user_id} due to {he.resp.status} error.")
         except Exception as e:
             logger.error(f"General error during GCalendar poll for user {user_id}: {e}", exc_info=True)
-            await self._handle_poll_failure(user_id, updated_state, f"Error: {str(e)}")
         
         finally:
             failures = updated_state.get("consecutive_failure_count", 0)

@@ -24,8 +24,9 @@ from googleapiclient.errors import HttpError
 # For dispatching memory tasks
 from workers.tasks import process_memory_item
 
-class PrivacyFiltersRequest(BaseModel):
-    filters: List[str]
+class UpdatePrivacyFiltersRequest(BaseModel):
+    service: str
+    filters: Dict[str, List[str]]
 
 logger = logging.getLogger(__name__)
 
@@ -44,20 +45,22 @@ async def save_onboarding_data_endpoint(
         # Generate and add supermemory_user_id
         supermemory_user_id = secrets.token_urlsafe(16)
 
-        default_privacy_filters = [
-            "bank statement",
-            "account statement",
-            "OTP",
-            "one-time password",
-            "password reset",
-            "credit card",
-            "debit card",
-            "financial statement",
-            "confidential",
-            "do not share",
-            "ssn",
-            "social security",
-        ]
+        default_privacy_filters = {
+            "gmail": {
+                "keywords": [
+                    "bank statement", "account statement", "OTP", "one-time password",
+                    "password reset", "credit card", "debit card", "financial statement",
+                    "confidential", "do not share", "ssn", "social security"
+                ],
+                "emails": [],
+                "labels": []
+            },
+            "gcalendar": {
+                "keywords": [
+                    "confidential"
+                ]
+            }
+        }
 
         onboarding_data = request_body.data
         # Sanitize empty optional fields
@@ -252,24 +255,27 @@ async def user_activity_heartbeat_endpoint(user_id: str = Depends(PermissionChec
         return JSONResponse(content={"message": "User activity timestamp updated."})
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update user activity.")
 
-@router.get("/settings/privacy-filters", summary="Get User Privacy Filters")
-async def get_privacy_filters_endpoint(
-    user_id: str = Depends(PermissionChecker(required_permissions=["read:config"]))
-):
-    profile = await mongo_manager.get_user_profile(user_id)
-    filters = []
-    if profile and profile.get("userData"):
-        filters = profile["userData"].get("privacyFilters", [])
-    
-    return JSONResponse(content={"filters": filters})
-
 @router.post("/settings/privacy-filters", summary="Update User Privacy Filters")
 async def update_privacy_filters_endpoint(
-    request: PrivacyFiltersRequest,
+    request: UpdatePrivacyFiltersRequest,
     user_id: str = Depends(PermissionChecker(required_permissions=["write:config"]))
 ):
-    update_payload = {"userData.privacyFilters": request.filters}
+    if not request.service:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Service name must be provided.")
+    
+    # Validate the structure of the filters
+    if not isinstance(request.filters, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Filters must be a dictionary.")
+    
+    for key, value in request.filters.items():
+        if not isinstance(value, list) or not all(isinstance(i, str) for i in value):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Filter '{key}' must be a list of strings.")
+
+    update_path = f"userData.privacyFilters.{request.service}"
+    update_payload = {update_path: request.filters}
+    
     success = await mongo_manager.update_user_profile(user_id, update_payload)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to update privacy filters.")
+        
     return JSONResponse(content={"message": "Privacy filters updated successfully."})

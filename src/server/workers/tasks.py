@@ -35,6 +35,8 @@ from workers.poller.gcalendar.db import PollerMongoManager as GCalPollerDB
 from linkedin_scraper import Person, actions
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+import tempfile
+import shutil
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -423,9 +425,15 @@ def process_linkedin_profile(user_id: str, linkedin_url: str):
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu") # Best practice for headless mode
     
+    user_data_dir = None
     driver = None
     try:
+        # Create a unique user data directory for this task run
+        user_data_dir = tempfile.mkdtemp()
+        chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
+
         driver = webdriver.Chrome(options=chrome_options)
         
         logger.info(f"Logging into LinkedIn using session cookie...")
@@ -484,6 +492,12 @@ def process_linkedin_profile(user_id: str, linkedin_url: str):
         if driver:
             driver.quit()
             logger.info("WebDriver for LinkedIn scraping has been quit.")
+        if user_data_dir and os.path.exists(user_data_dir):
+            try:
+                shutil.rmtree(user_data_dir)
+                logger.info(f"Cleaned up temporary user data directory: {user_data_dir}")
+            except Exception as e:
+                logger.error(f"Failed to cleanup temporary directory {user_data_dir}: {e}")
 
 # --- Polling Tasks ---
 @celery_app.task(name="poll_gmail_for_user")

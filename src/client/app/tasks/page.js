@@ -17,16 +17,13 @@ import {
 	IconAlertCircle,
 	IconFilter,
 	IconChevronUp,
-	IconPlus,
 	IconGripVertical,
 	IconBrain,
 	IconBook,
 	IconMail,
 	IconCalendarEvent,
 	IconMessage,
-	IconArrowRight,
 	IconPlugConnected,
-	IconChevronDown,
 	IconChecklist,
 	IconHelpCircle as HelpIcon
 } from "@tabler/icons-react"
@@ -112,31 +109,13 @@ const Tasks = () => {
 	const [error, setError] = useState(null)
 	const [editingTask, setEditingTask] = useState(null)
 	const [filterStatus, setFilterStatus] = useState("all")
-	const [isGeneratingPlan, setIsGeneratingPlan] = useState(false)
 	const [searchTerm, setSearchTerm] = useState("")
 	const [viewingTask, setViewingTask] = useState(null)
-	const [isCreatePlanOpen, setCreatePlanOpen] = useState(false)
-	const [createStep, setCreateStep] = useState("generate") // 'generate' or 'review'
 	const [openSections, setOpenSections] = useState({
-		// By default, only show sections that are likely to need action
-		// The user can expand the others if needed.
-		// This improves the initial view by reducing clutter.
 		active: false, // Recurring tasks are less frequently managed
 		approval_pending: true,
 		processing: true,
 		completed: true
-	})
-	const [isAdding, setIsAdding] = useState(false)
-	const [generationPrompt, setGenerationPrompt] = useState("")
-	const [newTaskDescription, setNewTaskDescription] = useState("")
-	const [newTaskPriority, setNewTaskPriority] = useState(1)
-	const [newTaskPlan, setNewTaskPlan] = useState([])
-	const [newSchedule, setNewSchedule] = useState({
-		type: "once",
-		run_at: null,
-		frequency: "daily",
-		time: "09:00",
-		days: []
 	})
 	const [allTools, setAllTools] = useState([])
 	const [integrations, setIntegrations] = useState([])
@@ -218,50 +197,9 @@ const Tasks = () => {
 		fetchAllToolsAndIntegrations()
 		const intervalId = setInterval(fetchTasksData, 60000)
 		return () => clearInterval(intervalId)
-	}, [fetchTasksData])
-
-	const handleShortcuts = useCallback((e) => {
-		if (e.ctrlKey && e.key === "Enter") {
-			e.preventDefault()
-			setCreatePlanOpen((prev) => !prev)
-		}
 	}, [])
-	useEffect(() => {
-		window.addEventListener("keydown", handleShortcuts)
-		return () => window.removeEventListener("keydown", handleShortcuts)
-	}, [fetchTasksData])
 
-	const handleGeneratePlan = async () => {
-		if (!generationPrompt.trim()) {
-			toast.error("Please enter a goal for your plan.")
-			return
-		}
-		setIsGeneratingPlan(true)
-		try {
-			const response = await fetch("/api/tasks/generate-plan", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ prompt: generationPrompt })
-			})
-			const data = await response.json()
-			if (!response.ok) throw new Error(data.detail)
-			if (!data.plan || data.plan.length === 0) {
-				toast.error(
-					"The agent could not generate a plan for this goal. Please try rephrasing."
-				)
-			} else {
-				setNewTaskDescription(data.description || generationPrompt)
-				setNewTaskPlan(data.plan)
-				setCreateStep("review")
-				toast.success("Plan generated! Review and save it below.")
-			}
-		} catch (error) {
-			toast.error(`Plan Generation Failed: ${error.message}`)
-		} finally {
-			setIsGeneratingPlan(false)
-		}
-	}
-
+	const handleEditTask = (task) => setEditingTask({ ...task })
 	const handleUpdateTaskSchedule = async (taskId, schedule) => {
 		if (!taskId) return false
 		try {
@@ -279,66 +217,6 @@ const Tasks = () => {
 			return false
 		}
 	}
-
-	const handleAddTask = async () => {
-		if (!newTaskDescription.trim())
-			return toast.error("Please enter a task description.")
-		if (newTaskPlan.some((step) => !step.tool || !step.description.trim()))
-			return toast.error(
-				"All plan steps must have a tool and description."
-			)
-		setIsAdding(true)
-		try {
-			// Clean up schedule object before sending
-			const schedulePayload =
-				newSchedule.type === "once"
-					? { type: "once", run_at: newSchedule.run_at || null }
-					: newSchedule
-
-			const taskData = {
-				description: newTaskDescription,
-				priority: newTaskPriority,
-				plan: newTaskPlan,
-				schedule: schedulePayload
-			}
-
-			const response = await fetch("/api/tasks/add", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(taskData)
-			})
-			if (!response.ok) {
-				const data = await response.json()
-				throw new Error(data.error || "Failed to add task")
-			}
-			toast.success("New plan created successfully!")
-			posthog?.capture("workflow_created", {
-				plan_steps: taskData.plan.length,
-				is_recurring: taskData.schedule.type === "recurring",
-				priority: taskData.priority
-			})
-			setGenerationPrompt("")
-			setNewTaskDescription("")
-			setNewTaskPriority(1)
-			setNewTaskPlan([])
-			setNewSchedule({
-				type: "once",
-				run_at: null,
-				frequency: "daily",
-				time: "09:00",
-				days: []
-			})
-			setCreateStep("generate")
-			setCreatePlanOpen(false)
-			await fetchTasksData()
-		} catch (error) {
-			toast.error(`Failed to add task: ${error.message}`)
-		} finally {
-			setIsAdding(false)
-		}
-	}
-
-	const handleEditTask = (task) => setEditingTask({ ...task })
 	const handleUpdateTask = async () => {
 		if (
 			!editingTask ||
@@ -476,7 +354,7 @@ const Tasks = () => {
 			<Tooltip id="tasks-tooltip" />
 			<Tooltip id="page-help-tooltip" />
 			<div className="flex-1 flex flex-col overflow-hidden relative">
-				<HelpTooltip content="This is the Tasks page. Here you can view all your tasks, approve new ones, and create custom multi-step plans (workflows). Press Ctrl + Enter to toggle the plan creator." />
+				<HelpTooltip content="This is the Tasks page. Here you can view all your tasks and approve new ones." />
 				<motion.header
 					initial={{ y: -20, opacity: 0 }}
 					animate={{ y: 0, opacity: 1 }}
@@ -533,7 +411,7 @@ const Tasks = () => {
 				</motion.header>
 
 				<main className="flex-1 w-full max-w-3xl mx-auto flex flex-col overflow-y-auto custom-scrollbar px-4">
-					<div className="space-y-2 pt-6 pb-36">
+					<div className="space-y-2 pt-6 pb-6">
 						{loading || loadingIntegrations ? (
 							<div className="flex justify-center items-center h-full">
 								<IconLoader className="w-12 h-12 animate-spin text-[var(--color-accent-blue)]" />
@@ -544,7 +422,7 @@ const Tasks = () => {
 							</div>
 						) : filteredTasks.length === 0 ? (
 							<p className="text-gray-500 text-center py-20 mt-5">
-								No tasks found. Create a new plan below!
+								No tasks found.
 							</p>
 						) : (
 							<>
@@ -596,111 +474,6 @@ const Tasks = () => {
 						)}
 					</div>
 				</main>
-
-				<div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/50 via-neutral-900/80 to-transparent backdrop-blur-sm border-t border-neutral-700/50 z-20">
-					<div className="max-w-3xl mx-auto">
-						<div
-							onClick={() => setCreatePlanOpen(!isCreatePlanOpen)}
-							className="flex justify-between items-center cursor-pointer"
-						>
-							<h3 className="text-lg font-semibold text-white">
-								Create a New Plan
-							</h3>
-							<IconChevronDown
-								className={cn(
-									"transform transition-transform duration-200",
-									!isCreatePlanOpen && "rotate-180"
-								)}
-							/>
-						</div>
-						<AnimatePresence>
-							{isCreatePlanOpen && (
-								<motion.div
-									key="create-plan-panel"
-									initial={{ height: 0, opacity: 0 }}
-									animate={{ height: "auto", opacity: 1 }}
-									exit={{ height: 0, opacity: 0 }}
-									className="overflow-hidden"
-								>
-									{createStep === "generate" ? (
-										<div className="space-y-4 pt-4">
-											<label className="text-sm font-medium text-gray-300 mb-1 block">
-												What is your goal?
-											</label>
-											<textarea
-												placeholder="e.g., Send a daily summary of my calendar to my boss"
-												value={generationPrompt}
-												onChange={(e) =>
-													setGenerationPrompt(
-														e.target.value
-													)
-												}
-												rows={3}
-												className="w-full p-3 bg-neutral-800/50 border border-neutral-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 backdrop-blur-sm transition-colors"
-											/>
-											<div className="flex justify-end">
-												<button
-													onClick={handleGeneratePlan}
-													disabled={isGeneratingPlan}
-													className="p-3 px-6 bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] rounded-lg text-white font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
-												>
-													{isGeneratingPlan ? (
-														<IconLoader className="w-5 h-5 animate-spin" />
-													) : (
-														<>
-															Next: Review Plan{" "}
-															<IconArrowRight className="w-4 h-4" />
-														</>
-													)}
-												</button>
-											</div>
-										</div>
-									) : (
-										// REVIEW STEP
-										<div className="space-y-6 pt-4">
-											<PlanEditor
-												description={newTaskDescription}
-												setDescription={
-													setNewTaskDescription
-												}
-												priority={newTaskPriority}
-												setPriority={setNewTaskPriority}
-												plan={newTaskPlan}
-												setPlan={setNewTaskPlan}
-												schedule={newSchedule}
-												setSchedule={setNewSchedule}
-												allTools={allTools}
-												integrations={integrations}
-											/>
-											<div className="flex justify-between items-center">
-												<button
-													onClick={() =>
-														setCreateStep(
-															"generate"
-														)
-													}
-													className="py-2.5 px-6 rounded-lg bg-[var(--color-primary-surface-elevated)] hover:bg-[var(--color-primary-surface)] text-white text-sm font-semibold"
-												>
-													Back
-												</button>
-												<button
-													onClick={handleAddTask}
-													disabled={isAdding}
-													className="py-2.5 px-6 rounded-lg bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
-												>
-													{isAdding && (
-														<IconLoader className="h-5 h-5 animate-spin" />
-													)}
-													Save New Plan
-												</button>
-											</div>
-										</div>
-									)}
-								</motion.div>
-							)}
-						</AnimatePresence>
-					</div>
-				</div>
 			</div>
 			{viewingTask && (
 				<TaskDetailsModal
@@ -861,7 +634,7 @@ const PlanEditor = ({
 					onClick={handleAddStep}
 					className="flex items-center gap-1.5 py-1.5 px-3 rounded-full bg-[var(--color-primary-surface-elevated)] hover:bg-[var(--color-primary-surface)] text-xs"
 				>
-					<IconPlus className="h-4 w-4" /> Add Step
+					<IconGripVertical className="h-4 w-4" /> Add Step
 				</button>
 			</div>
 			<div>

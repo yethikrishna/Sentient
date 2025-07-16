@@ -12,7 +12,7 @@ if ENVIRONMENT == 'dev-local':
         load_dotenv(dotenv_path=dotenv_path)
 # OpenAI API Standard Configuration
 OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL", "http://localhost:11434")
-OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "qwen2:1.5b")
+OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "qwen3:4b")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ollama")
 # MongoDB Configuration
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")

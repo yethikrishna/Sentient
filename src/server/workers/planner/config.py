@@ -22,7 +22,7 @@ else:
     logging.info(f"[PlannerConfig] Skipping dotenv loading for '{ENVIRONMENT}' mode.")
 # OpenAI API Standard Configuration
 OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL", "http://localhost:11434")
-OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "qwen2:1.5b")
+OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "qwen3:4b")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ollama")
 
 # Kafka Configuration

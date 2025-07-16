@@ -17,20 +17,16 @@ if ENVIRONMENT == 'dev-local':
     if os.path.exists(dotenv_path):
         load_dotenv(dotenv_path=dotenv_path)
 
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "OLLAMA")
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL_NAME = os.getenv("OLLAMA_MODEL_NAME", "qwen3:4b")
-NOVITA_API_KEY = os.getenv("NOVITA_API_KEY")
-NOVITA_MODEL_NAME = os.getenv("NOVITA_MODEL_NAME", "qwen/qwen3-4b-fp8")
+OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL", "http://localhost:11434")
+OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "qwen3:4b")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ollama")
 
 def get_generator_agent():
-    llm_cfg = {}
-    if LLM_PROVIDER == "OLLAMA":
-        llm_cfg = {'model': OLLAMA_MODEL_NAME, 'model_server': f"{OLLAMA_BASE_URL.rstrip('/')}/v1/", 'api_key': 'ollama'}
-    elif LLM_PROVIDER == "NOVITA":
-        llm_cfg = {'model': NOVITA_MODEL_NAME, 'model_server': "https://api.novita.ai/v3/openai", 'api_key': NOVITA_API_KEY}
-    else:
-        raise ValueError(f"Invalid LLM_PROVIDER: {LLM_PROVIDER}")
+    llm_cfg = {
+        'model': OPENAI_MODEL_NAME,
+        'model_server': f"{OPENAI_API_BASE_URL.rstrip('/')}/v1",
+        'api_key': OPENAI_API_KEY,
+    }
     return Assistant(llm=llm_cfg, system_message=prompts.JSON_GENERATOR_SYSTEM_PROMPT, function_list=[])
 
 mcp = FastMCP(

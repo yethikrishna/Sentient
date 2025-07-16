@@ -1,8 +1,6 @@
 # docker-compose.yml for self-hosting Sentient
 # This file should be placed in the `src` directory.
 
-version: "3.8"
-
 services:
   # Client (Next.js Frontend)
   client:

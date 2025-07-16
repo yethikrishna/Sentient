@@ -424,6 +424,7 @@ def process_linkedin_profile(user_id: str, linkedin_url: str):
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--incognito")
     
     driver = None
     try:

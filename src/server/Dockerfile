@@ -6,8 +6,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
     DEBIAN_FRONTEND=noninteractive \
-    CHROME_VERSION=125.0.6422.141-1 \
-    CHROMEDRIVER_VERSION=125.0.6422.141
+    CHROME_VERSION=138.0.7204.157 \
+    CHROMEDRIVER_VERSION=138.0.7204.157
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \

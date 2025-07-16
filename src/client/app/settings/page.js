@@ -1367,8 +1367,8 @@ const ProfilePage = () => {
 
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
-			<Tooltip id="settings-tooltip" />
-			<Tooltip id="page-help-tooltip" />
+			<Tooltip id="settings-tooltip" style={{ zIndex: 9999 }} />
+			<Tooltip id="page-help-tooltip" style={{ zIndex: 9999 }} />
 			<div className="flex-1 flex flex-col overflow-hidden relative">
 				<main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 custom-scrollbar">
 					<HelpTooltip content="Customize your experience here. Teach Sentient about yourself, change its personality, manage notifications, and connect your LinkedIn profile." />

@@ -171,6 +171,7 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 				)
 				wsRef.current.isCleaningUp = true // Mark for intentional close
 				wsRef.current.close()
+				wsRef.current = null
 			}
 		}
 	}, [userDetails?.sub, router]) // Depend only on the stable user ID

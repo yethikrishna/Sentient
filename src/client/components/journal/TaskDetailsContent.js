@@ -122,6 +122,10 @@ const TaskDetailsContent = ({ task }) => {
 										data-tooltip-id="task-details-tooltip"
 										data-tooltip-content="See the step-by-step reasoning the agent used to produce the result."
 									>
+										<Tooltip
+											id="task-details-tooltip"
+											style={{ zIndex: 9999 }}
+										/>
 										<IconBrain
 											size={16}
 											className="text-yellow-400"

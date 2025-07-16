@@ -524,8 +524,8 @@ const HomePage = () => {
 
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
-			<Tooltip id="home-tooltip" />
-			<Tooltip id="page-help-tooltip" />
+			<Tooltip id="home-tooltip" style={{ zIndex: 9999 }} />
+			<Tooltip id="page-help-tooltip" style={{ zIndex: 9999 }} />
 			<div className="flex-1 flex flex-col overflow-hidden relative">
 				<HelpTooltip content="This is your Home page. See tasks pending your approval and get a glimpse of your day's agenda and journal entries." />
 				<main className="flex-1 overflow-y-auto p-4 lg:p-8 custom-scrollbar">

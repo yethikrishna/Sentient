@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 # --- LLM Config for Executor ---
 llm_cfg = {
     'model': OPENAI_MODEL_NAME,
-    'model_server': f"{OPENAI_API_BASE_URL.rstrip('/')}/v1",
+    'model_server': OPENAI_API_BASE_URL,
     'api_key': OPENAI_API_KEY,
 }
 

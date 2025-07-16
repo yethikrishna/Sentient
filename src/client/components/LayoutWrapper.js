@@ -119,6 +119,14 @@ export default function LayoutWrapper({ children }) {
 	const pathname = usePathname()
 	const router = useRouter()
 
+	const handleChatOpen = useCallback(() => {
+		setChatOpen(true)
+	}, [])
+
+	const handleNotificationsOpen = useCallback(() => {
+		setNotificationsOpen(true)
+	}, [])
+
 	const showChatButton = pathname !== "/onboarding" && pathname !== "/"
 
 	const handleKeyDown = useCallback(
@@ -138,10 +146,10 @@ export default function LayoutWrapper({ children }) {
 						router.push("/integrations")
 						break
 					case "s":
-						router.push("/settings/profile")
+						router.push("/settings")
 						break
 					case "b":
-						setNotificationsOpen(true)
+						handleNotificationsOpen()
 						break
 					case "m":
 						setChatOpen(true)
@@ -161,7 +169,13 @@ export default function LayoutWrapper({ children }) {
 				if (isNotificationsOpen) setNotificationsOpen(false)
 			}
 		},
-		[router, isChatOpen, isLegendOpen, isNotificationsOpen]
+		[
+			router,
+			isChatOpen,
+			isLegendOpen,
+			isNotificationsOpen,
+			handleNotificationsOpen
+		]
 	)
 
 	useEffect(() => {
@@ -172,8 +186,8 @@ export default function LayoutWrapper({ children }) {
 	return (
 		<>
 			<FloatingNav
-				onChatOpen={() => setChatOpen(true)}
-				onNotificationsOpen={() => setNotificationsOpen(true)}
+				onChatOpen={handleChatOpen}
+				onNotificationsOpen={handleNotificationsOpen}
 			/>
 			{children}
 			<AnimatePresence>

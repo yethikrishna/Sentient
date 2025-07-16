@@ -230,7 +230,7 @@ const ChatOverlay = ({ onClose }) => {
 				transition={{ duration: 0.3, ease: "easeInOut" }}
 				className="bg-[var(--color-primary-background)] border border-[var(--color-primary-surface-elevated)] rounded-2xl w-full max-w-3xl h-[85vh] flex flex-col shadow-2xl"
 			>
-				<Tooltip id="chat-overlay-tooltip" />
+				<Tooltip id="chat-overlay-tooltip" style={{ zIndex: 9999 }} />
 				<header className="flex justify-between items-center p-4 border-b border-[var(--color-primary-surface)] flex-shrink-0">
 					<h2 className="text-xl font-semibold text-[var(--color-text-primary)]">
 						Chat with Sentient

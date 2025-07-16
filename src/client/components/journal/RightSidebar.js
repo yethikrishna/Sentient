@@ -93,7 +93,11 @@ const RightSidebar = ({
 			className="hidden md:flex flex-col h-screen shrink-0 relative"
 		>
 			<div className="flex h-full">
-				<Tooltip id="sidebar-tooltip" place="left" />
+				<Tooltip
+					id="sidebar-tooltip"
+					place="left"
+					style={{ zIndex: 9999 }}
+				/>
 				<div className="flex-1 overflow-y-auto custom-scrollbar bg-[var(--color-primary-surface)]/50 backdrop-blur-lg">
 					{activeTab === "calendar" && (
 						<div className="p-4">

@@ -109,7 +109,11 @@ const NotificationsOverlay = ({ onClose }) => {
 			className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 p-4"
 			onClick={onClose}
 		>
-			<Tooltip id="notifications-overlay-tooltip" />
+			<Tooltip
+				id="notifications-overlay-tooltip"
+				style={{ zIndex: 9999 }}
+			/>
+
 			<motion.div
 				initial={{ scale: 0.9, y: 20 }}
 				animate={{ scale: 1, y: 0 }}

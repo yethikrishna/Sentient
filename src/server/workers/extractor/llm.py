@@ -21,7 +21,7 @@ def get_extractor_agent(user_name: str, user_location: str, user_timezone: str):
 
     llm_cfg = {
         'model': config.OPENAI_MODEL_NAME,
-        'model_server': f"{config.OPENAI_API_BASE_URL.rstrip('/')}/v1",
+        'model_server': config.OPENAI_API_BASE_URL,
         'api_key': config.OPENAI_API_KEY,
     }
     logger.info(f"Extractor agent configured for model='{config.OPENAI_MODEL_NAME}' and server='{llm_cfg['model_server']}'")

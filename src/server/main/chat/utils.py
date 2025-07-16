@@ -53,6 +53,21 @@ async def _select_relevant_tools(query: str, available_tools_map: Dict[str, str]
         logger.error(f"Error during tool selection LLM call: {e}", exc_info=True)
         return list(available_tools_map.keys())
 
+def _get_tool_lists(user_integrations: Dict) -> Tuple[Dict, Dict]:
+    """Separates tools into connected and disconnected lists."""
+    connected_tools = {}
+    disconnected_tools = {}
+    for tool_name, config in INTEGRATIONS_CONFIG.items():
+        # We only care about tools that require user connection (oauth or manual)
+        if config.get("auth_type") not in ["oauth", "manual"]:
+            continue
+
+        if user_integrations.get(tool_name, {}).get("connected", False):
+            connected_tools[tool_name] = config.get("description", "")
+        else:
+            disconnected_tools[tool_name] = config.get("description", "")
+    return connected_tools, disconnected_tools
+
 async def generate_chat_llm_stream(
     user_id: str,
     messages: List[Dict[str, Any]],
@@ -82,23 +97,28 @@ async def generate_chat_llm_stream(
         user_profile = await db_manager.get_user_profile(user_id)
         user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
         supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id") if user_profile else None
-        
+
+        # Get both connected and disconnected tools
+        connected_tools, disconnected_tools = _get_tool_lists(user_integrations)
+
         all_available_mcp_servers = {}
-        tool_name_to_desc_map = {}
+        tool_name_to_desc_map = connected_tools.copy() # Start with connected tools
 
         if supermemory_user_id:
             full_supermemory_mcp_url = f"{SUPERMEMORY_MCP_BASE_URL.rstrip('/')}/{supermemory_user_id}{SUPERMEMORY_MCP_ENDPOINT_SUFFIX}"
             all_available_mcp_servers["supermemory"] = {"transport": "sse", "url": full_supermemory_mcp_url}
-            tool_name_to_desc_map["supermemory"] = INTEGRATIONS_CONFIG.get("supermemory", {}).get("description", "")
+            # Add built-in tools to the description map for the selector
+            tool_name_to_desc_map["supermemory"] = INTEGRATIONS_CONFIG.get("supermemory", {}).get("description")
 
+        # Add other built-in tools
         for tool_name, config in INTEGRATIONS_CONFIG.items():
-            if tool_name == "supermemory": continue
-            
-            is_builtin = config.get("auth_type") == "builtin"
-            is_connected = user_integrations.get(tool_name, {}).get("connected", False)
+            if config.get("auth_type") == "builtin":
+                 tool_name_to_desc_map[tool_name] = config.get("description")
 
-            if is_builtin or is_connected:
-                tool_name_to_desc_map[tool_name] = config.get("description", "")
+        # Now, populate MCP servers for all available (connected + built-in) tools
+        for tool_name in tool_name_to_desc_map.keys():
+            config = INTEGRATIONS_CONFIG.get(tool_name, {})
+            if config:
                 mcp_config = config.get("mcp_server_config")
                 if mcp_config and mcp_config.get("url"):
                     all_available_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
@@ -133,18 +153,26 @@ async def generate_chat_llm_stream(
     humor_level = preferences.get('humorLevel', 'Balanced')
     emoji_usage = "You can use emojis to add personality." if preferences.get('useEmojis', True) else "You should not use emojis."
 
+    disconnected_tools_list_str = "\n".join([f"- `{name}`: {desc}" for name, desc in disconnected_tools.items()])
+    disconnected_tools_prompt_section = (
+        f"**Disconnected Tools (User needs to connect these in Settings):**\n{disconnected_tools_list_str}\n\n"
+        if disconnected_tools_list_str else ""
+    )
+
     system_prompt = (
         f"You are {agent_name}, a personalized AI assistant. Your goal is to be as helpful as possible by using your available tools for information retrieval or by creating journal entries for actions that need to be planned and executed.\n\n"
         f"**Critical Instructions:**\n"
-        f"1. **Analyze User Intent:** First, determine if the user is asking for information (a 'retrieval' query) or asking you to perform an action (an 'action' query).\n"
-        f"2. **Retrieval Queries:** For requests to find, list, search, or read information (e.g., 'what's the weather?', 'search for emails about project X', 'what's on my calendar?'), use the appropriate tools from your available tool list to get the information and answer the user directly.\n"
-        f"3. **Action Queries:** For requests to perform an action (e.g., 'send an email', 'create a document', 'schedule an event', 'delete this file'), you MUST NOT call the tool for that action directly. Instead, you MUST use the `journal-add_journal_entry` tool. The `content` for this tool should be a clear description of the user's request (e.g., `content='Send an email to my boss about the report'`). After calling this tool, inform the user that you have noted their request and it will be processed.\n"
-        f"4. **Memory Usage:** ALWAYS use `supermemory-search` first to check for existing context. If you learn a new, permanent fact about the user, use `supermemory-addToSupermemory` to save it.\n"
-        f"5. **Final Answer Format:** When you have a complete, final answer for the user that is not a tool call, you MUST wrap it in `<answer>` tags. For example: `<answer>The weather in London is 15°C and cloudy.</answer>`.\n\n"
+        f"1. **Handle Disconnected Tools:** You have a list of tools the user has not connected yet. If the user's query clearly refers to a capability from this list (e.g., asking to 'send a slack message' when Slack is disconnected), you MUST stop and politely inform the user that they need to connect the tool in the Settings > Integrations page. Do not proceed with other tools.\n"
+        f"2. **Analyze User Intent:** First, determine if the user is asking for information (a 'retrieval' query) or asking you to perform an action (an 'action' query).\n"
+        f"3. **Retrieval Queries:** For requests to find, list, search, or read information (e.g., 'what's the weather?', 'search for emails about project X', 'what's on my calendar?'), use the appropriate tools from your available tool list to get the information and answer the user directly.\n"
+        f"4. **Action Queries:** For requests to perform an action (e.g., 'send an email', 'create a document', 'schedule an event', 'delete this file'), you MUST NOT call the tool for that action directly. Instead, you MUST use the `journal-add_journal_entry` tool. The `content` for this tool should be a clear description of the user's request (e.g., `content='Send an email to my boss about the report'`). After calling this tool, inform the user that you have noted their request and it will be processed.\n"
+        f"5. **Memory Usage:** ALWAYS use `supermemory-search` first to check for existing context. If you learn a new, permanent fact about the user, use `supermemory-addToSupermemory` to save it.\n"
+        f"6. **Final Answer Format:** When you have a complete, final answer for the user that is not a tool call, you MUST wrap it in `<answer>` tags. For example: `<answer>The weather in London is 15°C and cloudy.</answer>`.\n\n"
         f"**Your Persona:**\n"
         f"- Your responses should be **{verbosity}**.\n"
         f"- Your tone should be **{humor_level}**.\n"
         f"- {emoji_usage}\n\n"
+        f"{disconnected_tools_prompt_section}"
         f"**User Context (for your reference):**\n"
         f"-   **User's Name:** {username}\n"
         f"-   **User's Location:** {location}\n"

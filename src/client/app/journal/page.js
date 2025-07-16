@@ -440,7 +440,7 @@ const OrganizerPage = () => {
 
 	return (
 		<div className="flex h-screen bg-gradient-to-br from-[var(--color-primary-background)] via-[var(--color-primary-background)] to-[var(--color-primary-surface)]/20 text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
-			<Tooltip id="journal-tooltip" />
+			<Tooltip id="journal-tooltip" style={{ zIndex: 9999 }} />
 			<Tooltip id="journal-help" style={{ zIndex: 9999 }} />
 			<div className="flex-1 flex flex-col overflow-hidden relative">
 				<CalendarHeader

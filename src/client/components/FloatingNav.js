@@ -128,6 +128,7 @@ export default function FloatingNav({ onChatOpen, onNotificationsOpen }) {
 			if (wsRef.current) {
 				wsRef.current.isCleaningUp = true
 				wsRef.current.close()
+				wsRef.current = null
 			}
 		}
 	}, [userDetails?.sub, router])

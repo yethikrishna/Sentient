@@ -30,7 +30,7 @@ def get_planner_agent(available_tools: dict, current_time_str: str, user_name: s
     llm_cfg = {}
     llm_cfg = {
         'model': config.OPENAI_MODEL_NAME,
-        'model_server': f"{config.OPENAI_API_BASE_URL.rstrip('/')}/v1",
+        'model_server': config.OPENAI_API_BASE_URL,
         'api_key': config.OPENAI_API_KEY,
     }
 
@@ -57,7 +57,7 @@ def get_question_generator_agent(supermemory_mcp_url: str, original_context: dic
     )
     llm_cfg = {
         'model': config.OPENAI_MODEL_NAME,
-        'model_server': f"{config.OPENAI_API_BASE_URL.rstrip('/')}/v1",
+        'model_server': config.OPENAI_API_BASE_URL,
         'api_key': config.OPENAI_API_KEY,
     }
     

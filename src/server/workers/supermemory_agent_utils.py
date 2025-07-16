@@ -24,7 +24,7 @@ def get_supermemory_qwen_agent(supermemory_mcp_url: str):
     llm_cfg = {}
     llm_cfg = {
         'model': OPENAI_MODEL_NAME,
-        'model_server': f"{OPENAI_API_BASE_URL.rstrip('/')}/v1",
+        'model_server': OPENAI_API_BASE_URL,
         'api_key': OPENAI_API_KEY,
     }
 

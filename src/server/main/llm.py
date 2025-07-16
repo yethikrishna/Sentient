@@ -20,7 +20,7 @@ def get_qwen_assistant(system_message: str = DEFAULT_SYSTEM_PROMPT, function_lis
     # Note: `model_server` for qwen-agent is the `base_url`.
     llm_cfg = {
         'model': OPENAI_MODEL_NAME,
-        'model_server': f"{OPENAI_API_BASE_URL.rstrip('/')}/v1",
+        'model_server': OPENAI_API_BASE_URL,
         'api_key': OPENAI_API_KEY,
     }
     logger.info(f"Qwen Agent configured with model='{OPENAI_MODEL_NAME}' and server='{llm_cfg['model_server']}'")

@@ -351,8 +351,8 @@ const Tasks = () => {
 
 	return (
 		<div className="flex h-screen bg-gradient-to-br from-[var(--color-primary-background)] via-[var(--color-primary-background)] to-[var(--color-primary-surface)]/20 text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
-			<Tooltip id="tasks-tooltip" />
-			<Tooltip id="page-help-tooltip" />
+			<Tooltip id="tasks-tooltip" style={{ zIndex: 9999 }} />
+			<Tooltip id="page-help-tooltip" style={{ zIndex: 9999 }} />
 			<div className="flex-1 flex flex-col overflow-hidden relative">
 				<HelpTooltip content="This is the Tasks page. Here you can view all your tasks and approve new ones." />
 				<motion.header

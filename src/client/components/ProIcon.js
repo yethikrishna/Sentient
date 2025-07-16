@@ -25,7 +25,13 @@ const ProIcon = () => (
 			{/* IconStar component to visually represent a Pro feature */}
 		</span>
 		{/* Tooltip component from react-tooltip, providing hover information */}
-		<Tooltip id="pro-feature" place="right" type="dark" effect="float" />
+		<Tooltip
+			id="pro-feature"
+			place="right"
+			type="dark"
+			effect="float"
+			style={{ zIndex: 9999 }}
+		/>
 		{/* Configuration for the tooltip: id to connect with the span, placement on the right of the icon, dark theme, float effect */}
 	</div>
 )

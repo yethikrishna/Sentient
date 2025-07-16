@@ -360,7 +360,10 @@ const ChatBubble = ({
 			{renderedContent}
 			{!isUser && (
 				<div className="flex justify-start items-center space-x-4 mt-6">
-					<Tooltip id="chat-bubble-tooltip" />
+					<Tooltip
+						id="chat-bubble-tooltip"
+						style={{ zIndex: 9999 }}
+					/>
 					{memoryUsed && (
 						<span
 							data-tooltip-id="chat-bubble-tooltip"

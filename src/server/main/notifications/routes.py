@@ -10,7 +10,7 @@ from main.auth.utils import PermissionChecker
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
-@router.post("/internal/create", status_code=status.HTTP_201_CREATED, summary="Create a Notification (Internal Worker Use)")
+@router.post("/internal/create", status_code=status.HTTP_201_CREATED, summary="Create a Notification (Internal Worker Use)", include_in_schema=False)
 async def create_notification_internal(request: CreateNotificationRequest):
     # This is an internal endpoint called by workers.
     # It trusts the user_id provided in the payload.
@@ -22,7 +22,7 @@ async def create_notification_internal(request: CreateNotificationRequest):
         logger.error(f"Internal notification creation failed for user {request.user_id}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-@router.get("/", summary="Get All User Notifications")
+@router.get("", summary="Get All User Notifications")
 async def get_notifications(user_id: str = Depends(PermissionChecker(required_permissions=["read:notifications"]))):
     notifications = await mongo_manager.get_notifications(user_id)
     return JSONResponse(content={"notifications": notifications})

@@ -274,11 +274,6 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 							label="Tasks"
 						/>
 						<NavLink
-							href="/organizer"
-							icon={<IconBook />}
-							label="Organizer"
-						/>
-						<NavLink
 							href="/integrations"
 							icon={<IconPlugConnected />}
 							label="Integrations"

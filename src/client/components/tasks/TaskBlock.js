@@ -1,4 +1,4 @@
-// A new file: src/client/components/organizer/TaskBlock.js
+// A new file: src/client/components/tasks/TaskBlock.js
 "use client"
 
 import React, { useState } from "react"

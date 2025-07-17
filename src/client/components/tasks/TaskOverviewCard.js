@@ -79,7 +79,7 @@ const TaskOverviewCard = ({
 						<button
 							onClick={() => onApproveTask(task.task_id)}
 							className="p-1.5 rounded-md text-green-400 hover:bg-green-400/20 disabled:text-gray-600 disabled:cursor-not-allowed"
-							data-tooltip-id="organizer-tooltip"
+							data-tooltip-id="tasks-tooltip"
 							data-tooltip-content="Approve"
 							disabled={missingTools.length > 0}
 						>
@@ -88,7 +88,7 @@ const TaskOverviewCard = ({
 						<button
 							onClick={() => onEditTask(task)}
 							className="p-1.5 rounded-md text-orange-400 hover:bg-orange-400/20"
-							data-tooltip-id="organizer-tooltip"
+							data-tooltip-id="tasks-tooltip"
 							data-tooltip-content="Edit"
 						>
 							<IconPencil size={16} />
@@ -98,7 +98,7 @@ const TaskOverviewCard = ({
 				<button
 					onClick={() => onDeleteTask(task.task_id)}
 					className="p-1.5 rounded-md text-red-400 hover:bg-red-400/20"
-					data-tooltip-id="organizer-tooltip"
+					data-tooltip-id="tasks-tooltip"
 					data-tooltip-content="Delete"
 				>
 					<IconTrash size={16} />

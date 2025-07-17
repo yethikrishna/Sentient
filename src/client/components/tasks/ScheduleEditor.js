@@ -1,4 +1,4 @@
-// A new file: src/client/components/organizer/ScheduleEditor.js
+// A new file: src/client/components/tasks/ScheduleEditor.js
 "use client"
 
 import React from "react"

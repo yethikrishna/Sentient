@@ -95,7 +95,9 @@ const NotePreviewCard = ({ note, ...props }) => {
 			className="flex items-start gap-3 p-3 rounded-lg bg-[var(--color-primary-surface)]/40 hover:bg-[var(--color-primary-surface)] transition-colors cursor-pointer"
 			{...props}
 		>
-			<p className="text-sm text-[var(--color-text-secondary)] truncate">{note.content}</p>
+			<p className="text-sm text-[var(--color-text-secondary)] truncate">
+				{note.content}
+			</p>
 		</motion.div>
 	)
 }
@@ -356,8 +358,8 @@ const HomePage = () => {
 		try {
 			const [tasksResponse, integrationsResponse] = await Promise.all([
 				fetch("/api/tasks"),
-				fetch("/api/settings/integrations"),
-				// Note: The API to fetch notes/organizer entries is not available in the provided files.
+				fetch("/api/settings/integrations")
+				// Note: The API to fetch notes/tasks entries is not available in the provided files.
 			])
 			if (!tasksResponse.ok) throw new Error("Failed to fetch tasks")
 			if (!integrationsResponse.ok)
@@ -377,7 +379,7 @@ const HomePage = () => {
 			if (Array.isArray(tasksData.tasks)) {
 				setTasks(tasksData.tasks)
 			}
-			// When the notes/organizer API is available, it can be fetched and set here.
+			// When the notes/tasks API is available, it can be fetched and set here.
 			// For now, `notes` will remain an empty array.
 			// const notesData = await notesResponse.json();
 			// setNotes(notesData.entries || []);
@@ -513,18 +515,19 @@ const HomePage = () => {
 	}, [tasks])
 
 	const todaysNotes = useMemo(() => {
-		const today = new Date();
-		return notes.filter((note) =>
-			note.page_date && isSameDay(parseISO(note.page_date), today)
-		);
-	}, [notes]);
+		const today = new Date()
+		return notes.filter(
+			(note) =>
+				note.page_date && isSameDay(parseISO(note.page_date), today)
+		)
+	}, [notes])
 
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
 			<Tooltip id="home-tooltip" style={{ zIndex: 9999 }} />
 			<Tooltip id="page-help-tooltip" style={{ zIndex: 9999 }} />
 			<div className="flex-1 flex flex-col overflow-hidden relative">
-				<HelpTooltip content="This is your Home page. See tasks pending your approval and get a glimpse of your day's agenda and organizer entries." />
+				<HelpTooltip content="This is your Home page. See tasks pending your approval and get a glimpse of your day's tasks and notes." />
 				<main className="flex-1 overflow-y-auto p-4 lg:p-8 custom-scrollbar">
 					<div className="max-w-7xl w-full mx-auto">
 						{/* Header Section */}
@@ -624,7 +627,9 @@ const HomePage = () => {
 							<PreviewColumn
 								title="Today's Notes"
 								items={todaysNotes}
-								renderItem={(item, i) => <NotePreviewCard key={i} note={item} />}
+								renderItem={(item, i) => (
+									<NotePreviewCard key={i} note={item} />
+								)}
 								viewAllLink="/notes"
 								emptyMessage="No notes for today."
 								icon={<IconBook />}

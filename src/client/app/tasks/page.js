@@ -24,7 +24,7 @@ import {
 import { AnimatePresence } from "framer-motion"
 import toast from "react-hot-toast"
 import { Tooltip } from "react-tooltip"
-import { cn } from "@utils/cn" // Assuming this utility is available
+import { cn } from "@utils/cn"
 
 // New component imports
 import TasksHeader from "@components/tasks/TasksHeader"
@@ -47,15 +47,15 @@ export default function TasksPage() {
 		return dateParam ? parseISO(dateParam) : startOfToday()
 	})
 
-	// New states for calendar/organizer features
-	const [isSidebarOpen, setIsSidebarOpen] = useState(true) // Right sidebar visibility
+	// New states for calendar/tasks features
+	const [isSidebarOpen, setIsSidebarOpen] = useState(true)
 
 	const [allTasks, setAllTasks] = useState([])
 	const [isLoading, setIsLoading] = useState(true)
 	const [integrations, setIntegrations] = useState([])
 
 	// Modal states
-	const [isAddingTask, setIsAddingTask] = useState(false) // For AddTaskModal
+	const [isAddingTask, setIsAddingTask] = useState(false)
 
 	const fetchData = useCallback(async () => {
 		setIsLoading(true)
@@ -83,7 +83,7 @@ export default function TasksPage() {
 		} finally {
 			setIsLoading(false)
 		}
-	}, []) // Removed dependencies as grouping is now in child
+	}, [])
 
 	useEffect(() => {
 		fetchData() // eslint-disable-line
@@ -105,43 +105,54 @@ export default function TasksPage() {
 		(amount) => {
 			// A "week" shift in this context means shifting by 3 days for the 3-day Kanban view
 			const newDate = addDays(viewDate, amount * 3)
-			router.push(
-				`/tasks?date=${format(newDate, "yyyy-MM-dd")}`, { scroll: false }
-			)
+			router.push(`/tasks?date=${format(newDate, "yyyy-MM-dd")}`, {
+				scroll: false
+			})
 			setViewDate(newDate)
 		},
 		[router, viewDate]
 	)
 
 	const handleTaskDrop = async (taskItem, newDate) => {
-		if (taskItem.schedule?.type !== 'once') {
-			toast.error("Only non-recurring tasks can be rescheduled via drag & drop for now.");
-			return;
+		if (taskItem.schedule?.type !== "once") {
+			toast.error(
+				"Only non-recurring tasks can be rescheduled via drag & drop for now."
+			)
+			return
 		}
 
-		const originalTime = taskItem.schedule.run_at ? new Date(taskItem.schedule.run_at).toTimeString().split(' ')[0] : '12:00:00';
-		const newRunAt = new Date(newDate);
-		const [hours, minutes, seconds] = originalTime.split(':');
-		newRunAt.setHours(hours, minutes, seconds);
+		const originalTime = taskItem.schedule.run_at
+			? new Date(taskItem.schedule.run_at).toTimeString().split(" ")[0]
+			: "12:00:00"
+		const newRunAt = new Date(newDate)
+		const [hours, minutes, seconds] = originalTime.split(":")
+		newRunAt.setHours(hours, minutes, seconds)
 
 		const updatedTask = {
 			taskId: taskItem.id,
 			schedule: {
 				...taskItem.schedule,
-				run_at: newRunAt.toISOString(),
-			},
-		};
-
-		toast.loading("Rescheduling task...", { id: "drop-task" });
-		try {
-			const res = await fetch("/api/tasks/update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updatedTask), });
-			if (!res.ok) { const errorData = await res.json(); throw new Error(errorData.error || "Update failed"); }
-			toast.success("Task rescheduled!", { id: "drop-task" });
-			fetchData();
-		} catch (error) {
-			toast.error(`Error: ${error.message}`, { id: "drop-task" });
+				run_at: newRunAt.toISOString()
+			}
 		}
-	};
+
+		toast.loading("Rescheduling task...", { id: "drop-task" })
+		try {
+			const res = await fetch("/api/tasks/update", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(updatedTask)
+			})
+			if (!res.ok) {
+				const errorData = await res.json()
+				throw new Error(errorData.error || "Update failed")
+			}
+			toast.success("Task rescheduled!", { id: "drop-task" })
+			fetchData()
+		} catch (error) {
+			toast.error(`Error: ${error.message}`, { id: "drop-task" })
+		}
+	}
 
 	// --- Task Action Handlers ---
 	const handleApproveTask = async (taskId) => {
@@ -157,7 +168,7 @@ export default function TasksPage() {
 				throw new Error(errorData.error || "Approval failed")
 			}
 			toast.success("Task approved!", { id: "approve-task" })
-			fetchData() // Re-fetch all data to update UI
+			fetchData()
 			setViewingTask(null)
 		} catch (error) {
 			toast.error(`Error: ${error.message}`, { id: "approve-task" })
@@ -184,7 +195,7 @@ export default function TasksPage() {
 				throw new Error(errorData.error || "Delete failed")
 			}
 			toast.success("Task deleted.", { id: "delete-task" })
-			fetchData() // Re-fetch all data to update UI
+			fetchData()
 			setViewingTask(null)
 		} catch (error) {
 			toast.error(`Error: ${error.message}`, { id: "delete-task" })
@@ -209,7 +220,7 @@ export default function TasksPage() {
 			}
 			toast.success("Task updated!", { id: "update-task" })
 			setEditingTask(null)
-			fetchData() // Re-fetch all data to update UI
+			fetchData()
 		} catch (error) {
 			toast.error(`Error: ${error.message}`, { id: "update-task" })
 		}
@@ -225,14 +236,12 @@ export default function TasksPage() {
 			})
 			if (!res.ok) {
 				const errorData = await res.json()
-				throw new Error(
-					errorData.detail || "Failed to submit answers"
-				)
+				throw new Error(errorData.detail || "Failed to submit answers")
 			}
 			toast.success("Answers submitted. I'll continue planning.", {
 				id: "answer-clarification"
 			})
-			fetchData() // Re-fetch all data to update UI
+			fetchData()
 		} catch (error) {
 			toast.error(`Error: ${error.message}`, {
 				id: "answer-clarification"
@@ -307,30 +316,40 @@ export default function TasksPage() {
 	}, [handleKeyDown])
 
 	const tasksByDate = useMemo(() => {
-		const grouped = {};
-		const weekDays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+		const grouped = {}
+		const weekDays = [
+			"Sunday",
+			"Monday",
+			"Tuesday",
+			"Wednesday",
+			"Thursday",
+			"Friday",
+			"Saturday"
+		]
 		const visibleDays = eachDayOfInterval({
-			start: subDays(startOfToday(), 365), // Look back a year
-			end: addDays(startOfToday(), 365) // Look forward a year
-		});
+			start: subDays(startOfToday(), 365),
+			end: addDays(startOfToday(), 365)
+		})
 
-		visibleDays.forEach(date => {
-			const dateString = format(date, 'yyyy-MM-dd');
-			grouped[dateString] = (allTasks || []).filter(task => {
-				const schedule = task.schedule;
-				if (!schedule) return false;
-				if (schedule.type === 'once' && schedule.run_at) {
-					return isSameDay(parseISO(schedule.run_at), date);
+		visibleDays.forEach((date) => {
+			const dateString = format(date, "yyyy-MM-dd")
+			grouped[dateString] = (allTasks || []).filter((task) => {
+				const schedule = task.schedule
+				if (!schedule) return false
+				if (schedule.type === "once" && schedule.run_at) {
+					return isSameDay(parseISO(schedule.run_at), date)
 				}
-				if (schedule.type === 'recurring') {
-					if (schedule.frequency === 'daily') return true;
-					if (schedule.frequency === 'weekly') { return schedule.days?.includes(weekDays[getDay(date)]); }
+				if (schedule.type === "recurring") {
+					if (schedule.frequency === "daily") return true
+					if (schedule.frequency === "weekly") {
+						return schedule.days?.includes(weekDays[getDay(date)])
+					}
 				}
-				return false;
-			});
-		});
-		return grouped;
-	}, [allTasks]);
+				return false
+			})
+		})
+		return grouped
+	}, [allTasks])
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-hidden pl-0 md:pl-20">
 			<Tooltip id="tasks-tooltip" style={{ zIndex: 9999 }} />
@@ -368,7 +387,7 @@ export default function TasksPage() {
 							onApproveTask={handleApproveTask}
 							onAnswerClarifications={handleAnswerClarifications}
 							onToggleEnableTask={handleToggleEnableTask}
-							onDataChange={fetchData} // To re-fetch after D&D or status changes within Kanban
+							onDataChange={fetchData}
 							onTaskDrop={handleTaskDrop}
 							viewDate={viewDate}
 						/>
@@ -392,7 +411,7 @@ export default function TasksPage() {
 				onAnswerClarifications={handleAnswerClarifications}
 				onToggleEnableTask={handleToggleEnableTask}
 				onAddTask={() => setIsAddingTask(true)}
-				onDataChange={fetchData} // To re-fetch after sidebar actions
+				onDataChange={fetchData}
 			/>
 
 			<button

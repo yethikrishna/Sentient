@@ -49,7 +49,6 @@ class PlannerMongoManager: # noqa: E501
         self.db = self.client[MONGO_DB_NAME]
         self.user_profiles_collection = self.db["user_profiles"]
         self.tasks_collection = self.db["tasks"]
-        self.organizer_blocks_collection = self.db["organizer_blocks"]
         logger.info("PlannerMongoManager initialized.")
 
     async def create_initial_task(self, user_id: str, description: str, action_items: list, topics: list, original_context: dict, source_event_id: str) -> Dict:
@@ -104,19 +103,8 @@ class PlannerMongoManager: # noqa: E501
         )
         logger.info(f"Updated task {task_id} with a generated plan. Matched: {result.matched_count}")
 
-        # If the plan originated from a note, link it back
-        task = await self.get_task(task_id)
-        if task:
-            original_context = task.get("original_context", {})
-            source = original_context.get("source")
-            if source == "note":
-                note_id = original_context.get("event_id")
-                if note_id:
-                    await self.db["notes"].update_one(
-                        {"note_id": note_id, "user_id": task["user_id"]},
-                        {"$addToSet": {"linked_task_ids": task_id}}
-                    )
-                    logger.info(f"Linked new task {task_id} to note {note_id}.")
+        # Link task back to note if applicable
+        await self.link_task_to_source(task_id)
 
     async def update_task_with_questions(self, task_id: str, status: str, questions: list):
         """Updates a task with clarifying questions and a new status."""
@@ -163,18 +151,25 @@ class PlannerMongoManager: # noqa: E501
         }
         await self.tasks_collection.insert_one(task_doc)
         logger.info(f"Saved new plan with task_id: {task_id} for user: {user_id}")
+        await self.link_task_to_source(task_id)
+        return task_id
 
-        # If the plan originated from a organizer block, link it back
-        if original_context.get("source") == "organizer_block":
-            block_id = source_event_id
-            if block_id:
-                await self.organizer_blocks_collection.update_one(
-                    {"block_id": block_id, "user_id": user_id},
-                    {"$set": {"linked_task_id": task_id, "task_status": "approval_pending"}}
-                )
-                logger.info(f"Linked new task {task_id} to organizer block {block_id}.")
+    async def link_task_to_source(self, task_id: str):
+        """Links a task back to its source (e.g., a note) if applicable."""
+        task = await self.get_task(task_id)
+        if not task:
+            return
 
-        return block_id
+        original_context = task.get("original_context", {})
+        source = original_context.get("source")
+        event_id = original_context.get("event_id")
+
+        if source == "note" and event_id:
+            await self.db["notes"].update_one(
+                {"note_id": event_id, "user_id": task["user_id"]},
+                {"$addToSet": {"linked_task_ids": task_id}}
+            )
+            logger.info(f"Linked new task {task_id} to note {event_id}.")
 
 
     async def close(self):

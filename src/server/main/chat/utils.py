@@ -165,7 +165,7 @@ async def generate_chat_llm_stream(
         last_user_query = messages[-1].get("content", "") if messages else ""
         relevant_tool_names = await _select_relevant_tools(last_user_query, tool_name_to_desc_map)
 
-        mandatory_tools = {"journal", "supermemory", "chat_tools"}
+        mandatory_tools = {"tasks", "supermemory", "chat_tools"}
         final_tool_names = set(relevant_tool_names) | mandatory_tools
 
         filtered_mcp_servers = {}
@@ -205,9 +205,9 @@ async def generate_chat_llm_stream(
         f"**Critical Instructions:**\n"
         f"1. **Validate Complex JSON:** Before calling any tool that requires a complex JSON string as a parameter (like Notion's `content_blocks_json`), you MUST first pass your generated JSON string to the `json_validator` tool to ensure it is syntactically correct. Use the cleaned output from `json_validator` in the subsequent tool call.\n"
         f"2. **Handle Disconnected Tools:** You have a list of tools the user has not connected yet. If the user's query clearly refers to a capability from this list (e.g., asking to 'send a slack message' when Slack is disconnected), you MUST stop and politely inform the user that they need to connect the tool in the Integrations page. Do not proceed with other tools.\n"
-        f"3. **Direct Execution vs. Journaling:** Your primary role is to execute tasks directly. You must differentiate between tasks you perform now and future personal events you need to log for the user.\n"
+        f"3. **Direct Execution vs. Task Creation:** Your primary role is to execute tasks directly. You must differentiate between tasks you perform now and future personal events you need to log for the user.\n"
         f"   - **Direct Execution:** For any command to create, send, search, or read information (e.g., create a document, send an email, search for files), you MUST call the appropriate tool directly (e.g., `gdocs-createDocument`, `gmail-sendEmail`, `gdrive-gdrive_search`). Complete the task within the chat and provide the result to the user.\n"
-        f"   - **Journaling Future Events:** If the user mentions a future personal event, appointment, or a simple reminder for themselves (e.g., 'lunch with Sarah on Friday', 'haircut next week', 'meeting to discuss the offsite'), you should use the `journal-add_journal_entry` tool to log it. The journal is for tracking the user's upcoming schedule, not for complex tasks you perform. The `content` for the journal entry should be a clear description of the event.\n"
+        f"   - **Task Creation for Future Events:** If the user mentions a future personal event, appointment, or a simple reminder for themselves (e.g., 'lunch with Sarah on Friday', 'haircut next week', 'meeting to discuss the offsite'), you should use the `tasks-add_task` tool to log it. This is for tracking the user's upcoming schedule. The `content` for the task should be a clear description of the event.\n"
         f"4. **Memory Usage:** ALWAYS use `supermemory-search` first to check for existing context. If you learn a new, permanent fact about the user, use `supermemory-addToSupermemory` to save it.\n"
         f"5. **Final Answer Format:** When you have a complete, final answer for the user that is not a tool call, you MUST wrap it in `<answer>` tags. For example: `<answer>The weather in London is 15°C and cloudy.</answer>`.\n\n"
         f"**Your Persona:**\n"

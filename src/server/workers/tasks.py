@@ -143,13 +143,7 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
             time_context_str = f"The current date and time is {current_time.strftime('%A, %Y-%m-%d %H:%M:%S %Z')}."
 
             llm_input_content = ""
-            if service_name == "organizer_block":
-                page_date = event_data.get('page_date')
-                if page_date:
-                    llm_input_content = f"Source: Organizer Entry on {page_date}\n\nContent:\n{event_data.get('content', '')}"
-                else:
-                    llm_input_content = f"Source: Organizer Entry\n\nContent:\n{event_data.get('content', '')}"
-            elif service_name == "note":
+            if service_name == "note":
                 llm_input_content = f"Source: Note\nTitle: {event_data.get('title', '')}\nOn Date: {event_data.get('note_date', 'Unknown')}\n\nContent:\n{event_data.get('content', '')}"
             elif service_name == "gmail":
                 llm_input_content = f"Source: Email\nSubject: {event_data.get('subject', '')}\n\nBody:\n{event_data.get('body', '')}"
@@ -210,9 +204,6 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
                     # Dispatch directly to the planner/action item processor
                     process_action_item.delay(user_id, [item], topics, event_id, original_source_context)
                     logger.info(f"Dispatched action item from {service_name} for processing: '{item}'")
-            else: # Existing logic for organizer_block source
-                if action_items and topics:
-                    process_action_item.delay(user_id, action_items, topics, event_id, event_data)
 
             for fact in memory_items:
                 if isinstance(fact, str) and fact.strip():

@@ -41,7 +41,7 @@ const SearchOverlay = ({
 				onClick={(e) => e.stopPropagation()}
 			>
 				{results.map((item) =>
-					item.item_type === "organizer" ? (
+					item.item_type === "tasks" ? (
 						<OrganizerEntryCard
 							key={item.block_id}
 							item={item}

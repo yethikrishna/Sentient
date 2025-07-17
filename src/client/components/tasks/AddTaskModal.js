@@ -1,8 +1,7 @@
-// A new file: src/client/components/organizer/AddTaskModal.js
+// A new file: src/client/components/tasks/AddTaskModal.js
 "use client"
 
 import React, { useState } from "react"
-import toast from "react-hot-toast"
 import { motion } from "framer-motion"
 import { IconX, IconLoader } from "@tabler/icons-react"
 import ScheduleEditor from "@components/tasks/ScheduleEditor"
@@ -40,7 +39,7 @@ const AddTaskModal = ({ onClose, onTaskAdded, initialDate }) => {
 				throw new Error(data.error || "Failed to add task")
 			}
 			toast.success("Task created! I'll start planning it out.")
-			onTaskAdded() // This will trigger a refresh on the organizer page
+			onTaskAdded() // This will trigger a refresh on the tasks page
 			onClose()
 		} catch (error) {
 			toast.error(`Error: ${error.message}`)

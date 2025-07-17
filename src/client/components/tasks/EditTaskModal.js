@@ -1,4 +1,4 @@
-// A new file: src/client/components/organizer/EditTaskModal.js
+// A new file: src/client/components/tasks/EditTaskModal.js
 "use client"
 
 import React, { useState } from "react"

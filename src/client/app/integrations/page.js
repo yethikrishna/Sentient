@@ -562,7 +562,7 @@ const IntegrationsPage = () => {
 				"google_search",
 				"progress_updater",
 				"chat_tools",
-				"organizer"
+				"tasks"
 			]
 			const connectable = integrationsWithIcons.filter(
 				(i) =>

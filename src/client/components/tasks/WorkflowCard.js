@@ -38,7 +38,7 @@ const WorkflowCard = ({ task, onToggleEnable, onDeleteTask }) => {
 							onToggleEnable(task.task_id, task.enabled)
 						}
 						className={`p-1.5 rounded-md ${task.enabled ? "text-orange-400" : "text-green-400"} hover:bg-neutral-700`}
-						data-tooltip-id="organizer-tooltip"
+						data-tooltip-id="tasks-tooltip"
 						data-tooltip-content={task.enabled ? "Pause" : "Resume"}
 					>
 						{task.enabled ? (
@@ -50,7 +50,7 @@ const WorkflowCard = ({ task, onToggleEnable, onDeleteTask }) => {
 					<button
 						onClick={() => onDeleteTask(task.task_id)}
 						className="p-1.5 rounded-md text-red-400 hover:bg-red-400/20"
-						data-tooltip-id="organizer-tooltip"
+						data-tooltip-id="tasks-tooltip"
 						data-tooltip-content="Delete"
 					>
 						<IconTrash size={16} />

@@ -1,4 +1,4 @@
-// A new file: src/client/components/organizer/TaskDetailsModal.js
+// A new file: src/client/components/tasks/TaskDetailsModal.js
 "use client"
 
 import React from "react"

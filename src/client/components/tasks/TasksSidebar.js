@@ -101,7 +101,7 @@ const TasksSidebar = ({
 					<SidebarTabButton
 						label="Calendar"
 						icon={<IconCalendar size={22} />}
-						tooltipContent="View your calendar and daily entries."
+						tooltipContent="View your calendar and tasks."
 						isActive={isOpen && activeTab === "calendar"}
 						onClick={() => handleTabClick("calendar")}
 					/>

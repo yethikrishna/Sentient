@@ -50,7 +50,7 @@ async def chat_endpoint(
             ):
                 if not event:
                     continue
-                print(f"[INFO] Streaming event to user {user_id}: {json.dumps(event)}")
+                # print(f"[INFO] Streaming event to user {user_id}: {json.dumps(event)}")
                 # yield as bytes and flush
                 yield json.dumps(event) + "\n"
         except asyncio.CancelledError:

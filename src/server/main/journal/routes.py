@@ -1,6 +1,7 @@
 import datetime
 import uuid
 import json
+import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from main.journal.models import CreateBlockRequest, UpdateBlockRequest
@@ -12,6 +13,8 @@ router = APIRouter(
     prefix="/journal",
     tags=["Journal"]
 )
+
+logger = logging.getLogger(__name__)
 
 @router.get("/blocks", status_code=status.HTTP_200_OK)
 async def get_journal_blocks(

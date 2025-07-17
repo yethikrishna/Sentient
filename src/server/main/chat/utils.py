@@ -4,17 +4,56 @@ import os
 import json
 import asyncio
 import logging
+import datetime
 import threading
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-from typing import List, Dict, Any, Tuple, AsyncGenerator, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
+from qwen_agent.tools.base import BaseTool, register_tool
+
+from main.chat.prompts import TOOL_SELECTOR_SYSTEM_PROMPT
 from main.db import MongoManager
 from main.llm import get_qwen_assistant
-from main.config import INTEGRATIONS_CONFIG, SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX
-from main.chat.prompts import TOOL_SELECTOR_SYSTEM_PROMPT
+from main.config import (INTEGRATIONS_CONFIG, SUPERMEMORY_MCP_BASE_URL,
+                         SUPERMEMORY_MCP_ENDPOINT_SUFFIX)
 from json_extractor import JsonExtractor
 
 logger = logging.getLogger(__name__)
+
+@register_tool('json_validator')
+class JsonValidatorTool(BaseTool):
+    description = (
+        "Validates and cleans a string that is supposed to be a JSON object or list. "
+        "Use this tool to fix any syntax errors in a JSON string before passing it to another tool that requires valid JSON."
+    )
+    parameters = [{
+        'name': 'json_string',
+        'type': 'string',
+        'description': 'The string to be validated and cleaned as JSON.',
+        'required': True
+    }]
+
+    def call(self, params: str, **kwargs) -> str:
+        logger.info(f"JsonValidatorTool called with params: {params}")
+        try:
+            if isinstance(params, dict):
+                 parsed_params = params
+            else:
+                 parsed_params = json.loads(params)
+            json_string_to_validate = parsed_params.get('json_string', '')
+            if not json_string_to_validate:
+                return json.dumps({"status": "failure", "error": "Input json_string is empty."})
+            valid_json = JsonExtractor.extract_valid_json(json_string_to_validate)
+            if valid_json:
+                cleaned_json_string = json.dumps(valid_json)
+                logger.info(f"Successfully cleaned JSON: {cleaned_json_string}")
+                return json.dumps({"status": "success", "cleaned_json": cleaned_json_string})
+            else:
+                logger.warning(f"Could not extract valid JSON from: {json_string_to_validate}")
+                return json.dumps({"status": "failure", "error": "Could not extract any valid JSON from the input string."})
+        except Exception as e:
+            logger.error(f"JsonValidatorTool encountered an unexpected error: {e}", exc_info=True)
+            return json.dumps({"status": "failure", "error": str(e)})
 
 async def _select_relevant_tools(query: str, available_tools_map: Dict[str, str]) -> List[str]:
     """
@@ -130,13 +169,15 @@ async def generate_chat_llm_stream(
         final_tool_names = set(relevant_tool_names) | mandatory_tools
 
         filtered_mcp_servers = {}
+        # Build the list of tools for the agent, including MCPs and local tools
         for server_name, server_config in all_available_mcp_servers.items():
             tool_name_for_server = next((tn for tn, tc in INTEGRATIONS_CONFIG.items() if tc.get("mcp_server_config", {}).get("name") == server_name), None)
             if tool_name_for_server in final_tool_names:
                 filtered_mcp_servers[server_name] = server_config
 
-        logger.info(f"Final tools for agent: {list(filtered_mcp_servers.keys())}")
-        tools = [{"mcpServers": filtered_mcp_servers}]
+        tools = [{"mcpServers": filtered_mcp_servers}, 'json_validator']
+
+        logger.info(f"Final tools for agent: {list(filtered_mcp_servers.keys())} + json_validator")
         
     except Exception as e:
         logger.error(f"Failed during initial setup for chat stream for user {user_id}: {e}", exc_info=True)
@@ -160,14 +201,15 @@ async def generate_chat_llm_stream(
     )
 
     system_prompt = (
-        f"You are {agent_name}, a personalized AI assistant. Your goal is to be as helpful as possible by using your available tools for information retrieval or by creating journal entries for actions that need to be planned and executed.\n\n"
+        f"You are {agent_name}, a personalized AI assistant. Your goal is to be as helpful as possible by using your available tools to directly execute tasks and help the user track their schedule.\n\n"
         f"**Critical Instructions:**\n"
-        f"1. **Handle Disconnected Tools:** You have a list of tools the user has not connected yet. If the user's query clearly refers to a capability from this list (e.g., asking to 'send a slack message' when Slack is disconnected), you MUST stop and politely inform the user that they need to connect the tool in the Settings > Integrations page. Do not proceed with other tools.\n"
-        f"2. **Analyze User Intent:** First, determine if the user is asking for information (a 'retrieval' query) or asking you to perform an action (an 'action' query).\n"
-        f"3. **Retrieval Queries:** For requests to find, list, search, or read information (e.g., 'what's the weather?', 'search for emails about project X', 'what's on my calendar?'), use the appropriate tools from your available tool list to get the information and answer the user directly.\n"
-        f"4. **Action Queries:** For requests to perform an action (e.g., 'send an email', 'create a document', 'schedule an event', 'delete this file'), you MUST NOT call the tool for that action directly. Instead, you MUST use the `journal-add_journal_entry` tool. The `content` for this tool should be a clear description of the user's request (e.g., `content='Send an email to my boss about the report'`). After calling this tool, inform the user that you have noted their request and it will be processed.\n"
-        f"5. **Memory Usage:** ALWAYS use `supermemory-search` first to check for existing context. If you learn a new, permanent fact about the user, use `supermemory-addToSupermemory` to save it.\n"
-        f"6. **Final Answer Format:** When you have a complete, final answer for the user that is not a tool call, you MUST wrap it in `<answer>` tags. For example: `<answer>The weather in London is 15°C and cloudy.</answer>`.\n\n"
+        f"1. **Validate Complex JSON:** Before calling any tool that requires a complex JSON string as a parameter (like Notion's `content_blocks_json`), you MUST first pass your generated JSON string to the `json_validator` tool to ensure it is syntactically correct. Use the cleaned output from `json_validator` in the subsequent tool call.\n"
+        f"2. **Handle Disconnected Tools:** You have a list of tools the user has not connected yet. If the user's query clearly refers to a capability from this list (e.g., asking to 'send a slack message' when Slack is disconnected), you MUST stop and politely inform the user that they need to connect the tool in the Integrations page. Do not proceed with other tools.\n"
+        f"3. **Direct Execution vs. Journaling:** Your primary role is to execute tasks directly. You must differentiate between tasks you perform now and future personal events you need to log for the user.\n"
+        f"   - **Direct Execution:** For any command to create, send, search, or read information (e.g., create a document, send an email, search for files), you MUST call the appropriate tool directly (e.g., `gdocs-createDocument`, `gmail-sendEmail`, `gdrive-gdrive_search`). Complete the task within the chat and provide the result to the user.\n"
+        f"   - **Journaling Future Events:** If the user mentions a future personal event, appointment, or a simple reminder for themselves (e.g., 'lunch with Sarah on Friday', 'haircut next week', 'meeting to discuss the offsite'), you should use the `journal-add_journal_entry` tool to log it. The journal is for tracking the user's upcoming schedule, not for complex tasks you perform. The `content` for the journal entry should be a clear description of the event.\n"
+        f"4. **Memory Usage:** ALWAYS use `supermemory-search` first to check for existing context. If you learn a new, permanent fact about the user, use `supermemory-addToSupermemory` to save it.\n"
+        f"5. **Final Answer Format:** When you have a complete, final answer for the user that is not a tool call, you MUST wrap it in `<answer>` tags. For example: `<answer>The weather in London is 15°C and cloudy.</answer>`.\n\n"
         f"**Your Persona:**\n"
         f"- Your responses should be **{verbosity}**.\n"
         f"- Your tone should be **{humor_level}**.\n"

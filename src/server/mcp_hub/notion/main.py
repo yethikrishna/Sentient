@@ -1,4 +1,5 @@
 import os
+import asyncio
 import json
 from typing import Dict, Any, Optional, List
 
@@ -124,7 +125,10 @@ async def createPage(ctx: Context, title: str, parent_page_id: Optional[str] = N
     Creates a new page in Notion, either inside another page or in a database.
     `content_blocks_json` should be a JSON string representing a list of Notion block objects.
     """
-    content_blocks = json.loads(content_blocks_json) if content_blocks_json else []
+    try:
+        content_blocks = json.loads(content_blocks_json) if content_blocks_json else []
+    except (json.JSONDecodeError, TypeError):
+        raise ToolError("Invalid `content_blocks_json`. It must be a valid JSON string representing a list of block objects.")
     return await _execute_tool(ctx, _create_page_sync, parent_page_id=parent_page_id, parent_database_id=parent_database_id, title=title, content=content_blocks)
 
 @mcp.tool

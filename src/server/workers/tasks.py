@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional, List
 from main.analytics import capture_event
 
 from workers.config import SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX, SUPPORTED_POLLING_SERVICES
-from main.agents.utils import clean_llm_output
+from main.tasks.utils import clean_llm_output
 from json_extractor import JsonExtractor
 from workers.utils.api_client import notify_user 
 from workers.celery_app import celery_app
@@ -143,12 +143,14 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
             time_context_str = f"The current date and time is {current_time.strftime('%A, %Y-%m-%d %H:%M:%S %Z')}."
 
             llm_input_content = ""
-            if service_name == "journal_block":
+            if service_name == "organizer_block":
                 page_date = event_data.get('page_date')
                 if page_date:
-                    llm_input_content = f"Source: Journal Entry on {page_date}\n\nContent:\n{event_data.get('content', '')}"
+                    llm_input_content = f"Source: Organizer Entry on {page_date}\n\nContent:\n{event_data.get('content', '')}"
                 else:
-                    llm_input_content = f"Source: Journal Entry\n\nContent:\n{event_data.get('content', '')}"
+                    llm_input_content = f"Source: Organizer Entry\n\nContent:\n{event_data.get('content', '')}"
+            elif service_name == "note":
+                llm_input_content = f"Source: Note\nTitle: {event_data.get('title', '')}\nOn Date: {event_data.get('note_date', 'Unknown')}\n\nContent:\n{event_data.get('content', '')}"
             elif service_name == "gmail":
                 llm_input_content = f"Source: Email\nSubject: {event_data.get('subject', '')}\n\nBody:\n{event_data.get('body', '')}"
             elif service_name == "gcalendar":
@@ -194,16 +196,21 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
             action_items = extracted_data.get("action_items", [])
             topics = extracted_data.get("topics", [])
 
-            if service_name in ["gmail", "gcalendar", "chat"]:
+            if service_name in ["gmail", "gcalendar", "chat", "note"]:
                 for item in action_items:
                     if not isinstance(item, str) or not item.strip():
                         continue
-                    page_date = get_date_from_text(item)
-                    new_block = await db_manager.create_journal_entry_for_action_item(user_id, item, page_date)
-                    new_block_context = {"source": "journal_block", "block_id": new_block['block_id'], "original_content": item, "page_date": page_date}
-                    process_action_item.delay(user_id, [item], topics, new_block['block_id'], new_block_context)
-                    logger.info(f"Created journal entry {new_block['block_id']} and dispatched for action item: {item}")
-            else: # Existing logic for journal_block source
+                    
+                    original_source_context = {
+                        "source": service_name,
+                        "event_id": event_id,
+                        "content": event_data 
+                    }
+                    
+                    # Dispatch directly to the planner/action item processor
+                    process_action_item.delay(user_id, [item], topics, event_id, original_source_context)
+                    logger.info(f"Dispatched action item from {service_name} for processing: '{item}'")
+            else: # Existing logic for organizer_block source
                 if action_items and topics:
                     process_action_item.delay(user_id, action_items, topics, event_id, event_data)
 
@@ -265,54 +272,16 @@ async def get_clarifying_questions(user_id: str, task_description: str, topics: 
 async def async_process_action_item(user_id: str, action_items: list, topics: list, source_event_id: str, original_context: dict):
     """Async logic for the proactive task orchestrator."""
     db_manager = PlannerMongoManager()
-    task_id = None
     try:
         task_description = " ".join(map(str, action_items))
-        task_id = await db_manager.create_initial_task(user_id, task_description, action_items, topics, original_context, source_event_id)
-
-        questions_list = await get_clarifying_questions(user_id, task_description, topics, original_context, db_manager)
-
-        if questions_list:
-            logger.info(f"Task {task_id}: Needs clarification. Questions: {questions_list}")
-            questions_for_db = [{"question_id": str(uuid.uuid4()), "text": q.strip(), "answer": None} for q in questions_list]
-            
-            block_id_to_update = original_context.get("block_id") if original_context.get("source") == "journal_block" else None
-
-            if block_id_to_update:
-                # Update the existing journal block with the clarification prompt
-                clarification_text = f"I need a bit more information to help with: '{task_description}'. Can you clarify the following for me in the journal?"
-                await db_manager.journal_blocks_collection.update_one(
-                    {"block_id": block_id_to_update, "user_id": user_id},
-                    {"$set": {"task_status": "clarification_pending", "content": clarification_text}}
-                )
-                logger.info(f"Updated journal block {block_id_to_update} to ask for clarification.")
-            else:
-                # Create a new journal entry for today if the source wasn't a journal block
-                clarification_content = f"I need a bit more information to help with: '{task_description}'. Can you clarify the following for me in the journal?"
-                today_date_str = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d')
-                await db_manager.create_journal_entry_for_task(
-                    user_id=user_id,
-                    content=clarification_content,
-                    date_str=today_date_str,
-                    task_id=task_id,
-                    task_status="clarification_pending"
-                )
-                logger.info(f"Task {task_id} needs clarification, created new journal entry for today.")
-            
-            await db_manager.update_task_with_questions(task_id, "clarification_pending", questions_for_db)
-            await notify_user(user_id, f"I have a few questions to help me plan: '{task_description[:50]}...'", task_id)
-            capture_event(user_id, "clarification_needed", {
-                "task_id": task_id,
-                "question_count": len(questions_list)
-            })
-            logger.info(f"Task {task_id} moved to 'clarification_pending'.")
-        else:
-            logger.info(f"Task {task_id}: No clarification needed. Triggering plan generation.")
-            await db_manager.update_task_status(task_id, "planning")
-            generate_plan_from_context.delay(task_id)
+        # Per spec, create task with 'planning' status and immediately trigger planner.
+        task = await db_manager.create_initial_task(user_id, task_description, action_items, topics, original_context, source_event_id) # noqa: E501
+        task_id = task["task_id"]
+        generate_plan_from_context.delay(task_id)
+        logger.info(f"Task {task_id} created with status 'planning' and dispatched to planner worker.")
 
     except Exception as e:
-        logger.error(f"Error in process_action_item for task {task_id or 'unknown'}: {e}", exc_info=True)
+        logger.error(f"Error in process_action_item: {e}", exc_info=True)
         if task_id:
             await db_manager.update_task_status(task_id, "error", {"error": str(e)})
     finally:
@@ -332,7 +301,34 @@ async def async_generate_plan(task_id: str):
             logger.error(f"Cannot generate plan: Task {task_id} not found.")
             return
 
+        # Prevent re-planning if it's not in a plannable state
+        plannable_statuses = ["planning", "clarification_answered"]
+        if task.get("status") not in plannable_statuses:
+             logger.warning(f"Task {task_id} is not in a plannable state (current: {task.get('status')}). Aborting plan generation.")
+             return
+
         user_id = task["user_id"]
+        topics = task.get("topics", [])
+        original_context = task.get("original_context", {})
+        task_description = task.get("description", "")
+
+        # If the task is in the 'planning' state, check if clarification is needed.
+        # If it's 'clarification_answered', skip this check and proceed to planning.
+        if task.get("status") == "planning":
+            questions_list = await get_clarifying_questions(user_id, task_description, topics, original_context, db_manager)
+            if questions_list:
+                logger.info(f"Task {task_id}: Needs clarification. Questions: {questions_list}")
+                questions_for_db = [{"question_id": str(uuid.uuid4()), "text": q.strip(), "answer": None} for q in questions_list]
+
+                await db_manager.update_task_with_questions(task_id, "clarification_pending", questions_for_db)
+                await notify_user(user_id, f"I have a few questions to help me plan: '{task_description[:50]}...'", task_id, notification_type="taskNeedsApproval")
+                capture_event(user_id, "clarification_needed", {"task_id": task_id, "question_count": len(questions_list)})
+                logger.info(f"Task {task_id} moved to 'clarification_pending'.")
+                return # Stop here, wait for user input
+
+        # --- Proceed with planning (Scenario A from spec) ---
+        logger.info(f"Task {task_id}: No clarification needed or answers provided. Generating plan.")
+
         user_profile = await db_manager.user_profiles_collection.find_one(
             {"user_id": user_id},
             {"userData.personalInfo": 1} # Projection to get only necessary data

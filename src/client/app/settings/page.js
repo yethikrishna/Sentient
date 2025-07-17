@@ -443,7 +443,7 @@ const TestingTools = () => {
 			setEventData(
 				'{\n  "summary": "Finalize Q3 report",\n  "description": "Need to finalize the Q3 sales report with Sarah before the end of the week."\n}'
 			)
-		} else if (newService === "journal_block") {
+		} else if (newService === "organizer_block") {
 			setEventData(
 				'{\n  "content": "Remind me to call the dentist tomorrow to book an appointment.",\n  "page_date": "2024-07-26"\n}'
 			)
@@ -555,7 +555,7 @@ const TestingTools = () => {
 						>
 							<option value="gmail">Gmail</option>
 							<option value="gcalendar">Google Calendar</option>
-							<option value="journal_block">Journal</option>
+							<option value="organizer_block">Organizer</option>
 						</select>
 					</div>
 					<div>

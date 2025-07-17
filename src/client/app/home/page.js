@@ -4,7 +4,6 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { format, getDay, isSameDay, parseISO } from "date-fns"
 import {
-	IconChecklist,
 	IconSparkles,
 	IconCircleCheck,
 	IconPencil,
@@ -19,13 +18,11 @@ import {
 	IconPlayerPlay,
 	IconClock,
 	IconBook,
-	IconMail,
-	IconCalendarEvent,
-	IconMessage,
 	IconChevronUp,
 	IconBulb,
 	IconSettings,
 	IconRepeat,
+	IconChecklist,
 	IconRepeat as HelpIcon
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
@@ -38,9 +35,9 @@ import {
 } from "framer-motion"
 import { Tooltip } from "react-tooltip"
 import { cn } from "@utils/cn"
-import { usePostHog } from "posthog-js/react"
-import EditTaskModal from "@components/journal/EditTaskModal"
-import TaskDetailsModal from "@components/journal/TaskDetailsModal"
+import { usePostHog } from "posthog-js/react" // eslint-disable-line
+import EditTaskModal from "@components/tasks/EditTaskModal"
+import TaskDetailsModal from "@components/tasks/TaskDetailsModal"
 
 const HelpTooltip = ({ content }) => (
 	<div className="absolute top-6 right-6 z-40">
@@ -86,6 +83,19 @@ const PreviewColumn = ({
 					</p>
 				)}
 			</div>
+		</motion.div>
+	)
+}
+
+const NotePreviewCard = ({ note, ...props }) => {
+	const router = useRouter()
+	return (
+		<motion.div
+			onClick={() => router.push("/notes")}
+			className="flex items-start gap-3 p-3 rounded-lg bg-[var(--color-primary-surface)]/40 hover:bg-[var(--color-primary-surface)] transition-colors cursor-pointer"
+			{...props}
+		>
+			<p className="text-sm text-[var(--color-text-secondary)] truncate">{note.content}</p>
 		</motion.div>
 	)
 }
@@ -167,7 +177,7 @@ const priorityMap = {
 	default: { label: "Unknown", color: "text-[var(--color-text-muted)]" }
 }
 
-const TaskCard = ({
+const TaskKanbanCard = ({
 	task,
 	integrations,
 	onApproveTask,
@@ -289,22 +299,6 @@ const TaskCard = ({
 	)
 }
 
-const JournalPreviewCard = ({ entry, ...props }) => {
-	const router = useRouter()
-	return (
-		<motion.div
-			onClick={() => router.push(`/journal?date=${entry.page_date}`)}
-			className="flex items-center gap-3 p-3 rounded-lg bg-[var(--color-primary-surface)]/40 hover:bg-[var(--color-primary-surface)] transition-colors cursor-pointer"
-			{...props}
-		>
-			<IconBook className="h-5 w-5 flex-shrink-0 text-[var(--color-accent-purple)]" />
-			<p className="text-sm text-[var(--color-text-secondary)] truncate">
-				{entry.content}
-			</p>
-		</motion.div>
-	)
-}
-
 const IdeaCard = ({ icon, title, description, onClick, cta }) => (
 	<motion.div
 		whileHover={{ y: -5, boxShadow: "0 10px 20px rgba(0,0,0,0.2)" }}
@@ -331,8 +325,8 @@ const IdeaCard = ({ icon, title, description, onClick, cta }) => (
 const HomePage = () => {
 	const [userDetails, setUserDetails] = useState(null)
 	const [tasks, setTasks] = useState([])
+	const [notes, setNotes] = useState([])
 	const [integrations, setIntegrations] = useState([])
-	const [todaysJournal, setTodaysJournal] = useState([])
 	const [loading, setLoading] = useState(true) // For main data
 	const [openSections, setOpenSections] = useState({
 		pendingApproval: true
@@ -341,7 +335,6 @@ const HomePage = () => {
 	const [editingTask, setEditingTask] = useState(null)
 	const [viewingTask, setViewingTask] = useState(null)
 	const [allTools, setAllTools] = useState([])
-	const posthog = usePostHog()
 
 	const fetchUserDetails = useCallback(async () => {
 		try {
@@ -360,23 +353,18 @@ const HomePage = () => {
 
 	const fetchData = useCallback(async () => {
 		setLoading(true)
-		const today = format(new Date(), "yyyy-MM-dd")
 		try {
-			const [tasksResponse, integrationsResponse, journalResponse] =
-				await Promise.all([
-					fetch("/api/tasks"),
-					fetch("/api/settings/integrations"),
-					fetch(`/api/journal?date=${today}`)
-				])
+			const [tasksResponse, integrationsResponse] = await Promise.all([
+				fetch("/api/tasks"),
+				fetch("/api/settings/integrations"),
+				// Note: The API to fetch notes/organizer entries is not available in the provided files.
+			])
 			if (!tasksResponse.ok) throw new Error("Failed to fetch tasks")
 			if (!integrationsResponse.ok)
 				throw new Error("Failed to fetch integrations")
-			if (!journalResponse.ok)
-				throw new Error("Failed to fetch today's journal entries")
 
 			const tasksData = await tasksResponse.json()
 			const integrationsData = await integrationsResponse.json()
-			const journalData = await journalResponse.json()
 
 			if (Array.isArray(integrationsData.integrations)) {
 				setIntegrations(integrationsData.integrations)
@@ -389,9 +377,10 @@ const HomePage = () => {
 			if (Array.isArray(tasksData.tasks)) {
 				setTasks(tasksData.tasks)
 			}
-			if (Array.isArray(journalData.blocks)) {
-				setTodaysJournal(journalData.blocks)
-			}
+			// When the notes/organizer API is available, it can be fetched and set here.
+			// For now, `notes` will remain an empty array.
+			// const notesData = await notesResponse.json();
+			// setNotes(notesData.entries || []);
 		} catch (error) {
 			toast.error(`Error fetching data: ${error.message}`)
 		} finally {
@@ -408,10 +397,9 @@ const HomePage = () => {
 				body: JSON.stringify({ taskId })
 			})
 			if (!response.ok) {
-				const errorData = await response.json()
+				const errorData = await response.json().catch(() => ({}))
 				throw new Error(errorData.error || "Approval failed")
 			}
-			posthog?.capture("task_approved", { task_id: taskId })
 			toast.success("Plan approved! Task has been queued for execution.")
 			fetchData() // Refresh data
 		} catch (error) {
@@ -431,11 +419,10 @@ const HomePage = () => {
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ taskId: taskId })
 			})
-			if (!response.ok) throw new Error("Failed to delete task")
-			if (taskToDelete?.status === "approval_pending") {
-				posthog?.capture("task_disapproved", { task_id: taskId })
+			if (!response.ok) {
+				const errorData = await response.json().catch(() => ({}))
+				throw new Error(errorData.error || "Failed to delete task")
 			}
-			toast.success("Task deleted successfully!")
 			fetchData()
 		} catch (error) {
 			toast.error(`Failed to delete task: ${error.message}`)
@@ -453,7 +440,10 @@ const HomePage = () => {
 					taskId: editingTask.task_id
 				})
 			})
-			if (!response.ok) throw new Error((await response.json()).error)
+			if (!response.ok) {
+				const errorData = await response.json()
+				throw new Error(errorData.error)
+			}
 			toast.success("Task updated successfully!")
 			setEditingTask(null)
 			fetchData() // Refresh data
@@ -522,12 +512,19 @@ const HomePage = () => {
 		return todaysEvents
 	}, [tasks])
 
+	const todaysNotes = useMemo(() => {
+		const today = new Date();
+		return notes.filter((note) =>
+			note.page_date && isSameDay(parseISO(note.page_date), today)
+		);
+	}, [notes]);
+
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
 			<Tooltip id="home-tooltip" style={{ zIndex: 9999 }} />
 			<Tooltip id="page-help-tooltip" style={{ zIndex: 9999 }} />
 			<div className="flex-1 flex flex-col overflow-hidden relative">
-				<HelpTooltip content="This is your Home page. See tasks pending your approval and get a glimpse of your day's agenda and journal entries." />
+				<HelpTooltip content="This is your Home page. See tasks pending your approval and get a glimpse of your day's agenda and organizer entries." />
 				<main className="flex-1 overflow-y-auto p-4 lg:p-8 custom-scrollbar">
 					<div className="max-w-7xl w-full mx-auto">
 						{/* Header Section */}
@@ -591,7 +588,7 @@ const HomePage = () => {
 										</div>
 									) : pendingApprovalTasks.length > 0 ? (
 										pendingApprovalTasks.map((task) => (
-											<TaskCard
+											<TaskKanbanCard
 												key={task.task_id}
 												task={task}
 												integrations={integrations}
@@ -613,7 +610,7 @@ const HomePage = () => {
 						</motion.div>
 
 						{/* Today's Previews */}
-						<div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+						<div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto w-full">
 							<PreviewColumn
 								title="Today's Agenda"
 								items={todaysTasks}
@@ -625,13 +622,11 @@ const HomePage = () => {
 								icon={<IconChecklist />}
 							/>
 							<PreviewColumn
-								title="Today's Journal"
-								items={todaysJournal}
-								renderItem={(item, i) => (
-									<JournalPreviewCard key={i} entry={item} />
-								)}
-								viewAllLink="/journal"
-								emptyMessage="No journal entries for today."
+								title="Today's Notes"
+								items={todaysNotes}
+								renderItem={(item, i) => <NotePreviewCard key={i} note={item} />}
+								viewAllLink="/notes"
+								emptyMessage="No notes for today."
 								icon={<IconBook />}
 							/>
 						</div>
@@ -664,9 +659,9 @@ const HomePage = () => {
 								<IdeaCard
 									icon={<IconBulb size={24} />}
 									title="Never Forget an Idea"
-									description="Use the Journal to jot down thoughts, and let Sentient proactively create tasks and reminders for you."
-									cta="Go to Journal"
-									onClick={() => router.push("/journal")}
+									description="Use the Tasks page to jot down thoughts, and let Sentient proactively create tasks and reminders for you."
+									cta="Go to Tasks"
+									onClick={() => router.push("/tasks")}
 								/>
 							</div>
 						</motion.div>

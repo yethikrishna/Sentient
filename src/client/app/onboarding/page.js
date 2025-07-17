@@ -902,11 +902,11 @@ const OnboardingPage = () => {
 						icon: (
 							<IconBook size={32} className="text-purple-400" />
 						),
-						title: "Start Your First Journal",
+						title: "Explore Tasks",
 						description:
 							"Write down your thoughts and let Sentient proactively manage your day.",
-						buttonText: "Go to Organizer",
-						onClick: () => router.push("/journal")
+						buttonText: "Go to Tasks",
+						onClick: () => router.push("/tasks")
 					},
 					{
 						icon: (

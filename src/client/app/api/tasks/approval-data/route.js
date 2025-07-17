@@ -19,7 +19,7 @@ export const GET = withAuth(async function GET(request, { authHeader }) {
 
 	try {
 		const response = await fetch(
-			`${appServerUrl}/agents/get-task-approval-data`,
+			`${appServerUrl}/tasks/get-task-approval-data`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },

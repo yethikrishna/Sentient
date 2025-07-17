@@ -55,13 +55,13 @@
 ![Journl](https://github.com/user-attachments/assets/467fd26d-18a4-4107-98a9-05fa83b26a77)
 
 <div align="center">
-  <p>The Journal page is the central page of the app - use it to track your day and Sentient gets stuff done.</p>
+  <p>The Organizer page is the central page of the app - use it to track your day and Sentient gets stuff done.</p>
 </div>
 
 ![image](https://github.com/user-attachments/assets/fcf05b39-7f8d-46f8-9702-e0791f27f918)
 
 <div align="center">
-  <p>Sentient co-authors the journal with you.</p>
+  <p>Sentient co-authors the organizer with you.</p>
 </div>
 
 ![image](https://github.com/user-attachments/assets/319d7c35-9046-4ea1-a369-88ab1a9ded8e)
@@ -78,24 +78,24 @@ Sentient automatically collects information from connected applications like **G
 
 ### 📝 Memory System
 
-- **SuperMemory:** Permanent facts about you—your preferences, relationships, and key details—are stored and managed through an integration with **Supermemory**, creating a rich, personalized knowledge base that the agent can update and retrieve from anytime.
-- **Notes & Journal:** A full-featured journal allows you to simply write down what's on your mind and have Sentient manage it for you. Sentient can also write to this journal, giving you updates on what it's doing and more. The journal also helps you keep track of scheduled and recurring tasks created by Sentient. Any information obtained from your context sources is also populated in the journal.
+-   **SuperMemory:** Permanent facts about you—your preferences, relationships, and key details—are stored and managed through an integration with **Supermemory**, creating a rich, personalized knowledge base that the agent can update and retrieve from anytime.
+-   **Notes & Organizer:** A full-featured organizer allows you to simply write down what's on your mind and have Sentient manage it for you. Sentient can also write to this organizer, giving you updates on what it's doing and more. The organizer also helps you keep track of scheduled and recurring tasks created by Sentient. Any information obtained from your context sources is also populated in the organizer.
 
 ### 🤖 Autonomous Task & Agent System
 
-- **Generate Plans from Goals:** Sentient can generate detailed plans to execute tasks using connected tools, all from a simple high-level goal.
-- **Asynchronous Execution:** Once approved, tasks are handled **asynchronously** in the background - you can approve as many tasks as you want simultaneously. The executor agent intelligently uses the available tools to complete the plan, providing real-time progress updates.
-- **View & Manage Tasks:** A dedicated **Tasks page** lets you view active, pending, and completed tasks, check their progress, and see the final results.
+-   **Generate Plans from Goals:** Sentient can generate detailed plans to execute tasks using connected tools, all from a simple high-level goal.
+-   **Asynchronous Execution:** Once approved, tasks are handled **asynchronously** in the background - you can approve as many tasks as you want simultaneously. The executor agent intelligently uses the available tools to complete the plan, providing real-time progress updates.
+-   **View & Manage Tasks:** A dedicated **Tasks page** lets you view active, pending, and completed tasks, check their progress, and see the final results.
 
 ### 🔌 Extensive Integrations (MCP Hub)
 
 Our **Model Context Protocol (MCP)** hub allows for a powerful, distributed system of tools. Current integrations include:
 
-- **Google Suite:** Gmail, Google Calendar, Google Drive, Google Docs, Google Sheets, and Google Slides.
-- **Productivity:** Slack and Notion.
-- **Developer:** GitHub.
-- **Information:** Internet Search (Google Search), News (NewsAPI), Weather (AccuWeather), Google Shopping and Google Maps.
-- **Miscellaneous:** QuickChart for generating charts on the fly.
+-   **Google Suite:** Gmail, Google Calendar, Google Drive, Google Docs, Google Sheets, and Google Slides.
+-   **Productivity:** Slack and Notion.
+-   **Developer:** GitHub.
+-   **Information:** Internet Search (Google Search), News (NewsAPI), Weather (AccuWeather), Google Shopping and Google Maps.
+-   **Miscellaneous:** QuickChart for generating charts on the fly.
 
 More tools will be added soon.
 
@@ -107,9 +107,9 @@ A chat interface is available on any page. It allows you to have conversations w
 
 A central settings page gives you complete control:
 
-- Connect or disconnect applications with OAuth (for applications supporting OAuth) or manually.
-- Set custom privacy filters to prevent Sentient from processing context containing sensitive information.
-- Configure WhatsApp notifications to stay updated on the go.
+-   Connect or disconnect applications with OAuth (for applications supporting OAuth) or manually.
+-   Set custom privacy filters to prevent Sentient from processing context containing sensitive information.
+-   Configure WhatsApp notifications to stay updated on the go.
 
 ### 🔒 Self-Hostable
 
@@ -121,12 +121,12 @@ The entire platform can be self-hosted and configured to run fully locally. [Che
 
 We are constantly working to expand Sentient's capabilities. Here is a glimpse of what's planned for the future:
 
-- **Make the Web App as feature-rich as possible:** There is a lot that can be improved in the existing webapp.
-- **OS-Level Integration:** Launch native apps for `Windows`, `MacOS`, `Android` and `iOS` that allow for deeper integrations.
-- **Expanded Integrations:** Add support for more popular services, such as the `Microsoft 365 Suite`, `Spotify`, and so on.
-- **Advanced Reasoning & Planning:** Reasoning improvements for the planning and execution pipeline.
-- **Tool-Specific UI:** Enhance the interface with custom UI components for specific tool outputs, such as maps for location-based results.
-- **Custom Tool Integrations:** Let users add any app of their choice.
+-   **Make the Web App as feature-rich as possible:** There is a lot that can be improved in the existing webapp.
+-   **OS-Level Integration:** Launch native apps for `Windows`, `MacOS`, `Android` and `iOS` that allow for deeper integrations.
+-   **Expanded Integrations:** Add support for more popular services, such as the `Microsoft 365 Suite`, `Spotify`, and so on.
+-   **Advanced Reasoning & Planning:** Reasoning improvements for the planning and execution pipeline.
+-   **Tool-Specific UI:** Enhance the interface with custom UI components for specific tool outputs, such as maps for location-based results.
+-   **Custom Tool Integrations:** Let users add any app of their choice.
 
 ## :wave: Contributing
 

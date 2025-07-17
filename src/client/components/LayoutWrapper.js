@@ -22,7 +22,7 @@ const ShortcutLegendModal = ({ onClose }) => {
 		],
 		Navigation: [
 			{ keys: ["Ctrl", "H"], description: "Go to Home" },
-			{ keys: ["Ctrl", "J"], description: "Go to Organizer" },
+			{ keys: ["Ctrl", "J"], description: "Go to Notes" },
 			{ keys: ["Ctrl", "A"], description: "Go to Tasks" },
 			{ keys: ["Ctrl", "I"], description: "Go to Integrations" },
 			{ keys: ["Ctrl", "S"], description: "Go to Settings" }
@@ -137,16 +137,10 @@ export default function LayoutWrapper({ children }) {
 						router.push("/home")
 						break
 					case "j":
-						router.push("/journal")
+						router.push("/notes")
 						break
-					case "t":
+					case "a":
 						router.push("/tasks")
-						break
-					case "i":
-						router.push("/integrations")
-						break
-					case "s":
-						router.push("/settings")
 						break
 					case "b":
 						handleNotificationsOpen()

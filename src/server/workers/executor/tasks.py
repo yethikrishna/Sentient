@@ -44,15 +44,15 @@ async def update_task_status(db, task_id: str, status: str, user_id: str, detail
     
     # Also update the block's status field even if there are no details
     if block_id:
-        journal_update = {"task_status": status}
+        organizer_update = {"task_status": status}
         if details:
             if "result" in details:
-                journal_update["task_result"] = details["result"]
+                organizer_update["task_result"] = details["result"]
             if "error" in details:
-                journal_update["task_result"] = details["error"] # Store error in result field for journal
-        await db.journal_blocks_collection.update_one(
+                organizer_update["task_result"] = details["error"] # Store error in result field for organizer
+        await db.organizer_blocks_collection.update_one(
             {"block_id": block_id, "user_id": user_id},
-            {"$set": journal_update}
+            {"$set": organizer_update}
         )
 
     task_doc = await db.tasks.find_one({"task_id": task_id}, {"description": 1})
@@ -79,7 +79,7 @@ async def add_progress_update(db, task_id: str, user_id: str, message: str, bloc
         {"$push": {"progress_updates": progress_update}}
     )
     if block_id:
-        await db.journal_blocks_collection.update_one(
+        await db.organizer_blocks_collection.update_one(
             {"block_id": block_id, "user_id": user_id},
             {"$push": {"task_progress": progress_update}}
         )
@@ -106,7 +106,7 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     
     original_context_data = task.get("original_context", {})
     block_id = None
-    if original_context_data.get("source") == "journal_block":
+    if original_context_data.get("source") == "organizer_block":
         block_id = original_context_data.get("block_id")
 
     logger.info(f"Executor started processing task {task_id} (block_id: {block_id}) for user {user_id}.")
@@ -185,7 +185,7 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     plan_steps_str = "\n".join([f"{i+1}. Use the '{step['tool']}' tool to '{step['description']}'" for i, step in enumerate(task.get("plan", []))])
     original_context_str = json.dumps(original_context_data, indent=2, default=str) if original_context_data else "No original context provided."
 
-    block_id_prompt = f"The block_id for this task is '{block_id}'. You MUST pass this ID to the 'update_progress' tool in the 'block_id' parameter." if block_id else "This task did not originate from a journal block."
+    block_id_prompt = f"The block_id for this task is '{block_id}'. You MUST pass this ID to the 'update_progress' tool in the 'block_id' parameter." if block_id else "This task did not originate from a organizer block."
 
     # Incorporate AI Persona into system prompt
     agent_name = preferences.get('agentName', 'Sentient')

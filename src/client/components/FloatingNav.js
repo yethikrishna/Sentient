@@ -12,7 +12,8 @@ import {
 	IconUser, // Keep for fallback
 	IconUserCircle,
 	IconMessage,
-	IconPlugConnected
+	IconPlugConnected,
+	IconPencil
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import { motion } from "framer-motion"
@@ -160,10 +161,17 @@ export default function FloatingNav({ onChatOpen, onNotificationsOpen }) {
 			)
 		},
 		{
-			title: "Organizer",
-			href: "/journal",
+			title: "Tasks",
+			href: "/tasks",
 			icon: (
-				<IconBook className="h-full w-full text-neutral-500 dark:text-neutral-300" />
+				<IconChecklist className="h-full w-full text-neutral-500 dark:text-neutral-300" />
+			)
+		},
+		{
+			title: "Notes",
+			href: "/notes",
+			icon: (
+				<IconPencil className="h-full w-full text-neutral-500 dark:text-neutral-300" />
 			)
 		},
 		{

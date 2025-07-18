@@ -11,7 +11,9 @@ export const GET = withAuth(async function GET(request, { authHeader }) {
 	const date = searchParams.get("date")
 
 	try {
-		const url = date ? `${appServerUrl}/notes/?date=${date}` : `${appServerUrl}/notes/`
+		const url = date
+			? `${appServerUrl}/notes/?date=${date}`
+			: `${appServerUrl}/notes/`
 		const response = await fetch(url, {
 			method: "GET",
 			headers: { "Content-Type": "application/json", ...authHeader }

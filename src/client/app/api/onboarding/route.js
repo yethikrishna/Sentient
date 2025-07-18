@@ -9,8 +9,6 @@ const appServerUrl =
 export const POST = withAuth(async function POST(request, { authHeader }) {
 	try {
 		const onboardingData = await request.json()
-		// FIX: The request body from the client is already in the correct format { data: ... }.
-		// It should not be wrapped again.
 		const response = await fetch(`${appServerUrl}/api/onboarding`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json", ...authHeader },

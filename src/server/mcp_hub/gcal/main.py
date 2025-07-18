@@ -12,6 +12,7 @@ from fastmcp.prompts.prompt import Message
 from . import auth
 from . import prompts
 from . import utils
+from . import utils
 
 # Conditionally load .env for local development
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
@@ -114,7 +115,7 @@ async def getCalendars(ctx: Context) -> Dict[str, Any]:
 
         def _execute_sync_list():
             calendar_list = service.calendarList().list().execute()
-            return [utils._simplify_calendar_list_entry(c) for c in calendar_list.get("items", [])]
+            return [gcal_utils._simplify_calendar_list_entry(c) for c in calendar_list.get("items", [])]
 
         simplified_calendars = await asyncio.to_thread(_execute_sync_list)
         return {"status": "success", "result": {"calendars": simplified_calendars}}
@@ -176,7 +177,7 @@ async def getEvents(ctx: Context, calendar_id: str = "primary", time_min: Option
                 singleEvents=True, orderBy="startTime"
             ).execute()
             events = events_result.get("items", [])
-            return [utils._simplify_event(e) for e in events]
+            return [gcal_utils._simplify_event(e) for e in events]
 
         event_list = await asyncio.to_thread(_execute_sync_list)
 
@@ -247,7 +248,7 @@ async def updateCalendar(ctx: Context, calendar_id: str, new_summary: Optional[s
             return service.calendars().patch(calendarId=calendar_id, body=update_body).execute()
 
         updated_calendar = await asyncio.to_thread(_execute_sync_patch)
-        return {"status": "success", "result": utils._simplify_calendar_list_entry(updated_calendar)}
+        return {"status": "success", "result": gcal_utils._simplify_calendar_list_entry(updated_calendar)}
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 

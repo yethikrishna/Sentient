@@ -3,21 +3,16 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
-
 from main.dependencies import mongo_manager
 from main.auth.utils import PermissionChecker, AuthHelper
-from agents.task_planner import generate_plan_from_context, execute_task_plan
-from utils.time_utils import calculate_next_run
-
-from .models import AddTaskRequest, UpdateTaskRequest, TaskActionRequest, AnswerClarificationsRequest, GeneratePlanRequest
-from main.data.db import TaskDBManager # Assuming TaskDBManager is now in main.data.db
+from workers.tasks import generate_plan_from_context, execute_task_plan, calculate_next_run
+from .models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest, AnswerClarificationsRequest, TaskActionRequest
 
 router = APIRouter(
     prefix="/tasks",
     tags=["Agents & Tasks"]
 )
 
-mongo_manager = TaskDBManager()
 logger = logging.getLogger(__name__)
 
 
@@ -35,14 +30,11 @@ async def get_task_details(
 @router.post("/add-task", status_code=status.HTTP_201_CREATED)
 async def add_task(
     request: AddTaskRequest,
-    user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"]))
+    user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"])),
 ):
     task_data = request.dict()
-    task_data.pop("taskId", None) # Remove if present
-    
-    # Per new spec, all manually created tasks start in 'planning' state to be reviewed.
-    task_data["status"] = "planning"
-    task_data.pop("next_execution_at", None) # Let the approval step set this
+    # All manually created tasks start in 'planning' state to be reviewed.
+    # The DB manager will handle setting the initial state.
 
     task_id = await mongo_manager.add_task(user_id, task_data)
     if not task_id:
@@ -64,20 +56,22 @@ async def update_task(
     request: UpdateTaskRequest,
     user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"]))
 ):
-    # The logic for determining recurring tasks and updating multiple instances
-    # is now encapsulated within TaskDBManager.
-    success = await mongo_manager.update_task(request.taskId, user_id, request)
+    task = await mongo_manager.get_task(request.taskId, user_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
+
+    update_data = request.dict(exclude_unset=True)
+    update_data.pop("taskId", None)
+    success = await mongo_manager.update_task(request.taskId, update_data)
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found or no updates applied.")
     return {"message": "Task updated successfully."}
 
 @router.post("/delete-task")
 async def delete_task(
-    request: TaskActionRequest,
+    request: TaskIdRequest,
     user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"]))
 ):
-    # The logic for determining recurring tasks and deleting multiple instances
-    # is now encapsulated within TaskDBManager.
     message = await mongo_manager.delete_task(request.taskId, user_id)
     if not message:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found or not deleted.")
@@ -88,51 +82,14 @@ async def task_action(
     request: TaskActionRequest, 
     user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"]))
 ):
-    if request.action == "approve":
-        task_id = request.task_id
-        task_doc = await mongo_manager.get_task(task_id, user_id)
-        if not task_doc:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found or user does not have permission.")
-
-        update_data = {}
-        schedule_data = task_doc.get("schedule", {})
-
-        if schedule_data.get("type") == "recurring":
-            next_run = calculate_next_run(schedule_data)
-            if next_run:
-                update_data["next_execution_at"] = next_run
-                update_data["status"] = "active"
-                update_data["enabled"] = True # Ensure recurring tasks are enabled on approval
-            else: # Handle case where next run can't be calculated
-                update_data["status"] = "error"
-                update_data["error"] = "Could not calculate next run time for recurring task."
-
-        elif schedule_data.get("type") == "once" and schedule_data.get("run_at"):
-            run_at_time_str = schedule_data.get("run_at")
-            run_at_time = datetime.fromisoformat(run_at_time_str).replace(tzinfo=timezone.utc)
-            
-            if run_at_time > datetime.now(timezone.utc):
-                update_data["next_execution_at"] = run_at_time
-                update_data["status"] = "pending"
-            else:
-                execute_task_plan.delay(task_id, user_id)
-
-        else: # Default case: not scheduled, run immediately
-            execute_task_plan.delay(task_id, user_id)
-        
-        success = await mongo_manager.update_task(task_id, update_data)
-        if not success:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to approve task.")
-        return JSONResponse(content={"message": "Task approved and scheduled/executed."})
-
-    elif request.action == "decline":
-        message = await mongo_manager.decline_task(request.task_id, user_id)
+    if request.action == "decline":
+        message = await mongo_manager.decline_task(request.taskId, user_id)
         if not message:
             raise HTTPException(status_code=400, detail="Failed to decline task.")
         return JSONResponse(content={"message": message})
     elif request.action == "execute":
         # This implies immediate execution, potentially bypassing approval if allowed
-        message = await mongo_manager.execute_task_immediately(request.task_id, user_id)
+        message = await mongo_manager.execute_task_immediately(request.taskId, user_id)
         if not message:
             raise HTTPException(status_code=400, detail="Failed to execute task immediately.")
         return JSONResponse(content={"message": message})
@@ -144,8 +101,7 @@ async def answer_clarifications(
     request: AnswerClarificationsRequest, 
     user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"]))
 ):
-    task = await mongo_manager.get_task(request.task_id)
-    if not task or task.get("user_id") != user_id:
+    if not await mongo_manager.get_task(request.task_id, user_id):
         raise HTTPException(status_code=404, detail="Task not found or permission denied.")
     
     success = await mongo_manager.add_answers_to_task(request.task_id, [ans.dict() for ans in request.answers], user_id)
@@ -162,10 +118,51 @@ async def answer_clarifications(
 
 @router.post("/rerun-task")
 async def rerun_task(
-    request: TaskActionRequest,
+    request: TaskIdRequest,
     user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"]))
 ):
-    new_task_id = await mongo_manager.rerun_task(request.task_id, user_id)
+    new_task_id = await mongo_manager.rerun_task(request.taskId, user_id)
     if not new_task_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Original task not found or failed to duplicate.")
     return {"message": "Task has been duplicated for re-run.", "new_task_id": new_task_id}
+
+@router.post("/approve-task", status_code=status.HTTP_200_OK)
+async def approve_task(
+    request: TaskIdRequest,
+    user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"]))
+):
+    """Approves a task, scheduling it for execution."""
+    task_id = request.taskId
+    task_doc = await mongo_manager.get_task(task_id, user_id)
+    if not task_doc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found or user does not have permission.")
+
+    update_data = {}
+    schedule_data = task_doc.get("schedule", {})
+
+    if schedule_data.get("type") == "recurring":
+        next_run = calculate_next_run(schedule_data)
+        if next_run:
+            update_data["next_execution_at"] = next_run
+            update_data["status"] = "active"
+            update_data["enabled"] = True
+        else:
+            update_data["status"] = "error"
+            update_data["error"] = "Could not calculate next run time for recurring task."
+    elif schedule_data.get("type") == "once" and schedule_data.get("run_at"):
+        run_at_time_str = schedule_data.get("run_at")
+        run_at_time = datetime.fromisoformat(run_at_time_str).replace(tzinfo=timezone.utc)
+        if run_at_time > datetime.now(timezone.utc):
+            update_data["next_execution_at"] = run_at_time
+            update_data["status"] = "pending"
+        else:
+            execute_task_plan.delay(task_id, user_id)
+    else: # Default case: not scheduled, run immediately
+        execute_task_plan.delay(task_id, user_id)
+    
+    if update_data:
+        success = await mongo_manager.update_task(task_id, update_data)
+        if not success:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to approve task.")
+            
+    return JSONResponse(content={"message": "Task approved and scheduled/executed."})

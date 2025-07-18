@@ -14,7 +14,10 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },
-				body: JSON.stringify(body)
+				body: JSON.stringify({
+					task_id: body.taskId,
+					answers: body.answers
+				})
 			}
 		)
 

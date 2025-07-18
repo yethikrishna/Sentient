@@ -11,7 +11,7 @@ from googleapiclient.discovery import build, Resource
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
 
-from typing import Optional
+from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 
 # Load .env file for 'dev-local' environment.
@@ -55,15 +55,20 @@ def get_user_id_from_context(ctx: Context) -> str:
         raise ToolError("Authentication failed: 'X-User-ID' header is missing.")
     return user_id
 
-async def get_user_timezone(user_id: str) -> str:
-    """Fetches the user's timezone from their profile, defaulting to UTC."""
+async def get_user_info(user_id: str) -> Dict[str, Any]:
+    """Fetches the user's info like timezone and email from their profile."""
     user_doc = await users_collection.find_one(
         {"user_id": user_id},
-        {"userData.personalInfo.timezone": 1}
+        {"userData.personalInfo.timezone": 1, "userData.personalInfo.email": 1}
     )
     if not user_doc:
-        return "UTC"
-    return user_doc.get("userData", {}).get("personalInfo", {}).get("timezone", "UTC")
+        return {"timezone": "UTC", "email": None}
+
+    personal_info = user_doc.get("userData", {}).get("personalInfo", {})
+    return {
+        "timezone": personal_info.get("timezone", "UTC"),
+        "email": personal_info.get("email", None)
+    }
 
 async def get_google_creds(user_id: str) -> Credentials:
     """Fetches Google OAuth token from MongoDB for a given user_id."""

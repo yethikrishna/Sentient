@@ -31,3 +31,6 @@ class UpdateTaskRequest(BaseModel):
 
 class TaskIdRequest(BaseModel):
     taskId: str
+class TaskActionRequest(BaseModel):
+    taskId: str
+    action: str

@@ -38,7 +38,6 @@ class UserProfileData(BaseModel):
     encrypted_refresh_token: Optional[str] = None
     supermemory_user_id: Optional[str] = None
     privacyFilters: List[str] = Field(default_factory=list)
-    googleAuth: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 class UserProfile(BaseModel):
     user_id: str = Field(..., description="The Auth0 user ID (sub claim)")

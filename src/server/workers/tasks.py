@@ -12,7 +12,6 @@ from typing import Dict, Any, Optional, List
 from main.analytics import capture_event
 
 from workers.config import SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX, SUPPORTED_POLLING_SERVICES
-from main.tasks.utils import clean_llm_output
 from json_extractor import JsonExtractor
 from workers.utils.api_client import notify_user 
 from workers.celery_app import celery_app
@@ -45,6 +44,15 @@ def get_date_from_text(text: str) -> str:
     if match:
         return match.group(1)
     return datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d')
+
+def clean_llm_output(text: str) -> str:
+    """
+    Removes reasoning tags (e.g., <think>...</think>) and trims whitespace from LLM output.
+    """
+    if not isinstance(text, str):
+        return ""
+    cleaned_text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    return cleaned_text.strip()
 # Helper to run async code in Celery's sync context
 def run_async(coro):
     try:

@@ -9,7 +9,7 @@ import json
 import uuid
 
 from workers.planner.config import MONGO_URI, MONGO_DB_NAME, INTEGRATIONS_CONFIG
-from workers.utils.crypto import aes_decrypt
+
 
 logger = logging.getLogger(__name__)
 

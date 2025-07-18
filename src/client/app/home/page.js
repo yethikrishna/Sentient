@@ -356,12 +356,15 @@ const HomePage = () => {
 	const fetchData = useCallback(async () => {
 		setLoading(true)
 		try {
-			const [tasksResponse, integrationsResponse] = await Promise.all([
-				fetch("/api/tasks"),
-				fetch("/api/settings/integrations")
-				// Note: The API to fetch notes/tasks entries is not available in the provided files.
-			])
+			const todayStr = format(new Date(), "yyyy-MM-dd")
+			const [tasksResponse, integrationsResponse, notesResponse] =
+				await Promise.all([
+					fetch("/api/tasks"),
+					fetch("/api/settings/integrations"),
+					fetch(`/api/notes?date=${todayStr}`)
+				])
 			if (!tasksResponse.ok) throw new Error("Failed to fetch tasks")
+			if (!notesResponse.ok) throw new Error("Failed to fetch notes")
 			if (!integrationsResponse.ok)
 				throw new Error("Failed to fetch integrations")
 
@@ -379,10 +382,10 @@ const HomePage = () => {
 			if (Array.isArray(tasksData.tasks)) {
 				setTasks(tasksData.tasks)
 			}
-			// When the notes/tasks API is available, it can be fetched and set here.
-			// For now, `notes` will remain an empty array.
-			// const notesData = await notesResponse.json();
-			// setNotes(notesData.entries || []);
+			const notesData = await notesResponse.json()
+			if (Array.isArray(notesData.notes)) {
+				setNotes(notesData.notes)
+			}
 		} catch (error) {
 			toast.error(`Error fetching data: ${error.message}`)
 		} finally {
@@ -518,7 +521,7 @@ const HomePage = () => {
 		const today = new Date()
 		return notes.filter(
 			(note) =>
-				note.page_date && isSameDay(parseISO(note.page_date), today)
+				note.note_date && isSameDay(parseISO(note.note_date), today)
 		)
 	}, [notes])
 

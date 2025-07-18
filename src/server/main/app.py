@@ -6,9 +6,11 @@ print(f"[{datetime.datetime.now()}] [STARTUP] Main Server application script exe
 
 from contextlib import asynccontextmanager
 import logging
+from bson import ObjectId
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.encoders import ENCODERS_BY_TYPE
 
 from main.config import APP_SERVER_PORT
 from main.dependencies import mongo_manager
@@ -25,6 +27,9 @@ from main.testing.routes import router as testing_router
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__) 
 
+# Add a custom encoder for ObjectId to FastAPI's internal dictionary
+ENCODERS_BY_TYPE[ObjectId] = str
+
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI):
     print(f"[{datetime.datetime.now(timezone.utc).isoformat()}] [LIFESPAN] App startup...")
@@ -39,7 +44,7 @@ async def lifespan(app_instance: FastAPI):
 app = FastAPI(title="Sentient Main Server", version="2.2.0", docs_url="/docs", redoc_url="/redoc", lifespan=lifespan)
 
 app.add_middleware(
-    CORSMiddleware, 
+    CORSMiddleware,
     allow_origins=["*"], # More permissive for development
     allow_credentials=True, 
     allow_methods=["*"], 

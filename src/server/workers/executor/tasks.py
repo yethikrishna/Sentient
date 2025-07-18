@@ -128,7 +128,6 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     logger.info(f"Task {task_id}: Plan requires tools: {required_tools_from_plan}")
     
     user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
-    google_auth_mode = user_profile.get("userData", {}).get("googleAuth", {}).get("mode", "default")
     
     # Construct Supermemory URL from stored user ID
     supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id") if user_profile else None
@@ -162,11 +161,10 @@ async def async_execute_task_plan(task_id: str, user_id: str):
             
         # Check availability
         is_google_service = tool_name.startswith('g')
-        is_available_via_custom = is_google_service and google_auth_mode == 'custom'
         is_builtin = config.get("auth_type") == "builtin"
         is_connected_via_oauth = user_integrations.get(tool_name, {}).get("connected", False)
 
-        if is_builtin or is_connected_via_oauth or is_available_via_custom:
+        if is_builtin or is_connected_via_oauth:
             active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
         else:
             logger.warning(f"Task {task_id}: Plan requires tool '{tool_name}' but it is not available/connected for user {user_id}.")

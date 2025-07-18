@@ -15,7 +15,7 @@ from main.chat.prompts import TOOL_SELECTOR_SYSTEM_PROMPT
 from main.db import MongoManager
 from main.llm import get_qwen_assistant
 from main.config import (INTEGRATIONS_CONFIG, SUPERMEMORY_MCP_BASE_URL,
-                         SUPERMEMORY_MCP_ENDPOINT_SUFFIX)
+                         SUPERMEMORY_MCP_ENDPOINT_SUFFIX, ENVIRONMENT)
 from json_extractor import JsonExtractor
 
 logger = logging.getLogger(__name__)

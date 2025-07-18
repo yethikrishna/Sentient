@@ -116,7 +116,9 @@ const MarkdownToolbar = ({ textareaRef }) => {
 const NotesPage = () => {
 	const [notes, setNotes] = useState([])
 	const [selectedNote, setSelectedNote] = useState(null)
-	const [currentDate, setCurrentDate] = useState(format(new Date(), "yyyy-MM-dd"))
+	const [currentDate, setCurrentDate] = useState(
+		format(new Date(), "yyyy-MM-dd")
+	)
 	const [isLoading, setIsLoading] = useState(true)
 	const [isSaving, setIsSaving] = useState(false)
 	const [editorTitle, setEditorTitle] = useState("")
@@ -142,11 +144,11 @@ const NotesPage = () => {
 		} finally {
 			setIsLoading(false)
 		}
-	}, [])
+	}, [currentDate])
 
-    useEffect(() => {
-        fetchNotes()
-    }, [currentDate, fetchNotes])
+	useEffect(() => {
+		fetchNotes()
+	}, [currentDate, fetchNotes])
 
 	useEffect(() => {
 		if (selectedNote) {
@@ -258,7 +260,7 @@ const NotesPage = () => {
 					<input
 						type="date"
 						value={currentDate}
-						onChange={e => setCurrentDate(e.target.value)}
+						onChange={(e) => setCurrentDate(e.target.value)}
 						className="p-2 bg-neutral-800 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
 					/>
 					<button

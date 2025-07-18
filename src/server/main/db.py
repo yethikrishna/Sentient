@@ -1,11 +1,14 @@
 # src/server/main/db.py
 import os
 import datetime
-import uuid 
+import uuid
+import json
+import logging
 import motor.motor_asyncio
 from pymongo import ASCENDING, DESCENDING, IndexModel, ReturnDocument
 from pymongo.errors import DuplicateKeyError
 from typing import Dict, List, Optional, Any, Tuple
+from workers.tasks import execute_task_plan
 
 # Import config from the current 'main' directory
 from main.config import MONGO_URI, MONGO_DB_NAME
@@ -17,6 +20,8 @@ POLLING_STATE_COLLECTION = "polling_state_store"
 PROCESSED_ITEMS_COLLECTION = "processed_items_log" 
 TASK_COLLECTION = "tasks"
 NOTES_COLLECTION = "notes"
+
+logger = logging.getLogger(__name__)
 
 class MongoManager:
     def __init__(self):
@@ -303,6 +308,123 @@ class MongoManager:
             upsert=True
         )
         return result.matched_count > 0 or result.upserted_id is not None
+
+    # --- Task Methods ---
+    async def add_task(self, user_id: str, task_data: dict) -> str:
+        """Creates a new task document and returns its ID."""
+        task_id = str(uuid.uuid4())
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+
+        schedule = task_data.get("schedule")
+        if isinstance(schedule, str):
+            try:
+                schedule = json.loads(schedule)
+            except json.JSONDecodeError:
+                schedule = None
+
+        task_doc = {
+            "task_id": task_id,
+            "user_id": user_id,
+            "description": task_data.get("description", "New Task"),
+            "status": "planning",
+            "priority": task_data.get("priority", 1),
+            "plan": [],
+            "schedule": schedule,
+            "enabled": True,
+            "original_context": {"source": "manual_creation"},
+            "created_at": now_utc,
+            "updated_at": now_utc,
+            "clarifying_questions": [],
+            "progress_updates": [],
+            "result": None,
+            "error": None,
+            "next_execution_at": None,
+            "last_execution_at": None,
+        }
+
+        await self.task_collection.insert_one(task_doc)
+        logger.info(f"Created new manual task {task_id} for user {user_id} with status 'planning'.")
+        return task_id
+
+    async def get_task(self, task_id: str, user_id: str) -> Optional[Dict]:
+        """Fetches a single task by its ID, ensuring it belongs to the user."""
+        return await self.task_collection.find_one({"task_id": task_id, "user_id": user_id})
+
+    async def get_all_tasks_for_user(self, user_id: str) -> List[Dict]:
+        """Fetches all tasks for a given user."""
+        cursor = self.task_collection.find({"user_id": user_id}).sort("created_at", -1)
+        return await cursor.to_list(length=None)
+
+    async def update_task(self, task_id: str, updates: Dict) -> bool:
+        """Updates an existing task document."""
+        updates["updated_at"] = datetime.datetime.now(datetime.timezone.utc)
+        result = await self.task_collection.update_one(
+            {"task_id": task_id},
+            {"$set": updates}
+        )
+        return result.modified_count > 0
+
+    async def add_answers_to_task(self, task_id: str, answers: List[Dict], user_id: str) -> bool:
+        """Finds a task and updates its clarifying questions with user answers."""
+        task = await self.get_task(task_id, user_id)
+        if not task:
+            return False
+
+        current_questions = task.get("clarifying_questions", [])
+        for answer_data in answers:
+            for question in current_questions:
+                if question.get("question_id") == answer_data.get("question_id"):
+                    question["answer"] = answer_data.get("answer_text")
+                    break
+        return await self.update_task(task_id, {"clarifying_questions": current_questions})
+
+    async def delete_task(self, task_id: str, user_id: str) -> str:
+        """Deletes a task."""
+        result = await self.task_collection.delete_one({"task_id": task_id, "user_id": user_id})
+        return "Task deleted successfully." if result.deleted_count > 0 else None
+
+    async def decline_task(self, task_id: str, user_id: str) -> str:
+        """Declines a task by setting its status to 'declined'."""
+        success = await self.update_task(task_id, {"status": "declined"})
+        return "Task declined." if success else None
+
+    async def execute_task_immediately(self, task_id: str, user_id: str) -> str:
+        """Triggers the immediate execution of a task."""
+        task = await self.get_task(task_id, user_id)
+        if not task:
+            return None
+        execute_task_plan.delay(task_id, user_id)
+        return "Task execution has been initiated."
+
+    async def rerun_task(self, original_task_id: str, user_id: str) -> Optional[str]:
+        """Duplicates a task to be re-run."""
+        original_task = await self.get_task(original_task_id, user_id)
+        if not original_task:
+            return None
+
+        new_task_doc = original_task.copy()
+        new_task_id = str(uuid.uuid4())
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+
+        # Reset fields for a new run
+        new_task_doc["_id"] = None # Let Mongo generate a new one
+        new_task_doc["task_id"] = new_task_id
+        new_task_doc["status"] = "planning"
+        new_task_doc["created_at"] = now_utc
+        new_task_doc["updated_at"] = now_utc
+        new_task_doc["progress_updates"] = []
+        new_task_doc["result"] = None
+        new_task_doc["error"] = None
+        new_task_doc["last_execution_at"] = None
+        new_task_doc["next_execution_at"] = None
+
+        # Need to handle potential ObjectId in the copied dict
+        if "_id" in new_task_doc and new_task_doc["_id"] is None:
+            del new_task_doc["_id"]
+
+        await self.task_collection.insert_one(new_task_doc)
+        return new_task_id
+
 
     async def close(self):
         if self.client:

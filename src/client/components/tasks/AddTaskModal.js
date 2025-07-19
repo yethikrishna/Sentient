@@ -79,7 +79,7 @@ const AddTaskModal = ({ onClose, onTaskAdded }) => {
 							value={prompt}
 							onChange={(e) => setPrompt(e.target.value)}
 							rows={4}
-							className="w-full p-3 bg-neutral-800/50 border border-neutral-700 rounded-lg transition-colors focus:border-[var(--color-accent-blue)]"
+							className="w-full p-3 bg-neutral-800/50 border border-neutral-700 rounded-lg transition-colors focus:border-[var(--color-accent-blue)] focus:ring-0"
 							placeholder="e.g., Send a follow-up email to the new client about the proposal by tomorrow afternoon"
 							autoFocus
 						/>
@@ -125,14 +125,14 @@ const AddTaskModal = ({ onClose, onTaskAdded }) => {
 					<button
 						type="button"
 						onClick={onClose}
-						className="py-2.5 px-6 rounded-lg bg-[var(--color-primary-surface-elevated)] hover:bg-[var(--color-primary-surface)] text-sm transition-colors"
+						className="py-2.5 px-6 rounded-lg bg-dark-surface-elevated hover:bg-dark-surface text-sm transition-colors"
 					>
 						Cancel
 					</button>
 					<button
 						onClick={handleAddTask}
 						disabled={isProcessing}
-						className="py-2.5 px-6 rounded-lg bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-sm flex items-center gap-2 disabled:opacity-50 transition-colors"
+						className="py-2.5 px-6 rounded-lg bg-sentient-blue hover:bg-sentient-blue-dark text-sm flex items-center gap-2 disabled:opacity-50 transition-colors"
 					>
 						{isProcessing && (
 							<IconLoader size={16} className="animate-spin" />

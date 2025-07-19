@@ -39,7 +39,7 @@ const ClarificationCard = ({ task, onAnswerClarifications }) => {
 			initial={{ opacity: 0, y: 10 }}
 			animate={{ opacity: 1, y: 0 }}
 			exit={{ opacity: 0, x: -20 }}
-			className="bg-dark-surface/70 p-3 rounded-lg space-y-3 border border-dark-surface-elevated"
+			className="bg-dark-surface/70 p-4 rounded-lg space-y-3 border border-dark-surface-elevated hover:border-sentient-blue/50 transition-colors"
 		>
 			<p className="font-medium text-sm text-white">{task.description}</p>
 			<div className="space-y-2">
@@ -57,7 +57,7 @@ const ClarificationCard = ({ task, onAnswerClarifications }) => {
 								)
 							}
 							rows={2}
-							className="w-full p-2 bg-dark-bg border border-dark-surface-elevated rounded-md text-sm"
+							className="w-full p-2 bg-dark-bg border border-dark-surface-elevated rounded-md text-sm transition-colors focus:border-sentient-blue focus:ring-0"
 							placeholder="Your answer..."
 						/>
 					</div>

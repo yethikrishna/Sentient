@@ -3,22 +3,10 @@ import React, { useState, useEffect, useRef } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { FloatingDock } from "@components/ui/floating-dock"
 import {
-	IconAdjustments,
-	IconBell,
-	IconChecklist,
-	IconHome,
-	IconLogout,
-	IconUser, // Keep for fallback
-	IconUserCircle,
-	IconMessage,
-	IconPlugConnected,
-	IconPencil
+	IconAdjustments, IconChecklist, IconHome, IconLogout, IconPlugConnected
 } from "@tabler/icons-react"
-import toast from "react-hot-toast"
-import { motion } from "framer-motion"
-import { cn } from "@utils/cn"
 
-export default function FloatingNav({ onNotificationsOpen }) {
+export default function FloatingNav() {
 	const router = useRouter()
 	const pathname = usePathname()
 	const [userDetails, setUserDetails] = useState(null)
@@ -174,15 +162,6 @@ export default function FloatingNav({ onNotificationsOpen }) {
 			)
 		},
 		{
-			title: "Notifications",
-			href: "#",
-			icon: <NotificationIcon />,
-			onClick: () => {
-				setUnreadCount(0)
-				onNotificationsOpen()
-			}
-		},
-		{
 			title: "Settings",
 			href: "/settings",
 			icon: (
@@ -212,3 +191,4 @@ export default function FloatingNav({ onNotificationsOpen }) {
 
 	return <FloatingDock items={finalLinks} />
 }
+

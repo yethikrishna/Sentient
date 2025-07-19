@@ -86,6 +86,14 @@ const TaskKanbanCard = ({ task, onViewDetails, onEditTask, onDataChange }) => {
 			</p>
 			<div className="flex items-center justify-between mt-3 pt-2 border-t border-white/5 min-h-[28px]">
 				<div className="flex items-center gap-2 text-xs text-neutral-400">
+					<div
+						className={cn(
+							"w-2 h-2 rounded-full",
+							priorityInfo.color.replace("text-", "bg-")
+						)}
+						data-tooltip-id="tasks-tooltip"
+						data-tooltip-content={`Priority: ${priorityInfo.label}`}
+					/>
 					{isRecurring && <IconRepeat size={14} />}
 					<span>
 						{task.schedule.run_at

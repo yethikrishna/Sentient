@@ -3,7 +3,6 @@ import { useRouter, usePathname } from "next/navigation"
 import React, { useEffect, useState, useRef } from "react"
 import {
 	IconAdjustments,
-	IconBell,
 	IconBook,
 	IconChecklist,
 	IconChevronDown,
@@ -15,7 +14,6 @@ import {
 	IconX,
 	IconPlugConnected
 } from "@tabler/icons-react"
-import toast from "react-hot-toast"
 import { AnimatePresence, motion } from "framer-motion"
 import { cn } from "@utils/cn"
 import { useSmoothScroll } from "@hooks/useSmoothScroll"
@@ -38,143 +36,6 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 			return
 		}
 	}, [userDetails]) // Separate effect for fetching data, depends on userDetails
-
-	// Separate, dedicated effect for WebSocket lifecycle management
-	useEffect(() => {
-		// Guard clause: Do not run WebSocket logic if userDetails.sub is not yet available.
-		if (!userDetails?.sub) {
-			return
-		}
-
-		const connectWebSocket = async () => {
-			if (wsRef.current && wsRef.current.readyState < 2) {
-				// 0=CONNECTING, 1=OPEN
-				console.log(
-					"Sidebar WS: A connection is already open or connecting."
-				)
-				return
-			}
-
-			try {
-				const tokenResponse = await fetch("/api/auth/token")
-				if (!tokenResponse.ok) {
-					console.error(
-						"Sidebar WS: Could not get auth token for WebSocket."
-					)
-					// Retry after a delay if token fetch fails
-					setTimeout(connectWebSocket, 5000)
-					return
-				}
-				const { accessToken } = await tokenResponse.json()
-
-				const serverUrlHttp =
-					process.env.NEXT_PUBLIC_APP_SERVER_URL ||
-					"http://localhost:5000"
-				const wsProtocol =
-					window.location.protocol === "https:" ? "wss" : "ws"
-				// Strip the protocol from the server URL to get just the host and port
-				const serverHost = serverUrlHttp.replace(/^https?:\/\//, "")
-				const wsUrl = `${wsProtocol}://${serverHost}/api/ws/notifications`
-
-				const ws = new WebSocket(wsUrl)
-				ws.isCleaningUp = false // Custom flag on the instance itself
-				wsRef.current = ws
-
-				ws.onopen = () => {
-					console.log("Sidebar: Notification WebSocket connected.")
-					ws.send(
-						JSON.stringify({ type: "auth", token: accessToken })
-					)
-				}
-
-				ws.onmessage = (event) => {
-					const data = JSON.parse(event.data)
-					if (data.type === "new_notification" && data.notification) {
-						toast.custom(
-							(t) => (
-								<div
-									className={`${t.visible ? "animate-enter" : "animate-leave"} max-w-md w-full bg-neutral-800 shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5 border border-neutral-700`}
-								>
-									<div className="flex-1 w-0 p-4">
-										<div className="flex items-start">
-											<div className="flex-shrink-0 pt-0.5">
-												<IconBell className="h-6 w-6 text-lightblue" />
-											</div>
-											<div className="ml-3 flex-1">
-												<p className="text-sm font-medium text-white">
-													New Notification
-												</p>
-												<p className="mt-1 text-sm text-gray-400">
-													{data.notification.message}
-												</p>
-											</div>
-										</div>
-									</div>
-									<div className="flex border-l border-neutral-700">
-										<button
-											onClick={() => {
-												router.push("/tasks")
-												toast.dismiss(t.id)
-											}}
-											className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-sm font-medium text-lightblue hover:text-blue-400 focus:outline-none focus:ring-2 focus:ring-lightblue"
-										>
-											View
-										</button>
-									</div>
-								</div>
-							),
-							{ duration: 10000 }
-						)
-					}
-				}
-
-				ws.onclose = () => {
-					// IMPORTANT: Check the flag on the instance that was closed, NOT the ref.
-					if (ws.isCleaningUp) {
-						console.log(
-							"Sidebar: WebSocket closed intentionally on cleanup."
-						)
-					} else {
-						console.log(
-							"Sidebar: Notification WebSocket disconnected unexpectedly. Reconnecting..."
-						)
-						// Clear the ref to allow a new connection to be made.
-						wsRef.current = null
-						setTimeout(connectWebSocket, 5000) // Attempt to reconnect
-					}
-				}
-
-				ws.onerror = (error) => {
-					console.error(
-						"Sidebar: Notification WebSocket error:",
-						error
-					)
-					// The onclose event will fire after an error, triggering the reconnect logic if needed.
-					ws.close()
-				}
-			} catch (error) {
-				console.error(
-					"Sidebar WS: Failed to initiate connection:",
-					error
-				)
-				setTimeout(connectWebSocket, 5000)
-			}
-		}
-
-		connectWebSocket()
-
-		// This cleanup function runs when the component unmounts or dependencies change
-		return () => {
-			if (wsRef.current) {
-				console.log(
-					"Sidebar: Cleaning up WebSocket connection for effect re-run or unmount."
-				)
-				wsRef.current.isCleaningUp = true // Mark for intentional close
-				wsRef.current.close()
-				wsRef.current = null
-			}
-		}
-	}, [userDetails?.sub, router]) // Depend only on the stable user ID
 
 	const NavLink = ({ href, icon, label }) => {
 		const pathname = usePathname() ?? ""
@@ -277,11 +138,6 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 							href="/integrations"
 							icon={<IconPlugConnected />}
 							label="Integrations"
-						/>
-						<NavLink
-							href="/notifications"
-							icon={<IconBell />}
-							label="Notifications"
 						/>
 						<NavLink
 							href="/settings"

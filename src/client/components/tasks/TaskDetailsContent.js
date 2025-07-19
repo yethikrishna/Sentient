@@ -31,9 +31,7 @@ const TaskDetailsContent = ({ task }) => {
 	return (
 		<div className="space-y-6">
 			<div className="flex items-center gap-4 text-sm">
-				<span className="text-[var(--color-text-secondary)]">
-					Status:
-				</span>
+				<span className="text-sm text-neutral-400">Status:</span>
 				<span
 					className={cn(
 						"font-semibold py-0.5 px-2 rounded-full text-xs",
@@ -44,9 +42,7 @@ const TaskDetailsContent = ({ task }) => {
 					{statusInfo.label}
 				</span>
 				<div className="w-px h-4 bg-[var(--color-primary-surface-elevated)]"></div>
-				<span className="text-[var(--color-text-secondary)]">
-					Priority:
-				</span>
+				<span className="text-sm text-neutral-400">Priority:</span>
 				<span className={cn("font-semibold", priorityInfo.color)}>
 					{priorityInfo.label}
 				</span>
@@ -57,7 +53,7 @@ const TaskDetailsContent = ({ task }) => {
 					{task.plan.map((step, index) => (
 						<div
 							key={index}
-							className="flex items-start gap-3 bg-[var(--color-primary-surface)]/70 p-3 rounded-md"
+							className="flex items-start gap-3 bg-dark-surface/70 p-3 rounded-md border border-dark-surface-elevated"
 						>
 							<div className="flex-shrink-0 text-[var(--color-accent-blue)] font-bold mt-0.5">
 								{index + 1}.
@@ -122,7 +118,8 @@ const TaskDetailsContent = ({ task }) => {
 										data-tooltip-id="task-details-tooltip"
 										data-tooltip-content="See the step-by-step reasoning the agent used to produce the result."
 									>
-										<Tooltip place="right-start"
+										<Tooltip
+											place="right-start"
 											place="bottom-start"
 											id="task-details-tooltip"
 											style={{ zIndex: 9999 }}
@@ -172,4 +169,3 @@ const TaskDetailsContent = ({ task }) => {
 }
 
 export default TaskDetailsContent
-

@@ -10,8 +10,11 @@ const TaskPill = ({ task, onClick }) => {
 	return (
 		<motion.div
 			onClick={onClick}
-			className="text-xs p-1 bg-sentient-blue/20 text-sentient-blue rounded cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis flex items-center gap-1"
-			whileHover={{ scale: 1.05, backgroundColor: "#4a9eff40" }}
+			className="text-xs p-1.5 bg-sentient-blue/20 text-sentient-blue rounded-md cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis flex items-center gap-1"
+			whileHover={{
+				scale: 1.05,
+				backgroundColor: "rgba(74, 158, 255, 0.3)"
+			}}
 		>
 			{isRecurring && <IconRepeat size={12} />}
 			<span className="truncate">{task.description}</span>

@@ -54,14 +54,14 @@ const ActionSidebar = ({
 			initial={false}
 			animate={{ width: isOpen ? 350 : 60 }}
 			transition={{ type: "spring", stiffness: 400, damping: 40 }}
-			className="hidden md:flex flex-col h-full bg-dark-surface shrink-0 border-l border-dark-surface-elevated"
+			className="hidden md:flex flex-col h-full bg-neutral-900/50 backdrop-blur-sm shrink-0 border-l border-neutral-800"
 		>
 			<div className="flex h-full">
 				{/* Icon Bar */}
-				<div className="w-[60px] h-full flex flex-col items-center p-2 gap-2 border-r border-dark-surface-elevated">
+				<div className="w-[60px] h-full flex flex-col items-center p-2 gap-2 border-r border-neutral-800">
 					<button
 						onClick={() => setIsOpen(!isOpen)}
-						className="p-3 rounded-lg text-neutral-400 hover:bg-dark-surface-elevated hover:text-white"
+						className="p-3 rounded-lg text-neutral-400 hover:bg-neutral-700/50 hover:text-white"
 						data-tooltip-id="tasks-tooltip"
 						data-tooltip-content={
 							isOpen ? "Collapse Sidebar" : "Expand Sidebar"

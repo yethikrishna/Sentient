@@ -38,7 +38,7 @@ const ApprovalCard = ({
 			initial={{ opacity: 0, y: 10 }}
 			animate={{ opacity: 1, y: 0 }}
 			exit={{ opacity: 0, x: -20 }}
-			className="bg-dark-surface/70 p-3 rounded-lg border border-dark-surface-elevated"
+			className="bg-dark-surface/70 p-3 rounded-lg border border-dark-surface-elevated hover:border-sentient-blue/50 transition-colors"
 		>
 			<div onClick={() => onViewDetails(task)} className="cursor-pointer">
 				<p className="font-medium text-sm text-white mb-2">
@@ -74,22 +74,22 @@ const ApprovalCard = ({
 			<div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-dark-surface-elevated">
 				<button
 					onClick={() => onDeleteTask(task.task_id)}
-					className="p-2 rounded-md text-red-400 hover:bg-red-500/20"
+					className="p-2 rounded-md text-neutral-400 hover:bg-red-500/20 hover:text-red-400 transition-colors"
 				>
 					<IconTrash size={16} />
 				</button>
 				<button
 					onClick={() => onEditTask(task)}
-					className="p-2 rounded-md text-orange-400 hover:bg-orange-500/20"
+					className="p-2 rounded-md text-neutral-400 hover:bg-orange-500/20 hover:text-orange-400 transition-colors"
 				>
 					<IconPencil size={16} />
 				</button>
 				<button
 					onClick={() => onApproveTask(task.task_id)}
 					disabled={missingTools.length > 0}
-					className="p-2 rounded-md text-green-400 hover:bg-green-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+					className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold bg-green-500/10 text-green-300 hover:bg-green-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
 				>
-					<IconCircleCheck size={16} />
+					<IconCircleCheck size={14} /> Approve
 				</button>
 			</div>
 		</motion.div>

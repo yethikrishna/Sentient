@@ -46,7 +46,10 @@ const SortableHeader = ({
 			)}
 		>
 			<span>{title}</span>
-			<IconComponent size={16} className={cn(iconClassName, "group-hover:text-white")} />
+			<IconComponent
+				size={16}
+				className={cn(iconClassName, "group-hover:text-white")}
+			/>
 		</button>
 	)
 }
@@ -338,25 +341,27 @@ const AllTasksView = ({
 						{Object.entries(processedTasks).map(
 							([groupName, groupTasks]) => (
 								<motion.div key={groupName} layout>
-									{groupBy !== "none" && (
-										<div className="p-2 bg-dark-surface-elevated">
-											<h3 className="font-semibold text-neutral-300">
-												{groupName} ({groupTasks.length}
-												)
-											</h3>
-										</div>
-									)}
-									{groupTasks.map((task) => (
-										<TaskListItem
-											key={task.task_id}
-											task={task}
-											onViewDetails={onViewDetails}
-											onEditTask={onEditTask}
-											onDeleteTask={onDeleteTask}
-											onRerunTask={onRerunTask}
-											activeTab={activeTab}
-										/>
-									))}
+									{groupBy !== "none" &&
+										groupTasks.length > 0 && (
+											<div className="p-2 bg-dark-surface-elevated">
+												<h3 className="font-semibold text-sm text-neutral-300">
+													{groupName} (
+													{groupTasks.length})
+												</h3>
+											</div>
+										)}
+									{groupTasks.length > 0 &&
+										groupTasks.map((task) => (
+											<TaskListItem
+												key={task.task_id}
+												task={task}
+												onViewDetails={onViewDetails}
+												onEditTask={onEditTask}
+												onDeleteTask={onDeleteTask}
+												onRerunTask={onRerunTask}
+												activeTab={activeTab}
+											/>
+										))}
 								</motion.div>
 							)
 						)}

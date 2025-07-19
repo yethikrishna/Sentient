@@ -299,7 +299,7 @@ const TaskDetailsModal = ({
 								<button
 									onClick={handleSendChatMessage}
 									disabled={isProcessing}
-									className="p-2 bg-sentient-blue rounded-lg"
+									className="p-2 bg-sentient-blue rounded-lg hover:bg-sentient-blue-dark transition-colors"
 								>
 									<IconSend size={18} />
 								</button>

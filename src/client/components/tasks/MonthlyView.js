@@ -25,7 +25,7 @@ const DayCell = ({ day, isCurrentMonth, tasks, onViewDetails }) => {
 	return (
 		<div
 			className={cn(
-				"p-2 border-t border-r border-dark-surface-elevated flex flex-col overflow-hidden",
+				"p-2 border-t border-r border-dark-surface-elevated flex flex-col overflow-hidden min-h-[120px]",
 				!isCurrentMonth && "bg-dark-surface/30"
 			)}
 		>
@@ -50,7 +50,7 @@ const DayCell = ({ day, isCurrentMonth, tasks, onViewDetails }) => {
 					/>
 				))}
 				{hiddenCount > 0 && (
-					<button className="text-xs text-neutral-400 hover:underline">
+					<button className="text-xs text-neutral-400 hover:underline text-left">
 						+{hiddenCount} more
 					</button>
 				)}

@@ -18,7 +18,6 @@ import { HTML5Backend } from "react-dnd-html5-backend"
 
 // New component imports
 import TasksHeader from "@components/tasks/TasksHeader"
-import ActionSidebar from "@components/tasks/ActionSidebar"
 import WeeklyKanban from "@components/tasks/WeeklyKanban"
 import MonthlyView from "@components/tasks/MonthlyView"
 import AllTasksView from "@components/tasks/AllTasksView"
@@ -235,15 +234,6 @@ function TasksPageContent() {
 		router.push(`/tasks?date=${format(newDate, "yyyy-MM-dd")}`)
 	}
 
-	// Memoized task filtering
-	const approvalTasks = useMemo(
-		() => tasks.filter((t) => t.status === "approval_pending"),
-		[tasks]
-	)
-	const clarificationTasks = useMemo(
-		() => tasks.filter((t) => t.status === "clarification_pending"),
-		[tasks]
-	)
 	const workflowTasks = useMemo(
 		() => tasks.filter((t) => t.schedule?.type === "recurring"),
 		[tasks]
@@ -258,7 +248,7 @@ function TasksPageContent() {
 
 	return (
 		<DndProvider backend={HTML5Backend}>
-			<div className="flex h-screen bg-dark-bg text-white overflow-hidden pl-0 md:pl-20">
+			<div className="flex h-screen bg-gradient-to-br from-neutral-900 via-black to-neutral-900 text-white overflow-hidden pl-0 md:pl-20">
 				<Tooltip
 					id="tasks-tooltip"
 					place="right-start"
@@ -312,17 +302,6 @@ function TasksPageContent() {
 						</div>
 					)}
 				</main>
-
-				<ActionSidebar
-					approvalTasks={approvalTasks}
-					clarificationTasks={clarificationTasks}
-					integrations={integrations}
-					onApproveTask={handleApproveTask}
-					onDeleteTask={handleDeleteTask}
-					onEditTask={setEditingTask}
-					onViewDetails={setSelectedTask}
-					onAnswerClarifications={handleAnswerClarifications}
-				/>
 
 				<AnimatePresence>
 					{isAddTaskModalOpen && (

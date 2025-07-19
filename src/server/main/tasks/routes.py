@@ -86,17 +86,6 @@ async def get_task_details(
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 
-    # Check for source note and enrich the task object
-    original_context = task.get("original_context", {})
-    if original_context.get("source") == "note" and original_context.get("event_id"):
-        note_id = original_context["event_id"]
-        note = await mongo_manager.notes_collection.find_one(
-            {"note_id": note_id, "user_id": user_id},
-            {"title": 1, "note_id": 1, "_id": 0}
-        )
-        if note:
-            task["source_note"] = note
-
     return JSONResponse(content=task)
 
 @router.post("/add-task", status_code=status.HTTP_201_CREATED)

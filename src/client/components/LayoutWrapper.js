@@ -66,9 +66,6 @@ export default function LayoutWrapper({ children }) {
 					case "h":
 						router.push("/home")
 						break
-					case "j":
-						router.push("/notes")
-						break
 					case "a":
 						router.push("/tasks")
 						break

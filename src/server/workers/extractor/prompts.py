@@ -28,9 +28,6 @@ Your output MUST be a valid JSON object with the keys "memory_items", "action_it
     -   **THINK**: What are the main subjects being discussed? Who are the people involved? What are the projects mentioned?
     -   Example: For "BE Project proposal review with shubham, shravani and shreyas", the topics would be ["BE Project", "shubham", "shravani", "shreyas"].
 
-4.  **Short-Term Notes:** Extract temporary, informational notes that should be written down for the user to see, but do not require complex planning. These are typically about upcoming events or simple reminders.
-    -   **THINK**: Is this time-sensitive information that is not a core fact and not a complex task? Is it a simple reminder?
-
 **Output Format (Strictly Enforced):**
 {{
   "memory_items": ["Fact 1 as a complete sentence."],

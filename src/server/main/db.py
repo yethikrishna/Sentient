@@ -19,7 +19,6 @@ NOTIFICATIONS_COLLECTION = "notifications"
 POLLING_STATE_COLLECTION = "polling_state_store" 
 PROCESSED_ITEMS_COLLECTION = "processed_items_log" 
 TASK_COLLECTION = "tasks"
-NOTES_COLLECTION = "notes"
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +33,6 @@ class MongoManager:
         self.polling_state_collection = self.db[POLLING_STATE_COLLECTION]
         self.processed_items_collection = self.db[PROCESSED_ITEMS_COLLECTION]
         self.task_collection = self.db[TASK_COLLECTION]
-        self.notes_collection = self.db[NOTES_COLLECTION]
         
         print(f"[{datetime.datetime.now()}] [MainServer_MongoManager] Initialized. Database: {MONGO_DB_NAME}")
 
@@ -77,12 +75,6 @@ class MongoManager:
                 IndexModel([("status", ASCENDING), ("agent_id", ASCENDING)], name="task_status_agent_idx", sparse=True), 
                 IndexModel([("task_id", ASCENDING)], unique=True, name="task_id_unique_idx")
             ],
-            self.notes_collection: [
-                IndexModel([("note_id", ASCENDING)], unique=True, name="note_id_unique_idx"),
-                IndexModel([("user_id", ASCENDING), ("note_date", DESCENDING), ("updated_at", DESCENDING)], name="note_user_date_updated_at_idx"),
-                IndexModel([("title", "text"), ("content", "text")], name="note_text_search_idx"),
-                IndexModel([("user_id", ASCENDING), ("tags", ASCENDING)], name="note_user_tags_idx")
-            ]
         }
 
         for collection, indexes in collections_with_indexes.items():

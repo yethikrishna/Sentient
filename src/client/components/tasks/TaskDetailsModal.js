@@ -9,7 +9,6 @@ import {
 	IconX,
 	IconTrash,
 	IconPencil,
-	IconNote,
 	IconCircleCheck,
 	IconAlertTriangle,
 	IconLoader,
@@ -127,12 +126,6 @@ const TaskDetailsModal = ({
 
 	const handleAnswerChange = (questionId, text) => {
 		setClarificationAnswers((prev) => ({ ...prev, [questionId]: text }))
-	}
-
-	const handleNoteLinkClick = (e) => {
-		e.preventDefault()
-		onClose() // Close modal before navigating
-		router.push(`/notes?noteId=${task.source_note.note_id}`)
 	}
 
 	return (

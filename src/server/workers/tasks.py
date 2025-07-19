@@ -200,9 +200,7 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
             time_context_str = f"The current date and time is {current_time.strftime('%A, %Y-%m-%d %H:%M:%S %Z')}."
 
             llm_input_content = ""
-            if service_name == "note":
-                llm_input_content = f"Source: Note\nTitle: {event_data.get('title', '')}\nOn Date: {event_data.get('note_date', 'Unknown')}\n\nContent:\n{event_data.get('content', '')}"
-            elif service_name == "gmail":
+            if service_name == "gmail":
                 llm_input_content = f"Source: Email\nSubject: {event_data.get('subject', '')}\n\nBody:\n{event_data.get('body', '')}"
             elif service_name == "gcalendar":
                 llm_input_content = f"Source: Calendar Event\nSummary: {event_data.get('summary', '')}\n\nDescription:\n{event_data.get('description', '')}"
@@ -247,7 +245,7 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
             action_items = extracted_data.get("action_items", [])
             topics = extracted_data.get("topics", [])
 
-            if service_name in ["gmail", "gcalendar", "chat", "note"]:
+            if service_name in ["gmail", "gcalendar", "chat"]:
                 for item in action_items:
                     if not isinstance(item, str) or not item.strip():
                         continue
@@ -255,8 +253,7 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
                     original_source_context = {
                         "source": service_name,
                         "event_id": event_id,
-                        # Omit full content for notes to keep payload smaller
-                        "content": event_data if service_name != "note" else {"title": event_data.get("title")}
+                        "content": event_data
                     }
                     
                     # Dispatch directly to the planner/action item processor

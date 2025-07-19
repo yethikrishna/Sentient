@@ -112,7 +112,7 @@ const CommandBar = ({ onSend, isSending }) => {
 							handleSend()
 						}
 					}}
-					placeholder="Delegate a task, save a note, or ask a question..."
+					placeholder="Delegate a task or ask a question..."
 					className="w-full p-4 pr-32 bg-[var(--color-primary-surface)] border border-[var(--color-primary-surface-elevated)] rounded-xl resize-none focus:ring-2 focus:ring-[var(--color-accent-blue)] transition-all"
 					rows={1}
 				/>

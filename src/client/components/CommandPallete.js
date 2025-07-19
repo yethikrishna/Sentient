@@ -5,7 +5,6 @@ import { Command } from "cmdk"
 import {
 	IconHome,
 	IconChecklist,
-	IconBook,
 	IconPlugConnected,
 	IconAdjustments,
 	IconPlus
@@ -55,12 +54,6 @@ const CommandPalette = ({ open, setOpen }) => {
 						Go to Tasks
 					</Command.Item>
 					<Command.Item
-						onSelect={() => runCommand(() => router.push("/notes"))}
-					>
-						<IconBook className="mr-2 h-4 w-4" />
-						Go to Notes
-					</Command.Item>
-					<Command.Item
 						onSelect={() =>
 							runCommand(() => router.push("/integrations"))
 						}
@@ -79,16 +72,6 @@ const CommandPalette = ({ open, setOpen }) => {
 				</Command.Group>
 
 				<Command.Group heading="Actions">
-					<Command.Item
-						onSelect={() => {
-							// This is a bit of a hack for now. A better solution would involve global state.
-							// For now, it navigates and relies on the page to handle the action.
-							runCommand(() => router.push("/notes?action=new"))
-						}}
-					>
-						<IconPlus className="mr-2 h-4 w-4" />
-						New Note
-					</Command.Item>
 					<Command.Item
 						onSelect={() => {
 							runCommand(() => router.push("/tasks?action=add"))

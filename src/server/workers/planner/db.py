@@ -105,12 +105,6 @@ class PlannerMongoManager: # noqa: E501
         )
         logger.info(f"Updated task {task_id} with a generated plan. Matched: {result.matched_count}")
 
-        # Link task back to note if applicable
-        await self.link_task_to_source(task_id)
-
-        # Link task back to note if applicable
-        await self.link_task_to_source(task_id)
-
     async def update_task_with_questions(self, task_id: str, status: str, questions: list):
         """Updates a task with clarifying questions and a new status."""
         update_doc = {
@@ -156,43 +150,7 @@ class PlannerMongoManager: # noqa: E501
         }
         await self.tasks_collection.insert_one(task_doc)
         logger.info(f"Saved new plan with task_id: {task_id} for user: {user_id}")
-        await self.link_task_to_source(task_id)
-        await self.link_task_to_source(task_id)
         return task_id
-
-    async def link_task_to_source(self, task_id: str):
-        """Links a task back to its source (e.g., a note) if applicable."""
-        task = await self.get_task(task_id)
-        if not task:
-            return
-
-        original_context = task.get("original_context", {})
-        source = original_context.get("source")
-        event_id = original_context.get("event_id")
-
-        if source == "note" and event_id:
-            await self.db["notes"].update_one(
-                {"note_id": event_id, "user_id": task["user_id"]},
-                {"$addToSet": {"linked_task_ids": task_id}}
-            )
-            logger.info(f"Linked new task {task_id} to note {event_id}.")
-
-    async def link_task_to_source(self, task_id: str):
-        """Links a task back to its source (e.g., a note) if applicable."""
-        task = await self.get_task(task_id)
-        if not task:
-            return
-
-        original_context = task.get("original_context", {})
-        source = original_context.get("source")
-        event_id = original_context.get("event_id")
-
-        if source == "note" and event_id:
-            await self.db["notes"].update_one(
-                {"note_id": event_id, "user_id": task["user_id"]},
-                {"$addToSet": {"linked_task_ids": task_id}}
-            )
-            logger.info(f"Linked new task {task_id} to note {event_id}.")
 
 
     async def close(self):

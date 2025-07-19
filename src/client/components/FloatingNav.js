@@ -5,7 +5,6 @@ import { FloatingDock } from "@components/ui/floating-dock"
 import {
 	IconAdjustments,
 	IconBell,
-	IconBook,
 	IconChecklist,
 	IconHome,
 	IconLogout,
@@ -165,13 +164,6 @@ export default function FloatingNav({ onChatOpen, onNotificationsOpen }) {
 			href: "/tasks",
 			icon: (
 				<IconChecklist className="h-full w-full text-neutral-500 dark:text-neutral-300" />
-			)
-		},
-		{
-			title: "Notes",
-			href: "/notes",
-			icon: (
-				<IconPencil className="h-full w-full text-neutral-500 dark:text-neutral-300" />
 			)
 		},
 		{

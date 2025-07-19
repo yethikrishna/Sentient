@@ -6,7 +6,8 @@ import {
 	IconLoader,
 	IconBulb,
 	IconUser,
-	IconSend
+	IconSend,
+	IconPlus
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import { motion, AnimatePresence } from "framer-motion"
@@ -14,19 +15,23 @@ import { Tooltip } from "react-tooltip"
 
 const useCases = [
 	{
-		display: "Try asking me to 'summarize my unread emails from this morning'.",
+		display:
+			"Try asking me to 'summarize my unread emails from this morning'.",
 		prompt: "summarize my unread emails from this morning"
 	},
 	{
-		display: "Delegate tasks like 'draft a follow-up email to John about the Q3 report'.",
+		display:
+			"Delegate tasks like 'draft a follow-up email to John about the Q3 report'.",
 		prompt: "draft a follow-up email to John about the Q3 report"
 	},
 	{
-		display: "Use me as a scratchpad: 'remember that the new server password is...'.",
+		display:
+			"Use me as a scratchpad: 'remember that the new server password is...'.",
 		prompt: "remember that the new server password is..."
 	},
 	{
-		display: "Schedule recurring tasks: 'remind me every Monday at 9 AM to prepare for the team meeting'.",
+		display:
+			"Schedule recurring tasks: 'remind me every Monday at 9 AM to prepare for the team meeting'.",
 		prompt: "remind me every Monday at 9 AM to prepare for the team meeting"
 	}
 ]
@@ -43,23 +48,25 @@ const RevolvingProTip = ({ onTipClick }) => {
 
 	return (
 		<div className="mt-20 w-full max-w-3xl mx-auto flex flex-col items-center">
-			<div className="flex items-center gap-2 text-neutral-400">
+			<div className="flex items-center gap-2 text-neutral-400 w-full">
 				<IconBulb className="text-yellow-400" />
-				<div className="text-sm text-center relative h-5 overflow-hidden w-full">
-				<AnimatePresence>
+				<div className="text-sm text-center relative h-10 overflow-hidden w-full">
+				<AnimatePresence mode="wait">
 					<motion.p
 						key={currentIndex}
 						initial={{ y: 20, opacity: 0 }}
 						animate={{ y: 0, opacity: 1 }}
 						exit={{ y: -20, opacity: 0 }}
 						transition={{ ease: "easeInOut", duration: 0.5 }}
-						className="absolute inset-0 cursor-pointer hover:text-white"
-						onClick={() => onTipClick(useCases[currentIndex].prompt)}
-					>
-						{useCases[currentIndex].display}
-					</motion.p>
-				</AnimatePresence>
-			</div>
+						className="absolute inset-0 cursor-pointer hover:text-white flex items-center justify-center"
+							onClick={() =>
+								onTipClick(useCases[currentIndex].prompt)
+							}
+						>
+							{useCases[currentIndex].display}
+						</motion.p>
+					</AnimatePresence>
+				</div>
 			</div>
 		</div>
 	)
@@ -86,7 +93,7 @@ const CommandBar = ({ prompt, setPrompt, onSend, isSending }) => {
 	}, [prompt])
 
 	return (
-		<div className="w-full max-w-3xl mx-auto p-0.5 rounded-2xl bg-gradient-to-tr from-blue-500/50 via-purple-500/50 to-orange-500/50 shadow-2xl shadow-black/40">
+		<div className="w-full max-w-3xl mx-auto p-0.5 rounded-2xl bg-gradient-to-tr from-blue-500 to-cyan-500 shadow-2xl shadow-black/40">
 			<div className="relative bg-neutral-900 rounded-xl flex items-center">
 				<textarea
 					ref={textareaRef}
@@ -98,7 +105,7 @@ const CommandBar = ({ prompt, setPrompt, onSend, isSending }) => {
 							handleSend()
 						}
 					}}
-					placeholder="Delegate a task or ask a question..."
+					placeholder="Assign a task to Sentient or yourself..."
 					className="w-full p-5 pr-36 bg-transparent text-lg text-white placeholder-neutral-500 resize-none focus:ring-0 focus:outline-none overflow-y-hidden max-h-48 custom-scrollbar"
 					rows={1}
 				/>
@@ -120,12 +127,12 @@ const CommandBar = ({ prompt, setPrompt, onSend, isSending }) => {
 					<button
 						onClick={handleSend}
 						disabled={isSending || !prompt.trim()}
-						className="p-2.5 bg-gradient-to-tr from-blue-500 to-purple-500 rounded-full text-white disabled:opacity-50 hover:from-blue-400 hover:to-purple-400 transition-all shadow-md"
+						className="p-2.5 bg-gradient-to-tr from-blue-500 to-cyan-500 rounded-full text-white disabled:opacity-50 hover:from-blue-400 hover:to-cyan-400 transition-all shadow-md"
 					>
 						{isSending ? (
 							<IconLoader className="animate-spin" />
 						) : (
-							<IconSend size={20} />
+							<IconPlus size={20} />
 						)}
 					</button>
 				</div>
@@ -191,7 +198,7 @@ const HomePage = () => {
 	}
 
 	return (
-		<div className="flex h-screen w-full flex-col items-center justify-center bg-black text-white overflow-hidden">
+		<div className="font-Inter flex h-screen w-full flex-col items-center justify-center bg-black text-white overflow-hidden">
 			<div className="absolute inset-0 h-full w-full bg-gradient-to-br from-neutral-900 to-black bg-[linear-gradient(110deg,#09090b,45%,#1e293b,55%,#09090b)] bg-[length:200%_100%] animate-shimmer" />
 			<Tooltip id="home-tooltip" place="top" style={{ zIndex: 9999 }} />
 			<main className="relative z-10 flex flex-col items-center justify-center w-full max-w-4xl px-4 text-center">
@@ -214,3 +221,4 @@ const HomePage = () => {
 }
 
 export default HomePage
+

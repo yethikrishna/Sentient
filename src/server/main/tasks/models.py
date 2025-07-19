@@ -35,3 +35,8 @@ class TaskActionRequest(BaseModel):
 class TaskChatRequest(BaseModel):
     taskId: str
     message: str
+
+class TaskChatRequest(BaseModel):
+    taskId: str
+    message: str
+

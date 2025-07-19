@@ -151,6 +151,45 @@ async def async_process_change_request(task_id: str, user_id: str, user_message:
 
         await notify_user(user_id, f"I've received your changes for '{task.get('description', 'the task')}' and will start working on them.", task_id)
 
+        # 4. Re-trigger the main planner task
+        generate_plan_from_context.delay(task_id)
+        logger.info(f"Task Change Request: Dispatched task {task_id} back to planner with new context.")
+    except Exception as e:
+        logger.error(f"Error in async_process_change_request for task {task_id}: {e}", exc_info=True)
+    finally:
+        await db_manager.close()
+@celery_app.task(name="process_task_change_request")
+def process_task_change_request(task_id: str, user_id: str, user_message: str):
+    """Processes a user's change request on a completed task via the in-task chat."""
+    logger.info(f"Task Change Request: Received for task {task_id} from user {user_id}. Message: '{user_message}'")
+    run_async(async_process_change_request(task_id, user_id, user_message))
+
+async def async_process_change_request(task_id: str, user_id: str, user_message: str):
+    """Async logic for handling task change requests."""
+    db_manager = PlannerMongoManager()
+    try:
+        # 1. Fetch the task and its full history
+        task = await db_manager.get_task(task_id)
+        if not task:
+            logger.error(f"Task Change Request: Task {task_id} not found.")
+            return
+
+        # 2. Append user message to the task's chat history
+        chat_history = task.get("chat_history", [])
+        chat_history.append({
+            "role": "user",
+            "content": user_message,
+            "timestamp": datetime.datetime.now(datetime.timezone.utc)
+        })
+
+        # 3. Update task status and chat history in DB
+        await db_manager.update_task_field(task_id, {
+            "chat_history": chat_history,
+            "status": "planning" # Revert to planning to re-evaluate
+        })
+
+        await notify_user(user_id, f"I've received your changes for '{task.get('description', 'the task')}' and will start working on them.", task_id)
+
         # 4. Create a consolidated context for the planner
         # This is similar to the initial context creation but includes much more history
         original_context = task.get("original_context", {})
@@ -356,6 +395,13 @@ async def async_generate_plan(task_id: str):
         user_id = task["user_id"]
         topics = task.get("topics", [])
         original_context = task.get("original_context", {})
+
+        # For re-planning, add previous results and chat history to the context
+        if task.get("chat_history"):
+            original_context["chat_history"] = task.get("chat_history")
+            original_context["previous_plan"] = task.get("plan")
+            original_context["previous_result"] = task.get("result")
+
         task_description = task.get("description", "")
 
         # If the task is in the 'planning' state, check if clarification is needed.

@@ -19,8 +19,7 @@ import { cn } from "@utils/cn"
 const EditTaskModal = ({
 	task,
 	onClose,
-	onSave,
-	setTask,
+	onSave, // Expects a function that takes the updated task
 	integrations,
 	allTools
 }) => {
@@ -41,31 +40,36 @@ const EditTaskModal = ({
 	}
 
 	const handleRemoveStep = (index) => {
-		const newPlan = localTask.plan.filter((_, i) => i !== index)
-		setLocalTask({ ...localTask, plan: newPlan })
+		setLocalTask((prev) => ({
+			...prev,
+			plan: prev.plan.filter((_, i) => i !== index)
+		}))
 	}
 
 	const handleStepChange = (index, field, value) => {
-		const newPlan = [...localTask.plan]
-		newPlan[index][field] = value
-		setLocalTask({ ...localTask, plan: newPlan })
+		setLocalTask((prev) => ({
+			...prev,
+			plan: prev.plan.map((step, i) =>
+				i === index ? { ...step, [field]: value } : step
+			)
+		}))
 	}
 
 	const handleFieldChange = (field, value) => {
-		setLocalTask({ ...localTask, [field]: value })
+		setLocalTask((prev) => ({ ...prev, [field]: value }))
 	}
 
 	const handleScheduleChange = (newSchedule) => {
-		setLocalTask({ ...localTask, schedule: newSchedule })
+		setLocalTask((prev) => ({ ...prev, schedule: newSchedule }))
 	}
 
 	const handleSubmit = async () => {
 		setIsSubmitting(true)
 		try {
+			// onSave is now the function from the parent that handles the API call and closes the modal.
 			await onSave(localTask)
-			onClose()
 		} catch (error) {
-			// onSave is expected to handle its own toasts
+			// Errors are handled by the `handleAction` wrapper in the parent component.
 		} finally {
 			setIsSubmitting(false)
 		}

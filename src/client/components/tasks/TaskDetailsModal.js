@@ -26,7 +26,8 @@ const TaskDetailsModal = ({
 	onApprove,
 	onDelete,
 	integrations = [],
-	onAnswerClarifications
+	onAnswerClarifications,
+	onUpdateTask
 }) => {
 	const [isProcessing, setIsProcessing] = useState(false)
 	const [chatInput, setChatInput] = useState("")
@@ -60,30 +61,6 @@ const TaskDetailsModal = ({
 		} catch (error) {
 			console.error("Action failed:", error)
 			// The onApprove/onDelete props should handle their own toasts
-		} finally {
-			setIsProcessing(false)
-		}
-	}
-
-	const handleCompleteAndArchive = async () => {
-		if (
-			!window.confirm(
-				"Are you sure you want to complete and archive this task?"
-			)
-		)
-			return
-		setIsProcessing(true)
-		try {
-			const response = await fetch("/api/tasks/complete", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ taskId: task.task_id })
-			})
-			if (!response.ok) throw new Error("Failed to archive task.")
-			toast.success("Task archived!")
-			onClose() // This should also trigger a data refresh on the parent page
-		} catch (error) {
-			toast.error(error.message)
 		} finally {
 			setIsProcessing(false)
 		}
@@ -305,12 +282,17 @@ const TaskDetailsModal = ({
 								</button>
 							</div>
 							<button
-								onClick={handleCompleteAndArchive}
+								onClick={() => {
+									onUpdateTask({
+										...task,
+										status: "archived"
+									})
+									onClose()
+								}}
 								disabled={isProcessing}
 								className="w-full text-center py-2 text-sm bg-green-500/20 text-green-300 rounded-lg hover:bg-green-500/40 flex items-center justify-center gap-2"
 							>
-								<IconArchive size={16} /> Mark as Complete &
-								Archive
+								<IconArchive size={16} /> Archive Task
 							</button>
 						</div>
 					) : (
@@ -331,14 +313,21 @@ const TaskDetailsModal = ({
 							>
 								<IconPencil size={16} />
 							</button>
-							{task.status !== "approval_pending" &&
-								task.status !== "clarification_pending" && (
+							{task.assignee === "user" &&
+								task.status === "pending" && (
 									<button
-										onClick={handleCompleteAndArchive}
+										onClick={() => {
+											onUpdateTask({
+												...task,
+												status: "completed"
+											})
+											onClose()
+										}}
 										disabled={isProcessing}
 										className="py-2 px-4 text-sm rounded-lg bg-green-500/20 text-green-300 hover:bg-green-500/40 flex items-center gap-2"
 									>
-										<IconArchive size={16} /> Mark Complete
+										<IconCircleCheck size={16} /> Mark
+										Complete
 									</button>
 								)}
 						</div>

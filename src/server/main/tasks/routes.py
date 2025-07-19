@@ -10,17 +10,13 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from main.dependencies import mongo_manager
 from main.auth.utils import PermissionChecker, AuthHelper
 from workers.tasks import generate_plan_from_context, execute_task_plan, calculate_next_run, process_task_change_request
-from .models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest, AnswerClarificationsRequest, TaskActionRequest
+from .models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest, AnswerClarificationsRequest, TaskActionRequest, TaskChatRequest
 from main.llm import get_qwen_assistant
 from json_extractor import JsonExtractor
 from .prompts import TASK_CREATION_PROMPT
 
 class GeneratePlanRequest(BaseModel):
     prompt: str
-
-class TaskChatRequest(BaseModel):
-    taskId: str
-    message: str
 
 from json_extractor import JsonExtractor
 from .prompts import TASK_CREATION_PROMPT
@@ -245,6 +241,10 @@ async def rerun_task(
     new_task_id = await mongo_manager.rerun_task(request.taskId, user_id)
     if not new_task_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Original task not found or failed to duplicate.")
+
+    # Trigger the planner for the new task
+    generate_plan_from_context.delay(new_task_id, user_id)
+    logger.info(f"Rerunning task {request.taskId}. New task {new_task_id} created and sent to planner.")
     return {"message": "Task has been duplicated for re-run.", "new_task_id": new_task_id}
 
 @router.post("/approve-task", status_code=status.HTTP_200_OK)

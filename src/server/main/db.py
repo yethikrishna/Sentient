@@ -243,6 +243,7 @@ class MongoManager:
             "result": None,
             "error": None,
             "chat_history": [],
+            "chat_history": [],
             "next_execution_at": None,
             "last_execution_at": None,
         }
@@ -312,7 +313,8 @@ class MongoManager:
         now_utc = datetime.datetime.now(datetime.timezone.utc)
 
         # Reset fields for a new run
-        new_task_doc["_id"] = None # Let Mongo generate a new one
+        if "_id" in new_task_doc:
+            del new_task_doc["_id"] # Let Mongo generate a new one
         new_task_doc["task_id"] = new_task_id
         new_task_doc["status"] = "planning"
         new_task_doc["created_at"] = now_utc
@@ -322,10 +324,6 @@ class MongoManager:
         new_task_doc["error"] = None
         new_task_doc["last_execution_at"] = None
         new_task_doc["next_execution_at"] = None
-
-        # Need to handle potential ObjectId in the copied dict
-        if "_id" in new_task_doc and new_task_doc["_id"] is None:
-            del new_task_doc["_id"]
 
         await self.task_collection.insert_one(new_task_doc)
         return new_task_id

@@ -326,19 +326,19 @@ function TasksPageContent() {
 							onDelete={(taskId) => handleDeleteTask(taskId)}
 							integrations={integrations}
 							onAnswerClarifications={handleAnswerClarifications}
+							onUpdateTask={handleUpdateTask}
 						/>
 					)}
 					{editingTask && (
 						<EditTaskModal
 							task={editingTask}
 							onClose={() => setEditingTask(null)}
-							onSave={() => {
-								setEditingTask(null)
-								fetchTasks()
+							onSave={(updatedTask) => {
+								handleUpdateTask(updatedTask);
+								setEditingTask(null);
 							}}
 							integrations={integrations}
 							allTools={allTools}
-							setTask={setEditingTask}
 						/>
 					)}
 					{isCalendarModalOpen && (

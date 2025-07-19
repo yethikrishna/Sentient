@@ -1,5 +1,6 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional

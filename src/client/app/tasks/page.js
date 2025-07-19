@@ -282,10 +282,7 @@ function TasksPageContent() {
 						<div className="p-4 md:p-6 flex-1 overflow-y-auto custom-scrollbar">
 							{viewType === "all" && (
 								<AllTasksView
-									tasks={[
-										...oneOffTasks,
-										...workflowTasks
-									]}
+									tasks={[...oneOffTasks, ...workflowTasks]}
 									onViewDetails={setSelectedTask}
 									onEditTask={setEditingTask}
 									onDeleteTask={handleDeleteTask}

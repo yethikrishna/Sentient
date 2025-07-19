@@ -8,18 +8,56 @@ import {
 	IconUser,
 	IconPencil,
 	IconTrash,
-	IconRepeat
+	IconRepeat,
+	IconArrowUp,
+	IconArrowDown,
+	IconSelector
 } from "@tabler/icons-react"
 import { taskStatusColors, priorityMap } from "./constants"
 import { cn } from "@utils/cn"
 
-// New Task List Item component
+// Sortable Header component for table columns
+const SortableHeader = ({
+	title,
+	sortKey,
+	sortConfig,
+	onSort,
+	className = ""
+}) => {
+	const isSorting = sortConfig.key === sortKey
+	const isAscending = isSorting && sortConfig.direction === "ascending"
+
+	let IconComponent
+	let iconClassName = "text-neutral-600"
+
+	if (isSorting) {
+		IconComponent = isAscending ? IconArrowUp : IconArrowDown
+		iconClassName = "text-white"
+	} else {
+		IconComponent = IconSelector
+	}
+
+	return (
+		<button
+			onClick={() => onSort(sortKey)}
+			className={cn(
+				"flex items-center justify-center gap-1 font-bold text-neutral-400 hover:text-white transition-colors group",
+				className
+			)}
+		>
+			<span>{title}</span>
+			<IconComponent size={16} className={cn(iconClassName, "group-hover:text-white")} />
+		</button>
+	)
+}
+
 const TaskListItem = ({
 	task,
 	onViewDetails,
 	onEditTask,
 	onDeleteTask,
-	onRerunTask
+	onRerunTask,
+	activeTab
 }) => {
 	const statusInfo = taskStatusColors[task.status] || taskStatusColors.default
 	const assigneeIcon =
@@ -39,11 +77,16 @@ const TaskListItem = ({
 			/>
 		)
 
+	const priorityInfo = priorityMap[task.priority] || priorityMap.default
+
 	const dueDate = task.schedule?.run_at
 		? format(parseISO(task.schedule.run_at), "MMM d")
 		: "No date"
 
-	const gridTemplateColumns = "minmax(0, 1fr) 120px 120px 150px"
+	const gridTemplateColumns =
+		activeTab === "oneTime"
+			? "minmax(0, 1fr) 120px 120px 120px 150px"
+			: "minmax(0, 1fr) 120px 120px 150px"
 
 	return (
 		<motion.div
@@ -99,7 +142,12 @@ const TaskListItem = ({
 			<div className="flex items-center justify-center">
 				{assigneeIcon}
 			</div>
-			<div className="text-center text-neutral-400">{dueDate}</div>
+			{activeTab === "oneTime" && (
+				<div className="text-center text-neutral-400">{dueDate}</div>
+			)}
+			<div className={cn("text-center font-medium", priorityInfo.color)}>
+				{priorityInfo.label}
+			</div>
 			<div className="flex items-center justify-center gap-2">
 				<statusInfo.icon className={cn("h-4 w-4", statusInfo.color)} />
 				<span className={cn(statusInfo.color)}>{statusInfo.label}</span>
@@ -115,39 +163,67 @@ const AllTasksView = ({
 	onDeleteTask,
 	onRerunTask
 }) => {
-	const [groupBy, setGroupBy] = useState("status") // 'status', 'priority', 'none'
-	const [sortBy, setSortBy] = useState("dueDate") // 'dueDate', 'priority'
+	const [activeTab, setActiveTab] = useState("oneTime") // 'oneTime', 'recurring'
+	const [groupBy, setGroupBy] = useState("status") // 'status', 'none'
+	const [sortConfig, setSortConfig] = useState({
+		key: "dueDate",
+		direction: "ascending"
+	})
+
+	const handleSort = (key) => {
+		setSortConfig((prevConfig) => {
+			if (prevConfig.key === key) {
+				// Flip direction if same key is clicked
+				return {
+					...prevConfig,
+					direction:
+						prevConfig.direction === "ascending"
+							? "descending"
+							: "ascending"
+				}
+			}
+			// Otherwise, set new key with default ascending direction
+			return { key, direction: "ascending" }
+		})
+	}
 
 	const processedTasks = useMemo(() => {
-		let sortedTasks = [...tasks]
-		// Sort logic
+		const filteredTasks =
+			activeTab === "oneTime"
+				? tasks.filter((t) => t.schedule?.type !== "recurring")
+				: tasks.filter((t) => t.schedule?.type === "recurring")
+
+		let sortedTasks = [...filteredTasks]
 		sortedTasks.sort((a, b) => {
-			// Primary sort
-			let compareA, compareB
-			if (sortBy === "dueDate") {
-				compareA = a.schedule?.run_at
-					? parseISO(a.schedule.run_at).getTime()
-					: Infinity
-				compareB = b.schedule?.run_at
-					? parseISO(b.schedule.run_at).getTime()
-					: Infinity
-			} else {
-				// sortBy 'priority'
-				compareA = a.priority ?? 2
-				compareB = b.priority ?? 2
+			const { key, direction } = sortConfig
+			let valA, valB
+
+			switch (key) {
+				case "assignee":
+					valA = a.assignee || "user"
+					valB = b.assignee || "user"
+					break
+				case "dueDate":
+					valA = a.schedule?.run_at
+						? parseISO(a.schedule.run_at).getTime()
+						: Infinity
+					valB = b.schedule?.run_at
+						? parseISO(b.schedule.run_at).getTime()
+						: Infinity
+					break
+				case "priority":
+					valA = a.priority ?? 2
+					valB = b.priority ?? 2
+					break
+				default:
+					return 0
 			}
 
-			if (compareA < compareB) return -1
-			if (compareA > compareB) return 1
+			if (valA < valB) return direction === "ascending" ? -1 : 1
+			if (valA > valB) return direction === "ascending" ? 1 : -1
 
-			// Secondary sort
-			const secondarySortBy =
-				sortBy === "priority" ? "dueDate" : "priority"
-			if (secondarySortBy === "priority") {
-				const priorityA = a.priority ?? 2
-				const priorityB = b.priority ?? 2
-				return priorityA - priorityB
-			} else {
+			// Secondary sort by due date if priorities are equal, and vice-versa
+			if (key !== "dueDate") {
 				const dateA = a.schedule?.run_at
 					? parseISO(a.schedule.run_at).getTime()
 					: Infinity
@@ -156,6 +232,7 @@ const AllTasksView = ({
 					: Infinity
 				return dateA - dateB
 			}
+			return 0
 		})
 
 		// Group logic
@@ -167,9 +244,6 @@ const AllTasksView = ({
 			let key
 			if (groupBy === "status") {
 				key = taskStatusColors[task.status]?.label || "Unknown"
-			} else {
-				// groupBy 'priority'
-				key = priorityMap[task.priority]?.label || "Medium"
 			}
 			if (!acc[key]) {
 				acc[key] = []
@@ -179,73 +253,119 @@ const AllTasksView = ({
 		}, {})
 
 		return grouped
-	}, [tasks, groupBy, sortBy])
+	}, [tasks, activeTab, groupBy, sortConfig])
+
+	const isRecurring = activeTab === "recurring"
+	const gridCols = isRecurring
+		? "grid-cols-[minmax(0,_1fr)_120px_120px_150px]"
+		: "grid-cols-[minmax(0,_1fr)_120px_120px_120px_150px]" // No change needed here
 
 	return (
 		<div className="w-full max-w-6xl mx-auto">
-			<div className="flex items-center justify-end gap-4 p-2 mb-2">
-				<div>
-					<label className="text-xs text-neutral-400 mr-2">
-						Group by:
-					</label>
-					<select
-						value={groupBy}
-						onChange={(e) => setGroupBy(e.target.value)}
-						className="bg-dark-surface p-1 rounded text-sm"
+			<div className="flex items-center justify-between gap-4 p-2 mb-2">
+				<div className="flex items-center gap-2 p-1 bg-dark-surface rounded-lg">
+					<button
+						onClick={() => setActiveTab("oneTime")}
+						className={cn(
+							"px-3 py-1 rounded-md text-sm",
+							activeTab === "oneTime" && "bg-sentient-blue"
+						)}
 					>
-						<option value="status">Status</option>
-						<option value="priority">Priority</option>
-						<option value="none">None</option>
-					</select>
+						One Time
+					</button>
+					<button
+						onClick={() => setActiveTab("recurring")}
+						className={cn(
+							"px-3 py-1 rounded-md text-sm",
+							activeTab === "recurring" && "bg-sentient-blue"
+						)}
+					>
+						Recurring
+					</button>
 				</div>
-				<div>
-					<label className="text-xs text-neutral-400 mr-2">
-						Sort by:
-					</label>
-					<select
-						value={sortBy}
-						onChange={(e) => setSortBy(e.target.value)}
-						className="bg-dark-surface p-1 rounded text-sm"
-					>
-						<option value="dueDate">Due Date</option>
-						<option value="priority">Priority</option>
-					</select>
+				<div className="flex items-center gap-4">
+					<div>
+						<label className="text-xs text-neutral-400 mr-2">
+							Group by:
+						</label>
+						<select
+							value={groupBy}
+							onChange={(e) => setGroupBy(e.target.value)}
+							className="bg-dark-surface p-1 rounded text-sm"
+						>
+							<option value="status">Status</option>
+							<option value="none">None</option>
+						</select>
+					</div>
 				</div>
 			</div>
 
 			<div className="bg-dark-surface/50 border border-dark-surface-elevated rounded-lg">
-				<div className="grid grid-cols-[minmax(0,_1fr)_120px_120px_150px] items-center p-2 border-b border-dark-surface-elevated text-xs text-neutral-400 font-bold uppercase">
+				<div
+					className={cn(
+						"grid items-center p-2 border-b border-dark-surface-elevated text-xs uppercase",
+						gridCols
+					)}
+				>
 					<div className="px-2">Name</div>
-					<div className="text-center">Assignee</div>
-					<div className="text-center">Due date</div>
-					<div className="text-center">Status</div>
+					<SortableHeader
+						title="Assignee"
+						sortKey="assignee"
+						sortConfig={sortConfig}
+						onSort={handleSort}
+					/>
+					{!isRecurring && (
+						<SortableHeader
+							title="Due Date"
+							sortKey="dueDate"
+							sortConfig={sortConfig}
+							onSort={handleSort}
+						/>
+					)}
+					<SortableHeader
+						title="Priority"
+						sortKey="priority"
+						sortConfig={sortConfig}
+						onSort={handleSort}
+					/>
+					<div className="text-center font-bold text-neutral-400">
+						Status
+					</div>
 				</div>
 
-				<AnimatePresence>
-					{Object.entries(processedTasks).map(
-						([groupName, groupTasks]) => (
-							<motion.div key={groupName} layout>
-								{groupBy !== "none" && (
-									<div className="p-2 bg-dark-surface-elevated">
-										<h3 className="font-semibold text-neutral-300">
-											{groupName} ({groupTasks.length})
-										</h3>
-									</div>
-								)}
-								{groupTasks.map((task) => (
-									<TaskListItem
-										key={task.task_id}
-										task={task}
-										onViewDetails={onViewDetails}
-										onEditTask={onEditTask}
-										onDeleteTask={onDeleteTask}
-										onRerunTask={onRerunTask}
-									/>
-								))}
-							</motion.div>
-						)
-					)}
-				</AnimatePresence>
+				{Object.keys(processedTasks).length > 0 ? (
+					<AnimatePresence>
+						{Object.entries(processedTasks).map(
+							([groupName, groupTasks]) => (
+								<motion.div key={groupName} layout>
+									{groupBy !== "none" && (
+										<div className="p-2 bg-dark-surface-elevated">
+											<h3 className="font-semibold text-neutral-300">
+												{groupName} ({groupTasks.length}
+												)
+											</h3>
+										</div>
+									)}
+									{groupTasks.map((task) => (
+										<TaskListItem
+											key={task.task_id}
+											task={task}
+											onViewDetails={onViewDetails}
+											onEditTask={onEditTask}
+											onDeleteTask={onDeleteTask}
+											onRerunTask={onRerunTask}
+											activeTab={activeTab}
+										/>
+									))}
+								</motion.div>
+							)
+						)}
+					</AnimatePresence>
+				) : (
+					<div className="text-center p-10 text-neutral-500">
+						No {isRecurring ? "recurring" : "one-time"} tasks found.
+					</div>
+				)}
 			</div>
 		</div>
 	)

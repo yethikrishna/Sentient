@@ -146,7 +146,7 @@ async def add_task(
 
     # 5. Trigger planning if assigned to AI
     if request.assignee == "ai":
-        generate_plan_from_context.delay(task_id, user_id)
+        generate_plan_from_context.delay(task_id)
         message = "Task created! I'll start planning it out."
     else:
         message = "Task created for you."

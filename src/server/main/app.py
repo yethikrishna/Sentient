@@ -15,7 +15,6 @@ from fastapi.encoders import ENCODERS_BY_TYPE
 from main.config import APP_SERVER_PORT
 from main.dependencies import mongo_manager
 from main.auth.routes import router as auth_router
-from main.chat.routes import router as chat_router
 from main.notifications.routes import router as notifications_router
 from main.integrations.routes import router as integrations_router
 from main.misc.routes import router as misc_router
@@ -51,7 +50,6 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
-app.include_router(chat_router)
 app.include_router(notifications_router)
 app.include_router(integrations_router)
 app.include_router(misc_router)

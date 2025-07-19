@@ -32,7 +32,6 @@ class UserProfileData(BaseModel):
     onboardingComplete: bool = False
     personalInfo: Dict[str, Any] = Field(default_factory=dict)
     preferences: UserPreferences = Field(default_factory=UserPreferences)
-    active_chat_id: Optional[str] = None
     last_active_timestamp: Optional[datetime.datetime] = None
     integrations: Dict[str, IntegrationData] = Field(default_factory=dict)
     encrypted_refresh_token: Optional[str] = None

@@ -156,7 +156,7 @@ async def async_execute_task_plan(task_id: str, user_id: str):
         mcp_config = config.get("mcp_server_config")
         
         # Skip if no MCP config or if it's a tool we handle specially or exclude
-        if not mcp_config or tool_name in ["progress_updater", "supermemory", "chat_tools"]:
+        if not mcp_config or tool_name in ["progress_updater", "supermemory"]:
             continue
             
         # Check availability

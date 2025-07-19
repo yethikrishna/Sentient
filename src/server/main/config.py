@@ -273,16 +273,6 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("PROGRESS_UPDATER_MCP_SERVER_URL", "http://localhost:9011/sse")
         }
     },
-    "chat_tools": { # Built-in, for chat agent
-        "display_name": "Chat Agent Tools",
-        "description": "Internal tools for the main conversational agent, such as handing off complex tasks to the planning system and checking task status.",
-        "auth_type": "builtin",
-        "icon": "IconMessage", # Frontend can map this
-        "mcp_server_config": {
-            "name": "chat_tools_server",
-            "url": os.getenv("CHAT_TOOLS_MCP_SERVER_URL", "http://localhost:9013/sse")
-        }
-    },
     "supermemory": {
         "display_name": "Long-Term Memory",
         "description": "The agent's long-term memory about the user. Use 'search' to recall facts, relationships, and preferences. Use 'addToSupermemory' to save new, permanent information about the user. This is critical for personalization.",
@@ -315,7 +305,6 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ollama") # Default key for Ollama
 
 # MCP Server URLs
 PROGRESS_UPDATER_MCP_SERVER_URL=os.getenv("PROGRESS_UPDATER_MCP_SERVER_URL", "http://localhost:9011/sse")
-CHAT_TOOLS_MCP_SERVER_URL=os.getenv("CHAT_TOOLS_MCP_SERVER_URL", "http://localhost:9013/sse") # For agent action handoff
 SUPERMEMORY_MCP_BASE_URL = os.getenv("SUPERMEMORY_MCP_BASE_URL", "https://mcp.supermemory.ai/")
 SUPERMEMORY_MCP_ENDPOINT_SUFFIX = os.getenv("SUPERMEMORY_MCP_ENDPOINT_SUFFIX", "/sse")
 

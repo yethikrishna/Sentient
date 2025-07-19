@@ -14,7 +14,6 @@ from workers.tasks import execute_task_plan
 from main.config import MONGO_URI, MONGO_DB_NAME
 
 USER_PROFILES_COLLECTION = "user_profiles" 
-CHAT_HISTORY_COLLECTION = "chat_history"
 NOTIFICATIONS_COLLECTION = "notifications" 
 POLLING_STATE_COLLECTION = "polling_state_store" 
 PROCESSED_ITEMS_COLLECTION = "processed_items_log" 
@@ -28,7 +27,6 @@ class MongoManager:
         self.db = self.client[MONGO_DB_NAME]
         
         self.user_profiles_collection = self.db[USER_PROFILES_COLLECTION]
-        self.chat_history_collection = self.db[CHAT_HISTORY_COLLECTION]
         self.notifications_collection = self.db[NOTIFICATIONS_COLLECTION]
         self.polling_state_collection = self.db[POLLING_STATE_COLLECTION]
         self.processed_items_collection = self.db[PROCESSED_ITEMS_COLLECTION]
@@ -46,12 +44,6 @@ class MongoManager:
                 IndexModel([("userData.google_services.gmail.encrypted_refresh_token", ASCENDING)], 
                            name="google_gmail_token_idx", sparse=True),
                 IndexModel([("userData.onboardingComplete", ASCENDING)], name="user_onboarding_status_idx", sparse=True)
-            ],
-            self.chat_history_collection: [
-                IndexModel([("user_id", ASCENDING), ("chat_id", ASCENDING)], name="user_chat_id_idx"),
-                IndexModel([("messages.message", "text")], name="message_text_idx"),
-                IndexModel([("user_id", ASCENDING), ("last_updated", DESCENDING)], name="chat_last_updated_idx"), # Kept for sorting chats
-                IndexModel([("user_id", ASCENDING), ("messages.timestamp", DESCENDING)], name="message_timestamp_idx", sparse=True)
             ],
             self.notifications_collection: [
                 IndexModel([("user_id", ASCENDING)], name="notification_user_id_idx"),
@@ -142,93 +134,6 @@ class MongoManager:
             upsert=True 
         )
         return result.matched_count > 0 or result.upserted_id is not None
-
-    # --- Chat History Methods ---
-    async def add_chat_message(self, user_id: str, chat_id: str, message_data: Dict) -> str:
-        if not all([user_id, chat_id, message_data]):
-            raise ValueError("user_id, chat_id, and message_data are required.")
-        
-        message_data["timestamp"] = datetime.datetime.now(datetime.timezone.utc)
-        message_id = message_data.get("id", str(uuid.uuid4())) 
-        message_data["id"] = message_id
-
-        result = await self.chat_history_collection.update_one(
-            {"user_id": user_id, "chat_id": chat_id},
-            {"$push": {"messages": message_data},
-             "$set": {"last_updated": datetime.datetime.now(datetime.timezone.utc)},
-             "$setOnInsert": {"user_id": user_id, "chat_id": chat_id, "created_at": datetime.datetime.now(datetime.timezone.utc)}
-            },
-            upsert=True
-        )
-        if result.matched_count > 0 or result.upserted_id is not None:
-            return message_id
-        raise Exception(f"Failed to add/update chat message for user {user_id}, chat {chat_id}")
-
-    async def get_chat_history(self, user_id: str, chat_id: str) -> List[Dict]:
-        if not user_id or not chat_id: return []
-        chat_doc = await self.chat_history_collection.find_one(
-            {"user_id": user_id, "chat_id": chat_id}, {"messages": 1, "_id": 0}
-        )
-        return chat_doc.get("messages", []) if chat_doc else []
-
-    async def get_all_chats_for_user(self, user_id: str) -> List[Dict]:
-        if not user_id: return []
-        cursor = self.chat_history_collection.find(
-            {"user_id": user_id},
-            {"chat_id": 1, "title": 1, "last_updated": 1, "_id": 0}
-        ).sort("last_updated", DESCENDING)
-        return await cursor.to_list(length=None)
-
-    async def delete_chat_history(self, user_id: str, chat_id: str) -> bool:
-        if not user_id or not chat_id: return False
-        result = await self.chat_history_collection.delete_one({"user_id": user_id, "chat_id": chat_id})
-        return result.deleted_count > 0
-
-    async def update_chat_message(self, user_id: str, chat_id: str, message_id: str, update_data: Dict) -> bool:
-        if not all([user_id, chat_id, message_id, update_data]):
-            raise ValueError("user_id, chat_id, message_id, and update_data are required.")
-
-        set_payload = {f"messages.$.{key}": value for key, value in update_data.items()}
-        set_payload["last_updated"] = datetime.datetime.now(datetime.timezone.utc)
-        
-        result = await self.chat_history_collection.update_one(
-            {"user_id": user_id, "chat_id": chat_id, "messages.id": message_id},
-            {"$set": set_payload}
-        )
-        if result.matched_count == 0:
-            print(f"[{datetime.datetime.now()}] [DB_UPDATE_WARN] No message found with ID {message_id} in chat {chat_id} for user {user_id} to update.")
-            return False
-        return result.modified_count > 0
-
-    async def create_new_chat_session(self, user_id: str, chat_id: str, title: Optional[str] = "New Chat") -> bool:
-        if not user_id or not chat_id: return False
-        now_utc = datetime.datetime.now(datetime.timezone.utc)
-        # Use update_one with upsert to avoid race conditions and ensure idempotency.
-        # If a chat with this ID somehow already exists, this does nothing.
-        result = await self.chat_history_collection.update_one(
-            {"user_id": user_id, "chat_id": chat_id},
-            {
-                "$setOnInsert": {
-                    "user_id": user_id,
-                    "chat_id": chat_id,
-                    "title": title,
-                    "messages": [],
-                    "created_at": now_utc,
-                    "last_updated": now_utc
-                }
-            },
-            upsert=True
-        )
-        return result.upserted_id is not None
-
-    async def rename_chat(self, user_id: str, chat_id: str, new_title: str) -> bool:
-        if not all([user_id, chat_id, new_title]):
-            return False
-        result = await self.chat_history_collection.update_one(
-            {"user_id": user_id, "chat_id": chat_id},
-            {"$set": {"title": new_title, "last_updated": datetime.datetime.now(datetime.timezone.utc)}}
-        )
-        return result.modified_count > 0
 
     # --- Notification Methods ---
     async def get_notifications(self, user_id: str) -> List[Dict]:

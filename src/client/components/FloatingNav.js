@@ -18,7 +18,7 @@ import toast from "react-hot-toast"
 import { motion } from "framer-motion"
 import { cn } from "@utils/cn"
 
-export default function FloatingNav({ onChatOpen, onNotificationsOpen }) {
+export default function FloatingNav({ onNotificationsOpen }) {
 	const router = useRouter()
 	const pathname = usePathname()
 	const [userDetails, setUserDetails] = useState(null)
@@ -191,17 +191,7 @@ export default function FloatingNav({ onChatOpen, onNotificationsOpen }) {
 		}
 	]
 
-	const actionLinks = [
-		{
-			title: "Chat",
-			href: "#",
-			onClick: onChatOpen,
-			icon: (
-				<IconMessage className="h-full w-full text-neutral-500 dark:text-neutral-300" />
-			)
-		}
-	]
-	const allLinks = [...navLinks, ...actionLinks]
+	const allLinks = [...navLinks]
 
 	if (userDetails && !isSelfHost) {
 		allLinks.push({

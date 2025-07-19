@@ -26,12 +26,7 @@ const TasksSidebar = ({
 	// eslint-disable-line
 
 	const clarificationTasks = useMemo(
-		() =>
-			allTasks.filter(
-				(t) =>
-					t.status === "clarification_pending" ||
-					t.status === "approval_pending"
-			),
+		() => allTasks.filter((t) => t.status === "clarification_pending"),
 		[allTasks]
 	)
 
@@ -53,7 +48,7 @@ const TasksSidebar = ({
 			<div className="flex h-full">
 				<Tooltip
 					id="sidebar-tooltip"
-					place="left"
+					place="right-start"
 					style={{ zIndex: 9999 }}
 				/>
 				<div className="flex-1 overflow-y-auto custom-scrollbar bg-[var(--color-primary-surface)]/50 backdrop-blur-lg">
@@ -69,7 +64,7 @@ const TasksSidebar = ({
 					{activeTab === "clarifications" && (
 						<div className="space-y-4 p-4">
 							<div className="flex justify-center items-center gap-2 mb-4">
-								<h2 className="text-xl font-semibold">
+								<h2 className="text-xl font-semibold text-white">
 									Needs Your Input
 								</h2>
 								<button

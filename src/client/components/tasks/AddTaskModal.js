@@ -1,50 +1,41 @@
-// A new file: src/client/components/tasks/AddTaskModal.js
 "use client"
 
 import React, { useState } from "react"
+import toast from "react-hot-toast"
 import { motion } from "framer-motion"
-import { IconX, IconLoader } from "@tabler/icons-react"
-import ScheduleEditor from "@components/tasks/ScheduleEditor"
+import { IconX, IconLoader, IconSparkles, IconUser } from "@tabler/icons-react"
+import { cn } from "@utils/cn"
 
-const AddTaskModal = ({ onClose, onTaskAdded, initialDate }) => {
-	const [description, setDescription] = useState("")
-	const [schedule, setSchedule] = useState({
-		type: "once",
-		run_at: initialDate || null
-	})
-	const [isSubmitting, setIsSubmitting] = useState(false)
+const AddTaskModal = ({ onClose, onTaskAdded }) => {
+	const [prompt, setPrompt] = useState("")
+	const [assignee, setAssignee] = useState("ai") // 'ai' or 'user'
+	const [isProcessing, setIsProcessing] = useState(false)
 
-	const handleSubmit = async (e) => {
-		e.preventDefault()
-		if (!description.trim()) {
-			toast.error("Please enter a task description.")
+	const handleAddTask = async () => {
+		if (!prompt.trim()) {
+			toast.error("Please describe the task.")
 			return
 		}
 
-		setIsSubmitting(true)
+		setIsProcessing(true)
 		try {
-			const payload = {
-				description,
-				priority: 1, // Default priority for now
-				schedule
-			}
 			const response = await fetch("/api/tasks/add", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(payload)
+				body: JSON.stringify({ prompt, assignee })
 			})
 
 			const data = await response.json()
 			if (!response.ok) {
 				throw new Error(data.error || "Failed to add task")
 			}
-			toast.success("Task created! I'll start planning it out.")
-			onTaskAdded() // This will trigger a refresh on the tasks page
+			toast.success(data.message || "Task added!")
+			onTaskAdded()
 			onClose()
 		} catch (error) {
 			toast.error(`Error: ${error.message}`)
 		} finally {
-			setIsSubmitting(false)
+			setIsProcessing(false)
 		}
 	}
 
@@ -61,11 +52,11 @@ const AddTaskModal = ({ onClose, onTaskAdded, initialDate }) => {
 				animate={{ scale: 1, y: 0 }}
 				exit={{ scale: 0.9, y: 20 }}
 				onClick={(e) => e.stopPropagation()}
-				className="bg-gradient-to-br from-[var(--color-primary-surface)] to-[var(--color-primary-background)] p-6 rounded-2xl shadow-xl w-full max-w-2xl border border-[var(--color-primary-surface-elevated)] max-h-[90vh] flex flex-col"
+				className="bg-gradient-to-br from-[var(--color-primary-surface)] to-[var(--color-primary-background)] p-6 rounded-2xl shadow-xl w-full max-w-lg border border-[var(--color-primary-surface-elevated)] max-h-[90vh] flex flex-col"
 			>
 				<div className="flex justify-between items-center mb-6 flex-shrink-0">
 					<h2 className="text-xl font-semibold text-white">
-						Add New Task
+						Add a New Task
 					</h2>
 					<button
 						onClick={onClose}
@@ -74,37 +65,62 @@ const AddTaskModal = ({ onClose, onTaskAdded, initialDate }) => {
 						<IconX size={20} />
 					</button>
 				</div>
-				<form
-					onSubmit={handleSubmit}
-					className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6"
-				>
+
+				<div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6">
 					<div>
 						<label
-							htmlFor="task-description"
+							htmlFor="task-prompt"
 							className="block text-sm font-medium text-gray-300 mb-2"
 						>
 							What needs to be done?
 						</label>
 						<textarea
-							id="task-description"
-							value={description}
-							onChange={(e) => setDescription(e.target.value)}
-							rows={3}
+							id="task-prompt"
+							value={prompt}
+							onChange={(e) => setPrompt(e.target.value)}
+							rows={4}
 							className="w-full p-3 bg-neutral-800/50 border border-neutral-700 rounded-lg transition-colors focus:border-[var(--color-accent-blue)]"
 							placeholder="e.g., Send a follow-up email to the new client about the proposal by tomorrow afternoon"
 							autoFocus
 						/>
 					</div>
+
 					<div>
 						<label className="block text-sm font-medium text-gray-300 mb-2">
-							Scheduling
+							Assign to
 						</label>
-						<ScheduleEditor
-							schedule={schedule}
-							setSchedule={setSchedule}
-						/>
+						<div className="flex gap-2 p-1 bg-neutral-800/50 rounded-lg border border-neutral-700">
+							<button
+								onClick={() => setAssignee("ai")}
+								className={cn(
+									"flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm transition-colors",
+									assignee === "ai"
+										? "bg-[var(--color-accent-blue)] text-white"
+										: "hover:bg-neutral-700"
+								)}
+							>
+								<IconSparkles size={16} /> Sentient
+							</button>
+							<button
+								onClick={() => setAssignee("user")}
+								className={cn(
+									"flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm transition-colors",
+									assignee === "user"
+										? "bg-[var(--color-accent-blue)] text-white"
+										: "hover:bg-neutral-700"
+								)}
+							>
+								<IconUser size={16} /> Me
+							</button>
+						</div>
+						<p className="text-xs text-neutral-500 mt-2 px-1">
+							{assignee === "ai"
+								? "Sentient will create a plan and execute this task for you."
+								: "This task will be added to your to-do list for you to complete."}
+						</p>
 					</div>
-				</form>
+				</div>
+
 				<div className="mt-6 pt-4 border-t border-[var(--color-primary-surface-elevated)] flex justify-end gap-4 flex-shrink-0">
 					<button
 						type="button"
@@ -114,15 +130,14 @@ const AddTaskModal = ({ onClose, onTaskAdded, initialDate }) => {
 						Cancel
 					</button>
 					<button
-						type="submit"
-						onClick={handleSubmit}
-						disabled={isSubmitting || !description.trim()}
+						onClick={handleAddTask}
+						disabled={isProcessing}
 						className="py-2.5 px-6 rounded-lg bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-sm flex items-center gap-2 disabled:opacity-50 transition-colors"
 					>
-						{isSubmitting && (
+						{isProcessing && (
 							<IconLoader size={16} className="animate-spin" />
 						)}
-						{isSubmitting ? "Adding..." : "Add Task"}
+						{isProcessing ? "Adding..." : "Add Task"}
 					</button>
 				</div>
 			</motion.div>

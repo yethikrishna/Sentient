@@ -79,7 +79,9 @@ class MongoManager:
             ],
             self.notes_collection: [
                 IndexModel([("note_id", ASCENDING)], unique=True, name="note_id_unique_idx"),
-                IndexModel([("user_id", ASCENDING), ("note_date", DESCENDING), ("updated_at", DESCENDING)], name="note_user_date_updated_at_idx")
+                IndexModel([("user_id", ASCENDING), ("note_date", DESCENDING), ("updated_at", DESCENDING)], name="note_user_date_updated_at_idx"),
+                IndexModel([("title", "text"), ("content", "text")], name="note_text_search_idx"),
+                IndexModel([("user_id", ASCENDING), ("tags", ASCENDING)], name="note_user_tags_idx")
             ]
         }
 
@@ -322,11 +324,16 @@ class MongoManager:
             except json.JSONDecodeError:
                 schedule = None
 
+        assignee = task_data.get("assignee", "user")
+        # Tasks assigned to AI start planning, user tasks are pending.
+        status = "planning" if assignee == "ai" else "pending"
+
         task_doc = {
             "task_id": task_id,
             "user_id": user_id,
             "description": task_data.get("description", "New Task"),
-            "status": "planning",
+            "status": status,
+            "assignee": assignee,
             "priority": task_data.get("priority", 1),
             "plan": [],
             "schedule": schedule,
@@ -338,6 +345,7 @@ class MongoManager:
             "progress_updates": [],
             "result": None,
             "error": None,
+            "chat_history": [],
             "next_execution_at": None,
             "last_execution_at": None,
         }

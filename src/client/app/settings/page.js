@@ -20,14 +20,15 @@ import {
 	IconMessageChatbot,
 	IconBrandWhatsapp,
 	IconBrandLinkedin,
-	IconHelpCircle
+	IconHelpCircle,
+	IconKeyboard
 } from "@tabler/icons-react"
 import { useState, useEffect, useCallback } from "react"
 import { Tooltip } from "react-tooltip"
 import { cn } from "@utils/cn"
 
 const HelpTooltip = ({ content }) => (
-	<div className="absolute top-6 right-6 z-40">
+	<div className="fixed bottom-6 left-6 z-40">
 		<button
 			data-tooltip-id="page-help-tooltip"
 			data-tooltip-content={content}
@@ -385,6 +386,66 @@ const LinkedInSettings = () => {
 						</div>
 					</div>
 				)}
+			</div>
+		</section>
+	)
+}
+
+const ShortcutsSettings = () => {
+	const shortcuts = {
+		Global: [
+			{ keys: ["Ctrl", "M"], description: "Open Chat" },
+			{ keys: ["Ctrl", "B"], description: "Toggle Notifications" },
+			{ keys: ["Esc"], description: "Close Modal / Chat" },
+			{ keys: ["Ctrl", "K"], description: "Open Command Palette" }
+		],
+		Navigation: [
+			{ keys: ["Ctrl", "H"], description: "Go to Home" },
+			{ keys: ["Ctrl", "J"], description: "Go to Notes" },
+			{ keys: ["Ctrl", "A"], description: "Go to Tasks" },
+			{ keys: ["Ctrl", "I"], description: "Go to Integrations" },
+			{ keys: ["Ctrl", "S"], description: "Go to Settings" }
+		]
+	}
+
+	return (
+		<section>
+			<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2 flex items-center gap-2">
+				<IconKeyboard />
+				Keyboard Shortcuts
+			</h2>
+			<div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)]">
+				<div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+					{Object.entries(shortcuts).map(([category, list]) => (
+						<div key={category}>
+							<h3 className="text-lg font-semibold text-[var(--color-accent-blue)] mb-4">
+								{category}
+							</h3>
+							<div className="space-y-3">
+								{list.map((shortcut) => (
+									<div
+										key={shortcut.description}
+										className="flex justify-between items-center text-sm"
+									>
+										<span className="text-neutral-300">
+											{shortcut.description}
+										</span>
+										<div className="flex items-center gap-2">
+											{shortcut.keys.map((key) => (
+												<kbd
+													key={key}
+													className="px-2 py-1.5 text-xs font-semibold text-gray-300 bg-neutral-700 border border-neutral-600 rounded-md"
+												>
+													{key}
+												</kbd>
+											))}
+										</div>
+									</div>
+								))}
+							</div>
+						</div>
+					))}
+				</div>
 			</div>
 		</section>
 	)
@@ -1362,8 +1423,16 @@ const ProfilePage = () => {
 
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
-			<Tooltip id="settings-tooltip" style={{ zIndex: 9999 }} />
-			<Tooltip id="page-help-tooltip" style={{ zIndex: 9999 }} />
+			<Tooltip
+				id="settings-tooltip"
+				place="right-start"
+				style={{ zIndex: 9999 }}
+			/>
+			<Tooltip
+				id="page-help-tooltip"
+				place="right-start"
+				style={{ zIndex: 9999 }}
+			/>
 			<div className="flex-1 flex flex-col overflow-hidden relative">
 				<main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 custom-scrollbar">
 					<HelpTooltip content="Customize your experience here. Teach Sentient about yourself, change its personality, manage notifications, and connect your LinkedIn profile." />
@@ -1377,6 +1446,7 @@ const ProfilePage = () => {
 						<AIPersonalitySettings />
 						<WhatsAppSettings />
 						<LinkedInSettings />
+						<ShortcutsSettings />
 						{process.env.NEXT_PUBLIC_ENVIRONMENT !== "prod" && (
 							<TestingTools />
 						)}

@@ -103,6 +103,7 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 							Time (UTC)
 						</label>
 						<Tooltip
+							place="right-start"
 							id="schedule-tooltip"
 							style={{ zIndex: 99999 }}
 						/>

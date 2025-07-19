@@ -3,6 +3,7 @@ import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from main.dependencies import mongo_manager
+from fastapi.responses import JSONResponse
 from main.auth.utils import PermissionChecker
 from main.notes.models import NoteCreate, NoteUpdate, NoteInDB
 from workers.tasks import extract_from_context
@@ -23,10 +24,11 @@ async def create_note(
         "user_id": user_id,
         "title": note.title,
         "content": note.content,
+        "tags": note.tags or [],
         "note_date": note.note_date,
         "created_at": now,
         "updated_at": now,
-        "linked_task_ids": []
+        "linked_task_ids": [],
     }
     
     await mongo_manager.notes_collection.insert_one(note_doc)
@@ -41,17 +43,24 @@ async def create_note(
 @router.get("/")
 async def get_all_notes(
     user_id: str = Depends(PermissionChecker(required_permissions=["read:notes"])),
-    date: Optional[str] = Query(None)
+    date: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
+    tag: Optional[str] = Query(None)
 ):
     query = {"user_id": user_id}
     if date:
         query["note_date"] = date
+    if q:
+        query["$text"] = {"$search": q}
+    if tag:
+        query["tags"] = tag
+
 
     notes_cursor = mongo_manager.notes_collection.find(query).sort("updated_at", -1)
     notes = await notes_cursor.to_list(length=None)
     return {"notes": [NoteInDB(**note).dict() for note in notes]}
 
-@router.get("/{note_id}", response_model=NoteInDB)
+@router.get("/{note_id}")
 async def get_note(
     note_id: str,
     user_id: str = Depends(PermissionChecker(required_permissions=["read:notes"]))
@@ -59,7 +68,20 @@ async def get_note(
     note = await mongo_manager.notes_collection.find_one({"note_id": note_id, "user_id": user_id})
     if not note:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
-    return NoteInDB(**note)
+
+    linked_tasks = []
+    linked_task_ids = note.get("linked_task_ids", [])
+    if linked_task_ids:
+        tasks_cursor = mongo_manager.task_collection.find(
+            {"task_id": {"$in": linked_task_ids}},
+            # Project only the fields needed for the UI card
+            {"description": 1, "status": 1, "schedule": 1, "task_id": 1, "_id": 0}
+        )
+        linked_tasks = await tasks_cursor.to_list(length=None)
+
+    response_data = NoteInDB(**note).dict()
+    response_data["linked_tasks"] = linked_tasks
+    return JSONResponse(content=response_data)
 
 @router.put("/{note_id}")
 async def update_note(

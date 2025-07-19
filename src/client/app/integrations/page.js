@@ -37,7 +37,7 @@ import ModalDialog from "@components/ModalDialog"
 import { motion, AnimatePresence } from "framer-motion"
 
 const HelpTooltip = ({ content }) => (
-	<div className="absolute top-6 right-6 z-40">
+	<div className="fixed bottom-6 left-6 z-40">
 		<button
 			data-tooltip-id="page-help-tooltip"
 			data-tooltip-content={content}
@@ -701,8 +701,16 @@ const IntegrationsPage = () => {
 
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
-			<Tooltip id="integrations-tooltip" style={{ zIndex: 9999 }} />
-			<Tooltip id="page-help-tooltip" style={{ zIndex: 9999 }} />
+			<Tooltip
+				id="integrations-tooltip"
+				place="right-start"
+				style={{ zIndex: 9999 }}
+			/>
+			<Tooltip
+				id="page-help-tooltip"
+				place="right-start"
+				style={{ zIndex: 9999 }}
+			/>
 			<div className="flex-1 flex flex-col overflow-hidden relative">
 				<header className="flex items-center justify-between p-4 md:px-8 md:py-6 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)]">
 					<HelpTooltip content="Connect your apps here. This allows Sentient to access information and perform actions on your behalf." />

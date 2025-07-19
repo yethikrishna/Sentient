@@ -1,93 +1,139 @@
 // A new file: src/client/components/tasks/TaskDetailsModal.js
 "use client"
 
-import React from "react"
+import React, { useState, useEffect, useRef } from "react"
+import { useRouter } from "next/navigation"
+import toast from "react-hot-toast"
 import { motion } from "framer-motion"
 import {
 	IconX,
-	IconClock,
-	IconPlayerPlay,
+	IconTrash,
+	IconPencil,
+	IconNote,
 	IconCircleCheck,
-	IconMailQuestion,
-	IconAlertCircle,
-	IconHelpCircle,
-	IconRefresh,
-	IconBrain
+	IconAlertTriangle,
+	IconLoader,
+	IconSend,
+	IconArchive
 } from "@tabler/icons-react"
-import { cn } from "@utils/cn"
 import { Tooltip } from "react-tooltip"
+import TaskDetailsContent from "./TaskDetailsContent"
+import ConnectToolButton from "./ConnectToolButton"
 
-const statusMap = {
-	planning: { icon: IconRefresh, color: "text-blue-400", label: "Planning" },
-	pending: { icon: IconClock, color: "text-yellow-400", label: "Pending" },
-	processing: {
-		icon: IconPlayerPlay,
-		color: "text-blue-400",
-		label: "Processing"
-	},
-	completed: {
-		icon: IconCircleCheck,
-		color: "text-green-400",
-		label: "Completed"
-	},
-	error: { icon: IconAlertCircle, color: "text-red-400", label: "Error" },
-	approval_pending: {
-		icon: IconMailQuestion,
-		color: "text-purple-400",
-		label: "Approval Pending"
-	},
-	active: { icon: IconRefresh, color: "text-green-400", label: "Active" },
-	clarification_pending: {
-		icon: IconHelpCircle,
-		color: "text-orange-400",
-		label: "Needs Clarification"
-	},
-	cancelled: { icon: IconX, color: "text-gray-500", label: "Cancelled" },
-	default: { icon: IconHelpCircle, color: "text-gray-400", label: "Unknown" }
-}
-
-const priorityMap = {
-	0: { label: "High", color: "text-red-400" },
-	1: { label: "Medium", color: "text-yellow-400" },
-	2: { label: "Low", color: "text-green-400" },
-	default: { label: "Unknown", color: "text-gray-400" }
-}
-
-const TaskDetailsModal = ({ task, onClose, onApprove, integrations = [] }) => {
-	const statusInfo = statusMap[task.status] || statusMap.default
-	const priorityInfo = priorityMap[task.priority] || priorityMap.default
+const TaskDetailsModal = ({
+	task,
+	onClose,
+	onEdit,
+	onApprove,
+	onDelete,
+	integrations = [],
+	onAnswerClarifications
+}) => {
+	const [isProcessing, setIsProcessing] = useState(false)
+	const [chatInput, setChatInput] = useState("")
+	const [chatHistory, setChatHistory] = useState(task.chat_history || [])
+	const [clarificationAnswers, setClarificationAnswers] = useState({})
+	const router = useRouter()
+	const chatEndRef = useRef(null)
+	useEffect(() => {
+		chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
+	}, [chatHistory])
 
 	let missingTools = []
 	if (task.status === "approval_pending") {
 		const requiredTools = new Set(task.plan?.map((step) => step.tool) || [])
 		requiredTools.forEach((toolName) => {
+			const integration = integrations.find((i) => i.name === toolName)
 			if (
-				!integrations.find((i) => i.name === toolName)?.connected &&
-				integrations.find((i) => i.name === toolName)?.auth_type !==
-					"builtin"
+				integration &&
+				!integration.connected &&
+				integration.auth_type !== "builtin"
 			) {
-				missingTools.push(
-					integrations.find((i) => i.name === toolName)
-						?.display_name || toolName
-				)
+				missingTools.push(integration.display_name || toolName)
 			}
 		})
 	}
 
-	const { thoughts, finalAnswer, mainContent } =
-		task.result && typeof task.result === "string"
-			? {
-					thoughts: task.result.match(
-						/<think>([\s\S]*?)<\/think>/
-					)?.[1],
-					finalAnswer: task.result.match(
-						/<final_answer>([\s\S]*?)<\/final_answer>/
-					)?.[1],
-					mainContent: task.result
-						.replace(/<think>[\s\S]*?<\/think>/g, "")
-						.replace(/<final_answer>[\s\S]*?<\/final_answer>/g, "")
-				}
-			: { thoughts: null, finalAnswer: null, mainContent: task.result }
+	const handleAction = async (actionCallback, ...args) => {
+		setIsProcessing(true)
+		try {
+			await actionCallback(...args)
+		} catch (error) {
+			console.error("Action failed:", error)
+			// The onApprove/onDelete props should handle their own toasts
+		} finally {
+			setIsProcessing(false)
+		}
+	}
+
+	const handleCompleteAndArchive = async () => {
+		if (
+			!window.confirm(
+				"Are you sure you want to complete and archive this task?"
+			)
+		)
+			return
+		setIsProcessing(true)
+		try {
+			const response = await fetch("/api/tasks/complete", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ taskId: task.task_id })
+			})
+			if (!response.ok) throw new Error("Failed to archive task.")
+			toast.success("Task archived!")
+			onClose() // This should also trigger a data refresh on the parent page
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsProcessing(false)
+		}
+	}
+
+	const handleSendChatMessage = async () => {
+		if (!chatInput.trim()) return
+		const newHumanMessage = {
+			role: "user",
+			content: chatInput,
+			timestamp: new Date().toISOString()
+		}
+		setChatHistory((prev) => [...prev, newHumanMessage])
+		const currentInput = chatInput
+		setChatInput("")
+		setIsProcessing(true)
+		try {
+			const response = await fetch("/api/tasks/chat", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					taskId: task.task_id,
+					message: currentInput
+				})
+			})
+			const data = await response.json()
+			if (!response.ok)
+				throw new Error(data.error || "Failed to send message.")
+			// We expect the backend to eventually stream back the AI response and update the task.
+			// For now, we just close the modal and let the main page refresh.
+			toast.success("Change request sent. The AI is working on it.")
+			onClose()
+		} catch (error) {
+			toast.error(error.message)
+			setChatHistory((prev) => prev.slice(0, -1)) // Revert optimistic update on error
+		} finally {
+			setIsProcessing(false)
+		}
+	}
+
+	const handleAnswerChange = (questionId, text) => {
+		setClarificationAnswers((prev) => ({ ...prev, [questionId]: text }))
+	}
+
+	const handleNoteLinkClick = (e) => {
+		e.preventDefault()
+		onClose() // Close modal before navigating
+		router.push(`/notes?noteId=${task.source_note.note_id}`)
+	}
 
 	return (
 		<motion.div
@@ -97,183 +143,217 @@ const TaskDetailsModal = ({ task, onClose, onApprove, integrations = [] }) => {
 			className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 p-4"
 			onClick={onClose}
 		>
-			<Tooltip id="task-details-tooltip" />
+			<Tooltip
+				id="task-details-tooltip"
+				place="right-start"
+				style={{ zIndex: 99999 }}
+			/>
 			<motion.div
 				initial={{ scale: 0.9, y: 20 }}
 				animate={{ scale: 1, y: 0 }}
 				exit={{ scale: 0.9, y: 20 }}
 				onClick={(e) => e.stopPropagation()}
-				className="bg-gradient-to-br from-[var(--color-primary-surface)] to-[var(--color-primary-background)] p-6 rounded-2xl shadow-xl w-full max-w-3xl border border-[var(--color-primary-surface-elevated)] max-h-[90vh] flex flex-col"
+				className="bg-dark-surface p-6 rounded-2xl shadow-xl w-full max-w-3xl border border-dark-surface-elevated max-h-[90vh] flex flex-col"
 			>
 				<div className="flex justify-between items-center mb-6">
 					<h3 className="text-2xl font-semibold text-white truncate">
 						{task.description}
 					</h3>
-					<button onClick={onClose} className="hover:text-white">
-						<IconX />
+					<button
+						onClick={() => !isProcessing && onClose()}
+						className="p-1 rounded-full hover:bg-dark-surface-elevated"
+					>
+						<IconX size={20} />
 					</button>
 				</div>
-				<div className="overflow-y-auto custom-scrollbar pr-2 space-y-6">
-					<div className="flex items-center gap-4 text-sm">
-						<span className="text-[var(--color-text-secondary)]">
-							Status:
-						</span>
-						<span
-							className={cn(
-								"font-semibold py-0.5 px-2 rounded-full text-xs",
-								statusInfo.color,
-								statusInfo.color.replace("text-", "bg-") + "/20"
-							)}
-						>
-							{statusInfo.label}
-						</span>
-						<div className="w-px h-4 bg-[var(--color-primary-surface-elevated)]"></div>
-						<span className="text-[var(--color-text-secondary)]">
-							Priority:
-						</span>
-						<span
-							className={cn("font-semibold", priorityInfo.color)}
-						>
-							{priorityInfo.label}
-						</span>
-					</div>
-					<div>
-						<h4 className="text-lg font-semibold text-white mb-3">
-							Plan
-						</h4>
-						<div className="space-y-2">
-							{task.plan && task.plan.length > 0 ? (
-								task.plan.map((step, index) => (
-									<div
-										key={index}
-										className="flex items-start gap-3 bg-[var(--color-primary-surface)]/70 p-3 rounded-md"
-									>
-										<div className="flex-shrink-0 text-[var(--color-accent-blue)] font-bold mt-0.5">
-											{index + 1}.
-										</div>
-										<div>
-											<p className="font-semibold text-white">
-												{step.tool}
-											</p>
-											<p className="text-sm text-[var(--color-text-secondary)]">
-												{step.description}
-											</p>
-										</div>
-									</div>
-								))
-							) : (
-								<p className="text-sm text-[var(--color-text-secondary)] italic">
-									No plan has been generated yet.
+				<div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6">
+					<div className="flex-1 space-y-4">
+						{/* Chat History */}
+						{chatHistory.map((msg, index) => (
+							<div
+								key={index}
+								className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+							>
+								<div
+									className={`p-3 rounded-lg max-w-[80%] ${msg.role === "user" ? "bg-sentient-blue" : "bg-neutral-700"}`}
+								>
+									<p className="text-sm whitespace-pre-wrap">
+										{msg.content}
+									</p>
+								</div>
+							</div>
+						))}
+
+						{/* Task Status Specific UI */}
+						{task.status === "approval_pending" && (
+							<div className="bg-neutral-700/50 p-4 rounded-lg text-center space-y-3">
+								<p className="text-sm font-semibold">
+									This plan requires your approval.
 								</p>
-							)}
-						</div>
-					</div>
-					{task.progress_updates?.length > 0 && (
-						<div>
-							<h4 className="text-lg font-semibold text-white mb-4">
-								Progress
-							</h4>
-							<div className="space-y-4">
-								{task.progress_updates.map((update, index) => (
-									<div key={index} className="flex gap-4">
-										<div className="flex flex-col items-center">
-											<div className="w-4 h-4 bg-blue-500 rounded-full border-2 border-neutral-800"></div>
-											{index <
-												task.progress_updates.length -
-													1 && (
-												<div className="w-0.5 flex-grow bg-[var(--color-primary-surface-elevated)]"></div>
-											)}
-										</div>
-										<div>
-											<p className="text-sm text-white -mt-1">
-												{update.message}
-											</p>
-											<p className="text-xs text-[var(--color-text-muted)] mt-1.5">
-												{new Date(
-													update.timestamp
-												).toLocaleString()}
-											</p>
-										</div>
+								<div className="flex justify-center gap-3">
+									<button
+										onClick={() =>
+											handleAction(
+												onApprove,
+												task.task_id
+											)
+										}
+										disabled={
+											isProcessing ||
+											missingTools.length > 0
+										}
+										className="px-4 py-2 text-sm bg-green-500/20 text-green-300 rounded-lg hover:bg-green-500/40 disabled:opacity-50"
+									>
+										Approve Plan
+									</button>
+									<button
+										onClick={() =>
+											handleAction(onDelete, task.task_id)
+										}
+										disabled={isProcessing}
+										className="px-4 py-2 text-sm bg-red-500/20 text-red-300 rounded-lg hover:bg-red-500/40"
+									>
+										Disapprove
+									</button>
+								</div>
+							</div>
+						)}
+
+						{task.status === "clarification_pending" && (
+							<div className="bg-neutral-700/50 p-4 rounded-lg space-y-3">
+								<p className="text-sm font-semibold">
+									I need more information to proceed:
+								</p>
+								{task.clarifying_questions.map((q) => (
+									<div key={q.question_id}>
+										<label className="text-xs text-neutral-400 block mb-1">
+											{q.text}
+										</label>
+										<textarea
+											value={
+												clarificationAnswers[
+													q.question_id
+												] || ""
+											}
+											onChange={(e) =>
+												handleAnswerChange(
+													q.question_id,
+													e.target.value
+												)
+											}
+											rows={2}
+											className="w-full p-2 bg-dark-bg border border-dark-surface-elevated rounded-md text-sm"
+										/>
 									</div>
 								))}
-							</div>
-						</div>
-					)}
-					{(task.result || task.error) && (
-						<div className="pt-4 border-t border-[var(--color-primary-surface-elevated)]">
-							<h4 className="text-lg font-semibold text-white mb-4">
-								Outcome
-							</h4>
-							{task.error ? (
-								<pre className="text-sm bg-red-900/30 p-4 rounded-md text-red-300 whitespace-pre-wrap font-mono border border-[var(--color-accent-red)]/50">
-									{task.error}
-								</pre>
-							) : (
-								<div className="space-y-4 text-gray-300">
-									{thoughts && (
-										<details className="bg-[var(--color-primary-surface)]/50 rounded-lg p-3 border border-[var(--color-primary-surface-elevated)]">
-											<summary
-												className="cursor-pointer text-sm text-[var(--color-text-secondary)] font-semibold hover:text-white flex items-center gap-2"
-												data-tooltip-id="task-details-tooltip"
-												data-tooltip-content="See the step-by-step reasoning the agent used to produce the result."
-											>
-												<IconBrain
-													size={16}
-													className="text-yellow-400"
-												/>{" "}
-												View Agent's Thoughts
-											</summary>
-											<pre className="mt-3 text-xs text-gray-400 whitespace-pre-wrap font-mono">
-												{thoughts}
-											</pre>
-										</details>
-									)}
-									{mainContent &&
-										typeof mainContent === "string" && (
-											<div
-												dangerouslySetInnerHTML={{
-													__html: mainContent.replace(
-														/\n/g,
-														"<br />"
-													)
-												}}
-											/>
-										)}
-									{finalAnswer && (
-										<div className="mt-2 p-4 bg-green-900/30 border border-[var(--color-accent-green)]/50 rounded-lg">
-											<p className="text-sm font-semibold text-green-300 mb-2">
-												Final Answer
-											</p>
-											<div
-												dangerouslySetInnerHTML={{
-													__html: finalAnswer.replace(
-														/\n/g,
-														"<br />"
-													)
-												}}
-											/>
-										</div>
-									)}
+								<div className="flex justify-end">
+									<button
+										onClick={() =>
+											handleAction(
+												onAnswerClarifications,
+												task.task_id,
+												Object.entries(
+													clarificationAnswers
+												).map(([qid, atext]) => ({
+													question_id: qid,
+													answer_text: atext
+												}))
+											)
+										}
+										disabled={isProcessing}
+										className="px-4 py-2 text-sm bg-sentient-blue rounded-lg hover:bg-sentient-blue-dark"
+									>
+										Submit Answers
+									</button>
 								</div>
-							)}
+							</div>
+						)}
+
+						<TaskDetailsContent task={task} />
+						<div ref={chatEndRef} />
+					</div>
+
+					{missingTools.length > 0 && (
+						<div className="bg-yellow-900/50 border border-yellow-500/50 p-3 rounded-lg flex items-center gap-3">
+							<IconAlertTriangle className="text-yellow-400" />
+							<p className="text-yellow-300 text-sm">
+								This plan requires tools you haven't connected:{" "}
+								<b>{missingTools.join(", ")}</b>.
+							</p>
+							<ConnectToolButton toolName="" />
 						</div>
 					)}
 				</div>
-				<div className="flex justify-end mt-6 pt-4 border-t border-[var(--color-primary-surface-elevated)] gap-4">
-					<button
-						onClick={onClose}
-						className="py-2.5 px-6 rounded-lg bg-[var(--color-primary-surface-elevated)] hover:bg-[var(--color-primary-surface)] text-sm transition-colors"
-					>
-						Close
-					</button>
-					{task.status === "approval_pending" && (
-						<button
-							onClick={() => onApprove(task.task_id)}
-							className="py-2.5 px-6 rounded-lg bg-[var(--color-accent-green)] hover:bg-[var(--color-accent-green-hover)] text-sm flex items-center gap-2 disabled:opacity-50 transition-colors"
-							disabled={missingTools.length > 0}
-						>
-							<IconCircleCheck className="w-5 h-5" />
-							Approve Plan
+
+				{/* Footer with actions and chat input */}
+				<div className="mt-6 pt-4 border-t border-dark-surface-elevated">
+					{task.status === "completed" ? (
+						<div className="flex flex-col gap-3">
+							<div className="flex items-center gap-3">
+								<input
+									type="text"
+									value={chatInput}
+									onChange={(e) =>
+										setChatInput(e.target.value)
+									}
+									onKeyDown={(e) =>
+										e.key === "Enter" &&
+										handleSendChatMessage()
+									}
+									placeholder="Need changes? Chat with the AI..."
+									className="flex-grow p-2 bg-neutral-800/50 border border-neutral-700 rounded-lg"
+								/>
+								<button
+									onClick={handleSendChatMessage}
+									disabled={isProcessing}
+									className="p-2 bg-sentient-blue rounded-lg"
+								>
+									<IconSend size={18} />
+								</button>
+							</div>
+							<button
+								onClick={handleCompleteAndArchive}
+								disabled={isProcessing}
+								className="w-full text-center py-2 text-sm bg-green-500/20 text-green-300 rounded-lg hover:bg-green-500/40 flex items-center justify-center gap-2"
+							>
+								<IconArchive size={16} /> Mark as Complete &
+								Archive
+							</button>
+						</div>
+					) : (
+						<div className="flex justify-end gap-2">
+							<button
+								onClick={() =>
+									handleAction(onDelete, task.task_id)
+								}
+								disabled={isProcessing}
+								className="py-2 px-4 text-sm rounded-lg hover:bg-red-500/20 text-red-300"
+							>
+								<IconTrash size={16} />
+							</button>
+							<button
+								onClick={() => onEdit(task)}
+								disabled={isProcessing}
+								className="py-2 px-4 text-sm rounded-lg hover:bg-orange-500/20 text-orange-400"
+							>
+								<IconPencil size={16} />
+							</button>
+							{task.status !== "approval_pending" &&
+								task.status !== "clarification_pending" && (
+									<button
+										onClick={handleCompleteAndArchive}
+										disabled={isProcessing}
+										className="py-2 px-4 text-sm rounded-lg bg-green-500/20 text-green-300 hover:bg-green-500/40 flex items-center gap-2"
+									>
+										<IconArchive size={16} /> Mark Complete
+									</button>
+								)}
+						</div>
+					)}
+					{isProcessing && (
+						<button className="w-full text-center mt-2 text-xs text-neutral-400 flex items-center justify-center gap-2">
+							<IconLoader size={14} className="animate-spin" />{" "}
+							Processing...
 						</button>
 					)}
 				</div>

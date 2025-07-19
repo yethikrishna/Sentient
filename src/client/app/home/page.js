@@ -23,6 +23,7 @@ import {
 	IconSettings,
 	IconRepeat,
 	IconChecklist,
+	IconUser,
 	IconRepeat as HelpIcon
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
@@ -40,7 +41,7 @@ import EditTaskModal from "@components/tasks/EditTaskModal"
 import TaskDetailsModal from "@components/tasks/TaskDetailsModal"
 
 const HelpTooltip = ({ content }) => (
-	<div className="absolute top-6 right-6 z-40">
+	<div className="fixed bottom-6 left-6 z-40">
 		<button
 			data-tooltip-id="page-help-tooltip"
 			data-tooltip-content={content}
@@ -117,6 +118,23 @@ const TaskPreviewCard = ({ task, ...props }) => {
 			<p className="text-sm text-[var(--color-text-secondary)] truncate">
 				{task.description}
 			</p>
+			<div className="ml-auto flex-shrink-0">
+				{task.assignee === "ai" ? (
+					<IconSparkles
+						size={18}
+						className="text-blue-400"
+						data-tooltip-id="home-tooltip"
+						data-tooltip-content="Assigned to AI"
+					/>
+				) : (
+					<IconUser
+						size={18}
+						className="text-gray-400"
+						data-tooltip-id="home-tooltip"
+						data-tooltip-content="Assigned to You"
+					/>
+				)}
+			</div>
 		</motion.div>
 	)
 }
@@ -182,7 +200,6 @@ const priorityMap = {
 const TaskKanbanCard = ({
 	task,
 	integrations,
-	onApproveTask,
 	onDeleteTask,
 	onEditTask: onEditTaskProp,
 	onViewDetails: onViewDetailsProp
@@ -217,13 +234,11 @@ const TaskKanbanCard = ({
 			animate={{ opacity: 1, y: 0 }}
 			exit={{ opacity: 0, y: -20 }}
 			className={cn(
-				"flex items-start gap-3 sm:gap-4 bg-gradient-to-br from-[var(--color-primary-surface)] to-neutral-800/60 p-4 rounded-xl shadow-lg transition-all duration-200 border border-transparent hover:border-[var(--color-accent-blue)]/30",
-				"relative group",
-				!missingTools.length && "cursor-pointer"
+				"flex items-start gap-3 sm:gap-4 bg-gradient-to-br from-[var(--color-primary-surface)] to-neutral-800/60 p-4 rounded-xl shadow-lg transition-all duration-200 border border-transparent hover:border-[var(--color-accent-blue)]/30 cursor-pointer",
+				"relative group"
 			)}
 			onClick={(e) => {
 				if (e.target.closest("button")) return
-				if (missingTools.length > 0) return
 				onViewDetails()
 			}}
 		>
@@ -237,6 +252,18 @@ const TaskKanbanCard = ({
 				>
 					{priorityInfo.label}
 				</span>
+				<div className="mt-1">
+					{task.assignee === "ai" ? (
+						<IconSparkles
+							size={16}
+							className="text-blue-400"
+							data-tooltip-id="home-tooltip"
+							data-tooltip-content="Assigned to AI"
+						/>
+					) : (
+						<IconUser size={16} className="text-gray-400" />
+					)}
+				</div>
 			</div>
 
 			<div className="flex-grow min-w-0">
@@ -257,45 +284,10 @@ const TaskKanbanCard = ({
 						<Tooltip
 							id={`missing-tools-tooltip-${task.task_id}`}
 							content="Please connect these tools in Settings to approve this task."
-							place="bottom"
+							place="right-start"
 						/>
 					</div>
 				)}
-			</div>
-
-			<div
-				className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity z-10"
-				onClick={(e) => e.stopPropagation()}
-			>
-				<button
-					onClick={() => onApproveTask(task.task_id)}
-					disabled={missingTools.length > 0}
-					className="p-2 rounded-md text-[var(--color-accent-green)] hover:bg-[var(--color-accent-green)]/20 disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed disabled:hover:bg-transparent"
-					data-tooltip-id="home-tooltip"
-					data-tooltip-content={
-						missingTools.length
-							? `Connect: ${missingTools.join(", ")}`
-							: "Approve Plan"
-					}
-				>
-					<IconCircleCheck className="h-5 w-5" />
-				</button>
-				<button
-					onClick={() => onEditTask(task)}
-					className="p-2 rounded-md text-[var(--color-accent-orange)] hover:bg-[var(--color-accent-orange)]/20"
-					data-tooltip-id="home-tooltip"
-					data-tooltip-content="Edit Plan"
-				>
-					<IconPencil className="h-5 w-5" />
-				</button>
-				<button
-					onClick={() => onDeleteTask(task.task_id)}
-					className="p-2 rounded-md text-[var(--color-accent-red)] hover:bg-[var(--color-accent-red)]/20"
-					data-tooltip-id="home-tooltip"
-					data-tooltip-content="Delete Plan"
-				>
-					<IconTrash className="h-5 w-5" />
-				</button>
 			</div>
 		</motion.div>
 	)
@@ -527,8 +519,16 @@ const HomePage = () => {
 
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
-			<Tooltip id="home-tooltip" style={{ zIndex: 9999 }} />
-			<Tooltip id="page-help-tooltip" style={{ zIndex: 9999 }} />
+			<Tooltip
+				id="home-tooltip"
+				place="right-start"
+				style={{ zIndex: 9999 }}
+			/>
+			<Tooltip
+				id="page-help-tooltip"
+				place="right-start"
+				style={{ zIndex: 9999 }}
+			/>
 			<div className="flex-1 flex flex-col overflow-hidden relative">
 				<HelpTooltip content="This is your Home page. See tasks pending your approval and get a glimpse of your day's tasks and notes." />
 				<main className="flex-1 overflow-y-auto p-4 lg:p-8 custom-scrollbar">
@@ -598,9 +598,6 @@ const HomePage = () => {
 												key={task.task_id}
 												task={task}
 												integrations={integrations}
-												onApproveTask={
-													handleApproveTask
-												}
 												onDeleteTask={handleDeleteTask}
 												onEditTask={setEditingTask}
 												onViewDetails={setViewingTask}
@@ -694,6 +691,10 @@ const HomePage = () => {
 						onClose={() => setViewingTask(null)}
 						onApprove={(taskId) => {
 							handleApproveTask(taskId)
+							setViewingTask(null)
+						}}
+						onDelete={(taskId) => {
+							handleDeleteTask(taskId)
 							setViewingTask(null)
 						}}
 						integrations={integrations}

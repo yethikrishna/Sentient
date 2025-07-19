@@ -122,7 +122,8 @@ const TaskDetailsContent = ({ task }) => {
 										data-tooltip-id="task-details-tooltip"
 										data-tooltip-content="See the step-by-step reasoning the agent used to produce the result."
 									>
-										<Tooltip
+										<Tooltip place="right-start"
+											place="bottom-start"
 											id="task-details-tooltip"
 											style={{ zIndex: 9999 }}
 										/>
@@ -171,3 +172,4 @@ const TaskDetailsContent = ({ task }) => {
 }
 
 export default TaskDetailsContent
+

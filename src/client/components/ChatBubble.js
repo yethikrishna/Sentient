@@ -361,6 +361,7 @@ const ChatBubble = ({
 			{!isUser && (
 				<div className="flex justify-start items-center space-x-4 mt-6">
 					<Tooltip
+						place="right-start"
 						id="chat-bubble-tooltip"
 						style={{ zIndex: 9999 }}
 					/>

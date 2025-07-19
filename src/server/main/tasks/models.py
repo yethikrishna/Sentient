@@ -5,17 +5,13 @@ class TaskStep(BaseModel):
     tool: str
     description: str
 
-class GeneratePlanRequest(BaseModel):
-    prompt: str
-
 class Answer(BaseModel):
     question_id: str
     answer_text: str
 
 class AddTaskRequest(BaseModel):
-    description: str
-    schedule: Optional[Dict[str, Any]] = None
-    priority: Optional[int] = 1
+    prompt: str
+    assignee: str # "ai" or "user"
 
 class AnswerClarificationsRequest(BaseModel):
     task_id: str
@@ -28,9 +24,14 @@ class UpdateTaskRequest(BaseModel):
     plan: Optional[List[TaskStep]] = None
     schedule: Optional[Dict[str, Any]] = None
     enabled: Optional[bool] = None
+    assignee: Optional[str] = None
 
 class TaskIdRequest(BaseModel):
     taskId: str
 class TaskActionRequest(BaseModel):
     taskId: str
     action: str
+
+class TaskChatRequest(BaseModel):
+    taskId: str
+    message: str

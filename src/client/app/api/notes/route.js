@@ -8,12 +8,19 @@ const appServerUrl =
 
 export const GET = withAuth(async function GET(request, { authHeader }) {
 	const { searchParams } = new URL(request.url)
-	const date = searchParams.get("date")
+
+	// Create a new URLSearchParams object to pass to the backend
+	const backendParams = new URLSearchParams()
+	if (searchParams.get("date"))
+		backendParams.append("date", searchParams.get("date"))
+	if (searchParams.get("q")) backendParams.append("q", searchParams.get("q"))
+	if (searchParams.get("tag"))
+		backendParams.append("tag", searchParams.get("tag"))
+
+	const queryString = backendParams.toString()
 
 	try {
-		const url = date
-			? `${appServerUrl}/notes/?date=${date}`
-			: `${appServerUrl}/notes/`
+		const url = `${appServerUrl}/notes/${queryString ? `?${queryString}` : ""}`
 		const response = await fetch(url, {
 			method: "GET",
 			headers: { "Content-Type": "application/json", ...authHeader }
@@ -32,7 +39,7 @@ export const GET = withAuth(async function GET(request, { authHeader }) {
 
 export const POST = withAuth(async function POST(request, { authHeader }) {
 	try {
-		const body = await request.json() // { title, content, note_date }
+		const body = await request.json() // { title, content, note_date, tags }
 		const response = await fetch(`${appServerUrl}/notes/`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json", ...authHeader },

@@ -60,6 +60,7 @@ class PlannerMongoManager: # noqa: E501
             "user_id": user_id,
             "description": description,
             "status": "planning", # As per spec
+            "assignee": "ai", # Proactive tasks are assigned to AI
             "priority": 1,
             "plan": [], # Plan is empty initially
             "action_items": action_items,
@@ -71,6 +72,7 @@ class PlannerMongoManager: # noqa: E501
             "created_at": now_utc,
             "updated_at": now_utc,
             "result": None,
+            "chat_history": [],
             "error": None,
         }
         await self.tasks_collection.insert_one(task_doc)
@@ -102,6 +104,9 @@ class PlannerMongoManager: # noqa: E501
             {"$set": update_doc}
         )
         logger.info(f"Updated task {task_id} with a generated plan. Matched: {result.matched_count}")
+
+        # Link task back to note if applicable
+        await self.link_task_to_source(task_id)
 
         # Link task back to note if applicable
         await self.link_task_to_source(task_id)
@@ -152,7 +157,25 @@ class PlannerMongoManager: # noqa: E501
         await self.tasks_collection.insert_one(task_doc)
         logger.info(f"Saved new plan with task_id: {task_id} for user: {user_id}")
         await self.link_task_to_source(task_id)
+        await self.link_task_to_source(task_id)
         return task_id
+
+    async def link_task_to_source(self, task_id: str):
+        """Links a task back to its source (e.g., a note) if applicable."""
+        task = await self.get_task(task_id)
+        if not task:
+            return
+
+        original_context = task.get("original_context", {})
+        source = original_context.get("source")
+        event_id = original_context.get("event_id")
+
+        if source == "note" and event_id:
+            await self.db["notes"].update_one(
+                {"note_id": event_id, "user_id": task["user_id"]},
+                {"$addToSet": {"linked_task_ids": task_id}}
+            )
+            logger.info(f"Linked new task {task_id} to note {event_id}.")
 
     async def link_task_to_source(self, task_id: str):
         """Links a task back to its source (e.g., a note) if applicable."""

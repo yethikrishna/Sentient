@@ -1,103 +1,103 @@
 "use client"
 
 import React from "react"
-import { motion } from "framer-motion"
-import { format, subDays, addDays } from "date-fns"
+import { format, subDays, addDays, startOfToday } from "date-fns"
 import {
 	IconChevronLeft,
 	IconChevronRight,
-	IconHelpCircle
+	IconList,
+	IconCalendar,
+	IconPlus,
+	IconLayoutGrid, // This is This Month
+	IconCalendarWeek // This is This Week
 } from "@tabler/icons-react"
+import { cn } from "@utils/cn"
 
-const CalendarHeader = ({
-	viewDate,
-	onWeekChange,
-	onDayChange,
-	onToday
+const TasksHeader = ({
+	currentDate,
+	setCurrentDate,
+	viewType,
+	setViewType,
+	onAddTask,
+	onCalendarClick
 }) => {
-	const viewStart = subDays(viewDate, 1)
-	const viewEnd = addDays(viewDate, 1)
+	const onDayChange = (amount) => setCurrentDate(addDays(currentDate, amount))
+	const onToday = () => setCurrentDate(startOfToday())
+
+	const viewOptions = [
+		{ id: "all", icon: IconList, label: "All Tasks" },
+		{ id: "week", icon: IconCalendarWeek, label: "This Week" },
+		{ id: "month", icon: IconLayoutGrid, label: "This Month" }
+	]
+
 	return (
-		<motion.header
-			initial={{ y: -20, opacity: 0 }}
-			animate={{ y: 0, opacity: 1 }}
-			transition={{ duration: 0.6, ease: "easeOut" }}
-			className="flex items-center justify-between p-4 md:p-6 border-b border-[var(--color-primary-surface)]/50 backdrop-blur-md bg-[var(--color-primary-background)]/90 shrink-0"
-		>
-			<div className="flex items-center gap-4">
-				<h1 className="text-3xl font-semibold text-white hidden lg:block">Tasks
+		<header className="flex items-center justify-between p-4 md:px-8 md:py-6 border-b border-[var(--color-primary-surface)] flex-shrink-0">
+			<div className="flex items-center gap-6">
+				<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)]">
+					Tasks
 				</h1>
-				<button
-					data-tooltip-id="tasks-help"
-					data-tooltip-content="Use Ctrl + ←/→ to navigate between days."
-					className="p-1.5 rounded-full text-neutral-500 hover:text-white hover:bg-[var(--color-primary-surface)] pulse-glow-animation"
-				>
-					<IconHelpCircle size={22} />
-				</button>
+				{/* View Toggles */}
+				<div className="flex items-center gap-1 bg-dark-surface p-1 rounded-lg">
+					{viewOptions.map((opt) => (
+						<button
+							key={opt.id}
+							onClick={() => setViewType(opt.id)}
+							className={cn(
+								"px-4 py-1.5 rounded-md text-sm font-medium transition-colors",
+								viewType === opt.id
+									? "bg-sentient-blue text-white"
+									: "text-neutral-400 hover:bg-dark-surface-elevated hover:text-white"
+							)}
+						>
+							{opt.label}
+						</button>
+					))}
+				</div>
 			</div>
-			<div className="flex items-center gap-2 md:gap-6">
-				<motion.button // eslint-disable-line
+			<div className="flex items-center gap-4">
+				<button
 					onClick={onToday}
-					whileHover={{ scale: 1.05, y: -2 }}
-					whileTap={{ scale: 0.95 }}
-					className="xs:hidden md:flex px-4 md:px-6 py-2 text-sm font-medium border border-[var(--color-primary-surface-elevated)] rounded-xl hover:bg-[var(--color-primary-surface)] hover:border-[var(--color-accent-blue)]/30 transition-all duration-300 backdrop-blur-sm"
+					className="hidden md:block px-4 py-2 text-sm font-medium border border-dark-surface-elevated rounded-lg hover:bg-dark-surface transition-all whitespace-nowrap"
 				>
 					Today
-				</motion.button>
+				</button>
+
 				{/* Desktop Week Navigator */}
-				<div className="hidden md:flex items-center bg-[var(--color-primary-surface)]/50 rounded-2xl p-1 backdrop-blur-sm">
+				<div className="flex items-center bg-dark-surface rounded-lg">
 					<button
-						onClick={() => onWeekChange(-1)}
-						className="p-3 rounded-xl hover:bg-[var(--color-primary-surface)] transition-all duration-300 hover:scale-110 active:scale-95"
+						onClick={() => onDayChange(-1)}
+						className="p-2 rounded-md hover:bg-dark-surface-elevated transition-colors"
 					>
 						<IconChevronLeft size={18} />
 					</button>
-					<motion.h2
-						key={format(viewStart, "yyyy-MM-dd")}
-						initial={{ opacity: 0, y: 10 }}
-						animate={{ opacity: 1, y: 0 }}
-						transition={{ duration: 0.3 }}
-						className="w-64 text-center text-lg font-semibold px-4"
-					>
-						{format(viewStart, "MMMM d")} -{" "}
-						{format(viewEnd, "d, yyyy")}
-					</motion.h2>
 					<button
-						onClick={() => onWeekChange(1)}
-						className="p-3 rounded-xl hover:bg-[var(--color-primary-surface)] transition-all duration-300 hover:scale-110 active:scale-95"
+						onClick={onCalendarClick}
+						className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors hover:bg-dark-surface-elevated"
+						data-tooltip-id="tasks-tooltip"
+						data-tooltip-content="Open calendar navigation"
+					>
+						<span className="text-lg font-semibold">
+							{format(currentDate, "MMMM d, yyyy")}
+						</span>
+						<IconCalendar size={18} />
+					</button>
+					<button
+						onClick={() => onDayChange(1)}
+						className="p-2 rounded-md hover:bg-dark-surface-elevated transition-colors"
 					>
 						<IconChevronRight size={18} />
 					</button>
 				</div>
-				{/* Mobile Day Navigator */}
-				<div className="flex items-center bg-[var(--color-primary-surface)]/50 rounded-2xl p-1 backdrop-blur-sm">
-					<div className="md:hidden flex items-center">
-						<button
-							onClick={() => onDayChange(-1)}
-							className="p-3 rounded-xl hover:bg-[var(--color-primary-surface)] transition-all duration-300 hover:scale-110 active:scale-95"
-						>
-							<IconChevronLeft size={18} />
-						</button>
-						<motion.h2
-							key={format(viewDate, "yyyy-MM-dd")}
-							initial={{ opacity: 0, y: 10 }}
-							animate={{ opacity: 1, y: 0 }}
-							transition={{ duration: 0.3 }}
-							className="w-32 text-center text-base font-semibold px-2"
-						>
-							{format(viewDate, "MMMM d, yyyy")}
-						</motion.h2>
-						<button
-							onClick={() => onDayChange(1)}
-							className="p-3 rounded-xl hover:bg-[var(--color-primary-surface)] transition-all duration-300 hover:scale-110 active:scale-95"
-						>
-							<IconChevronRight size={18} />
-						</button>
-					</div>
-				</div>
+				<button
+					onClick={onAddTask}
+					className="px-4 py-2 flex items-center gap-2 bg-sentient-blue hover:bg-sentient-blue-dark text-white font-semibold rounded-lg text-sm transition-colors"
+				>
+					<IconPlus size={16} />
+					Add Task
+				</button>
 			</div>
-		</motion.header>
+		</header>
 	)
 }
 
-export default CalendarHeader
+export default TasksHeader

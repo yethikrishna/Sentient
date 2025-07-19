@@ -3,71 +3,80 @@ import {
 	IconRefresh,
 	IconCircleCheck,
 	IconAlertCircle,
+	IconArchive,
 	IconMailQuestion,
 	IconMessageQuestion,
 	IconPlayerPlay,
-	IconX
+	IconX,
+	IconHelpCircle
 } from "@tabler/icons-react"
 
-export const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-
 export const taskStatusColors = {
+	planning: {
+		icon: IconRefresh,
+		label: "Planning",
+		color: "text-blue-400",
+		border: "border-blue-400"
+	},
 	pending: {
 		icon: IconClock,
-		color: "text-gray-400",
-		bg: "bg-[var(--color-status-pending)]/80",
-		border: "border-[var(--color-status-pending)]"
-	},
-	processing: {
-		icon: IconRefresh,
-		color: "text-blue-400",
-		bg: "bg-[var(--color-accent-blue)]/80",
-		border: "border-[var(--color-accent-blue)]"
-	},
-	completed: {
-		icon: IconCircleCheck,
-		color: "text-green-400",
-		bg: "bg-[var(--color-accent-green)]/80",
-		border: "border-[var(--color-accent-green)]"
-	},
-	error: {
-		icon: IconAlertCircle,
-		color: "text-red-400",
-		bg: "bg-[var(--color-accent-red)]/80",
-		border: "border-[var(--color-accent-red)]"
+		label: "Pending",
+		color: "text-yellow-400",
+		border: "border-yellow-400"
 	},
 	approval_pending: {
 		icon: IconMailQuestion,
 		label: "Pending Approval",
-		color: "text-yellow-400",
-		bg: "bg-[var(--color-accent-purple)]/80",
-		border: "border-[var(--color-accent-purple)]",
-		borderColor: "border-yellow-400"
+		color: "text-purple-400",
+		border: "border-purple-400"
 	},
 	clarification_pending: {
 		icon: IconMessageQuestion,
-		label: "Clarification Needed",
+		label: "Needs Input",
 		color: "text-orange-400",
-		bg: "bg-[var(--color-accent-orange)]/80",
-		border: "border-[var(--color-accent-orange)]"
+		border: "border-orange-400"
+	},
+	processing: {
+		icon: IconPlayerPlay,
+		label: "Processing",
+		color: "text-blue-400",
+		border: "border-blue-400"
 	},
 	active: {
-		icon: IconPlayerPlay,
+		icon: IconRefresh,
+		label: "Active",
 		color: "text-green-400",
-		bg: "bg-[var(--color-accent-green)]/80",
-		border: "border-[var(--color-accent-green)]"
+		border: "border-green-400"
+	},
+	completed: {
+		icon: IconCircleCheck,
+		label: "Completed",
+		color: "text-green-400",
+		border: "border-green-400"
+	},
+	error: {
+		icon: IconAlertCircle,
+		label: "Error",
+		color: "text-red-400",
+		border: "border-red-400"
 	},
 	cancelled: {
 		icon: IconX,
+		label: "Cancelled",
 		color: "text-gray-500",
-		bg: "bg-gray-600/80",
-		border: "border-[var(--color-text-muted)]"
+		border: "border-gray-500"
+	},
+	archived: {
+		icon: IconArchive,
+		label: "Archived",
+		color: "text-gray-500",
+		border: "border-gray-500"
 	},
 	default: {
-		icon: IconAlertCircle,
-		color: "text-gray-500",
-		bg: "bg-gray-500/80",
-		border: "border-[var(--color-text-secondary)]"
+		icon: IconHelpCircle,
+		label: "Unknown",
+		color: "text-gray-400",
+		border: "border-gray-400"
 	}
 }
 

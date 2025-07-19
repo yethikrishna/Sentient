@@ -19,7 +19,7 @@ const SidebarTabButton = ({
 					? "bg-blue-500/30 text-white"
 					: "hover:bg-[var(--color-primary-surface)] text-neutral-400 hover:text-white"
 			)}
-			data-tooltip-id="tasks-help"
+			data-tooltip-id="sidebar-tooltip"
 			data-tooltip-content={tooltipContent || label}
 		>
 			{React.cloneElement(icon, { className: "transition-transform" })}

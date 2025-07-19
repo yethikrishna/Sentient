@@ -1,31 +1,20 @@
 "use client"
 
-import React, { useMemo } from "react"
+import React from "react"
 import { useDrop } from "react-dnd"
 import { motion } from "framer-motion"
 import { cn } from "@utils/cn"
-import { isToday, isSameDay, subDays, addDays, format } from "date-fns"
+import { isToday, format } from "date-fns"
 import TaskKanbanCard from "./TaskKanbanCard"
 
 const DayColumn = ({
 	date,
 	tasks,
-	onViewTask,
-	onEditTask,
-	onDeleteTask,
-	onDuplicateTask,
-	onTaskDrop
+	recurringTasks,
+	onTaskDrop,
+	...handlers
 }) => {
-	const isCurrentDay = isToday(date)
-	const isYesterday = isSameDay(date, subDays(new Date(), 1))
-	const isTomorrow = isSameDay(date, addDays(new Date(), 1))
-
-	const dayLabel = useMemo(() => {
-		if (isCurrentDay) return "Today"
-		if (isYesterday) return "Yesterday"
-		if (isTomorrow) return "Tomorrow"
-		return format(date, "eee")
-	}, [date, isCurrentDay, isYesterday, isTomorrow])
+	const dayLabel = format(date, "EEE")
 
 	const [{ isOver }, drop] = useDrop(() => ({
 		accept: "task",
@@ -38,43 +27,37 @@ const DayColumn = ({
 	return (
 		<motion.div
 			ref={drop}
-			initial={{ opacity: 0, y: 20 }}
-			animate={{ opacity: 1, y: 0 }}
-			transition={{ duration: 0.4, ease: "easeOut" }}
-			className={cn("flex flex-col bg-[var(--color-primary-surface)]/20 rounded-2xl h-full transition-colors",
-			isOver && "bg-[var(--color-primary-surface)]/60")}
+			className={cn(
+				"flex flex-col bg-dark-surface/50 rounded-xl h-full transition-colors min-w-[300px] flex-shrink-0",
+				isOver && "bg-dark-surface"
+			)}
 		>
-			<div className="flex justify-between items-center p-4 border-b border-[var(--color-primary-surface)]/50">
-				<h3 className="font-semibold text-lg flex items-center gap-2">
-					<span
-						className={cn(
-							isCurrentDay && "text-[var(--color-accent-blue)]"
-						)}
-					>
+			<div className="flex items-center gap-3 p-4 border-b border-white/5">
+				<h3 className="font-semibold text-lg">
+					<span className={cn(isToday(date) && "text-sentient-blue")}>
 						{dayLabel}
 					</span>
-					<span
-						className={cn(
-							"text-lg font-bold text-neutral-400",
-							isCurrentDay && "text-white"
-						)}
-					>
-						{format(date, "d MMM")}
-					</span>
 				</h3>
+				<span className="text-sm font-medium text-neutral-500">
+					{format(date, "d MMM")}
+				</span>
 			</div>
-			<div className="p-3 space-y-3 flex-1 overflow-y-auto custom-scrollbar">
+			<div className="p-3 space-y-2.5 flex-1 overflow-y-auto custom-scrollbar">
+				{recurringTasks.map((task) => (
+					<TaskKanbanCard
+						key={`recur-${task.task_id}`}
+						task={task}
+						{...handlers}
+					/>
+				))}
 				{tasks.map((task) => (
 					<TaskKanbanCard
 						key={task.task_id}
 						task={task}
-						onViewTask={onViewTask}
-						onEditTask={onEditTask}
-						onDeleteTask={onDeleteTask}
-						onDuplicateTask={onDuplicateTask}
+						{...handlers}
 					/>
 				))}
-				{tasks.length === 0 && (
+				{tasks.length === 0 && recurringTasks.length === 0 && (
 					<div className="text-center py-10 text-sm text-[var(--color-text-muted)]">
 						No tasks for this day.
 					</div>

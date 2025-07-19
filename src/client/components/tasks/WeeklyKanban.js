@@ -10,76 +10,82 @@ import {
 	parseISO,
 	getDay
 } from "date-fns"
-import { DndProvider } from "react-dnd"
-import { HTML5Backend } from "react-dnd-html5-backend"
 import DayColumn from "./DayColumn"
 
 const WeeklyKanban = ({
-	allTasks,
-	onViewTask,
-	onEditTask,
-	onDeleteTask,
-	onDuplicateTask,
-	onApproveTask,
-	onAnswerClarifications,
-	onToggleEnableTask,
+	tasks,
+	recurringTasks,
+	currentDate,
 	onTaskDrop,
-	viewDate
+	...handlers
 }) => {
+	// A week is now 7 days centered on the current date
 	const visibleDays = useMemo(() => {
 		return eachDayOfInterval({
-			start: subDays(viewDate, 1),
-			end: addDays(viewDate, 1)
+			start: subDays(currentDate, 3),
+			end: addDays(currentDate, 3)
 		})
-	}, [viewDate])
+	}, [currentDate])
 
 	const tasksByDate = useMemo(() => {
 		const grouped = {}
-		const weekDays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-		visibleDays.forEach((date) => {
-			const dateString = format(date, "yyyy-MM-dd")
-			grouped[dateString] = (allTasks || []).filter((task) => {
-				const schedule = task.schedule
-				if (!schedule) return false
-				if (schedule.type === "once" && schedule.run_at) {
-					return isSameDay(parseISO(schedule.run_at), date)
-				}
+		tasks.forEach((task) => {
+			if (task.schedule?.type === "once" && task.schedule.run_at) {
+				const date = parseISO(task.schedule.run_at)
+				const dateString = format(date, "yyyy-MM-dd")
+				if (!grouped[dateString]) grouped[dateString] = []
+				grouped[dateString].push(task)
+			}
+		})
+		return grouped
+	}, [tasks])
 
-				if (schedule.type === "recurring") {
-					if (schedule.frequency === "daily") return true
-					if (schedule.frequency === "weekly") {
-						return schedule.days?.includes(weekDays[getDay(date)])
-					}
+	const recurringTasksByDate = useMemo(() => {
+		const grouped = {}
+		const dayNames = [
+			"Sunday",
+			"Monday",
+			"Tuesday",
+			"Wednesday",
+			"Thursday",
+			"Friday",
+			"Saturday"
+		]
+		recurringTasks.forEach((task) => {
+			visibleDays.forEach((date) => {
+				const dayOfWeek = dayNames[getDay(date)]
+				if (
+					task.schedule.frequency === "daily" ||
+					(task.schedule.frequency === "weekly" &&
+						task.schedule.days.includes(dayOfWeek))
+				) {
+					const dateString = format(date, "yyyy-MM-dd")
+					if (!grouped[dateString]) grouped[dateString] = []
+					grouped[dateString].push(task)
 				}
-				return false
 			})
 		})
 		return grouped
-	}, [allTasks, visibleDays])
+	}, [recurringTasks, visibleDays])
 
 	return (
-		<DndProvider backend={HTML5Backend}>
-			<div
-				className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full"
-				style={{ minWidth: "900px" }}
-			>
-				{visibleDays.map((day, index) => (
+		<div className="h-full overflow-x-auto custom-scrollbar pb-4 -mx-4 px-4 md:-mx-6 md:px-6 ">
+			<div className="flex gap-4 h-full" style={{ minWidth: "2100px" }}>
+				{visibleDays.map((day) => (
 					<DayColumn
 						key={format(day, "yyyy-MM-dd")}
 						date={day}
 						tasks={tasksByDate[format(day, "yyyy-MM-dd")] || []}
-						onViewTask={onViewTask}
-						onEditTask={onEditTask}
-						onDeleteTask={onDeleteTask}
-						onDuplicateTask={onDuplicateTask}
-						onApproveTask={onApproveTask}
-						onAnswerClarifications={onAnswerClarifications}
-						onToggleEnableTask={onToggleEnableTask}
+						recurringTasks={
+							recurringTasksByDate[format(day, "yyyy-MM-dd")] ||
+							[]
+						}
 						onTaskDrop={onTaskDrop}
+						{...handlers}
 					/>
 				))}
 			</div>
-		</DndProvider>
+		</div>
 	)
 }
 

@@ -110,6 +110,7 @@ const NotificationsOverlay = ({ onClose }) => {
 			onClick={onClose}
 		>
 			<Tooltip
+				place="right-start"
 				id="notifications-overlay-tooltip"
 				style={{ zIndex: 9999 }}
 			/>

@@ -1,27 +1,20 @@
 "use client"
 
-import React, { useState, useEffect, useCallback, useMemo } from "react"
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { format, getDay, isSameDay, parseISO } from "date-fns"
 import {
 	IconSparkles,
 	IconCircleCheck,
-	IconAlertTriangle,
-	IconAlertCircle,
 	IconLoader,
-	IconMailQuestion,
-	IconRefresh,
 	IconX,
 	IconHelpCircle,
-	IconClock,
-	IconBook,
 	IconBulb,
-	IconSettings,
-	IconRepeat,
-	IconChecklist,
 	IconUser,
-	IconMessageQuestion,
-	IconSend
+	IconSend,
+	IconChecklist,
+	IconMailQuestion,
+	IconMessageQuestion
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import { motion, AnimatePresence } from "framer-motion"
@@ -43,7 +36,7 @@ const HelpTooltip = ({ content }) => (
 )
 
 const statusMap = {
-	pending: { icon: IconClock, color: "text-yellow-400", label: "Pending" },
+	pending: { icon: IconLoader, color: "text-yellow-400", label: "Pending" },
 	processing: {
 		icon: IconLoader,
 		color: "text-blue-400",
@@ -54,32 +47,47 @@ const statusMap = {
 		color: "text-green-400",
 		label: "Completed"
 	},
-	error: { icon: IconAlertCircle, color: "text-red-400", label: "Error" },
 	default: { icon: IconHelpCircle, color: "text-gray-400", label: "Unknown" }
 }
 
-const IdeaCard = ({ icon, title, description, onClick, cta }) => (
-	<motion.div
-		whileHover={{ y: -5, boxShadow: "0 10px 20px rgba(0,0,0,0.2)" }}
-		className="bg-gradient-to-br from-[var(--color-primary-surface)] to-neutral-800/60 p-6 rounded-2xl border border-[var(--color-primary-surface-elevated)] flex flex-col cursor-pointer"
-		onClick={onClick}
-	>
-		<div className="flex items-center gap-4 mb-4">
-			<div className="p-2 bg-[var(--color-accent-blue)]/20 rounded-lg text-[var(--color-accent-blue)]">
-				{icon}
+const useCases = [
+	"Try asking me to 'summarize my unread emails from this morning'.",
+	"Delegate tasks like 'draft a follow-up email to John about the Q3 report'.",
+	"Use me as a scratchpad: 'remember that the new server password is...'.",
+	"Schedule recurring tasks: 'remind me every Monday at 9 AM to prepare for the team meeting'."
+]
+
+const RevolvingProTip = () => {
+	const [currentIndex, setCurrentIndex] = useState(0)
+
+	useEffect(() => {
+		const interval = setInterval(() => {
+			setCurrentIndex((prevIndex) => (prevIndex + 1) % useCases.length)
+		}, 7000) // Change tip every 7 seconds
+		return () => clearInterval(interval)
+	}, [])
+
+	return (
+		<div className="mt-8 w-full max-w-3xl mx-auto bg-gradient-to-br from-[var(--color-primary-surface)] to-transparent p-4 rounded-lg border border-[var(--color-primary-surface-elevated)] flex items-center gap-4">
+			<IconBulb className="text-yellow-400 flex-shrink-0" />
+			<div className="text-sm text-neutral-300 flex-grow relative h-5 overflow-hidden">
+				<AnimatePresence>
+					<motion.p
+						key={currentIndex}
+						initial={{ y: 20, opacity: 0 }}
+						animate={{ y: 0, opacity: 1 }}
+						exit={{ y: -20, opacity: 0 }}
+						transition={{ ease: "easeInOut", duration: 0.5 }}
+						className="absolute inset-0"
+					>
+						<span className="font-semibold">Pro Tip:</span>{" "}
+						{useCases[currentIndex]}
+					</motion.p>
+				</AnimatePresence>
 			</div>
-			<h4 className="text-lg font-semibold text-white">{title}</h4>
 		</div>
-		<p className="text-sm text-[var(--color-text-secondary)] flex-grow mb-6">
-			{description}
-		</p>
-		<div className="text-right">
-			<span className="text-sm font-semibold text-[var(--color-accent-blue)] hover:underline">
-				{cta} &rarr;
-			</span>
-		</div>
-	</motion.div>
-)
+	)
+}
 
 const CommandBar = ({ onSend, isSending }) => {
 	const [prompt, setPrompt] = useState("")
@@ -220,12 +228,12 @@ const TodaysTaskItem = ({ task, onView }) => {
 	)
 }
 
-const ActionPanel = ({
+const ActionTabsCard = ({
 	tasks,
+	onViewTask,
 	onApprove,
 	onDisapprove,
-	onSubmitClarification,
-	onViewTask
+	onSubmitClarification
 }) => {
 	const [activeTab, setActiveTab] = useState("today")
 
@@ -265,44 +273,46 @@ const ActionPanel = ({
 	)
 
 	const tabs = [
-		{ id: "today", icon: IconChecklist, count: todaysTasks.length },
+		{ id: "today", label: "Today's tasks", data: todaysTasks },
 		{
 			id: "approval",
-			icon: IconMailQuestion,
-			count: pendingApprovalTasks.length
+			label: "Pending approval",
+			data: pendingApprovalTasks
 		},
 		{
 			id: "clarification",
-			icon: IconMessageQuestion,
-			count: clarificationTasks.length
+			label: "Clarification required",
+			data: clarificationTasks
 		}
 	]
 
+	const activeTabData = tabs.find((t) => t.id === activeTab)?.data
+
 	return (
-		<div className="w-[400px] h-full bg-[var(--color-primary-surface)]/50 border-l border-[var(--color-primary-surface-elevated)] flex flex-col p-4">
-			<div className="flex items-center gap-2 p-1 bg-[var(--color-primary-surface)] rounded-lg mb-4">
-				{tabs.map(({ id, icon: Icon, count }) => (
-					<button
-						key={id}
-						onClick={() => setActiveTab(id)}
-						className={cn(
-							"flex-1 p-2 rounded-md relative",
-							activeTab === id && "bg-[var(--color-accent-blue)]"
-						)}
-					>
-						<Icon className="mx-auto" />
-						{count > 0 && (
-							<span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-xs text-white">
-								{count}
-							</span>
-						)}
-					</button>
-				))}
+		<div className="mt-8 w-full max-w-3xl mx-auto bg-[var(--color-primary-surface)]/50 border border-[var(--color-primary-surface-elevated)] rounded-lg">
+			<div className="p-4 border-b border-[var(--color-primary-surface-elevated)]">
+				<div className="flex items-center gap-4">
+					{tabs.map((tab) => (
+						<button
+							key={tab.id}
+							onClick={() => setActiveTab(tab.id)}
+							className={cn(
+								"font-medium pb-1 transition-colors",
+								activeTab === tab.id
+									? "border-b-2 border-white text-white"
+									: "text-neutral-400 hover:text-white"
+							)}
+						>
+							{tab.label}
+							{tab.data.length > 0 && ` (${tab.data.length})`}
+						</button>
+					))}
+				</div>
 			</div>
-			<div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-3">
+			<div className="p-4 space-y-3 min-h-[200px]">
 				{activeTab === "today" &&
-					(todaysTasks.length > 0 ? (
-						todaysTasks.map((task) => (
+					(activeTabData.length > 0 ? (
+						activeTabData.map((task) => (
 							<TodaysTaskItem
 								key={task.task_id}
 								task={task}
@@ -315,8 +325,8 @@ const ActionPanel = ({
 						</p>
 					))}
 				{activeTab === "approval" &&
-					(pendingApprovalTasks.length > 0 ? (
-						pendingApprovalTasks.map((task) => (
+					(activeTabData.length > 0 ? (
+						activeTabData.map((task) => (
 							<ApprovalCard
 								key={task.task_id}
 								task={task}
@@ -330,8 +340,8 @@ const ActionPanel = ({
 						</p>
 					))}
 				{activeTab === "clarification" &&
-					(clarificationTasks.length > 0 ? (
-						clarificationTasks.map((task) => (
+					(activeTabData.length > 0 ? (
+						activeTabData.map((task) => (
 							<ClarificationCard
 								key={task.task_id}
 								task={task}
@@ -351,12 +361,12 @@ const ActionPanel = ({
 const HomePage = () => {
 	const [userDetails, setUserDetails] = useState(null)
 	const [tasks, setTasks] = useState([])
-	const [integrations, setIntegrations] = useState([])
 	const [isSending, setIsSending] = useState(false)
 	const router = useRouter()
 	const [editingTask, setEditingTask] = useState(null)
 	const [viewingTask, setViewingTask] = useState(null)
 	const [allTools, setAllTools] = useState([])
+	const [integrations, setIntegrations] = useState([])
 
 	const fetchUserDetails = useCallback(async () => {
 		try {
@@ -441,13 +451,6 @@ const HomePage = () => {
 		}
 	}
 
-	const handleUpdateTask = async () => {
-		// This function is now just a placeholder to trigger a refresh
-		// as the modal handles its own state updates.
-		setEditingTask(null)
-		fetchData() // Refresh data
-	}
-
 	const handleAnswerClarifications = async (taskId, answers) => {
 		try {
 			const response = await fetch("/api/tasks/answer-clarifications", {
@@ -465,6 +468,28 @@ const HomePage = () => {
 			fetchData() // Refresh data
 		} catch (error) {
 			toast.error(`Error: ${error.message}`)
+		}
+	}
+
+	const handleUpdateTask = async (updatedTask) => {
+		try {
+			const response = await fetch("/api/tasks/update", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					...updatedTask,
+					taskId: updatedTask.task_id
+				})
+			})
+			if (!response.ok) {
+				const errorData = await response.json()
+				throw new Error(errorData.error)
+			}
+			toast.success("Task updated successfully!")
+			setEditingTask(null)
+			fetchData() // Refresh data
+		} catch (error) {
+			toast.error(`Failed to update task: ${error.message}`)
 		}
 	}
 
@@ -510,19 +535,16 @@ const HomePage = () => {
 				style={{ zIndex: 9999 }}
 			/>
 
-			<div className="flex-1 flex flex-col overflow-y-auto relative custom-scrollbar">
+			<div className="flex-1 flex flex-col overflow-y-auto relative custom-scrollbar items-center">
 				<HelpTooltip content="This is your Command & Control center. Delegate tasks in the center, and manage ongoing work on the right." />
 				<main className="flex-1 overflow-y-auto p-4 lg:p-8 custom-scrollbar">
-					<div className="max-w-4xl w-full mx-auto flex flex-col h-full">
+					<div className="max-w-3xl w-full mx-auto flex flex-col items-center h-full">
 						{/* Header Section */}
 						<div className="text-center mb-8 lg:mb-12">
 							<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)]">
 								{getGreeting()},{" "}
 								{userDetails?.given_name || "User"}
 							</h1>
-							<p className="text-lg text-[var(--color-text-secondary)] mt-2">
-								What are we doing next?
-							</p>
 						</div>
 
 						{/* Command Bar */}
@@ -531,63 +553,18 @@ const HomePage = () => {
 							isSending={isSending}
 						/>
 
-						{/* Proactive Assistant Card - Placeholder */}
-						<div className="mt-12 bg-gradient-to-br from-[var(--color-primary-surface)] to-transparent p-4 rounded-lg border border-[var(--color-primary-surface-elevated)] flex items-center gap-4">
-							<IconBulb className="text-yellow-400" />
-							<p className="text-sm text-neutral-300">
-								<span className="font-semibold">Pro Tip:</span>{" "}
-								Try asking me to 'summarize my unread emails
-								from this morning'.
-							</p>
-							<button className="ml-auto text-neutral-500 hover:text-white">
-								<IconX size={18} />
-							</button>
-						</div>
+						<RevolvingProTip />
 
-						{/* Use Cases Section */}
-						<motion.div
-							initial={{ opacity: 0, y: 20 }}
-							animate={{ opacity: 1, y: 0 }}
-							transition={{ duration: 0.5, delay: 0.4 }}
-							className="mt-12 lg:mt-16 flex-grow"
-						>
-							<h2 className="text-xl font-semibold text-center mb-8 text-[var(--color-text-primary)]">
-								What's Possible with Sentient?
-							</h2>
-							<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-								<IdeaCard
-									icon={<IconRepeat size={24} />}
-									title="Automate Reports"
-									description="Set up a recurring task to search your Gmail for weekly reports and summarize them in a Google Doc."
-									cta="Create a recurring task"
-									onClick={() => router.push("/tasks")}
-								/>
-								<IdeaCard
-									icon={<IconSettings size={24} />}
-									title="Personalize Your AI"
-									description="Teach Sentient about your communication style and preferences in the Settings page."
-									cta="Customize personality"
-									onClick={() => router.push("/settings")}
-								/>
-								<IdeaCard
-									icon={<IconBulb size={24} />}
-									title="Never Forget an Idea"
-									description="Use the Tasks page to jot down thoughts, and let Sentient proactively create tasks and reminders for you."
-									cta="Go to Tasks"
-									onClick={() => router.push("/tasks")}
-								/>
-							</div>
-						</motion.div>
+						<ActionTabsCard
+							tasks={tasks}
+							onApprove={handleApproveTask}
+							onDisapprove={handleDeleteTask}
+							onSubmitClarification={handleAnswerClarifications}
+							onViewTask={setViewingTask}
+						/>
 					</div>
 				</main>
 			</div>
-			<ActionPanel
-				tasks={tasks}
-				onApprove={handleApproveTask}
-				onDisapprove={handleDeleteTask}
-				onSubmitClarification={handleAnswerClarifications}
-				onViewTask={setViewingTask}
-			/>
 			<AnimatePresence>
 				{editingTask && (
 					<EditTaskModal
@@ -595,6 +572,7 @@ const HomePage = () => {
 						task={editingTask}
 						onClose={() => setEditingTask(null)}
 						onSave={handleUpdateTask}
+						setTask={setEditingTask}
 						allTools={allTools}
 						integrations={integrations}
 					/>
@@ -611,6 +589,7 @@ const HomePage = () => {
 							handleDeleteTask(taskId)
 							setViewingTask(null)
 						}}
+						onAnswerClarifications={handleAnswerClarifications}
 						integrations={integrations}
 					/>
 				)}

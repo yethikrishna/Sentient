@@ -82,19 +82,21 @@ const TasksHeader = ({
 						<IconCalendar size={18} />
 					</button>
 					<button
-						onClick={() => onDayChange(1)}
+						onClick={() => onDayChange(7)}
 						className="p-2 rounded-md hover:bg-dark-surface-elevated transition-colors"
 					>
 						<IconChevronRight size={18} />
 					</button>
 				</div>
-				<button
-					onClick={onAddTask}
-					className="px-4 py-2 flex items-center gap-2 bg-sentient-blue hover:bg-sentient-blue-dark text-white font-semibold rounded-lg text-sm transition-colors"
-				>
-					<IconPlus size={16} />
-					Add Task
-				</button>
+				{viewType !== "all" && (
+					<button
+						onClick={onAddTask}
+						className="px-4 py-2 flex items-center gap-2 bg-sentient-blue hover:bg-sentient-blue-dark text-white font-semibold rounded-lg text-sm transition-colors"
+					>
+						<IconPlus size={16} />
+						Add Task
+					</button>
+				)}
 			</div>
 		</header>
 	)

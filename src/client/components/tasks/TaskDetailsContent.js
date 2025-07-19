@@ -47,29 +47,33 @@ const TaskDetailsContent = ({ task }) => {
 					{priorityInfo.label}
 				</span>
 			</div>
-			<div>
-				<h4 className="text-lg font-semibold text-white mb-3">Plan</h4>
-				<div className="space-y-2">
-					{task.plan.map((step, index) => (
-						<div
-							key={index}
-							className="flex items-start gap-3 bg-dark-surface/70 p-3 rounded-md border border-dark-surface-elevated"
-						>
-							<div className="flex-shrink-0 text-[var(--color-accent-blue)] font-bold mt-0.5">
-								{index + 1}.
+			{task.assignee === "ai" && task.plan && task.plan.length > 0 && (
+				<div>
+					<h4 className="text-lg font-semibold text-white mb-3">
+						Plan
+					</h4>
+					<div className="space-y-2">
+						{task.plan.map((step, index) => (
+							<div
+								key={index}
+								className="flex items-start gap-3 bg-dark-surface/70 p-3 rounded-md border border-dark-surface-elevated"
+							>
+								<div className="flex-shrink-0 text-[var(--color-accent-blue)] font-bold mt-0.5">
+									{index + 1}.
+								</div>
+								<div>
+									<p className="font-semibold text-white">
+										{step.tool}
+									</p>
+									<p className="text-sm text-[var(--color-text-secondary)]">
+										{step.description}
+									</p>
+								</div>
 							</div>
-							<div>
-								<p className="font-semibold text-white">
-									{step.tool}
-								</p>
-								<p className="text-sm text-[var(--color-text-secondary)]">
-									{step.description}
-								</p>
-							</div>
-						</div>
-					))}
+						))}
+					</div>
 				</div>
-			</div>
+			)}
 			{task.progress_updates?.length > 0 && (
 				<div>
 					<h4 className="text-lg font-semibold text-white mb-4">
@@ -120,7 +124,6 @@ const TaskDetailsContent = ({ task }) => {
 									>
 										<Tooltip
 											place="right-start"
-											place="bottom-start"
 											id="task-details-tooltip"
 											style={{ zIndex: 9999 }}
 										/>

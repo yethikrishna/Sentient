@@ -14,6 +14,8 @@ from main.analytics import capture_event
 from workers.config import SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX, SUPPORTED_POLLING_SERVICES
 from json_extractor import JsonExtractor
 from workers.utils.api_client import notify_user 
+from main.tasks.prompts import TASK_CREATION_PROMPT
+from main.llm import get_qwen_assistant
 from workers.celery_app import celery_app
 from workers.planner.llm import get_planner_agent, get_question_generator_agent
 from workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions
@@ -576,6 +578,54 @@ def process_linkedin_profile(user_id: str, linkedin_url: str):
         if driver:
             driver.quit()
             logger.info("WebDriver for LinkedIn scraping has been quit.")
+
+@celery_app.task(name="refine_task_details")
+def refine_task_details(task_id: str):
+    """
+    Asynchronously refines a user-created task by using an LLM to parse
+    the description, priority, and schedule from the initial prompt.
+    """
+    logger.info(f"Refining details for task_id: {task_id}")
+    run_async(async_refine_task_details(task_id))
+
+async def async_refine_task_details(task_id: str):
+    db_manager = PlannerMongoManager()
+    try:
+        task = await db_manager.get_task(task_id)
+        if not task or task.get("assignee") != "user":
+            logger.warning(f"Skipping refinement for task {task_id}: not found or not assigned to user.")
+            return
+
+        user_id = task["user_id"]
+        user_profile = await db_manager.user_profiles_collection.find_one({"user_id": user_id})
+        personal_info = user_profile.get("userData", {}).get("personalInfo", {}) if user_profile else {}
+        user_name = personal_info.get("name", "User")
+        user_timezone_str = personal_info.get("timezone", "UTC")
+        user_timezone = ZoneInfo(user_timezone_str)
+        current_time_str = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
+
+        system_prompt = TASK_CREATION_PROMPT.format(
+            user_name=user_name,
+            user_timezone=user_timezone_str,
+            current_time=current_time_str
+        )
+        agent = get_qwen_assistant(system_message=system_prompt)
+        messages = [{'role': 'user', 'content': task["description"]}] # Use the raw prompt for parsing
+
+        response_str = ""
+        for chunk in agent.run(messages=messages):
+            if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
+                response_str = chunk[-1].get("content", "")
+
+        parsed_data = JsonExtractor.extract_valid_json(clean_llm_output(response_str))
+        if parsed_data:
+            await db_manager.update_task_field(task_id, parsed_data)
+            logger.info(f"Successfully refined and updated task {task_id} with new details.")
+
+    except Exception as e:
+        logger.error(f"Error refining task {task_id}: {e}", exc_info=True)
+    finally:
+        await db_manager.close()
 
 # --- Polling Tasks ---
 @celery_app.task(name="poll_gmail_for_user")

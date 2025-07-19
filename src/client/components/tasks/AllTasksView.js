@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useMemo } from "react"
+import React, { useState, useMemo, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { format, parseISO } from "date-fns"
 import {
@@ -8,13 +8,73 @@ import {
 	IconUser,
 	IconPencil,
 	IconTrash,
+	IconCircleCheck,
+	IconPlus,
 	IconRepeat,
 	IconArrowUp,
 	IconArrowDown,
-	IconSelector
+	IconSelector,
+	IconLoader
 } from "@tabler/icons-react"
 import { taskStatusColors, priorityMap } from "./constants"
 import { cn } from "@utils/cn"
+import toast from "react-hot-toast"
+
+// New component for inline task adding
+const QuickAddTask = ({ onTaskAdded }) => {
+	const [prompt, setPrompt] = useState("")
+	const [isAdding, setIsAdding] = useState(false)
+	const inputRef = React.useRef(null)
+
+	const handleAddTask = async () => {
+		if (!prompt.trim() || isAdding) return
+
+		setIsAdding(true)
+		try {
+			const response = await fetch("/api/tasks/add", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ prompt, assignee: "user" })
+			})
+
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(data.error || "Failed to add task")
+			}
+			toast.success("Task added to your list.")
+			setPrompt("")
+			onTaskAdded() // Refresh the list
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsAdding(false)
+			// Refocus input for the next task
+			inputRef.current?.focus()
+		}
+	}
+
+	return (
+		<div className="flex items-center gap-2 p-2 mb-4 bg-dark-surface/50 border border-dark-surface-elevated rounded-lg focus-within:ring-2 focus-within:ring-sentient-blue transition-all">
+			<IconPlus size={20} className="text-neutral-500 ml-2" />
+			<input
+				ref={inputRef}
+				type="text"
+				value={prompt}
+				onChange={(e) => setPrompt(e.target.value)}
+				onKeyDown={(e) => e.key === "Enter" && handleAddTask()}
+				placeholder="Add a task for yourself, press Enter to save..."
+				className="flex-grow bg-transparent p-2 text-white placeholder-neutral-500 focus:ring-0 focus:outline-none"
+				disabled={isAdding}
+			/>
+			{isAdding && (
+				<IconLoader
+					size={20}
+					className="animate-spin text-neutral-500 mr-2"
+				/>
+			)}
+		</div>
+	)
+}
 
 // Sortable Header component for table columns
 const SortableHeader = ({
@@ -60,25 +120,43 @@ const TaskListItem = ({
 	onEditTask,
 	onDeleteTask,
 	onRerunTask,
+	onMarkComplete,
+	onAssigneeChange,
 	activeTab
 }) => {
 	const statusInfo = taskStatusColors[task.status] || taskStatusColors.default
-	const assigneeIcon =
-		task.assignee === "ai" ? (
-			<IconSparkles
-				size={18}
-				className="text-blue-400"
-				data-tooltip-id="tasks-tooltip"
-				data-tooltip-content="Assigned to AI"
-			/>
-		) : (
-			<IconUser
-				size={18}
-				className="text-gray-400"
-				data-tooltip-id="tasks-tooltip"
-				data-tooltip-content="Assigned to You"
-			/>
-		)
+
+	const assigneeDisplay = useMemo(() => {
+		if (task.assignee === "user" && task.status === "pending") {
+			return (
+				<button
+					onClick={(e) => {
+						e.stopPropagation()
+						onAssigneeChange(task.task_id, "ai")
+					}}
+					className="p-1 rounded-full hover:bg-blue-500/20 group/assignee"
+					data-tooltip-id="tasks-tooltip"
+					data-tooltip-content="Assign to AI"
+				>
+					<IconUser
+						size={18}
+						className="text-neutral-400 group-hover/assignee:text-blue-400 transition-colors"
+					/>
+				</button>
+			)
+		}
+		if (task.assignee === "ai") {
+			return (
+				<IconSparkles
+					size={18}
+					className="text-blue-400"
+					data-tooltip-id="tasks-tooltip"
+					data-tooltip-content="Assigned to AI"
+				/>
+			)
+		}
+		return <IconSparkles size={18} className="text-neutral-400" />
+	}, [task, onAssigneeChange])
 
 	const priorityInfo = priorityMap[task.priority] || priorityMap.default
 
@@ -105,7 +183,20 @@ const TaskListItem = ({
 			style={{ gridTemplateColumns }}
 		>
 			<div className="truncate pr-4 font-medium flex items-center gap-2">
-				<div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+				<div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+					{task.assignee === "user" && task.status === "pending" && (
+						<button
+							onClick={(e) => {
+								e.stopPropagation()
+								onMarkComplete(task.task_id)
+							}}
+							className="p-1 rounded text-neutral-400 hover:bg-green-500/20 hover:text-green-400"
+							data-tooltip-id="tasks-tooltip"
+							data-tooltip-content="Mark Complete"
+						>
+							<IconCircleCheck size={14} />
+						</button>
+					)}
 					<button
 						onClick={(e) => {
 							e.stopPropagation()
@@ -143,7 +234,7 @@ const TaskListItem = ({
 				<span className="truncate">{task.description}</span>
 			</div>
 			<div className="flex items-center justify-center">
-				{assigneeIcon}
+				{assigneeDisplay}
 			</div>
 			{activeTab === "oneTime" && (
 				<div className="text-center text-neutral-400">{dueDate}</div>
@@ -164,7 +255,10 @@ const AllTasksView = ({
 	onViewDetails,
 	onEditTask,
 	onDeleteTask,
-	onRerunTask
+	onRerunTask,
+	onMarkComplete,
+	onAssigneeChange,
+	onTaskAdded
 }) => {
 	const [activeTab, setActiveTab] = useState("oneTime") // 'oneTime', 'recurring'
 	const [groupBy, setGroupBy] = useState("status") // 'status', 'none'
@@ -303,6 +397,11 @@ const AllTasksView = ({
 				</div>
 			</div>
 
+			{/* Conditionally render the new QuickAddTask component */}
+			{activeTab === "oneTime" && (
+				<QuickAddTask onTaskAdded={onTaskAdded} />
+			)}
+
 			<div className="bg-dark-surface/50 border border-dark-surface-elevated rounded-lg">
 				<div
 					className={cn(
@@ -359,6 +458,10 @@ const AllTasksView = ({
 												onEditTask={onEditTask}
 												onDeleteTask={onDeleteTask}
 												onRerunTask={onRerunTask}
+												onMarkComplete={onMarkComplete}
+												onAssigneeChange={
+													onAssigneeChange
+												}
 												activeTab={activeTab}
 											/>
 										))}

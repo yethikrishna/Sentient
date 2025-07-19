@@ -11,7 +11,6 @@ import {
 	IconPencil,
 	IconCircleCheck,
 	IconAlertTriangle,
-	IconLoader,
 	IconSend,
 	IconArchive
 } from "@tabler/icons-react"
@@ -27,9 +26,10 @@ const TaskDetailsModal = ({
 	onDelete,
 	integrations = [],
 	onAnswerClarifications,
-	onUpdateTask
+	onArchiveTask,
+	onMarkComplete,
+	onUpdateTask // This prop is still passed but its usage for archiving is changed.
 }) => {
-	const [isProcessing, setIsProcessing] = useState(false)
 	const [chatInput, setChatInput] = useState("")
 	const [chatHistory, setChatHistory] = useState(task.chat_history || [])
 	const [clarificationAnswers, setClarificationAnswers] = useState({})
@@ -54,18 +54,6 @@ const TaskDetailsModal = ({
 		})
 	}
 
-	const handleAction = async (actionCallback, ...args) => {
-		setIsProcessing(true)
-		try {
-			await actionCallback(...args)
-		} catch (error) {
-			console.error("Action failed:", error)
-			// The onApprove/onDelete props should handle their own toasts
-		} finally {
-			setIsProcessing(false)
-		}
-	}
-
 	const handleSendChatMessage = async () => {
 		if (!chatInput.trim()) return
 		const newHumanMessage = {
@@ -76,7 +64,6 @@ const TaskDetailsModal = ({
 		setChatHistory((prev) => [...prev, newHumanMessage])
 		const currentInput = chatInput
 		setChatInput("")
-		setIsProcessing(true)
 		try {
 			const response = await fetch("/api/tasks/chat", {
 				method: "POST",
@@ -96,8 +83,6 @@ const TaskDetailsModal = ({
 		} catch (error) {
 			toast.error(error.message)
 			setChatHistory((prev) => prev.slice(0, -1)) // Revert optimistic update on error
-		} finally {
-			setIsProcessing(false)
 		}
 	}
 
@@ -130,7 +115,7 @@ const TaskDetailsModal = ({
 						{task.description}
 					</h3>
 					<button
-						onClick={() => !isProcessing && onClose()}
+						onClick={onClose}
 						className="p-1 rounded-full hover:bg-dark-surface-elevated"
 					>
 						<IconX size={20} />
@@ -162,25 +147,20 @@ const TaskDetailsModal = ({
 								</p>
 								<div className="flex justify-center gap-3">
 									<button
-										onClick={() =>
-											handleAction(
-												onApprove,
-												task.task_id
-											)
-										}
-										disabled={
-											isProcessing ||
-											missingTools.length > 0
-										}
+										onClick={() => {
+											onApprove(task.task_id)
+											onClose()
+										}}
+										disabled={missingTools.length > 0}
 										className="px-4 py-2 text-sm bg-green-500/20 text-green-300 rounded-lg hover:bg-green-500/40 disabled:opacity-50"
 									>
 										Approve Plan
 									</button>
 									<button
-										onClick={() =>
-											handleAction(onDelete, task.task_id)
-										}
-										disabled={isProcessing}
+										onClick={() => {
+											onDelete(task.task_id)
+											onClose()
+										}}
 										className="px-4 py-2 text-sm bg-red-500/20 text-red-300 rounded-lg hover:bg-red-500/40"
 									>
 										Disapprove
@@ -218,9 +198,8 @@ const TaskDetailsModal = ({
 								))}
 								<div className="flex justify-end">
 									<button
-										onClick={() =>
-											handleAction(
-												onAnswerClarifications,
+										onClick={() => {
+											onAnswerClarifications(
 												task.task_id,
 												Object.entries(
 													clarificationAnswers
@@ -229,8 +208,8 @@ const TaskDetailsModal = ({
 													answer_text: atext
 												}))
 											)
-										}
-										disabled={isProcessing}
+											onClose()
+										}}
 										className="px-4 py-2 text-sm bg-sentient-blue rounded-lg hover:bg-sentient-blue-dark"
 									>
 										Submit Answers
@@ -259,37 +238,34 @@ const TaskDetailsModal = ({
 				<div className="mt-6 pt-4 border-t border-dark-surface-elevated">
 					{task.status === "completed" ? (
 						<div className="flex flex-col gap-3">
-							<div className="flex items-center gap-3">
-								<input
-									type="text"
-									value={chatInput}
-									onChange={(e) =>
-										setChatInput(e.target.value)
-									}
-									onKeyDown={(e) =>
-										e.key === "Enter" &&
-										handleSendChatMessage()
-									}
-									placeholder="Need changes? Chat with the AI..."
-									className="flex-grow p-2 bg-neutral-800/50 border border-neutral-700 rounded-lg"
-								/>
-								<button
-									onClick={handleSendChatMessage}
-									disabled={isProcessing}
-									className="p-2 bg-sentient-blue rounded-lg hover:bg-sentient-blue-dark transition-colors"
-								>
-									<IconSend size={18} />
-								</button>
-							</div>
+							{task.assignee === "ai" && (
+								<div className="flex items-center gap-3">
+									<input
+										type="text"
+										value={chatInput}
+										onChange={(e) =>
+											setChatInput(e.target.value)
+										}
+										onKeyDown={(e) =>
+											e.key === "Enter" &&
+											handleSendChatMessage()
+										}
+										placeholder="Need changes? Chat with the AI..."
+										className="flex-grow p-2 bg-neutral-800/50 border border-neutral-700 rounded-lg"
+									/>
+									<button
+										onClick={handleSendChatMessage}
+										className="p-2 bg-sentient-blue rounded-lg hover:bg-sentient-blue-dark transition-colors"
+									>
+										<IconSend size={18} />
+									</button>
+								</div>
+							)}
 							<button
 								onClick={() => {
-									onUpdateTask({
-										...task,
-										status: "archived"
-									})
+									onArchiveTask(task.task_id)
 									onClose()
 								}}
-								disabled={isProcessing}
 								className="w-full text-center py-2 text-sm bg-green-500/20 text-green-300 rounded-lg hover:bg-green-500/40 flex items-center justify-center gap-2"
 							>
 								<IconArchive size={16} /> Archive Task
@@ -298,17 +274,16 @@ const TaskDetailsModal = ({
 					) : (
 						<div className="flex justify-end gap-2">
 							<button
-								onClick={() =>
-									handleAction(onDelete, task.task_id)
-								}
-								disabled={isProcessing}
+								onClick={() => {
+									onDelete(task.task_id)
+									onClose()
+								}}
 								className="py-2 px-4 text-sm rounded-lg hover:bg-red-500/20 text-red-300"
 							>
 								<IconTrash size={16} />
 							</button>
 							<button
 								onClick={() => onEdit(task)}
-								disabled={isProcessing}
 								className="py-2 px-4 text-sm rounded-lg hover:bg-orange-500/20 text-orange-400"
 							>
 								<IconPencil size={16} />
@@ -317,13 +292,9 @@ const TaskDetailsModal = ({
 								task.status === "pending" && (
 									<button
 										onClick={() => {
-											onUpdateTask({
-												...task,
-												status: "completed"
-											})
+											onArchiveTask(task.task_id) // We'll just mark it complete, which archives it
 											onClose()
 										}}
-										disabled={isProcessing}
 										className="py-2 px-4 text-sm rounded-lg bg-green-500/20 text-green-300 hover:bg-green-500/40 flex items-center gap-2"
 									>
 										<IconCircleCheck size={16} /> Mark
@@ -331,12 +302,6 @@ const TaskDetailsModal = ({
 									</button>
 								)}
 						</div>
-					)}
-					{isProcessing && (
-						<button className="w-full text-center mt-2 text-xs text-neutral-400 flex items-center justify-center gap-2">
-							<IconLoader size={14} className="animate-spin" />{" "}
-							Processing...
-						</button>
 					)}
 				</div>
 			</motion.div>

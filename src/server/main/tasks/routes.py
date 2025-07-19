@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from main.dependencies import mongo_manager
 from main.auth.utils import PermissionChecker, AuthHelper
-from workers.tasks import generate_plan_from_context, execute_task_plan, calculate_next_run, process_task_change_request
+from workers.tasks import generate_plan_from_context, execute_task_plan, calculate_next_run, process_task_change_request, refine_task_details
 from .models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest, AnswerClarificationsRequest, TaskActionRequest, TaskChatRequest
 from main.llm import get_qwen_assistant
 from json_extractor import JsonExtractor
@@ -89,46 +89,49 @@ async def add_task(
     request: AddTaskRequest,
     user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"])),
 ):
-    # 1. Get user info for context
-    user_profile = await mongo_manager.get_user_profile(user_id)
-    personal_info = user_profile.get("userData", {}).get("personalInfo", {}) if user_profile else {}
-    user_name = personal_info.get("name", "User")
-    user_timezone_str = personal_info.get("timezone", "UTC")
-    try:
+    # --- Fast Path for User-Assigned Tasks ---
+    if request.assignee == "user":
+        task_data = {
+            "description": request.prompt,
+            "priority": 1, # Default priority
+            "schedule": None,
+            "assignee": "user"
+        }
+        task_id = await mongo_manager.add_task(user_id, task_data)
+        if not task_id:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create task.")
+
+        # Asynchronously refine the task details in the background
+        refine_task_details.delay(task_id)
+        return {"message": "Task added to your list.", "task_id": task_id}
+
+    # --- Full Path for AI-Assigned Tasks (requires sync LLM call) ---
+    else:
+        user_profile = await mongo_manager.get_user_profile(user_id)
+        personal_info = user_profile.get("userData", {}).get("personalInfo", {}) if user_profile else {}
+        user_name = personal_info.get("name", "User")
+        user_timezone_str = personal_info.get("timezone", "UTC")
         user_timezone = ZoneInfo(user_timezone_str)
-    except ZoneInfoNotFoundError:
-        user_timezone = ZoneInfo("UTC")
+        current_time_str = datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
 
-    current_time_str = datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
+        system_prompt = TASK_CREATION_PROMPT.format(
+            user_name=user_name,
+            user_timezone=user_timezone_str,
+            current_time=current_time_str
+        )
+        try:
+            agent = get_qwen_assistant(system_message=system_prompt)
+            messages = [{'role': 'user', 'content': request.prompt}]
+            response_str = ""
+            for chunk in agent.run(messages=messages):
+                if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
+                    response_str = chunk[-1].get("content", "")
+            parsed_data = JsonExtractor.extract_valid_json(response_str) or {}
+        except Exception as e:
+            logger.error(f"LLM parsing failed for AI task: {e}", exc_info=True)
+            parsed_data = {}
 
-    # 2. Call LLM to parse prompt
-    system_prompt = TASK_CREATION_PROMPT.format(
-        user_name=user_name,
-        user_timezone=user_timezone_str,
-        current_time=current_time_str
-    )
-    try:
-        agent = get_qwen_assistant(system_message=system_prompt)
-        messages = [{'role': 'user', 'content': request.prompt}]
-
-        response_str = ""
-        for chunk in agent.run(messages=messages):
-            if isinstance(chunk, list) and chunk:
-                last_message = chunk[-1]
-                if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
-                    response_str = last_message["content"]
-
-        if not response_str:
-            raise Exception("LLM returned an empty response.")
-
-        parsed_data = JsonExtractor.extract_valid_json(response_str)
-        if not parsed_data:
-            # Fallback for simple prompts
-            parsed_data = {"description": request.prompt, "priority": 1, "schedule": None}
-
-    except Exception as e:
-        logger.error(f"Error parsing task from prompt for user {user_id}: {e}", exc_info=True)
-        # Fallback to just using the prompt as description
+    # Create task data dict
         parsed_data = {"description": request.prompt, "priority": 1, "schedule": None}
 
     # 3. Create task data dict
@@ -144,13 +147,9 @@ async def add_task(
     if not task_id:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create task.")
 
-    # 5. Trigger planning if assigned to AI
-    if request.assignee == "ai":
-        generate_plan_from_context.delay(task_id)
-        message = "Task created! I'll start planning it out."
-    else:
-        message = "Task created for you."
-
+    # Trigger planning since it's an AI task
+    generate_plan_from_context.delay(task_id)
+    message = "Task created! I'll start planning it out."
     return {"message": message, "task_id": task_id}
 
 @router.post("/fetch-tasks")
@@ -176,7 +175,7 @@ async def update_task(
     if 'assignee' in update_data and update_data['assignee'] == 'ai':
         if task.get('status') == 'pending': # Assuming 'pending' is the status for user-assigned tasks
             update_data['status'] = 'planning'
-            generate_plan_from_context.delay(request.taskId, user_id)
+            generate_plan_from_context.delay(request.taskId)
             logger.info(f"Task {request.taskId} reassigned to AI. Triggering planning.")
 
     success = await mongo_manager.update_task(request.taskId, update_data)
@@ -287,22 +286,6 @@ async def approve_task(
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to approve task.")
             
     return JSONResponse(content={"message": "Task approved and scheduled/executed."})
-@router.post("/complete-task", status_code=status.HTTP_200_OK)
-async def complete_task(
-    request: TaskIdRequest,
-    user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"]))
-):
-    """Marks a task as completed and archives it."""
-    task_doc = await mongo_manager.get_task(request.taskId, user_id)
-    if not task_doc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found or user does not have permission.")
-
-    # Here we are using 'archived' as the final state.
-    success = await mongo_manager.update_task(request.taskId, {"status": "archived"})
-    if not success:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to archive task.")
-
-    return JSONResponse(content={"message": "Task completed and archived."})
 
 @router.post("/task-chat", status_code=status.HTTP_200_OK)
 async def task_chat(

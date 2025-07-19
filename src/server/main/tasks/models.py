@@ -25,6 +25,7 @@ class UpdateTaskRequest(BaseModel):
     schedule: Optional[Dict[str, Any]] = None
     enabled: Optional[bool] = None
     assignee: Optional[str] = None
+    status: Optional[str] = None
 
 class TaskIdRequest(BaseModel):
     taskId: str

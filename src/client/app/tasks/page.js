@@ -181,6 +181,46 @@ function TasksPageContent() {
 		)
 	}
 
+	const handleArchiveTask = (taskId) => {
+		handleAction(
+			() =>
+				fetch("/api/tasks/update", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ taskId, status: "archived" })
+				}),
+			"Task archived."
+		)
+	}
+
+	const handleMarkComplete = (taskId) => {
+		handleAction(
+			() =>
+				fetch("/api/tasks/update", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ taskId, status: "completed" })
+				}),
+			"Task marked as complete."
+		)
+	}
+
+	const handleAssigneeChange = (taskId, newAssignee) => {
+		const successMessage =
+			newAssignee === "ai"
+				? "Task assigned to AI for planning."
+				: "Task assigned to you."
+		handleAction(
+			() =>
+				fetch("/api/tasks/update", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ taskId, assignee: newAssignee })
+				}),
+			successMessage
+		)
+	}
+
 	const handleUpdateTask = async (updatedTask) => {
 		handleAction(
 			() =>
@@ -278,6 +318,9 @@ function TasksPageContent() {
 									onEditTask={setEditingTask}
 									onDeleteTask={handleDeleteTask}
 									onRerunTask={handleRerunTask}
+									onMarkComplete={handleMarkComplete}
+									onAssigneeChange={handleAssigneeChange}
+									onTaskAdded={fetchTasks}
 								/>
 							)}
 							{viewType === "week" && (
@@ -320,13 +363,12 @@ function TasksPageContent() {
 								setEditingTask(taskToEdit)
 								setSelectedTask(null)
 							}}
-							onApprove={(taskId) => {
-								handleApproveTask(taskId)
-								setSelectedTask(null)
-							}}
+							onApprove={handleApproveTask}
 							onDelete={(taskId) => handleDeleteTask(taskId)}
 							integrations={integrations}
 							onAnswerClarifications={handleAnswerClarifications}
+							onArchiveTask={handleArchiveTask}
+							onMarkComplete={handleMarkComplete}
 							onUpdateTask={handleUpdateTask}
 						/>
 					)}
@@ -371,3 +413,4 @@ export default function TasksPage() {
 		</Suspense>
 	)
 }
+

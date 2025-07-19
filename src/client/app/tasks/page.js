@@ -100,7 +100,8 @@ function TasksPageContent() {
 
 	useEffect(() => {
 		fetchTasks()
-	}, [fetchTasks])
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [])
 
 	const handleAction = useCallback(
 		async (actionFn, successMessage, ...args) => {
@@ -334,8 +335,8 @@ function TasksPageContent() {
 							task={editingTask}
 							onClose={() => setEditingTask(null)}
 							onSave={(updatedTask) => {
-								handleUpdateTask(updatedTask);
-								setEditingTask(null);
+								handleUpdateTask(updatedTask)
+								setEditingTask(null)
 							}}
 							integrations={integrations}
 							allTools={allTools}

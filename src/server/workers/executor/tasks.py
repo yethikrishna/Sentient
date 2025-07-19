@@ -241,8 +241,8 @@ async def async_execute_task_plan(task_id: str, user_id: str):
         await add_progress_update(db, task_id, user_id, "Execution script finished.", block_id=block_id)
         capture_event(user_id, "task_execution_succeeded", {
             "task_id": task_id,
-            "tool_count": len(task.get("plan", [])),
-            "is_recurring": task.get("schedule", {}).get("type") == "recurring"
+            "tool_count": len(task.get("plan") or []),
+            "is_recurring": (task.get("schedule") or {}).get("type") == "recurring"
         })
         await update_task_status(db, task_id, "completed", user_id, details={"result": final_content}, block_id=block_id)
 

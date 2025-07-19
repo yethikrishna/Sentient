@@ -228,7 +228,7 @@ async def answer_clarifications(
     # Set status to trigger re-planning and call the planner worker
     await mongo_manager.update_task(request.task_id, {"status": "clarification_answered"})
     # Re-trigger the planner
-    generate_plan_from_context.delay(request.task_id, user_id)
+    generate_plan_from_context.delay(request.task_id)
     logger.info(f"Answers submitted for task {request.task_id}. Re-triggering planner.")
     
     return JSONResponse(content={"message": "Answers submitted. Task is being re-planned."})
@@ -259,7 +259,7 @@ async def approve_task(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found or user does not have permission.")
 
     update_data = {}
-    schedule_data = task_doc.get("schedule", {})
+    schedule_data = task_doc.get("schedule") or {}
 
     if schedule_data.get("type") == "recurring":
         next_run = calculate_next_run(schedule_data)

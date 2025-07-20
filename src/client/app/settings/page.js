@@ -1095,7 +1095,7 @@ const ProfileSettings = ({ initialData, onSave, isSaving }) => {
 								/>
 							</button>
 							{openSections[key] && (
-								<div className="space-y-6 mt-4 pl-8 border-l-2 border-[var(--color-primary-surface-elevated)]">
+								<div className="space-y-6 mt-4 pl-4 md:pl-8 border-l-2 border-[var(--color-primary-surface-elevated)]">
 									{questions
 										.filter((q) => q.section === key)
 										.map((q) => (
@@ -1404,14 +1404,14 @@ const ProfilePage = () => {
 	}, [fetchData])
 
 	const ProfileHeader = () => (
-		<div className="flex items-center gap-6 mb-10">
+		<div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 mb-10">
 			<img
 				src={profileData?.picture || "/images/half-logo-dark.svg"}
 				alt="Profile"
-				className="w-24 h-24 rounded-full border-4 border-[var(--color-primary-surface-elevated)] shadow-lg"
+				className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-4 border-[var(--color-primary-surface-elevated)] shadow-lg"
 			/>
 			<div>
-				<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)]">
+				<h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)]">
 					{profileData?.personalInfo?.name || "Your Profile"}
 				</h1>
 				<p className="text-[var(--color-text-secondary)] mt-1">

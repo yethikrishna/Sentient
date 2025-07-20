@@ -111,26 +111,33 @@ const MonthlyView = ({
 	}, [tasks, recurringTasks, daysInGrid])
 
 	return (
-		<div className="h-full flex flex-col bg-dark-surface rounded-lg border border-dark-surface-elevated">
-			<div className="grid grid-cols-7 text-center font-semibold text-neutral-400 border-b border-dark-surface-elevated">
-				{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
-					(day) => (
-						<div key={day} className="py-2">
-							{day}
-						</div>
-					)
-				)}
-			</div>
-			<div className="grid grid-cols-7 grid-rows-6 flex-1">
-				{daysInGrid.map((day, i) => (
-					<DayCell
-						key={i}
-						day={day}
-						isCurrentMonth={isSameMonth(day, currentDate)}
-						tasks={allTasksByDate[format(day, "yyyy-MM-dd")] || []}
-						onViewDetails={onViewDetails}
-					/>
-				))}
+		<div className="h-full flex flex-col bg-dark-surface rounded-lg border border-dark-surface-elevated overflow-hidden">
+			<div className="overflow-auto custom-scrollbar">
+				<div className="min-w-[800px]">
+					<div className="grid grid-cols-7 text-center font-semibold text-neutral-400 border-b border-dark-surface-elevated">
+						{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
+							(day) => (
+								<div key={day} className="py-2">
+									{day}
+								</div>
+							)
+						)}
+					</div>
+					<div className="grid grid-cols-7 grid-rows-6 flex-1">
+						{daysInGrid.map((day, i) => (
+							<DayCell
+								key={i}
+								day={day}
+								isCurrentMonth={isSameMonth(day, currentDate)}
+								tasks={
+									allTasksByDate[format(day, "yyyy-MM-dd")] ||
+									[]
+								}
+								onViewDetails={onViewDetails}
+							/>
+						))}
+					</div>
+				</div>
 			</div>
 		</div>
 	)

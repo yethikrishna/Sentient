@@ -444,13 +444,13 @@ const OnboardingPage = () => {
 						</motion.div>
 						<motion.h1
 							variants={itemVariants}
-							className="text-5xl md:text-6xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-b from-neutral-50 to-neutral-400"
+							className="text-4xl sm:text-5xl md:text-6xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-b from-neutral-50 to-neutral-400"
 						>
 							Welcome. I'm Sentient.
 						</motion.h1>
 						<motion.p
 							variants={itemVariants}
-							className="text-xl text-neutral-300 max-w-xl mx-auto"
+							className="text-lg md:text-xl text-neutral-300 max-w-xl mx-auto"
 						>
 							Your proactive AI, ready to get to know you.
 						</motion.p>
@@ -534,14 +534,14 @@ const OnboardingPage = () => {
 											}}
 											className="bg-neutral-800/50 border border-neutral-700 p-8 rounded-2xl w-full"
 										>
-											<label className="block text-2xl font-semibold mb-3 flex items-center gap-4 text-neutral-100">
+											<label className="block text-xl sm:text-2xl font-semibold mb-3 flex items-center gap-4 text-neutral-100">
 												<span className="text-neutral-500">
 													{currentQuestion.icon}
 												</span>
 												{currentQuestion.question}
 											</label>
 											{currentQuestion.description && (
-												<p className="text-base text-neutral-400 mb-6 ml-12">
+												<p className="text-sm sm:text-base text-neutral-400 mb-6 ml-10 sm:ml-12">
 													{
 														currentQuestion.description
 													}
@@ -570,7 +570,7 @@ const OnboardingPage = () => {
 																			e
 																				.target
 																				.value
-																		)
+																		) }
 																	}
 																	className="w-full py-3 px-4 text-lg rounded-xl bg-neutral-900 text-white border border-neutral-600 focus:ring-2 focus:ring-[var(--color-accent-blue)]/50 placeholder:text-neutral-500 transition-all"
 																	placeholder={
@@ -599,7 +599,7 @@ const OnboardingPage = () => {
 																			e
 																				.target
 																				.value
-																		)
+																		) }
 																	}
 																	className="w-full px-4 py-3 text-lg rounded-xl bg-neutral-900 text-white border border-neutral-600 focus:ring-2 focus:ring-[var(--color-accent-blue)]/50 appearance-none"
 																	required={
@@ -647,7 +647,7 @@ const OnboardingPage = () => {
 																			e
 																				.target
 																				.value
-																		)
+																		) }
 																	}
 																	className="w-full px-4 py-3 text-lg rounded-xl bg-neutral-900 text-white border border-neutral-600 focus:ring-2 focus:ring-[var(--color-accent-blue)]/50 placeholder:text-neutral-500 min-h-[140px] resize-y"
 																	placeholder={
@@ -680,7 +680,7 @@ const OnboardingPage = () => {
 																			handleAnswer(
 																				"location",
 																				e
-																					.target
+																					.target // eslint-disable-line
 																					.value
 																			)
 																		}
@@ -770,7 +770,7 @@ const OnboardingPage = () => {
 																						)
 																					}
 																					className={cn(
-																						"p-5 rounded-xl border-2 text-center font-semibold transition-all duration-200 text-lg",
+																						"p-4 sm:p-5 rounded-xl border-2 text-center font-semibold transition-all duration-200 text-base sm:text-lg",
 																						answers[
 																							currentQuestion
 																								.id
@@ -808,7 +808,7 @@ const OnboardingPage = () => {
 																					)
 																				}
 																				className={cn(
-																					"p-5 rounded-xl border-2 text-center font-semibold transition-all duration-200 flex items-center justify-center gap-2 text-lg",
+																					"p-4 sm:p-5 rounded-xl border-2 text-center font-semibold transition-all duration-200 flex items-center justify-center gap-2 text-base sm:text-lg",
 																					(
 																						answers[
 																							currentQuestion
@@ -929,10 +929,10 @@ const OnboardingPage = () => {
 						animate={{ opacity: 1, y: 0 }}
 						className="text-center max-w-4xl"
 					>
-						<h1 className="text-5xl font-bold mb-4">
+						<h1 className="text-4xl md:text-5xl font-bold mb-4">
 							You're All Set, {answers["user-name"] || "Friend"}!
 						</h1>
-						<p className="text-xl text-neutral-400 mb-12">
+						<p className="text-lg md:text-xl text-neutral-400 mb-12">
 							Here are a few things you can do to get started.
 						</p>
 						<div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">

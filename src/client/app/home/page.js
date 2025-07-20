@@ -47,18 +47,18 @@ const RevolvingProTip = ({ onTipClick }) => {
 	}, [])
 
 	return (
-		<div className="mt-20 w-full max-w-3xl mx-auto flex flex-col items-center">
+		<div className="mt-16 md:mt-20 w-full max-w-3xl mx-auto flex flex-col items-center">
 			<div className="flex items-center gap-2 text-neutral-400 w-full">
 				<IconBulb className="text-yellow-400" />
 				<div className="text-sm text-center relative h-10 overflow-hidden w-full">
-				<AnimatePresence mode="wait">
-					<motion.p
-						key={currentIndex}
-						initial={{ y: 20, opacity: 0 }}
-						animate={{ y: 0, opacity: 1 }}
-						exit={{ y: -20, opacity: 0 }}
-						transition={{ ease: "easeInOut", duration: 0.5 }}
-						className="absolute inset-0 cursor-pointer hover:text-white flex items-center justify-center"
+					<AnimatePresence mode="wait">
+						<motion.p
+							key={currentIndex}
+							initial={{ y: 20, opacity: 0 }}
+							animate={{ y: 0, opacity: 1 }}
+							exit={{ y: -20, opacity: 0 }}
+							transition={{ ease: "easeInOut", duration: 0.5 }}
+							className="absolute inset-0 cursor-pointer hover:text-white flex items-center justify-center"
 							onClick={() =>
 								onTipClick(useCases[currentIndex].prompt)
 							}
@@ -106,10 +106,10 @@ const CommandBar = ({ prompt, setPrompt, onSend, isSending }) => {
 						}
 					}}
 					placeholder="Assign a task to Sentient or yourself..."
-					className="w-full p-5 pr-36 bg-transparent text-lg text-white placeholder-neutral-500 resize-none focus:ring-0 focus:outline-none overflow-y-hidden max-h-48 custom-scrollbar"
+					className="w-full p-4 sm:p-5 pr-28 sm:pr-36 bg-transparent text-base sm:text-lg text-white placeholder-neutral-500 resize-none focus:ring-0 focus:outline-none overflow-y-hidden max-h-48 custom-scrollbar"
 					rows={1}
 				/>
-				<div className="absolute top-1/2 right-3 -translate-y-1/2 flex items-center gap-2">
+				<div className="absolute top-1/2 right-2 sm:right-3 -translate-y-1/2 flex items-center gap-1 sm:gap-2">
 					<button
 						onClick={() =>
 							setAssignee(assignee === "ai" ? "user" : "ai")
@@ -202,10 +202,10 @@ const HomePage = () => {
 			<div className="absolute inset-0 h-full w-full bg-gradient-to-br from-neutral-900 to-black bg-[linear-gradient(110deg,#09090b,45%,#1e293b,55%,#09090b)] bg-[length:200%_100%] animate-shimmer" />
 			<Tooltip id="home-tooltip" place="top" style={{ zIndex: 9999 }} />
 			<main className="relative z-10 flex flex-col items-center justify-center w-full max-w-4xl px-4 text-center">
-				<h1 className="text-4xl md:text-6xl font-bold bg-clip-text text-transparent bg-gradient-to-b from-neutral-100 to-neutral-500 py-4">
+				<h1 className="text-4xl sm:text-5xl md:text-6xl font-bold bg-clip-text text-transparent bg-gradient-to-b from-neutral-100 to-neutral-500 py-4">
 					{getGreeting()}, {userDetails?.given_name || "User"}
 				</h1>
-				<p className="mt-2 mb-12 text-lg text-neutral-400">
+				<p className="mt-2 mb-12 text-base md:text-lg text-neutral-400">
 					How can I help you today?
 				</p>
 				<CommandBar
@@ -221,4 +221,3 @@ const HomePage = () => {
 }
 
 export default HomePage
-

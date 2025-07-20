@@ -23,8 +23,19 @@ import toast from "react-hot-toast"
 // New component for inline task adding
 const QuickAddTask = ({ onTaskAdded }) => {
 	const [prompt, setPrompt] = useState("")
+	const [assignee, setAssignee] = useState("user") // 'user' or 'ai'
 	const [isAdding, setIsAdding] = useState(false)
 	const inputRef = React.useRef(null)
+
+	// Auto-resize textarea
+	useEffect(() => {
+		const textarea = inputRef.current
+		if (textarea) {
+			textarea.style.height = "auto"
+			const scrollHeight = textarea.scrollHeight
+			textarea.style.height = `${scrollHeight}px`
+		}
+	}, [prompt])
 
 	const handleAddTask = async () => {
 		if (!prompt.trim() || isAdding) return
@@ -34,14 +45,14 @@ const QuickAddTask = ({ onTaskAdded }) => {
 			const response = await fetch("/api/tasks/add", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ prompt, assignee: "user" })
+				body: JSON.stringify({ prompt, assignee })
 			})
 
 			const data = await response.json()
 			if (!response.ok) {
 				throw new Error(data.error || "Failed to add task")
 			}
-			toast.success("Task added to your list.")
+			toast.success("Task added.")
 			setPrompt("")
 			onTaskAdded() // Refresh the list
 		} catch (error) {
@@ -54,24 +65,54 @@ const QuickAddTask = ({ onTaskAdded }) => {
 	}
 
 	return (
-		<div className="flex items-center gap-2 p-2 mb-4 bg-dark-surface/50 border border-dark-surface-elevated rounded-lg focus-within:ring-2 focus-within:ring-sentient-blue transition-all">
-			<IconPlus size={20} className="text-neutral-500 ml-2" />
-			<input
+		<div className="relative p-2 mb-4 bg-dark-surface rounded-lg border border-dark-surface-elevated focus-within:ring-2 focus-within:ring-sentient-blue transition-all">
+			<textarea
 				ref={inputRef}
-				type="text"
 				value={prompt}
 				onChange={(e) => setPrompt(e.target.value)}
-				onKeyDown={(e) => e.key === "Enter" && handleAddTask()}
-				placeholder="Add a task for yourself, press Enter to save..."
-				className="flex-grow bg-transparent p-2 text-white placeholder-neutral-500 focus:ring-0 focus:outline-none"
+				onKeyDown={(e) => {
+					if (e.key === "Enter" && !e.shiftKey) {
+						e.preventDefault()
+						handleAddTask()
+					}
+				}}
+				placeholder="Add a new task for yourself or Sentient..."
+				className="w-full bg-transparent p-2 pr-28 text-white placeholder-neutral-500 focus:ring-0 focus:outline-none resize-none max-h-48 custom-scrollbar"
+				rows={1}
 				disabled={isAdding}
 			/>
-			{isAdding && (
-				<IconLoader
-					size={20}
-					className="animate-spin text-neutral-500 mr-2"
-				/>
-			)}
+			<div className="absolute top-1/2 right-3 -translate-y-1/2 flex items-center gap-2">
+				<button
+					onClick={() =>
+						setAssignee(assignee === "user" ? "ai" : "user")
+					}
+					className="p-2 rounded-full hover:bg-dark-surface-elevated"
+					data-tooltip-id="tasks-tooltip"
+					data-tooltip-content={`Assign to: ${
+						assignee === "ai" ? "AI" : "Me"
+					}`}
+				>
+					{assignee === "ai" ? (
+						<IconSparkles
+							size={18}
+							className="text-sentient-blue"
+						/>
+					) : (
+						<IconUser size={18} className="text-neutral-400" />
+					)}
+				</button>
+				<button
+					onClick={handleAddTask}
+					disabled={isAdding || !prompt.trim()}
+					className="p-2 bg-sentient-blue rounded-full text-white disabled:opacity-50"
+				>
+					{isAdding ? (
+						<IconLoader size={18} className="animate-spin" />
+					) : (
+						<IconPlus size={18} />
+					)}
+				</button>
+			</div>
 		</div>
 	)
 }
@@ -359,28 +400,21 @@ const AllTasksView = ({
 
 	return (
 		<div className="w-full max-w-6xl mx-auto">
-			<div className="flex items-center justify-between gap-4 p-2 mb-2">
-				<div className="flex items-center gap-2 p-1 bg-dark-surface rounded-lg">
-					<button
-						onClick={() => setActiveTab("oneTime")}
-						className={cn(
-							"px-3 py-1 rounded-md text-sm",
-							activeTab === "oneTime" && "bg-sentient-blue"
-						)}
-					>
-						One Time
-					</button>
-					<button
-						onClick={() => setActiveTab("recurring")}
-						className={cn(
-							"px-3 py-1 rounded-md text-sm",
-							activeTab === "recurring" && "bg-sentient-blue"
-						)}
-					>
-						Recurring
-					</button>
-				</div>
+			<div className="flex items-center justify-end gap-4 p-2 mb-2">
 				<div className="flex items-center gap-4">
+					<div>
+						<label className="text-xs text-neutral-400 mr-2">
+							Show:
+						</label>
+						<select
+							value={activeTab}
+							onChange={(e) => setActiveTab(e.target.value)}
+							className="bg-dark-surface p-1 rounded text-sm"
+						>
+							<option value="oneTime">One-time</option>
+							<option value="recurring">Recurring</option>
+						</select>
+					</div>
 					<div>
 						<label className="text-xs text-neutral-400 mr-2">
 							Group by:
@@ -402,78 +436,91 @@ const AllTasksView = ({
 				<QuickAddTask onTaskAdded={onTaskAdded} />
 			)}
 
-			<div className="bg-dark-surface/50 border border-dark-surface-elevated rounded-lg">
-				<div
-					className={cn(
-						"grid items-center p-2 border-b border-dark-surface-elevated text-xs uppercase",
-						gridCols
-					)}
-				>
-					<div className="px-2">Name</div>
-					<SortableHeader
-						title="Assignee"
-						sortKey="assignee"
-						sortConfig={sortConfig}
-						onSort={handleSort}
-					/>
-					{!isRecurring && (
-						<SortableHeader
-							title="Due Date"
-							sortKey="dueDate"
-							sortConfig={sortConfig}
-							onSort={handleSort}
-						/>
-					)}
-					<SortableHeader
-						title="Priority"
-						sortKey="priority"
-						sortConfig={sortConfig}
-						onSort={handleSort}
-					/>
-					<div className="text-center font-bold text-neutral-400">
-						Status
+			<div className="bg-dark-surface/50 border border-dark-surface-elevated rounded-lg overflow-hidden">
+				<div className="overflow-x-auto custom-scrollbar">
+					<div className="min-w-[700px]">
+						<div
+							className={cn(
+								"hidden md:grid items-center p-2 border-b border-dark-surface-elevated text-xs uppercase",
+								gridCols
+							)}
+						>
+							<div className="px-2">Name</div>
+							<SortableHeader
+								title="Assignee"
+								sortKey="assignee"
+								sortConfig={sortConfig}
+								onSort={handleSort}
+							/>
+							{!isRecurring && (
+								<SortableHeader
+									title="Due Date"
+									sortKey="dueDate"
+									sortConfig={sortConfig}
+									onSort={handleSort}
+								/>
+							)}
+							<SortableHeader
+								title="Priority"
+								sortKey="priority"
+								sortConfig={sortConfig}
+								onSort={handleSort}
+							/>
+							<div className="text-center font-bold text-neutral-400">
+								Status
+							</div>
+						</div>
+
+						{Object.keys(processedTasks).length > 0 ? (
+							<AnimatePresence>
+								{Object.entries(processedTasks).map(
+									([groupName, groupTasks]) => (
+										<motion.div key={groupName} layout>
+											{groupBy !== "none" &&
+												groupTasks.length > 0 && (
+													<div className="p-2 bg-dark-surface-elevated">
+														<h3 className="font-semibold text-sm text-neutral-300">
+															{groupName} (
+															{groupTasks.length})
+														</h3>
+													</div>
+												)}
+											{groupTasks.length > 0 &&
+												groupTasks.map((task) => (
+													<TaskListItem
+														key={task.task_id}
+														task={task}
+														onViewDetails={
+															onViewDetails
+														}
+														onEditTask={onEditTask}
+														onDeleteTask={
+															onDeleteTask
+														}
+														onRerunTask={
+															onRerunTask
+														}
+														onMarkComplete={
+															onMarkComplete
+														}
+														onAssigneeChange={
+															onAssigneeChange
+														}
+														activeTab={activeTab}
+													/>
+												))}
+										</motion.div>
+									)
+								)}
+							</AnimatePresence>
+						) : (
+							<div className="text-center p-10 text-neutral-500">
+								No {isRecurring ? "recurring" : "one-time"}{" "}
+								tasks found.
+							</div>
+						)}
 					</div>
 				</div>
-
-				{Object.keys(processedTasks).length > 0 ? (
-					<AnimatePresence>
-						{Object.entries(processedTasks).map(
-							([groupName, groupTasks]) => (
-								<motion.div key={groupName} layout>
-									{groupBy !== "none" &&
-										groupTasks.length > 0 && (
-											<div className="p-2 bg-dark-surface-elevated">
-												<h3 className="font-semibold text-sm text-neutral-300">
-													{groupName} (
-													{groupTasks.length})
-												</h3>
-											</div>
-										)}
-									{groupTasks.length > 0 &&
-										groupTasks.map((task) => (
-											<TaskListItem
-												key={task.task_id}
-												task={task}
-												onViewDetails={onViewDetails}
-												onEditTask={onEditTask}
-												onDeleteTask={onDeleteTask}
-												onRerunTask={onRerunTask}
-												onMarkComplete={onMarkComplete}
-												onAssigneeChange={
-													onAssigneeChange
-												}
-												activeTab={activeTab}
-											/>
-										))}
-								</motion.div>
-							)
-						)}
-					</AnimatePresence>
-				) : (
-					<div className="text-center p-10 text-neutral-500">
-						No {isRecurring ? "recurring" : "one-time"} tasks found.
-					</div>
-				)}
 			</div>
 		</div>
 	)

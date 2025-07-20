@@ -188,10 +188,22 @@ async def delete_task(
     request: TaskIdRequest,
     user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"]))
 ):
-    message = await mongo_manager.delete_task(request.taskId, user_id)
-    if not message:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found or not deleted.")
-    return {"message": message}
+    task = await mongo_manager.get_task(request.taskId, user_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
+
+    # If the task has a chat history, it's a modification. Deleting it should cancel the change.
+    if task.get("chat_history"):
+        success = await mongo_manager.revert_task_to_completed(request.taskId)
+        if success:
+            return {"message": "Change request cancelled and original task restored."}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to cancel change request.")
+    else: # It's a normal task, so delete it.
+        message = await mongo_manager.delete_task(request.taskId, user_id)
+        if not message:
+            raise HTTPException(status_code=404, detail="Task not found or not deleted.")
+        return {"message": message}
 
 @router.post("/task-action", status_code=status.HTTP_200_OK)
 async def task_action(

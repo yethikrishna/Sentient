@@ -36,6 +36,12 @@ export const taskStatusColors = {
 		color: "text-orange-400",
 		border: "border-orange-400"
 	},
+	clarification_answered: {
+		icon: IconRefresh,
+		label: "Re-planning",
+		color: "text-blue-400",
+		border: "border-blue-400"
+	},
 	processing: {
 		icon: IconPlayerPlay,
 		label: "Processing",

@@ -12,7 +12,8 @@ import {
 	IconCircleCheck,
 	IconAlertTriangle,
 	IconSend,
-	IconArchive
+	IconArchive,
+	IconGitFork
 } from "@tabler/icons-react"
 import { Tooltip } from "react-tooltip"
 import TaskDetailsContent from "./TaskDetailsContent"
@@ -20,6 +21,7 @@ import ConnectToolButton from "./ConnectToolButton"
 
 const TaskDetailsModal = ({
 	task,
+	tasksById,
 	onClose,
 	onEdit,
 	onApprove,
@@ -38,6 +40,10 @@ const TaskDetailsModal = ({
 	useEffect(() => {
 		chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
 	}, [chatHistory])
+
+	const originalTask = task.source_event_id
+		? tasksById[task.source_event_id]
+		: null
 
 	let missingTools = []
 	if (task.status === "approval_pending") {
@@ -110,13 +116,34 @@ const TaskDetailsModal = ({
 				onClick={(e) => e.stopPropagation()}
 				className="bg-dark-surface p-6 rounded-2xl shadow-xl w-full max-w-3xl border border-dark-surface-elevated max-h-[90vh] flex flex-col"
 			>
-				<div className="flex justify-between items-center mb-6">
-					<h3 className="text-2xl font-semibold text-white truncate">
-						{task.description}
-					</h3>
+				<div className="flex justify-between items-start mb-6">
+					<div className="flex-1 min-w-0">
+						<h3 className="text-2xl font-semibold text-white truncate pr-4">
+							{task.description}
+						</h3>
+						{originalTask && (
+							<button
+								onClick={(e) => {
+									e.stopPropagation()
+									// Navigate to the original task's URL, which will trigger the modal to open
+									router.push(
+										`/tasks?taskId=${originalTask.task_id}`
+									)
+									onClose() // Close the current modal
+								}}
+								className="flex items-center gap-1.5 text-sm text-neutral-400 hover:text-sentient-blue hover:underline mt-1"
+							>
+								<IconGitFork size={14} />
+								<span className="truncate">
+									Change request for:{" "}
+									{originalTask.description}
+								</span>
+							</button>
+						)}
+					</div>
 					<button
 						onClick={onClose}
-						className="p-1 rounded-full hover:bg-dark-surface-elevated"
+						className="p-1 rounded-full hover:bg-dark-surface-elevated flex-shrink-0"
 					>
 						<IconX size={20} />
 					</button>

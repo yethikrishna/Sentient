@@ -13,6 +13,7 @@ import {
 	IconRepeat,
 	IconArrowUp,
 	IconArrowDown,
+	IconGitFork,
 	IconSelector,
 	IconLoader
 } from "@tabler/icons-react"
@@ -163,6 +164,7 @@ const TaskListItem = ({
 	onRerunTask,
 	onMarkComplete,
 	onAssigneeChange,
+	originalTask,
 	activeTab
 }) => {
 	const statusInfo = taskStatusColors[task.status] || taskStatusColors.default
@@ -223,56 +225,73 @@ const TaskListItem = ({
 			className="grid items-center p-2 border-b border-dark-surface-elevated hover:bg-dark-surface cursor-pointer text-sm group"
 			style={{ gridTemplateColumns }}
 		>
-			<div className="truncate pr-4 font-medium flex items-center gap-2">
-				<div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-					{task.assignee === "user" && task.status === "pending" && (
+			<div className="pr-4 font-medium">
+				<div className="flex items-center gap-2">
+					<div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+						{task.assignee === "user" &&
+							task.status === "pending" && (
+								<button
+									onClick={(e) => {
+										e.stopPropagation()
+										onMarkComplete(task.task_id)
+									}}
+									className="p-1 rounded text-neutral-400 hover:bg-green-500/20 hover:text-green-400"
+									data-tooltip-id="tasks-tooltip"
+									data-tooltip-content="Mark Complete"
+								>
+									<IconCircleCheck size={14} />
+								</button>
+							)}
 						<button
 							onClick={(e) => {
 								e.stopPropagation()
-								onMarkComplete(task.task_id)
+								onRerunTask(task.task_id)
 							}}
-							className="p-1 rounded text-neutral-400 hover:bg-green-500/20 hover:text-green-400"
+							className="p-1 rounded text-neutral-400 hover:bg-dark-surface-elevated"
 							data-tooltip-id="tasks-tooltip"
-							data-tooltip-content="Mark Complete"
+							data-tooltip-content="Rerun Task"
 						>
-							<IconCircleCheck size={14} />
+							<IconRepeat size={14} />
 						</button>
-					)}
-					<button
-						onClick={(e) => {
-							e.stopPropagation()
-							onRerunTask(task.task_id)
-						}}
-						className="p-1 rounded text-neutral-400 hover:bg-dark-surface-elevated"
-						data-tooltip-id="tasks-tooltip"
-						data-tooltip-content="Rerun Task"
-					>
-						<IconRepeat size={14} />
-					</button>
-					<button
-						onClick={(e) => {
-							e.stopPropagation()
-							onEditTask(task)
-						}}
-						className="p-1 rounded text-neutral-400 hover:bg-dark-surface-elevated"
-						data-tooltip-id="tasks-tooltip"
-						data-tooltip-content="Edit"
-					>
-						<IconPencil size={14} />
-					</button>
-					<button
-						onClick={(e) => {
-							e.stopPropagation()
-							onDeleteTask(task.task_id)
-						}}
-						className="p-1 rounded text-neutral-400 hover:bg-red-500/20 hover:text-red-400"
-						data-tooltip-id="tasks-tooltip"
-						data-tooltip-content="Delete"
-					>
-						<IconTrash size={14} />
-					</button>
+						<button
+							onClick={(e) => {
+								e.stopPropagation()
+								onEditTask(task)
+							}}
+							className="p-1 rounded text-neutral-400 hover:bg-dark-surface-elevated"
+							data-tooltip-id="tasks-tooltip"
+							data-tooltip-content="Edit"
+						>
+							<IconPencil size={14} />
+						</button>
+						<button
+							onClick={(e) => {
+								e.stopPropagation()
+								onDeleteTask(task.task_id)
+							}}
+							className="p-1 rounded text-neutral-400 hover:bg-red-500/20 hover:text-red-400"
+							data-tooltip-id="tasks-tooltip"
+							data-tooltip-content="Delete"
+						>
+							<IconTrash size={14} />
+						</button>
+					</div>
+					<span className="truncate">{task.description}</span>
 				</div>
-				<span className="truncate">{task.description}</span>
+				{originalTask && (
+					<button
+						onClick={(e) => {
+							e.stopPropagation()
+							onViewDetails(originalTask)
+						}}
+						className="flex items-center gap-1.5 text-xs text-neutral-400 hover:text-sentient-blue hover:underline mt-1 pl-2"
+					>
+						<IconGitFork size={12} />
+						<span className="truncate">
+							Change for: {originalTask.description}
+						</span>
+					</button>
+				)}
 			</div>
 			<div className="flex items-center justify-center">
 				{assigneeDisplay}
@@ -307,6 +326,13 @@ const AllTasksView = ({
 		key: "dueDate",
 		direction: "ascending"
 	})
+
+	const tasksById = useMemo(() => {
+		return tasks.reduce((acc, task) => {
+			acc[task.task_id] = task
+			return acc
+		}, {})
+	}, [tasks])
 
 	const handleSort = (key) => {
 		setSortConfig((prevConfig) => {
@@ -486,29 +512,45 @@ const AllTasksView = ({
 													</div>
 												)}
 											{groupTasks.length > 0 &&
-												groupTasks.map((task) => (
-													<TaskListItem
-														key={task.task_id}
-														task={task}
-														onViewDetails={
-															onViewDetails
-														}
-														onEditTask={onEditTask}
-														onDeleteTask={
-															onDeleteTask
-														}
-														onRerunTask={
-															onRerunTask
-														}
-														onMarkComplete={
-															onMarkComplete
-														}
-														onAssigneeChange={
-															onAssigneeChange
-														}
-														activeTab={activeTab}
-													/>
-												))}
+												groupTasks.map((task) => {
+													const originalTask =
+														task.source_event_id
+															? tasksById[
+																	task
+																		.source_event_id
+																]
+															: null
+													return (
+														<TaskListItem
+															key={task.task_id}
+															task={task}
+															onViewDetails={
+																onViewDetails
+															}
+															onEditTask={
+																onEditTask
+															}
+															onDeleteTask={
+																onDeleteTask
+															}
+															onRerunTask={
+																onRerunTask
+															}
+															onMarkComplete={
+																onMarkComplete
+															}
+															onAssigneeChange={
+																onAssigneeChange
+															}
+															originalTask={
+																originalTask
+															}
+															activeTab={
+																activeTab
+															}
+														/>
+													)
+												})}
 										</motion.div>
 									)
 								)}

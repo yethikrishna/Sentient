@@ -388,6 +388,9 @@ async def async_generate_plan(task_id: str):
             logger.error(f"Cannot generate plan: Task {task_id} not found.")
             return
 
+        # Determine if this is a change request before proceeding.
+        is_change_request = bool(task.get("chat_history"))
+
         # Prevent re-planning if it's not in a plannable state
         plannable_statuses = ["planning", "clarification_answered"]
         if task.get("status") not in plannable_statuses:
@@ -475,7 +478,7 @@ async def async_generate_plan(task_id: str):
         if not plan_data or "plan" not in plan_data:
             raise Exception(f"Planner agent returned invalid JSON: {final_response_str}")
 
-        await db_manager.update_task_with_plan(task_id, plan_data)
+        await db_manager.update_task_with_plan(task_id, plan_data, is_change_request=is_change_request)
         capture_event(user_id, "proactive_task_generated", {
             "task_id": task_id,
             "source": task.get("original_context", {}).get("source", "unknown"),

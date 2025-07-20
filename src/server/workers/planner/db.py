@@ -87,17 +87,21 @@ class PlannerMongoManager: # noqa: E501
         )
         logger.info(f"Updated fields for task {task_id}: {list(fields.keys())}")
 
-    async def update_task_with_plan(self, task_id: str, plan_data: dict):
+    async def update_task_with_plan(self, task_id: str, plan_data: dict, is_change_request: bool = False):
         """Updates a task with a generated plan and sets it to pending approval."""
-        description = plan_data.get("description", "Proactively generated plan")
         plan_steps = plan_data.get("plan", [])
 
         update_doc = {
-            "description": description,
             "plan": plan_steps,
             "status": "approval_pending",
             "updated_at": datetime.datetime.now(datetime.timezone.utc)
         }
+
+        # Only update the description if it's a new task, not a change request.
+        # This prevents overwriting the original goal with the change request summary.
+        if not is_change_request:
+            description = plan_data.get("description", "Proactively generated plan")
+            update_doc["description"] = description
 
         result = await self.tasks_collection.update_one(
             {"task_id": task_id},

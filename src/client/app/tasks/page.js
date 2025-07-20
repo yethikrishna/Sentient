@@ -287,6 +287,15 @@ function TasksPageContent() {
 		[tasks]
 	)
 
+	const tasksById = useMemo(
+		() =>
+			tasks.reduce((acc, task) => {
+				acc[task.task_id] = task
+				return acc
+			}, {}),
+		[tasks]
+	)
+
 	return (
 		<DndProvider backend={HTML5Backend}>
 			<div className="flex h-screen bg-gradient-to-br from-neutral-900 via-black to-neutral-900 text-white overflow-hidden pl-0 md:pl-20">
@@ -358,6 +367,7 @@ function TasksPageContent() {
 					{selectedTask && (
 						<TaskDetailsModal
 							task={selectedTask}
+							tasksById={tasksById}
 							onClose={() => setSelectedTask(null)}
 							onEdit={(taskToEdit) => {
 								setEditingTask(taskToEdit)

@@ -302,6 +302,34 @@ class MongoManager:
         execute_task_plan.delay(task_id, user_id)
         return "Task execution has been initiated."
 
+    async def revert_task_to_completed(self, task_id: str) -> bool:
+        """Reverts a task that was being modified back to its completed state."""
+        update_payload = {
+            "$set": {
+                "status": "completed",
+                "updated_at": datetime.datetime.now(datetime.timezone.utc)
+            },
+            "$unset": {
+                "plan": "", "error": "", "progress_updates": "", "clarifying_questions": ""
+            }
+        }
+        result = await self.task_collection.update_one({"task_id": task_id}, update_payload)
+        return result.modified_count > 0
+
+    async def revert_task_to_completed(self, task_id: str) -> bool:
+        """Reverts a task that was being modified back to its completed state."""
+        update_payload = {
+            "$set": {
+                "status": "completed",
+                "updated_at": datetime.datetime.now(datetime.timezone.utc)
+            },
+            "$unset": {
+                "plan": "", "error": "", "progress_updates": "", "clarifying_questions": ""
+            }
+        }
+        result = await self.task_collection.update_one({"task_id": task_id}, update_payload)
+        return result.modified_count > 0
+
     async def rerun_task(self, original_task_id: str, user_id: str) -> Optional[str]:
         """Duplicates a task to be re-run."""
         original_task = await self.get_task(original_task_id, user_id)

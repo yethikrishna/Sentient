@@ -32,24 +32,24 @@ llm_cfg = {
 def get_db_client():
     return motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI)[MONGO_DB_NAME]
 
-async def update_task_status(db, task_id: str, status: str, user_id: str, details: Dict = None, block_id: Optional[str] = None):
-    update_doc = {"status": status, "updated_at": datetime.datetime.now(datetime.timezone.utc)}
+async def update_task_run_status(db, task_id: str, run_id: str, status: str, user_id: str, details: Dict = None, block_id: Optional[str] = None):
+    # Update the status of the specific run and the top-level task status
+    update_doc = {
+        "status": status, # Top-level status
+        "runs.$[run].status": status,
+        "updated_at": datetime.datetime.now(datetime.timezone.utc)
+    }
     task_description = ""
     
     if details:
         if "result" in details:
-            update_doc["result"] = details["result"]
+            update_doc["runs.$[run].result"] = details["result"]
         if "error" in details:
-            update_doc["error"] = details["error"]
+            update_doc["runs.$[run].error"] = details["error"]
     
     # Also update the block's status field even if there are no details
     if block_id:
         tasks_update = {"task_status": status}
-        if details:
-            if "result" in details:
-                tasks_update["task_result"] = details["result"]
-            if "error" in details:
-                tasks_update["task_result"] = details["error"] # Store error in result field for tasks
         await db.tasks_blocks_collection.update_one(
             {"block_id": block_id, "user_id": user_id},
             {"$set": tasks_update}
@@ -62,7 +62,8 @@ async def update_task_status(db, task_id: str, status: str, user_id: str, detail
     logger.info(f"Updating task {task_id} status to '{status}' with details: {details}")
     await db.tasks.update_one(
         {"task_id": task_id, "user_id": user_id},
-        {"$set": update_doc}
+        {"$set": update_doc},
+        array_filters=[{"run.run_id": run_id}]
     )
 
     if status in ["completed", "error"]:
@@ -70,13 +71,13 @@ async def update_task_status(db, task_id: str, status: str, user_id: str, detail
         notification_type = "taskCompleted" if status == "completed" else "taskFailed"
         await notify_user(user_id, notification_message, task_id, notification_type=notification_type)
 
-async def add_progress_update(db, task_id: str, user_id: str, message: str, block_id: Optional[str] = None):
+async def add_progress_update(db, task_id: str, run_id: str, user_id: str, message: str, block_id: Optional[str] = None):
     logger.info(f"Adding progress update to task {task_id}: '{message}'")
     progress_update = {"message": message, "timestamp": datetime.datetime.now(datetime.timezone.utc)}
     
     await db.tasks.update_one(
-        {"task_id": task_id, "user_id": user_id},
-        {"$push": {"progress_updates": progress_update}}
+        {"task_id": task_id, "user_id": user_id, "runs.run_id": run_id},
+        {"$push": {"runs.$.progress_updates": progress_update}}
     )
     if block_id:
         await db.tasks_blocks_collection.update_one(
@@ -103,15 +104,22 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     if not task:
         logger.error(f"Executor: Task {task_id} not found for user {user_id}.")
         return {"status": "error", "message": "Task not found."}
-    
+
+    if not task.get("runs"):
+        logger.error(f"Executor: Task {task_id} has no runs. Aborting.")
+        return {"status": "error", "message": "Task has no execution runs."}
+
+    latest_run = task["runs"][-1]
+    run_id = latest_run["run_id"]
+
     original_context_data = task.get("original_context", {})
     block_id = None
     if original_context_data.get("source") == "tasks_block":
         block_id = original_context_data.get("block_id")
 
     logger.info(f"Executor started processing task {task_id} (block_id: {block_id}) for user {user_id}.")
-    await update_task_status(db, task_id, "processing", user_id, block_id=block_id)
-    await add_progress_update(db, task_id, user_id, "Executor has picked up the task and is starting execution.", block_id=block_id)
+    await update_task_run_status(db, task_id, run_id, "processing", user_id, block_id=block_id)
+    await add_progress_update(db, task_id, run_id, user_id, "Executor has picked up the task and is starting execution.", block_id=block_id)
 
     user_profile = await db.user_profiles.find_one({"user_id": user_id})
     personal_info = user_profile.get("userData", {}).get("personalInfo", {}) if user_profile else {}
@@ -124,7 +132,7 @@ async def async_execute_task_plan(task_id: str, user_id: str):
         user_location = user_location_raw
 
     # 1. Determine required and available tools for the user
-    required_tools_from_plan = {step['tool'] for step in task.get('plan', [])}
+    required_tools_from_plan = {step['tool'] for step in latest_run.get('plan', [])}
     logger.info(f"Task {task_id}: Plan requires tools: {required_tools_from_plan}")
     
     user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
@@ -180,7 +188,7 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     current_user_time = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
 
     plan_description = task.get("description", "Unnamed plan")
-    plan_steps_str = "\n".join([f"{i+1}. Use the '{step['tool']}' tool to '{step['description']}'" for i, step in enumerate(task.get("plan", []))])
+    plan_steps_str = "\n".join([f"{i+1}. Use the '{step['tool']}' tool to '{step['description']}'" for i, step in enumerate(latest_run.get("plan", []))])
     original_context_str = json.dumps(original_context_data, indent=2, default=str) if original_context_data else "No original context provided."
 
     block_id_prompt = f"The block_id for this task is '{block_id}'. You MUST pass this ID to the 'update_progress' tool in the 'block_id' parameter." if block_id else "This task did not originate from a tasks block."
@@ -200,8 +208,7 @@ async def async_execute_task_plan(task_id: str, user_id: str):
         f"Your task ID is '{task_id}'. {block_id_prompt}\n\n"
         f"The original context that triggered this plan is:\n---BEGIN CONTEXT---\n{original_context_str}\n---END CONTEXT---\n\n"
         f"**Primary Objective:** '{plan_description}'\n\n"
-        f"**The Plan to Execute:**\n" +
-        "\n".join([f"- Step {i+1}: Use the '{step['tool']}' tool to '{step['description']}'" for i, step in enumerate(task.get("plan", []))]) + "\n\n"
+        f"**The Plan to Execute:**\n" + "\n".join([f"- Step {i+1}: Use the '{step['tool']}' tool to '{step['description']}'" for i, step in enumerate(latest_run.get("plan", []))]) + "\n\n"
         "**EXECUTION STRATEGY:**\n"
         "1.  **Map Plan to Tools:** The plan provides a high-level tool name (e.g., 'gmail', 'gdrive'). You must map this to the specific functions available to you (e.g., `gmail-send_email`, `gdrive-gdrive_search`).\n"
         "2.  **Be Resourceful & Fill Gaps:** The plan is a guideline. If a step is missing information (e.g., an email address for a manager, a document name), your first action for that step MUST be to use the `supermemory-search` tool to find the missing information. Do not proceed with incomplete information.\n"
@@ -213,7 +220,7 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     )
     
     try:
-        await add_progress_update(db, task_id, user_id, f"Initializing executor agent with tools: {list(active_mcp_servers.keys())}", block_id=block_id)
+        await add_progress_update(db, task_id, run_id, user_id, f"Initializing executor agent with tools: {list(active_mcp_servers.keys())}", block_id=block_id)
         
         executor_agent = Assistant(
             llm=llm_cfg, 
@@ -238,19 +245,19 @@ async def async_execute_task_plan(task_id: str, user_id: str):
                 final_content = content
 
         logger.info(f"Task {task_id}: Final result: {final_content}")
-        await add_progress_update(db, task_id, user_id, "Execution script finished.", block_id=block_id)
+        await add_progress_update(db, task_id, run_id, user_id, "Execution script finished.", block_id=block_id)
         capture_event(user_id, "task_execution_succeeded", {
             "task_id": task_id,
-            "tool_count": len(task.get("plan") or []),
+            "tool_count": len(latest_run.get("plan") or []),
             "is_recurring": (task.get("schedule") or {}).get("type") == "recurring"
         })
-        await update_task_status(db, task_id, "completed", user_id, details={"result": final_content}, block_id=block_id)
+        await update_task_run_status(db, task_id, run_id, "completed", user_id, details={"result": final_content}, block_id=block_id)
 
         return {"status": "success", "result": final_content}
 
     except Exception as e:
         error_message = f"Executor agent failed: {str(e)}"
         logger.error(f"Task {task_id}: {error_message}", exc_info=True)
-        await add_progress_update(db, task_id, user_id, f"An error occurred during execution: {error_message}", block_id=block_id)
-        await update_task_status(db, task_id, "error", user_id, details={"error": error_message}, block_id=block_id)
+        await add_progress_update(db, task_id, run_id, user_id, f"An error occurred during execution: {error_message}", block_id=block_id)
+        await update_task_run_status(db, task_id, run_id, "error", user_id, details={"error": error_message}, block_id=block_id)
         return {"status": "error", "message": error_message}

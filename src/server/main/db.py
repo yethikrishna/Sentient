@@ -225,6 +225,17 @@ class MongoManager:
         # Tasks assigned to AI start planning, user tasks are pending.
         status = "planning" if assignee == "ai" else "pending"
 
+        initial_run = {
+            "run_id": str(uuid.uuid4()),
+            "status": status,
+            "plan": [],
+            "clarifying_questions": [],
+            "progress_updates": [],
+            "result": None,
+            "error": None,
+            "prompt": task_data.get("description")
+        }
+
         task_doc = {
             "task_id": task_id,
             "user_id": user_id,
@@ -232,17 +243,12 @@ class MongoManager:
             "status": status,
             "assignee": assignee,
             "priority": task_data.get("priority", 1),
-            "plan": [],
+            "runs": [initial_run],
             "schedule": schedule,
             "enabled": True,
             "original_context": {"source": "manual_creation"},
             "created_at": now_utc,
             "updated_at": now_utc,
-            "clarifying_questions": [],
-            "progress_updates": [],
-            "result": None,
-            "error": None,
-            "chat_history": [],
             "chat_history": [],
             "next_execution_at": None,
             "last_execution_at": None,
@@ -302,32 +308,16 @@ class MongoManager:
         execute_task_plan.delay(task_id, user_id)
         return "Task execution has been initiated."
 
-    async def revert_task_to_completed(self, task_id: str) -> bool:
-        """Reverts a task that was being modified back to its completed state."""
+    async def cancel_latest_run(self, task_id: str) -> bool:
+        """Pops the last run from the array and reverts the task status to completed."""
         update_payload = {
             "$set": {
                 "status": "completed",
                 "updated_at": datetime.datetime.now(datetime.timezone.utc)
             },
-            "$unset": {
-                "plan": "", "error": "", "progress_updates": "", "clarifying_questions": ""
-            }
+            "$pop": {"runs": 1}  # Removes the last element from the 'runs' array
         }
-        result = await self.task_collection.update_one({"task_id": task_id}, update_payload)
-        return result.modified_count > 0
-
-    async def revert_task_to_completed(self, task_id: str) -> bool:
-        """Reverts a task that was being modified back to its completed state."""
-        update_payload = {
-            "$set": {
-                "status": "completed",
-                "updated_at": datetime.datetime.now(datetime.timezone.utc)
-            },
-            "$unset": {
-                "plan": "", "error": "", "progress_updates": "", "clarifying_questions": ""
-            }
-        }
-        result = await self.task_collection.update_one({"task_id": task_id}, update_payload)
+        result = await self.task_collection.update_one({"task_id": task_id}, update_payload) # noqa: E501
         return result.modified_count > 0
 
     async def rerun_task(self, original_task_id: str, user_id: str) -> Optional[str]:

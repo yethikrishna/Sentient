@@ -55,6 +55,18 @@ class PlannerMongoManager: # noqa: E501
         """Creates an initial task document when an action item is first processed."""
         task_id = str(uuid.uuid4())
         now_utc = datetime.datetime.now(datetime.timezone.utc)
+
+        initial_run = {
+            "run_id": str(uuid.uuid4()),
+            "status": "planning",
+            "plan": [],
+            "clarifying_questions": [],
+            "progress_updates": [],
+            "result": None,
+            "error": None,
+            "prompt": description
+        }
+
         task_doc = {
             "task_id": task_id,
             "user_id": user_id,
@@ -62,18 +74,12 @@ class PlannerMongoManager: # noqa: E501
             "status": "planning", # As per spec
             "assignee": "ai", # Proactive tasks are assigned to AI
             "priority": 1,
-            "plan": [], # Plan is empty initially
-            "action_items": action_items,
-            "topics": topics,
+            "runs": [initial_run],
             "original_context": original_context,
             "source_event_id": source_event_id,
-            "clarifying_questions": [],
-            "progress_updates": [],
             "created_at": now_utc,
             "updated_at": now_utc,
-            "result": None,
             "chat_history": [],
-            "error": None,
         }
         await self.tasks_collection.insert_one(task_doc)
         logger.info(f"Created initial task {task_id} for user {user_id}")
@@ -87,25 +93,26 @@ class PlannerMongoManager: # noqa: E501
         )
         logger.info(f"Updated fields for task {task_id}: {list(fields.keys())}")
 
-    async def update_task_with_plan(self, task_id: str, plan_data: dict, is_change_request: bool = False):
+    async def update_task_with_plan(self, task_id: str, run_id: str, plan_data: dict, is_change_request: bool = False):
         """Updates a task with a generated plan and sets it to pending approval."""
         plan_steps = plan_data.get("plan", [])
 
         update_doc = {
-            "plan": plan_steps,
-            "status": "approval_pending",
+            "status": "approval_pending", # Update top-level status
+            "runs.$[run].plan": plan_steps,
+            "runs.$[run].status": "approval_pending",
             "updated_at": datetime.datetime.now(datetime.timezone.utc)
         }
 
-        # Only update the description if it's a new task, not a change request.
-        # This prevents overwriting the original goal with the change request summary.
+        # Only set the main description for the very first run.
         if not is_change_request:
             description = plan_data.get("description", "Proactively generated plan")
             update_doc["description"] = description
 
         result = await self.tasks_collection.update_one(
             {"task_id": task_id},
-            {"$set": update_doc}
+            {"$set": update_doc},
+            array_filters=[{"run.run_id": run_id}]
         )
         logger.info(f"Updated task {task_id} with a generated plan. Matched: {result.matched_count}")
 
@@ -135,6 +142,7 @@ class PlannerMongoManager: # noqa: E501
     async def save_plan_as_task(self, user_id: str, description: str, plan: list, original_context: dict, source_event_id: str):
         """Saves a generated plan to the tasks collection for user approval."""
         task_id = str(uuid.uuid4())
+        run_id = str(uuid.uuid4())
         now_utc = datetime.datetime.now(datetime.timezone.utc)
         task_doc = {
             "task_id": task_id,
@@ -142,14 +150,23 @@ class PlannerMongoManager: # noqa: E501
             "description": description,
             "status": "approval_pending",
             "priority": 1,
-            "plan": plan,
+            "runs": [ # New: Introduce runs array
+                {
+                    "run_id": run_id,
+                    "status": "approval_pending", # Status for this specific run
+                    "plan": plan, # Plan for this run
+                    "result": None,
+                    "chat_history": [],
+                    "error": None,
+                    "created_at": now_utc,
+                    "updated_at": now_utc,
+                }
+            ],
             "original_context": original_context,
             "source_event_id": source_event_id,
             "progress_updates": [],
             "created_at": now_utc,
             "updated_at": now_utc,
-            "result": None,
-            "error": None,
             "agent_id": "planner_agent"
         }
         await self.tasks_collection.insert_one(task_doc)

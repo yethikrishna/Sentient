@@ -12,8 +12,7 @@ import {
 	IconCircleCheck,
 	IconAlertTriangle,
 	IconSend,
-	IconArchive,
-	IconGitFork
+	IconArchive
 } from "@tabler/icons-react"
 import { Tooltip } from "react-tooltip"
 import TaskDetailsContent from "./TaskDetailsContent"
@@ -21,7 +20,6 @@ import ConnectToolButton from "./ConnectToolButton"
 
 const TaskDetailsModal = ({
 	task,
-	tasksById,
 	onClose,
 	onEdit,
 	onApprove,
@@ -41,13 +39,14 @@ const TaskDetailsModal = ({
 		chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
 	}, [chatHistory])
 
-	const originalTask = task.source_event_id
-		? tasksById[task.source_event_id]
-		: null
+	const runs = task.runs || []
+	const latestRun = runs.length > 0 ? runs[runs.length - 1] : {}
 
 	let missingTools = []
 	if (task.status === "approval_pending") {
-		const requiredTools = new Set(task.plan?.map((step) => step.tool) || [])
+		const requiredTools = new Set(
+			latestRun.plan?.map((step) => step.tool) || []
+		)
 		requiredTools.forEach((toolName) => {
 			const integration = integrations.find((i) => i.name === toolName)
 			if (
@@ -121,25 +120,6 @@ const TaskDetailsModal = ({
 						<h3 className="text-2xl font-semibold text-white truncate pr-4">
 							{task.description}
 						</h3>
-						{originalTask && (
-							<button
-								onClick={(e) => {
-									e.stopPropagation()
-									// Navigate to the original task's URL, which will trigger the modal to open
-									router.push(
-										`/tasks?taskId=${originalTask.task_id}`
-									)
-									onClose() // Close the current modal
-								}}
-								className="flex items-center gap-1.5 text-sm text-neutral-400 hover:text-sentient-blue hover:underline mt-1"
-							>
-								<IconGitFork size={14} />
-								<span className="truncate">
-									Change request for:{" "}
-									{originalTask.description}
-								</span>
-							</button>
-						)}
 					</div>
 					<button
 						onClick={onClose}
@@ -148,118 +128,152 @@ const TaskDetailsModal = ({
 						<IconX size={20} />
 					</button>
 				</div>
+
 				<div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6">
-					<div className="flex-1 space-y-4">
-						{/* Chat History */}
-						{chatHistory.map((msg, index) => (
-							<div
-								key={index}
-								className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-							>
+					{/* Main Task Content & Original Outcome */}
+					<TaskDetailsContent task={task} />
+
+					{/* Follow-up Section for Changes, Clarifications, and Approvals */}
+					{(chatHistory.length > 0 ||
+						task.status === "clarification_pending" ||
+						task.status === "approval_pending") && (
+						<div className="pt-6 mt-6 border-t border-dark-surface-elevated space-y-4">
+							<h4 className="text-lg font-semibold text-white">
+								Conversation & Changes
+							</h4>
+
+							{/* Chat History */}
+							{chatHistory.map((msg, index) => (
 								<div
-									className={`p-3 rounded-lg max-w-[80%] ${msg.role === "user" ? "bg-sentient-blue" : "bg-neutral-700"}`}
+									key={index}
+									className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
 								>
-									<p className="text-sm whitespace-pre-wrap">
-										{msg.content}
-									</p>
-								</div>
-							</div>
-						))}
-
-						{/* Task Status Specific UI */}
-						{task.status === "approval_pending" && (
-							<div className="bg-neutral-700/50 p-4 rounded-lg text-center space-y-3">
-								<p className="text-sm font-semibold">
-									This plan requires your approval.
-								</p>
-								<div className="flex justify-center gap-3">
-									<button
-										onClick={() => {
-											onApprove(task.task_id)
-											onClose()
-										}}
-										disabled={missingTools.length > 0}
-										className="px-4 py-2 text-sm bg-green-500/20 text-green-300 rounded-lg hover:bg-green-500/40 disabled:opacity-50"
+									<div
+										className={`p-3 rounded-lg max-w-[80%] ${msg.role === "user" ? "bg-sentient-blue" : "bg-neutral-700"}`}
 									>
-										Approve Plan
-									</button>
-									<button
-										onClick={() => {
-											onDelete(task.task_id)
-											onClose()
-										}}
-										className="px-4 py-2 text-sm bg-red-500/20 text-red-300 rounded-lg hover:bg-red-500/40"
-									>
-										Disapprove
-									</button>
-								</div>
-							</div>
-						)}
-
-						{task.status === "clarification_pending" && (
-							<div className="bg-neutral-700/50 p-4 rounded-lg space-y-3">
-								<p className="text-sm font-semibold">
-									I need more information to proceed:
-								</p>
-								{task.clarifying_questions.map((q) => (
-									<div key={q.question_id}>
-										<label className="text-xs text-neutral-400 block mb-1">
-											{q.text}
-										</label>
-										<textarea
-											value={
-												clarificationAnswers[
-													q.question_id
-												] || ""
-											}
-											onChange={(e) =>
-												handleAnswerChange(
-													q.question_id,
-													e.target.value
-												)
-											}
-											rows={2}
-											className="w-full p-2 bg-dark-bg border border-dark-surface-elevated rounded-md text-sm"
-										/>
+										<p className="text-sm whitespace-pre-wrap">
+											{msg.content}
+										</p>
 									</div>
-								))}
-								<div className="flex justify-end">
-									<button
-										onClick={() => {
-											onAnswerClarifications(
-												task.task_id,
-												Object.entries(
-													clarificationAnswers
-												).map(([qid, atext]) => ({
-													question_id: qid,
-													answer_text: atext
-												}))
-											)
-											onClose()
-										}}
-										className="px-4 py-2 text-sm bg-sentient-blue rounded-lg hover:bg-sentient-blue-dark"
-									>
-										Submit Answers
-									</button>
 								</div>
-							</div>
-						)}
+							))}
 
-						<TaskDetailsContent task={task} />
-						<div ref={chatEndRef} />
-					</div>
+							{/* Clarification Questions */}
+							{task.status === "clarification_pending" && (
+								<div className="bg-neutral-700/50 p-4 rounded-lg space-y-3">
+									<p className="text-sm font-semibold">
+										I need more information to proceed:
+									</p>
+									{latestRun.clarifying_questions.map((q) => (
+										<div key={q.question_id}>
+											<label className="text-xs text-neutral-400 block mb-1">
+												{q.text}
+											</label>
+											<textarea
+												value={
+													clarificationAnswers[
+														q.question_id
+													] || ""
+												}
+												onChange={(e) =>
+													handleAnswerChange(
+														q.question_id,
+														e.target.value
+													)
+												}
+												rows={2}
+												className="w-full p-2 bg-dark-bg border border-dark-surface-elevated rounded-md text-sm"
+											/>
+										</div>
+									))}
+									<div className="flex justify-end">
+										<button
+											onClick={() => {
+												onAnswerClarifications(
+													task.task_id,
+													Object.entries(
+														clarificationAnswers
+													).map(([qid, atext]) => ({
+														question_id: qid,
+														answer_text: atext
+													}))
+												)
+												onClose()
+											}}
+											className="px-4 py-2 text-sm bg-sentient-blue rounded-lg hover:bg-sentient-blue-dark"
+										>
+											Submit Answers
+										</button>
+									</div>
+								</div>
+							)}
 
-					{missingTools.length > 0 && (
-						<div className="bg-yellow-900/50 border border-yellow-500/50 p-3 rounded-lg flex items-center gap-3">
-							<IconAlertTriangle className="text-yellow-400" />
-							<p className="text-yellow-300 text-sm">
-								This plan requires tools you haven't connected:{" "}
-								<b>{missingTools.join(", ")}</b>.
-							</p>
-							<ConnectToolButton toolName="" />
+							{/* New Plan for Approval */}
+							{task.status === "approval_pending" && (
+								<div className="bg-neutral-700/50 p-4 rounded-lg space-y-4">
+									<p className="text-sm font-semibold text-center">
+										New plan requires your approval:
+									</p>
+									<div className="space-y-2">
+										{(latestRun.plan || []).map(
+											(step, index) => (
+												<div
+													key={index}
+													className="flex items-start gap-3 bg-dark-surface/70 p-3 rounded-md border border-dark-surface-elevated"
+												>
+													<div className="flex-shrink-0 text-[var(--color-accent-blue)] font-bold mt-0.5">
+														{index + 1}.
+													</div>
+													<div>
+														<p className="font-semibold text-white">
+															{step.tool}
+														</p>
+														<p className="text-sm text-[var(--color-text-secondary)]">
+															{step.description}
+														</p>
+													</div>
+												</div>
+											)
+										)}
+									</div>
+									<div className="flex justify-center gap-3">
+										<button
+											onClick={() => {
+												onApprove(task.task_id)
+												onClose()
+											}}
+											disabled={missingTools.length > 0}
+											className="px-4 py-2 text-sm bg-green-500/20 text-green-300 rounded-lg hover:bg-green-500/40 disabled:opacity-50"
+										>
+											Approve Plan
+										</button>
+										<button
+											onClick={() => {
+												onDelete(task.task_id)
+												onClose()
+											}}
+											className="px-4 py-2 text-sm bg-red-500/20 text-red-300 rounded-lg hover:bg-red-500/40"
+										>
+											Disapprove
+										</button>
+									</div>
+								</div>
+							)}
 						</div>
 					)}
+					<div ref={chatEndRef} />
 				</div>
+
+				{missingTools.length > 0 && (
+					<div className="bg-yellow-900/50 border border-yellow-500/50 p-3 rounded-lg flex items-center gap-3 mt-4">
+						<IconAlertTriangle className="text-yellow-400" />
+						<p className="text-yellow-300 text-sm">
+							This plan requires tools you haven't connected:{" "}
+							<b>{missingTools.join(", ")}</b>.
+						</p>
+						<ConnectToolButton toolName="" />
+					</div>
+				)}
 
 				{/* Footer with actions and chat input */}
 				<div className="mt-6 pt-4 border-t border-dark-surface-elevated">
@@ -319,7 +333,7 @@ const TaskDetailsModal = ({
 								task.status === "pending" && (
 									<button
 										onClick={() => {
-											onArchiveTask(task.task_id) // We'll just mark it complete, which archives it
+											onMarkComplete(task.task_id)
 											onClose()
 										}}
 										className="py-2 px-4 text-sm rounded-lg bg-green-500/20 text-green-300 hover:bg-green-500/40 flex items-center gap-2"

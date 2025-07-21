@@ -388,6 +388,11 @@ async def async_generate_plan(task_id: str):
             logger.error(f"Cannot generate plan: Task {task_id} not found.")
             return
 
+        if not task.get("runs"):
+             logger.error(f"Cannot generate plan: Task {task_id} has no 'runs' array.")
+             await db_manager.update_task_status(task_id, "error", {"error": "Task data is malformed: missing 'runs' array."})
+             return
+
         # Determine if this is a change request before proceeding.
         is_change_request = bool(task.get("chat_history"))
 
@@ -396,6 +401,9 @@ async def async_generate_plan(task_id: str):
         if task.get("status") not in plannable_statuses:
              logger.warning(f"Task {task_id} is not in a plannable state (current: {task.get('status')}). Aborting plan generation.")
              return
+
+        latest_run = task["runs"][-1]
+        run_id = latest_run["run_id"]
 
         user_id = task["user_id"]
         topics = task.get("topics", [])
@@ -410,14 +418,18 @@ async def async_generate_plan(task_id: str):
         task_description = task.get("description", "")
 
         # If the task is in the 'planning' state, check if clarification is needed.
-        # If it's 'clarification_answered', skip this check and proceed to planning.
-        if task.get("status") == "planning":
+        if latest_run.get("status") == "planning":
             questions_list = await get_clarifying_questions(user_id, task_description, topics, original_context, db_manager)
             if questions_list and isinstance(questions_list, list) and len(questions_list) > 0:
                 logger.info(f"Task {task_id}: Needs clarification. Questions: {questions_list}")
                 questions_for_db = [{"question_id": str(uuid.uuid4()), "text": q.strip(), "answer": None} for q in questions_list]
 
-                await db_manager.update_task_with_questions(task_id, "clarification_pending", questions_for_db)
+                await db_manager.tasks_collection.update_one(
+                    {"task_id": task_id},
+                    {"$set": {
+                        "status": "clarification_pending", "runs.$[run].status": "clarification_pending", "runs.$[run].clarifying_questions": questions_for_db
+                    }},
+                    array_filters=[{"run.run_id": run_id}])
                 await notify_user(user_id, f"I have a few questions to help me plan: '{task_description[:50]}...'", task_id, notification_type="taskNeedsApproval")
                 capture_event(user_id, "clarification_needed", {"task_id": task_id, "question_count": len(questions_list)})
                 logger.info(f"Task {task_id} moved to 'clarification_pending'.")
@@ -447,11 +459,11 @@ async def async_generate_plan(task_id: str):
         
         current_user_time = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
 
-        retrieved_context = task.get("found_context", {})
+        retrieved_context = latest_run.get("found_context", {})
         # ** NEW ** Add answered questions to the context
         answered_questions = []
-        if task.get("clarifying_questions"):
-            for q in task["clarifying_questions"]:
+        if latest_run.get("clarifying_questions"):
+            for q in latest_run["clarifying_questions"]:
                 if q.get("answer"):
                     answered_questions.append(f"User Clarification: Q: {q['text']} A: {q['answer']}")
         
@@ -478,7 +490,7 @@ async def async_generate_plan(task_id: str):
         if not plan_data or "plan" not in plan_data:
             raise Exception(f"Planner agent returned invalid JSON: {final_response_str}")
 
-        await db_manager.update_task_with_plan(task_id, plan_data, is_change_request=is_change_request)
+        await db_manager.update_task_with_plan(task_id, run_id, plan_data, is_change_request=is_change_request)
         capture_event(user_id, "proactive_task_generated", {
             "task_id": task_id,
             "source": task.get("original_context", {}).get("source", "unknown"),

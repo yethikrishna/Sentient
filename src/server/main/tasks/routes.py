@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+import uuid
 
 from main.dependencies import mongo_manager
 from main.auth.utils import PermissionChecker, AuthHelper
@@ -18,8 +18,6 @@ from .prompts import TASK_CREATION_PROMPT
 class GeneratePlanRequest(BaseModel):
     prompt: str
 
-from json_extractor import JsonExtractor
-from .prompts import TASK_CREATION_PROMPT
 router = APIRouter(
     prefix="/tasks",
     tags=["Agents & Tasks"]
@@ -192,14 +190,15 @@ async def delete_task(
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
 
-    # If the task has a chat history, it's a modification. Deleting it should cancel the change.
-    if task.get("chat_history"):
-        success = await mongo_manager.revert_task_to_completed(request.taskId)
+    # If there's more than one run, "deleting" means cancelling the latest change request.
+    if len(task.get("runs", [])) > 1:
+        success = await mongo_manager.cancel_latest_run(request.taskId)
         if success:
             return {"message": "Change request cancelled and original task restored."}
         else:
             raise HTTPException(status_code=500, detail="Failed to cancel change request.")
-    else: # It's a normal task, so delete it.
+    else:
+        # This is a normal task with only one run, so delete it entirely.
         message = await mongo_manager.delete_task(request.taskId, user_id)
         if not message:
             raise HTTPException(status_code=404, detail="Task not found or not deleted.")
@@ -254,7 +253,7 @@ async def rerun_task(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Original task not found or failed to duplicate.")
 
     # Trigger the planner for the new task
-    generate_plan_from_context.delay(new_task_id, user_id)
+    generate_plan_from_context.delay(new_task_id)
     logger.info(f"Rerunning task {request.taskId}. New task {new_task_id} created and sent to planner.")
     return {"message": "Task has been duplicated for re-run.", "new_task_id": new_task_id}
 
@@ -304,7 +303,48 @@ async def task_chat(
     request: TaskChatRequest,
     user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"]))
 ):
-    """Handles a user's chat message for a task, typically for change requests."""
-    # The logic of adding the message to history and triggering the worker is now in the worker itself.
-    process_task_change_request.delay(request.taskId, user_id, request.message)
-    return JSONResponse(content={"message": "Change request received. The AI will start working on it."})
+    """
+    Handles a user's chat message for a task. If the task was completed,
+    this will trigger a re-planning of the same task by adding a new 'run'.
+    """
+    task_id = request.taskId
+    task = await mongo_manager.get_task(task_id, user_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
+
+    # --- Migration logic for older tasks ---
+    if "runs" not in task:
+        # First change request on an old task, migrate top-level fields to the first run
+        first_run = {
+            "run_id": str(uuid.uuid4()),
+            "status": "completed",
+            "plan": task.get("plan", []),
+            "clarifying_questions": task.get("clarifying_questions", []),
+            "progress_updates": task.get("progress_updates", []),
+            "result": task.get("result"),
+            "error": task.get("error")
+        }
+        await mongo_manager.update_task(task_id, {"runs": [first_run]})
+
+    # Append user message to top-level chat history
+    new_message = {
+        "role": "user",
+        "content": request.message,
+        "timestamp": datetime.now(timezone.utc)
+    }
+    
+    # Create a new run for the change request
+    new_run = {
+        "run_id": str(uuid.uuid4()),
+        "status": "planning",
+        "prompt": request.message # Store the prompt that initiated this run
+    }
+
+    await mongo_manager.task_collection.update_one(
+        {"task_id": task_id},
+        {"$set": {"status": "planning"}, "$push": {"chat_history": new_message, "runs": new_run}}
+    )
+
+    # Re-trigger the planner for the same task
+    generate_plan_from_context.delay(task_id)
+    return JSONResponse(content={"message": "Change request received. The task is now being re-planned."})

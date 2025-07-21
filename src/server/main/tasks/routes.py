@@ -190,9 +190,13 @@ async def delete_task(
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
 
-    # If there's more than one run, "deleting" means cancelling the latest change request.
-    if len(task.get("runs", [])) > 1:
+    is_modification = len(task.get("runs", [])) > 1
+
+    if is_modification:
+        # This is a "cancel change request" action.
         success = await mongo_manager.cancel_latest_run(request.taskId)
+        # Also delete any notifications related to the cancelled modification attempt.
+        await mongo_manager.delete_notifications_for_task(user_id, request.taskId)
         if success:
             return {"message": "Change request cancelled and original task restored."}
         else:

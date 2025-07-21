@@ -320,6 +320,16 @@ class MongoManager:
         result = await self.task_collection.update_one({"task_id": task_id}, update_payload) # noqa: E501
         return result.modified_count > 0
 
+    async def delete_notifications_for_task(self, user_id: str, task_id: str):
+        """Deletes all notifications associated with a specific task_id for a user."""
+        if not user_id or not task_id:
+            return
+        await self.notifications_collection.update_one(
+            {"user_id": user_id},
+            {"$pull": {"notifications": {"task_id": task_id}}}
+        )
+        logger.info(f"Deleted notifications for task {task_id} for user {user_id}.")
+
     async def rerun_task(self, original_task_id: str, user_id: str) -> Optional[str]:
         """Duplicates a task to be re-run."""
         original_task = await self.get_task(original_task_id, user_id)

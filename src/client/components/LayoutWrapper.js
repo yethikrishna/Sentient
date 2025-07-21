@@ -7,6 +7,7 @@ import NotificationsOverlay from "@components/NotificationsOverlay"
 import { IconBell } from "@tabler/icons-react"
 import FloatingNav from "@components/FloatingNav"
 import CommandPalette from "./CommandPallete"
+import { useGlobalShortcuts } from "@hooks/useGlobalShortcuts"
 
 export default function LayoutWrapper({ children }) {
 	const [isNotificationsOpen, setNotificationsOpen] = useState(false)
@@ -15,7 +16,8 @@ export default function LayoutWrapper({ children }) {
 	const [userDetails, setUserDetails] = useState(null)
 	const wsRef = useRef(null)
 	const pathname = usePathname()
-	const router = useRouter()
+
+	const showNav = !["/", "/onboarding"].includes(pathname)
 
 	useEffect(() => {
 		fetch("/api/user/profile")
@@ -36,8 +38,11 @@ export default function LayoutWrapper({ children }) {
 					return
 				}
 				const { accessToken } = await tokenResponse.json()
-				const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws"
-				const serverUrlHttp = process.env.NEXT_PUBLIC_APP_SERVER_URL || "http://localhost:5000"
+				const wsProtocol =
+					window.location.protocol === "https:" ? "wss" : "ws"
+				const serverUrlHttp =
+					process.env.NEXT_PUBLIC_APP_SERVER_URL ||
+					"http://localhost:5000"
 				const serverHost = serverUrlHttp.replace(/^https?:\/\//, "")
 				const wsUrl = `${wsProtocol}://${serverHost}/api/ws/notifications`
 
@@ -45,7 +50,10 @@ export default function LayoutWrapper({ children }) {
 				ws.isCleaningUp = false
 				wsRef.current = ws
 
-				ws.onopen = () => ws.send(JSON.stringify({ type: "auth", token: accessToken }))
+				ws.onopen = () =>
+					ws.send(
+						JSON.stringify({ type: "auth", token: accessToken })
+					)
 				ws.onmessage = (event) => {
 					const data = JSON.parse(event.data)
 					if (data.type === "new_notification" && data.notification) {
@@ -61,8 +69,12 @@ export default function LayoutWrapper({ children }) {
 												<IconBell className="h-6 w-6 text-[var(--color-accent-blue)]" />
 											</div>
 											<div className="ml-3 flex-1">
-												<p className="text-sm font-medium text-white">New Notification</p>
-												<p className="mt-1 text-sm text-gray-400">{data.notification.message}</p>
+												<p className="text-sm font-medium text-white">
+													New Notification
+												</p>
+												<p className="mt-1 text-sm text-gray-400">
+													{data.notification.message}
+												</p>
 											</div>
 										</div>
 									</div>
@@ -99,45 +111,21 @@ export default function LayoutWrapper({ children }) {
 		setUnreadCount(0)
 	}, [])
 
-	const handleKeyDown = useCallback(
-		(e) => {
-			if (e.ctrlKey) {
-				switch (e.key.toLowerCase()) {
-					case "h":
-						router.push("/home")
-						break
-					case "a":
-						router.push("/tasks")
-						break
-					case "b":
-						handleNotificationsOpen()
-						break
-					case "k":
-						setCommandPaletteOpen((prev) => !prev)
-						break
-					default:
-						return
-				}
-				e.preventDefault()
-			} else if (e.key === "Escape") {
-				if (isNotificationsOpen) setNotificationsOpen(false)
-				if (isCommandPaletteOpen) setCommandPaletteOpen(false)
-			}
-		},
-		[
-			router,
-			isNotificationsOpen,
-			isCommandPaletteOpen,
-			handleNotificationsOpen
-		]
+	// Use the new custom hook for shortcuts
+	useGlobalShortcuts(handleNotificationsOpen, () =>
+		setCommandPaletteOpen((prev) => !prev)
 	)
 
 	useEffect(() => {
-		window.addEventListener("keydown", handleKeyDown)
-		return () => window.removeEventListener("keydown", handleKeyDown)
-	}, [handleKeyDown])
-
-	const showNav = !["/", "/onboarding"].includes(pathname)
+		const handleEscape = (e) => {
+			if (e.key === "Escape") {
+				if (isNotificationsOpen) setNotificationsOpen(false)
+				if (isCommandPaletteOpen) setCommandPaletteOpen(false)
+			}
+		}
+		window.addEventListener("keydown", handleEscape)
+		return () => window.removeEventListener("keydown", handleEscape)
+	}, [isNotificationsOpen, isCommandPaletteOpen])
 
 	return (
 		<>
@@ -167,7 +155,9 @@ export default function LayoutWrapper({ children }) {
 					</button>
 					<AnimatePresence>
 						{isNotificationsOpen && (
-							<NotificationsOverlay onClose={() => setNotificationsOpen(false)} />
+							<NotificationsOverlay
+								onClose={() => setNotificationsOpen(false)}
+							/>
 						)}
 					</AnimatePresence>
 				</>
@@ -175,4 +165,3 @@ export default function LayoutWrapper({ children }) {
 		</>
 	)
 }
-

@@ -93,6 +93,10 @@ const questions = [
 				value: "America/Los_Angeles",
 				label: "Pacific Time (US & Canada)"
 			},
+			{
+				value: "America/St_Johns",
+				label: "Newfoundland (NDT)"
+			},
 			{ value: "Europe/London", label: "London, Dublin (GMT/BST)" },
 			{ value: "Europe/Berlin", label: "Berlin, Paris (CET)" },
 			{ value: "Asia/Kolkata", label: "India (IST)" },

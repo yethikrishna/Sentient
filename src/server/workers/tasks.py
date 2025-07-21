@@ -266,8 +266,10 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
             if not final_content_str.strip():
                 logger.error(f"Extractor LLM returned no response for event_id: {event_id}.")
                 return
+            
 
             cleaned_content = clean_llm_output(final_content_str)
+            logger.info(f"Extractor LLM response for event_id: {event_id} - {clean_llm_output}.")
             extracted_data = JsonExtractor.extract_valid_json(cleaned_content)
             if not extracted_data:
                 logger.error(f"Could not extract valid JSON from LLM response for event_id: {event_id}. Response: '{cleaned_content}'")
@@ -459,7 +461,12 @@ async def async_generate_plan(task_id: str):
         
         current_user_time = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
 
-        retrieved_context = latest_run.get("found_context", {})
+        retrieved_context = latest_run.get("found_context", {}) # This field doesn't exist yet, but is good for future use
+        action_items = task.get("action_items", [])
+        if not action_items:
+            # This is likely a manually created task. Use its description as the action item.
+            logger.info(f"Task {task_id}: No 'action_items' field found. Using main description as the action.")
+            action_items = [task.get("description", "")]
         # ** NEW ** Add answered questions to the context
         answered_questions = []
         if latest_run.get("clarifying_questions"):
@@ -474,7 +481,6 @@ async def async_generate_plan(task_id: str):
 
         planner_agent = get_planner_agent(available_tools, current_user_time, user_name, user_location, retrieved_context)
         
-        action_items = task.get("action_items", [])
         user_prompt_content = "Please create a plan for the following action items:\n- " + "\n- ".join(action_items)
         messages = [{'role': 'user', 'content': user_prompt_content}]
 

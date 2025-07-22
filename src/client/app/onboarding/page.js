@@ -1,5 +1,5 @@
 "use client"
-import React, { useState, useEffect, useCallback, useRef } from "react"
+import React, { useState, useEffect, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@utils/cn"
 import toast from "react-hot-toast"
@@ -125,6 +125,7 @@ const questions = [
 		description:
 			"Share your location for automatic updates, or type your city.",
 		type: "location",
+		required: true,
 		icon: <IconMapPin />
 	},
 	{
@@ -133,6 +134,7 @@ const questions = [
 			"This helps me understand your professional goals and context.",
 		question: "What's your professional world like?",
 		type: "textarea",
+		required: true,
 		placeholder: "e.g., I'm a software developer at a startup...",
 		icon: <IconBriefcase />
 	},
@@ -142,6 +144,7 @@ const questions = [
 			"And when you're not working? Tell me about your hobbies.",
 		question: "What about your personal life and interests?",
 		type: "textarea",
+		required: true,
 		placeholder: "e.g., I enjoy hiking, learning guitar, and soccer.",
 		icon: <IconHeart />
 	},
@@ -185,6 +188,7 @@ const questions = [
 		sentientComment:
 			"Last one! To help me focus on what's truly important to you...",
 		question: "What are your top 3 priorities right now?",
+		required: true,
 		type: "multi-choice",
 		limit: 3,
 		options: [
@@ -223,18 +227,6 @@ const OnboardingPage = () => {
 
 	const handleAnswer = (questionId, answer) => {
 		setAnswers((prev) => ({ ...prev, [questionId]: answer }))
-		// Auto-advance for single-choice questions to improve flow
-		const currentQuestion = questions[currentQuestionIndex]
-		if (currentQuestion.type === "single-choice") {
-			// Use a small timeout to let the user see their selection
-			setTimeout(() => {
-				if (currentQuestionIndex < questions.length - 1) {
-					handleNext()
-				} else {
-					handleSubmit()
-				}
-			}, 400)
-		}
 	}
 
 	const handleMultiChoice = (questionId, option) => {
@@ -317,8 +309,7 @@ const OnboardingPage = () => {
 				})
 			}
 			posthog?.capture("onboarding_completed")
-			setStage("whatsNext") // Go to the new "What's Next" screen
-			// setTimeout(() => router.push("/home"), 2500) // Removed auto-redirect
+			router.push("/home")
 		} catch (error) {
 			toast.error(`Error: ${error.message}`)
 			setStage("questions") // Go back to questions on error
@@ -538,7 +529,7 @@ const OnboardingPage = () => {
 											}}
 											className="bg-neutral-800/50 border border-neutral-700 p-8 rounded-2xl w-full"
 										>
-											<label className="block text-xl sm:text-2xl font-semibold mb-3 flex items-center gap-4 text-neutral-100">
+											<label className="text-xl sm:text-2xl font-semibold mb-3 flex items-center gap-4 text-neutral-100">
 												<span className="text-neutral-500">
 													{currentQuestion.icon}
 												</span>
@@ -574,7 +565,7 @@ const OnboardingPage = () => {
 																			e
 																				.target
 																				.value
-																		) }
+																		)
 																	}
 																	className="w-full py-3 px-4 text-lg rounded-xl bg-neutral-900 text-white border border-neutral-600 focus:ring-2 focus:ring-[var(--color-accent-blue)]/50 placeholder:text-neutral-500 transition-all"
 																	placeholder={
@@ -603,7 +594,7 @@ const OnboardingPage = () => {
 																			e
 																				.target
 																				.value
-																		) }
+																		)
 																	}
 																	className="w-full px-4 py-3 text-lg rounded-xl bg-neutral-900 text-white border border-neutral-600 focus:ring-2 focus:ring-[var(--color-accent-blue)]/50 appearance-none"
 																	required={
@@ -651,7 +642,7 @@ const OnboardingPage = () => {
 																			e
 																				.target
 																				.value
-																		) }
+																		)
 																	}
 																	className="w-full px-4 py-3 text-lg rounded-xl bg-neutral-900 text-white border border-neutral-600 focus:ring-2 focus:ring-[var(--color-accent-blue)]/50 placeholder:text-neutral-500 min-h-[140px] resize-y"
 																	placeholder={
@@ -770,7 +761,7 @@ const OnboardingPage = () => {
 																					onClick={() =>
 																						handleAnswer(
 																							currentQuestion.id,
-																							option
+																							optionValue
 																						)
 																					}
 																					className={cn(

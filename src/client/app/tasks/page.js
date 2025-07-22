@@ -8,23 +8,17 @@ import React, {
 	useMemo
 } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { format, startOfToday, parseISO } from "date-fns"
+import { parseISO } from "date-fns"
 import { IconLoader } from "@tabler/icons-react"
 import { AnimatePresence } from "framer-motion"
 import toast from "react-hot-toast"
 import { Tooltip } from "react-tooltip"
-import { DndProvider } from "react-dnd"
-import { HTML5Backend } from "react-dnd-html5-backend"
 
 // New component imports
 import TasksHeader from "@components/tasks/TasksHeader"
-import WeeklyKanban from "@components/tasks/WeeklyKanban"
-import MonthlyView from "@components/tasks/MonthlyView"
 import AllTasksView from "@components/tasks/AllTasksView"
-import CalendarNavModal from "@components/tasks/CalendarNavModal"
 
 // Existing component imports (modals remain)
-import AddTaskModal from "@components/tasks/AddTaskModal"
 import TaskDetailsModal from "@components/tasks/TaskDetailsModal"
 import EditTaskModal from "@components/tasks/EditTaskModal"
 
@@ -36,27 +30,17 @@ function TasksPageContent() {
 	const [integrations, setIntegrations] = useState([])
 	const [allTools, setAllTools] = useState([])
 	const [isLoading, setIsLoading] = useState(true)
-	const [currentDate, setCurrentDate] = useState(startOfToday()) // Default to today
-	const [viewType, setViewType] = useState("all") // week, month, all. Default is now 'all'
-	const [isCalendarModalOpen, setCalendarModalOpen] = useState(false)
 
 	// Modal States
-	const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false)
 	const [selectedTask, setSelectedTask] = useState(null) // For viewing details
 	const [editingTask, setEditingTask] = useState(null) // For editing
 
 	useEffect(() => {
-		const dateParam = searchParams.get("date")
-		if (dateParam) {
-			setCurrentDate(parseISO(dateParam))
-		}
-
 		const taskIdParam = searchParams.get("taskId")
 		if (taskIdParam && !selectedTask && !editingTask) {
 			const taskInList = tasks.find((t) => t.task_id === taskIdParam)
 			if (taskInList) {
 				setSelectedTask(taskInList)
-				router.replace("/tasks", { scroll: false })
 			} else if (!isLoading) {
 				// If not in list, fetch it
 				fetch(`/api/tasks/${taskIdParam}`)
@@ -66,12 +50,12 @@ function TasksPageContent() {
 					})
 					.then((taskData) => {
 						setSelectedTask(taskData)
-						router.replace("/tasks", { scroll: false })
 					})
 					.catch(() => toast.error("Could not load the linked task."))
 			}
+			router.replace("/tasks", { scroll: false })
 		}
-	}, [searchParams])
+	}, [searchParams, tasks, isLoading, router, selectedTask, editingTask])
 
 	const fetchTasks = useCallback(async () => {
 		setIsLoading(true)
@@ -236,45 +220,6 @@ function TasksPageContent() {
 		)
 	}
 
-	const handleTaskDrop = async (task, newDate) => {
-		if (task.schedule?.type !== "once") {
-			toast.error(
-				"Only non-recurring tasks can be rescheduled via drag & drop for now."
-			)
-			// UI will revert automatically since we're not changing local state
-			return
-		}
-		// Keep the time, just change the date
-		const originalTime = task.schedule.run_at
-			? parseISO(task.schedule.run_at)
-			: new Date()
-		const newRunAt = new Date(
-			newDate.getFullYear(),
-			newDate.getMonth(),
-			newDate.getDate(),
-			originalTime.getHours(),
-			originalTime.getMinutes()
-		).toISOString()
-
-		handleAction(
-			() =>
-				fetch("/api/tasks/update", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						taskId: task.task_id,
-						schedule: { ...task.schedule, run_at: newRunAt }
-					})
-				}),
-			"Task rescheduled!"
-		)
-	}
-
-	const handleDateNavigation = (newDate) => {
-		setCurrentDate(newDate)
-		router.push(`/tasks?date=${format(newDate, "yyyy-MM-dd")}`)
-	}
-
 	const workflowTasks = useMemo(
 		() => tasks.filter((t) => t.schedule?.type === "recurring"),
 		[tasks]
@@ -288,115 +233,67 @@ function TasksPageContent() {
 	)
 
 	return (
-		<DndProvider backend={HTML5Backend}>
-			<div className="flex h-screen bg-gradient-to-br from-neutral-900 via-black to-neutral-900 text-white overflow-hidden pl-0 md:pl-20">
-				<Tooltip
-					id="tasks-tooltip"
-					place="right-start"
-					style={{ zIndex: 9999 }}
-				/>
+		<div className="flex h-screen bg-gradient-to-br from-neutral-900 via-black to-neutral-900 text-white overflow-hidden pl-0 md:pl-20">
+			<Tooltip
+				id="tasks-tooltip"
+				place="right-start"
+				style={{ zIndex: 9999 }}
+			/>
 
-				<main className="flex-1 flex flex-col overflow-hidden relative">
-					<TasksHeader
-						viewType={viewType}
-						setViewType={setViewType}
-						onAddTask={() => setIsAddTaskModalOpen(true)}
-						currentDate={currentDate}
-						setCurrentDate={handleDateNavigation}
-						onCalendarClick={() => setCalendarModalOpen(true)}
-					/>
-					{isLoading ? (
-						<div className="flex justify-center items-center flex-1">
-							<IconLoader className="w-10 h-10 animate-spin text-[var(--color-accent-blue)]" />
-						</div>
-					) : (
-						<div className="p-4 md:p-6 flex-1 overflow-y-auto custom-scrollbar">
-							{viewType === "all" && (
-								<AllTasksView
-									tasks={[...oneOffTasks, ...workflowTasks]}
-									onViewDetails={setSelectedTask}
-									onEditTask={setEditingTask}
-									onDeleteTask={handleDeleteTask}
-									onRerunTask={handleRerunTask}
-									onMarkComplete={handleMarkComplete}
-									onAssigneeChange={handleAssigneeChange}
-									onTaskAdded={fetchTasks}
-								/>
-							)}
-							{viewType === "week" && (
-								<WeeklyKanban
-									tasks={oneOffTasks}
-									recurringTasks={workflowTasks}
-									currentDate={currentDate}
-									onTaskDrop={handleTaskDrop}
-									onViewDetails={setSelectedTask}
-									onEditTask={setEditingTask}
-									onDataChange={fetchTasks}
-								/>
-							)}
-							{viewType === "month" && (
-								<MonthlyView
-									tasks={oneOffTasks}
-									recurringTasks={workflowTasks}
-									currentDate={currentDate}
-									setCurrentDate={handleDateNavigation}
-									onViewDetails={setSelectedTask}
-								/>
-							)}
-						</div>
-					)}
-				</main>
-
-				<AnimatePresence>
-					{isAddTaskModalOpen && (
-						<AddTaskModal
-							onClose={() => setIsAddTaskModalOpen(false)}
-							onTaskAdded={fetchTasks}
-							initialDate={currentDate}
-						/>
-					)}
-					{selectedTask && (
-						<TaskDetailsModal
-							task={selectedTask}
-							onClose={() => setSelectedTask(null)}
-							onEdit={(taskToEdit) => {
-								setEditingTask(taskToEdit)
-								setSelectedTask(null)
-							}}
-							onApprove={handleApproveTask}
-							onDelete={(taskId) => handleDeleteTask(taskId)}
-							integrations={integrations}
-							onAnswerClarifications={handleAnswerClarifications}
-							onArchiveTask={handleArchiveTask}
+			<main className="flex-1 flex flex-col overflow-hidden relative">
+				<TasksHeader />
+				{isLoading ? (
+					<div className="flex justify-center items-center flex-1">
+						<IconLoader className="w-10 h-10 animate-spin text-[var(--color-accent-blue)]" />
+					</div>
+				) : (
+					<div className="p-4 md:p-6 flex-1 overflow-y-auto custom-scrollbar">
+						<AllTasksView
+							tasks={[...oneOffTasks, ...workflowTasks]}
+							onViewDetails={setSelectedTask}
+							onEditTask={setEditingTask}
+							onDeleteTask={handleDeleteTask}
+							onRerunTask={handleRerunTask}
 							onMarkComplete={handleMarkComplete}
-							onUpdateTask={handleUpdateTask}
+							onAssigneeChange={handleAssigneeChange}
+							onTaskAdded={fetchTasks}
 						/>
-					)}
-					{editingTask && (
-						<EditTaskModal
-							task={editingTask}
-							onClose={() => setEditingTask(null)}
-							onSave={(updatedTask) => {
-								handleUpdateTask(updatedTask)
-								setEditingTask(null)
-							}}
-							integrations={integrations}
-							allTools={allTools}
-						/>
-					)}
-					{isCalendarModalOpen && (
-						<CalendarNavModal
-							currentDate={currentDate}
-							onDateSelect={(date) => {
-								handleDateNavigation(date)
-								setCalendarModalOpen(false)
-							}}
-							onClose={() => setCalendarModalOpen(false)}
-						/>
-					)}
-				</AnimatePresence>
-			</div>
-		</DndProvider>
+					</div>
+				)}
+			</main>
+
+			<AnimatePresence>
+				{selectedTask && (
+					<TaskDetailsModal
+						task={selectedTask}
+						onClose={() => setSelectedTask(null)}
+						onEdit={(taskToEdit) => {
+							setEditingTask(taskToEdit)
+							setSelectedTask(null)
+						}}
+						onApprove={handleApproveTask}
+						onDelete={(taskId) => handleDeleteTask(taskId)}
+						integrations={integrations}
+						onAnswerClarifications={handleAnswerClarifications}
+						onArchiveTask={handleArchiveTask}
+						onMarkComplete={handleMarkComplete}
+						onUpdateTask={handleUpdateTask}
+					/>
+				)}
+				{editingTask && (
+					<EditTaskModal
+						task={editingTask}
+						onClose={() => setEditingTask(null)}
+						onSave={(updatedTask) => {
+							handleUpdateTask(updatedTask)
+							setEditingTask(null)
+						}}
+						integrations={integrations}
+						allTools={allTools}
+					/>
+				)}
+			</AnimatePresence>
+		</div>
 	)
 }
 

@@ -24,9 +24,6 @@ export function useGlobalShortcuts(
 			if (e.ctrlKey) {
 				switch (e.key.toLowerCase()) {
 					case "h":
-						router.push("/home")
-						break
-					case "a":
 						router.push("/tasks")
 						break
 					case "b":

@@ -309,7 +309,7 @@ const OnboardingPage = () => {
 				})
 			}
 			posthog?.capture("onboarding_completed")
-			router.push("/home")
+			router.push("/tasks")
 		} catch (error) {
 			toast.error(`Error: ${error.message}`)
 			setStage("questions") // Go back to questions on error
@@ -346,7 +346,7 @@ const OnboardingPage = () => {
 				if (!response.ok) throw new Error("Could not fetch user data.")
 				const result = await response.json()
 				if (result?.data?.onboardingComplete) {
-					router.push("/home")
+					router.push("/tasks")
 				} else {
 					setIsLoading(false)
 				}
@@ -913,8 +913,8 @@ const OnboardingPage = () => {
 						title: "Explore What's Possible",
 						description:
 							"See examples of what you can automate and achieve with your new AI.",
-						buttonText: "See Use Cases",
-						onClick: () => router.push("/home")
+						buttonText: "Go to Tasks",
+						onClick: () => router.push("/tasks")
 					}
 				]
 				return (
@@ -960,7 +960,7 @@ const OnboardingPage = () => {
 							))}
 						</div>
 						<button
-							onClick={() => router.push("/home")}
+							onClick={() => router.push("/tasks")}
 							className="text-neutral-400 hover:text-white underline"
 						>
 							Or, just take me to the app

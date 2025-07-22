@@ -3,7 +3,11 @@ import React, { useState, useEffect } from "react"
 import { usePathname } from "next/navigation"
 import { FloatingDock } from "@components/ui/floating-dock"
 import {
-	IconAdjustments, IconChecklist, IconHome, IconLogout, IconPlugConnected
+	IconAdjustments,
+	IconChecklist,
+	IconHome,
+	IconLogout,
+	IconPlugConnected
 } from "@tabler/icons-react"
 
 export default function FloatingNav() {
@@ -24,16 +28,9 @@ export default function FloatingNav() {
 	const navLinks = [
 		{
 			title: "Home",
-			href: "/home",
-			icon: (
-				<IconHome className="h-full w-full text-neutral-500 dark:text-neutral-300" />
-			)
-		},
-		{
-			title: "Tasks",
 			href: "/tasks",
 			icon: (
-				<IconChecklist className="h-full w-full text-neutral-500 dark:text-neutral-300" />
+				<IconHome className="h-full w-full text-neutral-500 dark:text-neutral-300" />
 			)
 		},
 		{
@@ -73,4 +70,3 @@ export default function FloatingNav() {
 
 	return <FloatingDock items={finalLinks} />
 }
-

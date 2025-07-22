@@ -1,11 +1,16 @@
-import uuid
 import logging
+import uuid
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from main.dependencies import auth_helper
-from workers.tasks import extract_from_context
+
 from main.config import ENVIRONMENT
+from main.dependencies import auth_helper
+from main.notifications.whatsapp_client import (check_phone_number_exists,
+                                                 send_whatsapp_message)
+from workers.tasks import extract_from_context
+
 from .models import ContextInjectionRequest, WhatsAppTestRequest
-from main.notifications.whatsapp_client import send_whatsapp_message, check_phone_number_exists
 
 logger = logging.getLogger(__name__)
 router = APIRouter(
@@ -13,16 +18,25 @@ router = APIRouter(
     tags=["Testing Utilities"]
 )
 
+def _check_allowed_environments(allowed_envs: List[str], detail_message: str):
+    """
+    Helper to enforce environment restrictions for endpoints.
+    """
+    if ENVIRONMENT not in allowed_envs:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=detail_message
+        )
+
 @router.post("/inject-context", summary="Manually inject a context event for processing")
 async def inject_context_event(
     request: ContextInjectionRequest,
     user_id: str = Depends(auth_helper.get_current_user_id)
 ):
-    if ENVIRONMENT not in ["dev-local", "selfhost"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="This endpoint is only available in development or self-host environments."
-        )
+    _check_allowed_environments(
+        ["dev-local", "selfhost"],
+        "This endpoint is only available in development or self-host environments."
+    )
 
     service_name = request.service_name
     event_data = request.event_data
@@ -45,11 +59,10 @@ async def send_test_whatsapp(
     request: WhatsAppTestRequest,
     user_id: str = Depends(auth_helper.get_current_user_id)
 ):
-    if ENVIRONMENT not in ["dev-local", "selfhost"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="This endpoint is only available in development or self-host environments."
-        )
+    _check_allowed_environments(
+        ["dev-local", "selfhost"],
+        "This endpoint is only available in development or self-host environments."
+    )
 
     phone_number = request.phone_number
     if not phone_number:
@@ -57,7 +70,10 @@ async def send_test_whatsapp(
 
     try:
         validation_result = await check_phone_number_exists(phone_number)
-        if not validation_result or not validation_result.get("numberExists"):
+        if validation_result is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Could not connect to WhatsApp service to verify number.")
+        
+        if not validation_result.get("numberExists"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="This phone number does not appear to be on WhatsApp."
@@ -87,11 +103,10 @@ async def verify_whatsapp_number(
     request: WhatsAppTestRequest,
     user_id: str = Depends(auth_helper.get_current_user_id)
 ):
-    if ENVIRONMENT not in ["dev-local", "selfhost"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="This endpoint is only available in development environments."
-        )
+    _check_allowed_environments(
+        ["dev-local"],
+        "This endpoint is only available in development environments."
+    )
     
     phone_number = request.phone_number
     if not phone_number:
@@ -99,7 +114,7 @@ async def verify_whatsapp_number(
         
     try:
         validation_result = await check_phone_number_exists(phone_number)
-        if not validation_result:
+        if validation_result is None:
              raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Could not connect to WhatsApp service to verify number.")
         
         return validation_result

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 
 from main.auth.utils import aes_encrypt, aes_decrypt, PermissionChecker, AuthHelper
-from main.auth.models import AuthTokenStoreRequest, GoogleTokenStoreRequest, EncryptionRequest, DecryptionRequest
+from main.auth.models import AuthTokenStoreRequest, EncryptionRequest, DecryptionRequest
 from main.dependencies import mongo_manager
 from main.config import INTEGRATIONS_CONFIG # For validating service_name
 auth_helper = AuthHelper() 
@@ -31,35 +31,6 @@ async def store_session_tokens(
     except Exception as e:
         print(f"[{datetime.datetime.now()}] [AUTH_STORE_SESSION_ERROR] User {user_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Error storing Auth0 session: {str(e)}")
-
-@router.post("/google/store_token", summary="Store Google OAuth Refresh Token")
-async def store_google_token_endpoint(
-    request_body: GoogleTokenStoreRequest, 
-    user_id: str = Depends(PermissionChecker(required_permissions=["manage:google_auth"])) 
-):
-    print(f"[{datetime.datetime.now()}] [GOOGLE_TOKEN_STORE] Storing Google refresh token for user {user_id}, service: {request_body.service_name}")
-    if not request_body.service_name or request_body.service_name not in INTEGRATIONS_CONFIG:
-        raise HTTPException(status_code=400, detail=f"Invalid service name: {request_body.service_name}")
-    try:
-        encrypted_google_refresh_token = aes_encrypt(request_body.google_refresh_token)
-        field_path = f"userData.google_services.{request_body.service_name}.encrypted_refresh_token"
-        update_payload = {field_path: encrypted_google_refresh_token}
-        
-        success = await mongo_manager.update_user_profile(user_id, update_payload)
-
-        if not success:
-            print(f"[{datetime.datetime.now()}] [GOOGLE_TOKEN_STORE_ERROR] Failed to store token for user {user_id}, service {request_body.service_name}.")
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to store Google refresh token.")
-        
-        print(f"[{datetime.datetime.now()}] [GOOGLE_TOKEN_STORE] Successfully stored Google refresh token for user {user_id}, service {request_body.service_name}.")
-        return JSONResponse(content={"message": f"Google refresh token for {request_body.service_name} stored successfully."})
-    except ValueError as ve: 
-        print(f"[{datetime.datetime.now()}] [GOOGLE_TOKEN_STORE_ERROR] User {user_id}: Encryption error - {ve}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Server configuration error: {str(ve)}")
-    except Exception as e:
-        print(f"[{datetime.datetime.now()}] [GOOGLE_TOKEN_STORE_ERROR] User {user_id}: {e}")
-        traceback.print_exc()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error storing Google refresh token: {str(e)}")
 
 @router.post("/utils/encrypt", summary="Encrypt Data (AES)") # Kept /utils prefix for consistency if client expects it
 async def encrypt_data_endpoint(request: EncryptionRequest):

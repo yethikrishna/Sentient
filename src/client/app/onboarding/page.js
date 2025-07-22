@@ -1,5 +1,5 @@
 "use client"
-import React, { useState, useEffect, useCallback, useRef } from "react"
+import React, { useState, useEffect, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@utils/cn"
 import toast from "react-hot-toast"
@@ -93,6 +93,10 @@ const questions = [
 				value: "America/Los_Angeles",
 				label: "Pacific Time (US & Canada)"
 			},
+			{
+				value: "America/St_Johns",
+				label: "Newfoundland (NDT)"
+			},
 			{ value: "Europe/London", label: "London, Dublin (GMT/BST)" },
 			{ value: "Europe/Berlin", label: "Berlin, Paris (CET)" },
 			{ value: "Asia/Kolkata", label: "India (IST)" },
@@ -121,6 +125,7 @@ const questions = [
 		description:
 			"Share your location for automatic updates, or type your city.",
 		type: "location",
+		required: true,
 		icon: <IconMapPin />
 	},
 	{
@@ -129,6 +134,7 @@ const questions = [
 			"This helps me understand your professional goals and context.",
 		question: "What's your professional world like?",
 		type: "textarea",
+		required: true,
 		placeholder: "e.g., I'm a software developer at a startup...",
 		icon: <IconBriefcase />
 	},
@@ -138,6 +144,7 @@ const questions = [
 			"And when you're not working? Tell me about your hobbies.",
 		question: "What about your personal life and interests?",
 		type: "textarea",
+		required: true,
 		placeholder: "e.g., I enjoy hiking, learning guitar, and soccer.",
 		icon: <IconHeart />
 	},
@@ -181,6 +188,7 @@ const questions = [
 		sentientComment:
 			"Last one! To help me focus on what's truly important to you...",
 		question: "What are your top 3 priorities right now?",
+		required: true,
 		type: "multi-choice",
 		limit: 3,
 		options: [
@@ -219,18 +227,6 @@ const OnboardingPage = () => {
 
 	const handleAnswer = (questionId, answer) => {
 		setAnswers((prev) => ({ ...prev, [questionId]: answer }))
-		// Auto-advance for single-choice questions to improve flow
-		const currentQuestion = questions[currentQuestionIndex]
-		if (currentQuestion.type === "single-choice") {
-			// Use a small timeout to let the user see their selection
-			setTimeout(() => {
-				if (currentQuestionIndex < questions.length - 1) {
-					handleNext()
-				} else {
-					handleSubmit()
-				}
-			}, 400)
-		}
 	}
 
 	const handleMultiChoice = (questionId, option) => {
@@ -313,8 +309,7 @@ const OnboardingPage = () => {
 				})
 			}
 			posthog?.capture("onboarding_completed")
-			setStage("whatsNext") // Go to the new "What's Next" screen
-			// setTimeout(() => router.push("/home"), 2500) // Removed auto-redirect
+			router.push("/tasks?show_demo=true")
 		} catch (error) {
 			toast.error(`Error: ${error.message}`)
 			setStage("questions") // Go back to questions on error
@@ -351,7 +346,7 @@ const OnboardingPage = () => {
 				if (!response.ok) throw new Error("Could not fetch user data.")
 				const result = await response.json()
 				if (result?.data?.onboardingComplete) {
-					router.push("/home")
+					router.push("/tasks")
 				} else {
 					setIsLoading(false)
 				}
@@ -444,13 +439,13 @@ const OnboardingPage = () => {
 						</motion.div>
 						<motion.h1
 							variants={itemVariants}
-							className="text-5xl md:text-6xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-b from-neutral-50 to-neutral-400"
+							className="text-4xl sm:text-5xl md:text-6xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-b from-neutral-50 to-neutral-400"
 						>
 							Welcome. I'm Sentient.
 						</motion.h1>
 						<motion.p
 							variants={itemVariants}
-							className="text-xl text-neutral-300 max-w-xl mx-auto"
+							className="text-lg md:text-xl text-neutral-300 max-w-xl mx-auto"
 						>
 							Your proactive AI, ready to get to know you.
 						</motion.p>
@@ -534,14 +529,14 @@ const OnboardingPage = () => {
 											}}
 											className="bg-neutral-800/50 border border-neutral-700 p-8 rounded-2xl w-full"
 										>
-											<label className="block text-2xl font-semibold mb-3 flex items-center gap-4 text-neutral-100">
+											<label className="text-xl sm:text-2xl font-semibold mb-3 flex items-center gap-4 text-neutral-100">
 												<span className="text-neutral-500">
 													{currentQuestion.icon}
 												</span>
 												{currentQuestion.question}
 											</label>
 											{currentQuestion.description && (
-												<p className="text-base text-neutral-400 mb-6 ml-12">
+												<p className="text-sm sm:text-base text-neutral-400 mb-6 ml-10 sm:ml-12">
 													{
 														currentQuestion.description
 													}
@@ -680,7 +675,7 @@ const OnboardingPage = () => {
 																			handleAnswer(
 																				"location",
 																				e
-																					.target
+																					.target // eslint-disable-line
 																					.value
 																			)
 																		}
@@ -766,11 +761,11 @@ const OnboardingPage = () => {
 																					onClick={() =>
 																						handleAnswer(
 																							currentQuestion.id,
-																							option
+																							optionValue
 																						)
 																					}
 																					className={cn(
-																						"p-5 rounded-xl border-2 text-center font-semibold transition-all duration-200 text-lg",
+																						"p-4 sm:p-5 rounded-xl border-2 text-center font-semibold transition-all duration-200 text-base sm:text-lg",
 																						answers[
 																							currentQuestion
 																								.id
@@ -808,7 +803,7 @@ const OnboardingPage = () => {
 																					)
 																				}
 																				className={cn(
-																					"p-5 rounded-xl border-2 text-center font-semibold transition-all duration-200 flex items-center justify-center gap-2 text-lg",
+																					"p-4 sm:p-5 rounded-xl border-2 text-center font-semibold transition-all duration-200 flex items-center justify-center gap-2 text-base sm:text-lg",
 																					(
 																						answers[
 																							currentQuestion
@@ -902,24 +897,11 @@ const OnboardingPage = () => {
 						icon: (
 							<IconBook size={32} className="text-purple-400" />
 						),
-						title: "Start Your First Journal",
+						title: "Explore Tasks",
 						description:
-							"Write down your thoughts and let Sentient proactively manage your day.",
-						buttonText: "Go to Organizer",
-						onClick: () => router.push("/journal")
-					},
-					{
-						icon: (
-							<IconSparkles
-								size={32}
-								className="text-yellow-400"
-							/>
-						),
-						title: "Explore What's Possible",
-						description:
-							"See examples of what you can automate and achieve with your new AI.",
-						buttonText: "See Use Cases",
-						onClick: () => router.push("/home")
+							"Write down your tasks and let Sentient proactively manage your day.",
+						buttonText: "Go to Tasks",
+						onClick: () => router.push("/tasks?show_demo=true")
 					}
 				]
 				return (
@@ -929,10 +911,10 @@ const OnboardingPage = () => {
 						animate={{ opacity: 1, y: 0 }}
 						className="text-center max-w-4xl"
 					>
-						<h1 className="text-5xl font-bold mb-4">
+						<h1 className="text-4xl md:text-5xl font-bold mb-4">
 							You're All Set, {answers["user-name"] || "Friend"}!
 						</h1>
-						<p className="text-xl text-neutral-400 mb-12">
+						<p className="text-lg md:text-xl text-neutral-400 mb-12">
 							Here are a few things you can do to get started.
 						</p>
 						<div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
@@ -965,7 +947,7 @@ const OnboardingPage = () => {
 							))}
 						</div>
 						<button
-							onClick={() => router.push("/home")}
+							onClick={() => router.push("/tasks?show_demo=true")}
 							className="text-neutral-400 hover:text-white underline"
 						>
 							Or, just take me to the app

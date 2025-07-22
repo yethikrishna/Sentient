@@ -3,13 +3,22 @@ import datetime
 import logging
 import motor.motor_asyncio
 import logging
+import re
 from typing import List, Dict, Any, Optional
 import json
+import uuid
 
 from workers.planner.config import MONGO_URI, MONGO_DB_NAME, INTEGRATIONS_CONFIG
-from workers.utils.crypto import aes_decrypt
+
 
 logger = logging.getLogger(__name__)
+
+def get_date_from_text(text: str) -> str:
+    """Extracts YYYY-MM-DD from text, defaults to today."""
+    match = re.search(r'\b(\d{4}-\d{2}-\d{2})\b', text)
+    if match:
+        return match.group(1)
+    return datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d')
 
 logger = logging.getLogger(__name__)
 
@@ -33,41 +42,48 @@ def get_all_mcp_descriptions() -> Dict[str, str]:
     return mcp_descriptions
 
 
-class PlannerMongoManager:
+class PlannerMongoManager: # noqa: E501
     """A MongoDB manager for the planner worker."""
     def __init__(self):
         self.client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI)
         self.db = self.client[MONGO_DB_NAME]
         self.user_profiles_collection = self.db["user_profiles"]
         self.tasks_collection = self.db["tasks"]
-        self.journal_blocks_collection = self.db["journal_blocks"]
         logger.info("PlannerMongoManager initialized.")
 
-    async def create_initial_task(self, user_id: str, description: str, action_items: list, topics: list, original_context: dict, source_event_id: str) -> str:
+    async def create_initial_task(self, user_id: str, description: str, action_items: list, topics: list, original_context: dict, source_event_id: str) -> Dict:
         """Creates an initial task document when an action item is first processed."""
         task_id = str(uuid.uuid4())
         now_utc = datetime.datetime.now(datetime.timezone.utc)
+
+        initial_run = {
+            "run_id": str(uuid.uuid4()),
+            "status": "planning",
+            "plan": [],
+            "clarifying_questions": [],
+            "progress_updates": [],
+            "result": None,
+            "error": None,
+            "prompt": description
+        }
+
         task_doc = {
             "task_id": task_id,
             "user_id": user_id,
             "description": description,
-            "status": "context_verification", # New initial status
+            "status": "planning", # As per spec
+            "assignee": "ai", # Proactive tasks are assigned to AI
             "priority": 1,
-            "plan": [], # Plan is empty initially
-            "action_items": action_items,
-            "topics": topics,
+            "runs": [initial_run],
             "original_context": original_context,
             "source_event_id": source_event_id,
-            "clarifying_questions": [],
-            "progress_updates": [],
             "created_at": now_utc,
             "updated_at": now_utc,
-            "result": None,
-            "error": None,
+            "chat_history": [],
         }
         await self.tasks_collection.insert_one(task_doc)
         logger.info(f"Created initial task {task_id} for user {user_id}")
-        return task_id
+        return task_doc
 
     async def update_task_field(self, task_id: str, fields: dict):
         """Updates specific fields of a task document."""
@@ -77,35 +93,28 @@ class PlannerMongoManager:
         )
         logger.info(f"Updated fields for task {task_id}: {list(fields.keys())}")
 
-    async def update_task_with_plan(self, task_id: str, plan_data: dict):
+    async def update_task_with_plan(self, task_id: str, run_id: str, plan_data: dict, is_change_request: bool = False):
         """Updates a task with a generated plan and sets it to pending approval."""
-        description = plan_data.get("description", "Proactively generated plan")
         plan_steps = plan_data.get("plan", [])
 
         update_doc = {
-            "description": description,
-            "plan": plan_steps,
-            "status": "approval_pending",
+            "status": "approval_pending", # Update top-level status
+            "runs.$[run].plan": plan_steps,
+            "runs.$[run].status": "approval_pending",
             "updated_at": datetime.datetime.now(datetime.timezone.utc)
         }
 
+        # Only set the main description for the very first run.
+        if not is_change_request:
+            description = plan_data.get("description", "Proactively generated plan")
+            update_doc["description"] = description
+
         result = await self.tasks_collection.update_one(
             {"task_id": task_id},
-            {"$set": update_doc}
+            {"$set": update_doc},
+            array_filters=[{"run.run_id": run_id}]
         )
         logger.info(f"Updated task {task_id} with a generated plan. Matched: {result.matched_count}")
-        
-        # If the plan originated from a journal block, link it back
-        task = await self.get_task(task_id)
-        if task and task.get("original_context", {}).get("source") == "journal_block":
-            original_context = task["original_context"]
-            block_id = original_context.get("block_id")
-            if block_id:
-                await self.journal_blocks_collection.update_one(
-                    {"block_id": block_id},
-                    {"$set": {"linked_task_id": task_id, "task_status": "approval_pending"}}
-                )
-                logger.info(f"Linked new task {task_id} to journal block {block_id}.")
 
     async def update_task_with_questions(self, task_id: str, status: str, questions: list):
         """Updates a task with clarifying questions and a new status."""
@@ -133,6 +142,7 @@ class PlannerMongoManager:
     async def save_plan_as_task(self, user_id: str, description: str, plan: list, original_context: dict, source_event_id: str):
         """Saves a generated plan to the tasks collection for user approval."""
         task_id = str(uuid.uuid4())
+        run_id = str(uuid.uuid4())
         now_utc = datetime.datetime.now(datetime.timezone.utc)
         task_doc = {
             "task_id": task_id,
@@ -140,52 +150,28 @@ class PlannerMongoManager:
             "description": description,
             "status": "approval_pending",
             "priority": 1,
-            "plan": plan,
+            "runs": [ # New: Introduce runs array
+                {
+                    "run_id": run_id,
+                    "status": "approval_pending", # Status for this specific run
+                    "plan": plan, # Plan for this run
+                    "result": None,
+                    "chat_history": [],
+                    "error": None,
+                    "created_at": now_utc,
+                    "updated_at": now_utc,
+                }
+            ],
             "original_context": original_context,
             "source_event_id": source_event_id,
             "progress_updates": [],
             "created_at": now_utc,
             "updated_at": now_utc,
-            "result": None,
-            "error": None,
             "agent_id": "planner_agent"
         }
         await self.tasks_collection.insert_one(task_doc)
         logger.info(f"Saved new plan with task_id: {task_id} for user: {user_id}")
-
-        # If the plan originated from a journal block, link it back
-        if original_context.get("source") == "journal_block":
-            block_id = original_context.get("block_id")
-            if block_id:
-                await self.journal_blocks_collection.update_one(
-                    {"block_id": block_id, "user_id": user_id},
-                    {"$set": {"linked_task_id": task_id, "task_status": "approval_pending"}}
-                )
-                logger.info(f"Linked new task {task_id} to journal block {block_id}.")
-
         return task_id
-
-    async def create_journal_entry_for_task(self, user_id: str, content: str, date_str: str, task_id: str, task_status: str):
-        """Creates a journal entry for a proactively generated task."""
-        now_utc = datetime.datetime.now(datetime.timezone.utc)
-        block_id = str(uuid.uuid4())
-        block_doc = {
-            "block_id": block_id,
-            "user_id": user_id,
-            "page_date": date_str,
-            "content": content,
-            "order": 999,  # Proactive tasks at the bottom
-            "created_by": "sentient",
-            "created_at": now_utc,
-            "updated_at": now_utc,
-            "linked_task_id": task_id,
-            "task_status": task_status,
-            "task_progress": [],
-            "task_result": None,
-        }
-        await self.journal_blocks_collection.insert_one(block_doc)
-        logger.info(f"Created journal entry {block_id} for task {task_id}")
-        return block_id
 
 
     async def close(self):

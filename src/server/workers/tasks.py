@@ -12,9 +12,10 @@ from typing import Dict, Any, Optional, List
 from main.analytics import capture_event
 
 from workers.config import SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX, SUPPORTED_POLLING_SERVICES
-from main.agents.utils import clean_llm_output
 from json_extractor import JsonExtractor
 from workers.utils.api_client import notify_user 
+from main.tasks.prompts import TASK_CREATION_PROMPT
+from main.llm import get_qwen_assistant
 from workers.celery_app import celery_app
 from workers.planner.llm import get_planner_agent, get_question_generator_agent
 from workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions
@@ -45,6 +46,15 @@ def get_date_from_text(text: str) -> str:
     if match:
         return match.group(1)
     return datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d')
+
+def clean_llm_output(text: str) -> str:
+    """
+    Removes reasoning tags (e.g., <think>...</think>) and trims whitespace from LLM output.
+    """
+    if not isinstance(text, str):
+        return ""
+    cleaned_text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    return cleaned_text.strip()
 # Helper to run async code in Celery's sync context
 def run_async(coro):
     try:
@@ -111,6 +121,94 @@ def process_memory_item(user_id: str, fact_text: str, source_event_id: Optional[
 
     return run_async(async_process_memory())
 
+@celery_app.task(name="process_task_change_request")
+def process_task_change_request(task_id: str, user_id: str, user_message: str):
+    """Processes a user's change request on a completed task via the in-task chat."""
+    logger.info(f"Task Change Request: Received for task {task_id} from user {user_id}. Message: '{user_message}'")
+    run_async(async_process_change_request(task_id, user_id, user_message))
+
+async def async_process_change_request(task_id: str, user_id: str, user_message: str):
+    """Async logic for handling task change requests."""
+    db_manager = PlannerMongoManager()
+    try:
+        # 1. Fetch the task and its full history
+        task = await db_manager.get_task(task_id)
+        if not task:
+            logger.error(f"Task Change Request: Task {task_id} not found.")
+            return
+
+        # 2. Append user message to the task's chat history
+        chat_history = task.get("chat_history", [])
+        chat_history.append({
+            "role": "user",
+            "content": user_message,
+            "timestamp": datetime.datetime.now(datetime.timezone.utc)
+        })
+
+        # 3. Update task status and chat history in DB
+        await db_manager.update_task_field(task_id, {
+            "chat_history": chat_history,
+            "status": "planning" # Revert to planning to re-evaluate
+        })
+
+        await notify_user(user_id, f"I've received your changes for '{task.get('description', 'the task')}' and will start working on them.", task_id)
+
+        # 4. Re-trigger the main planner task
+        generate_plan_from_context.delay(task_id)
+        logger.info(f"Task Change Request: Dispatched task {task_id} back to planner with new context.")
+    except Exception as e:
+        logger.error(f"Error in async_process_change_request for task {task_id}: {e}", exc_info=True)
+    finally:
+        await db_manager.close()
+@celery_app.task(name="process_task_change_request")
+def process_task_change_request(task_id: str, user_id: str, user_message: str):
+    """Processes a user's change request on a completed task via the in-task chat."""
+    logger.info(f"Task Change Request: Received for task {task_id} from user {user_id}. Message: '{user_message}'")
+    run_async(async_process_change_request(task_id, user_id, user_message))
+
+async def async_process_change_request(task_id: str, user_id: str, user_message: str):
+    """Async logic for handling task change requests."""
+    db_manager = PlannerMongoManager()
+    try:
+        # 1. Fetch the task and its full history
+        task = await db_manager.get_task(task_id)
+        if not task:
+            logger.error(f"Task Change Request: Task {task_id} not found.")
+            return
+
+        # 2. Append user message to the task's chat history
+        chat_history = task.get("chat_history", [])
+        chat_history.append({
+            "role": "user",
+            "content": user_message,
+            "timestamp": datetime.datetime.now(datetime.timezone.utc)
+        })
+
+        # 3. Update task status and chat history in DB
+        await db_manager.update_task_field(task_id, {
+            "chat_history": chat_history,
+            "status": "planning" # Revert to planning to re-evaluate
+        })
+
+        await notify_user(user_id, f"I've received your changes for '{task.get('description', 'the task')}' and will start working on them.", task_id)
+
+        # 4. Create a consolidated context for the planner
+        # This is similar to the initial context creation but includes much more history
+        original_context = task.get("original_context", {})
+        original_context["previous_plan"] = task.get("plan", [])
+        original_context["previous_result"] = task.get("result", "")
+        original_context["chat_history"] = chat_history
+
+        # 5. Trigger the planner with this rich context
+        # The planner will now see the change request and all prior history
+        # The action_items can be just the user's new message.
+        process_action_item.delay(user_id, [user_message], [], task_id, original_context)
+        logger.info(f"Task Change Request: Dispatched task {task_id} back to planner with new context.")
+
+    except Exception as e:
+        logger.error(f"Error in async_process_change_request for task {task_id}: {e}", exc_info=True)
+    finally:
+        await db_manager.close()
 # --- Extractor Task ---
 @celery_app.task(name="extract_from_context")
 def extract_from_context(user_id: str, service_name: str, event_id: str, event_data: Dict[str, Any], current_time_iso: Optional[str] = None):
@@ -143,13 +241,7 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
             time_context_str = f"The current date and time is {current_time.strftime('%A, %Y-%m-%d %H:%M:%S %Z')}."
 
             llm_input_content = ""
-            if service_name == "journal_block":
-                page_date = event_data.get('page_date')
-                if page_date:
-                    llm_input_content = f"Source: Journal Entry on {page_date}\n\nContent:\n{event_data.get('content', '')}"
-                else:
-                    llm_input_content = f"Source: Journal Entry\n\nContent:\n{event_data.get('content', '')}"
-            elif service_name == "gmail":
+            if service_name == "gmail":
                 llm_input_content = f"Source: Email\nSubject: {event_data.get('subject', '')}\n\nBody:\n{event_data.get('body', '')}"
             elif service_name == "gcalendar":
                 llm_input_content = f"Source: Calendar Event\nSummary: {event_data.get('summary', '')}\n\nDescription:\n{event_data.get('description', '')}"
@@ -174,8 +266,10 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
             if not final_content_str.strip():
                 logger.error(f"Extractor LLM returned no response for event_id: {event_id}.")
                 return
+            
 
             cleaned_content = clean_llm_output(final_content_str)
+            logger.info(f"Extractor LLM response for event_id: {event_id} - {clean_llm_output}.")
             extracted_data = JsonExtractor.extract_valid_json(cleaned_content)
             if not extracted_data:
                 logger.error(f"Could not extract valid JSON from LLM response for event_id: {event_id}. Response: '{cleaned_content}'")
@@ -198,14 +292,16 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
                 for item in action_items:
                     if not isinstance(item, str) or not item.strip():
                         continue
-                    page_date = get_date_from_text(item)
-                    new_block = await db_manager.create_journal_entry_for_action_item(user_id, item, page_date)
-                    new_block_context = {"source": "journal_block", "block_id": new_block['block_id'], "original_content": item, "page_date": page_date}
-                    process_action_item.delay(user_id, [item], topics, new_block['block_id'], new_block_context)
-                    logger.info(f"Created journal entry {new_block['block_id']} and dispatched for action item: {item}")
-            else: # Existing logic for journal_block source
-                if action_items and topics:
-                    process_action_item.delay(user_id, action_items, topics, event_id, event_data)
+                    
+                    original_source_context = {
+                        "source": service_name,
+                        "event_id": event_id,
+                        "content": event_data
+                    }
+                    
+                    # Dispatch directly to the planner/action item processor
+                    process_action_item.delay(user_id, [item], topics, event_id, original_source_context)
+                    logger.info(f"Dispatched action item from {service_name} for processing: '{item}'")
 
             for fact in memory_items:
                 if isinstance(fact, str) and fact.strip():
@@ -265,54 +361,16 @@ async def get_clarifying_questions(user_id: str, task_description: str, topics: 
 async def async_process_action_item(user_id: str, action_items: list, topics: list, source_event_id: str, original_context: dict):
     """Async logic for the proactive task orchestrator."""
     db_manager = PlannerMongoManager()
-    task_id = None
     try:
         task_description = " ".join(map(str, action_items))
-        task_id = await db_manager.create_initial_task(user_id, task_description, action_items, topics, original_context, source_event_id)
-
-        questions_list = await get_clarifying_questions(user_id, task_description, topics, original_context, db_manager)
-
-        if questions_list:
-            logger.info(f"Task {task_id}: Needs clarification. Questions: {questions_list}")
-            questions_for_db = [{"question_id": str(uuid.uuid4()), "text": q.strip(), "answer": None} for q in questions_list]
-            
-            block_id_to_update = original_context.get("block_id") if original_context.get("source") == "journal_block" else None
-
-            if block_id_to_update:
-                # Update the existing journal block with the clarification prompt
-                clarification_text = f"I need a bit more information to help with: '{task_description}'. Can you clarify the following for me in the journal?"
-                await db_manager.journal_blocks_collection.update_one(
-                    {"block_id": block_id_to_update, "user_id": user_id},
-                    {"$set": {"task_status": "clarification_pending", "content": clarification_text}}
-                )
-                logger.info(f"Updated journal block {block_id_to_update} to ask for clarification.")
-            else:
-                # Create a new journal entry for today if the source wasn't a journal block
-                clarification_content = f"I need a bit more information to help with: '{task_description}'. Can you clarify the following for me in the journal?"
-                today_date_str = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d')
-                await db_manager.create_journal_entry_for_task(
-                    user_id=user_id,
-                    content=clarification_content,
-                    date_str=today_date_str,
-                    task_id=task_id,
-                    task_status="clarification_pending"
-                )
-                logger.info(f"Task {task_id} needs clarification, created new journal entry for today.")
-            
-            await db_manager.update_task_with_questions(task_id, "clarification_pending", questions_for_db)
-            await notify_user(user_id, f"I have a few questions to help me plan: '{task_description[:50]}...'", task_id)
-            capture_event(user_id, "clarification_needed", {
-                "task_id": task_id,
-                "question_count": len(questions_list)
-            })
-            logger.info(f"Task {task_id} moved to 'clarification_pending'.")
-        else:
-            logger.info(f"Task {task_id}: No clarification needed. Triggering plan generation.")
-            await db_manager.update_task_status(task_id, "planning")
-            generate_plan_from_context.delay(task_id)
+        # Per spec, create task with 'planning' status and immediately trigger planner.
+        task = await db_manager.create_initial_task(user_id, task_description, action_items, topics, original_context, source_event_id) # noqa: E501
+        task_id = task["task_id"]
+        generate_plan_from_context.delay(task_id)
+        logger.info(f"Task {task_id} created with status 'planning' and dispatched to planner worker.")
 
     except Exception as e:
-        logger.error(f"Error in process_action_item for task {task_id or 'unknown'}: {e}", exc_info=True)
+        logger.error(f"Error in process_action_item: {e}", exc_info=True)
         if task_id:
             await db_manager.update_task_status(task_id, "error", {"error": str(e)})
     finally:
@@ -332,7 +390,56 @@ async def async_generate_plan(task_id: str):
             logger.error(f"Cannot generate plan: Task {task_id} not found.")
             return
 
+        if not task.get("runs"):
+             logger.error(f"Cannot generate plan: Task {task_id} has no 'runs' array.")
+             await db_manager.update_task_status(task_id, "error", {"error": "Task data is malformed: missing 'runs' array."})
+             return
+
+        # Determine if this is a change request before proceeding.
+        is_change_request = bool(task.get("chat_history"))
+
+        # Prevent re-planning if it's not in a plannable state
+        plannable_statuses = ["planning", "clarification_answered"]
+        if task.get("status") not in plannable_statuses:
+             logger.warning(f"Task {task_id} is not in a plannable state (current: {task.get('status')}). Aborting plan generation.")
+             return
+
+        latest_run = task["runs"][-1]
+        run_id = latest_run["run_id"]
+
         user_id = task["user_id"]
+        topics = task.get("topics", [])
+        original_context = task.get("original_context", {})
+
+        # For re-planning, add previous results and chat history to the context
+        if task.get("chat_history"):
+            original_context["chat_history"] = task.get("chat_history")
+            original_context["previous_plan"] = task.get("plan")
+            original_context["previous_result"] = task.get("result")
+
+        task_description = task.get("description", "")
+
+        # If the task is in the 'planning' state, check if clarification is needed.
+        if latest_run.get("status") == "planning":
+            questions_list = await get_clarifying_questions(user_id, task_description, topics, original_context, db_manager)
+            if questions_list and isinstance(questions_list, list) and len(questions_list) > 0:
+                logger.info(f"Task {task_id}: Needs clarification. Questions: {questions_list}")
+                questions_for_db = [{"question_id": str(uuid.uuid4()), "text": q.strip(), "answer": None} for q in questions_list]
+
+                await db_manager.tasks_collection.update_one(
+                    {"task_id": task_id},
+                    {"$set": {
+                        "status": "clarification_pending", "runs.$[run].status": "clarification_pending", "runs.$[run].clarifying_questions": questions_for_db
+                    }},
+                    array_filters=[{"run.run_id": run_id}])
+                await notify_user(user_id, f"I have a few questions to help me plan: '{task_description[:50]}...'", task_id, notification_type="taskNeedsApproval")
+                capture_event(user_id, "clarification_needed", {"task_id": task_id, "question_count": len(questions_list)})
+                logger.info(f"Task {task_id} moved to 'clarification_pending'.")
+                return # Stop here, wait for user input
+
+        # --- Proceed with planning (Scenario A from spec) ---
+        logger.info(f"Task {task_id}: No clarification needed or answers provided. Generating plan.")
+
         user_profile = await db_manager.user_profiles_collection.find_one(
             {"user_id": user_id},
             {"userData.personalInfo": 1} # Projection to get only necessary data
@@ -354,11 +461,16 @@ async def async_generate_plan(task_id: str):
         
         current_user_time = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
 
-        retrieved_context = task.get("found_context", {})
+        retrieved_context = latest_run.get("found_context", {}) # This field doesn't exist yet, but is good for future use
+        action_items = task.get("action_items", [])
+        if not action_items:
+            # This is likely a manually created task. Use its description as the action item.
+            logger.info(f"Task {task_id}: No 'action_items' field found. Using main description as the action.")
+            action_items = [task.get("description", "")]
         # ** NEW ** Add answered questions to the context
         answered_questions = []
-        if task.get("clarifying_questions"):
-            for q in task["clarifying_questions"]:
+        if latest_run.get("clarifying_questions"):
+            for q in latest_run["clarifying_questions"]:
                 if q.get("answer"):
                     answered_questions.append(f"User Clarification: Q: {q['text']} A: {q['answer']}")
         
@@ -369,7 +481,6 @@ async def async_generate_plan(task_id: str):
 
         planner_agent = get_planner_agent(available_tools, current_user_time, user_name, user_location, retrieved_context)
         
-        action_items = task.get("action_items", [])
         user_prompt_content = "Please create a plan for the following action items:\n- " + "\n- ".join(action_items)
         messages = [{'role': 'user', 'content': user_prompt_content}]
 
@@ -385,7 +496,7 @@ async def async_generate_plan(task_id: str):
         if not plan_data or "plan" not in plan_data:
             raise Exception(f"Planner agent returned invalid JSON: {final_response_str}")
 
-        await db_manager.update_task_with_plan(task_id, plan_data)
+        await db_manager.update_task_with_plan(task_id, run_id, plan_data, is_change_request=is_change_request)
         capture_event(user_id, "proactive_task_generated", {
             "task_id": task_id,
             "source": task.get("original_context", {}).get("source", "unknown"),
@@ -488,6 +599,54 @@ def process_linkedin_profile(user_id: str, linkedin_url: str):
         if driver:
             driver.quit()
             logger.info("WebDriver for LinkedIn scraping has been quit.")
+
+@celery_app.task(name="refine_task_details")
+def refine_task_details(task_id: str):
+    """
+    Asynchronously refines a user-created task by using an LLM to parse
+    the description, priority, and schedule from the initial prompt.
+    """
+    logger.info(f"Refining details for task_id: {task_id}")
+    run_async(async_refine_task_details(task_id))
+
+async def async_refine_task_details(task_id: str):
+    db_manager = PlannerMongoManager()
+    try:
+        task = await db_manager.get_task(task_id)
+        if not task or task.get("assignee") != "user":
+            logger.warning(f"Skipping refinement for task {task_id}: not found or not assigned to user.")
+            return
+
+        user_id = task["user_id"]
+        user_profile = await db_manager.user_profiles_collection.find_one({"user_id": user_id})
+        personal_info = user_profile.get("userData", {}).get("personalInfo", {}) if user_profile else {}
+        user_name = personal_info.get("name", "User")
+        user_timezone_str = personal_info.get("timezone", "UTC")
+        user_timezone = ZoneInfo(user_timezone_str)
+        current_time_str = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
+
+        system_prompt = TASK_CREATION_PROMPT.format(
+            user_name=user_name,
+            user_timezone=user_timezone_str,
+            current_time=current_time_str
+        )
+        agent = get_qwen_assistant(system_message=system_prompt)
+        messages = [{'role': 'user', 'content': task["description"]}] # Use the raw prompt for parsing
+
+        response_str = ""
+        for chunk in agent.run(messages=messages):
+            if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
+                response_str = chunk[-1].get("content", "")
+
+        parsed_data = JsonExtractor.extract_valid_json(clean_llm_output(response_str))
+        if parsed_data:
+            await db_manager.update_task_field(task_id, parsed_data)
+            logger.info(f"Successfully refined and updated task {task_id} with new details.")
+
+    except Exception as e:
+        logger.error(f"Error refining task {task_id}: {e}", exc_info=True)
+    finally:
+        await db_manager.close()
 
 # --- Polling Tasks ---
 @celery_app.task(name="poll_gmail_for_user")

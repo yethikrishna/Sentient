@@ -2,7 +2,7 @@
 
 import asyncio
 from datetime import datetime, timezone
-from typing import Dict, Any, List
+from typing import Dict, Any
 from googleapiclient.discovery import Resource
 
 def _find_event_sync(service: Resource, query: str) -> Dict[str, Any]:
@@ -39,3 +39,21 @@ async def find_event_by_query(service: Resource, query: str) -> Dict[str, Any]:
         Dict[str, Any]: A dictionary with the status and the found event object.
     """
     return await asyncio.to_thread(_find_event_sync, service, query)
+def _simplify_calendar_list_entry(calendar: Dict) -> Dict:
+    return {
+        "id": calendar.get("id"),
+        "summary": calendar.get("summary"),
+        "accessRole": calendar.get("accessRole"),
+        "primary": calendar.get("primary", False)
+    }
+
+def _simplify_event(event: Dict) -> Dict:
+    return {
+        "id": event.get("id"),
+        "summary": event.get("summary"),
+        "start": event.get("start", {}).get("dateTime") or event.get("start", {}).get("date"),
+        "end": event.get("end", {}).get("dateTime") or event.get("end", {}).get("date"),
+        "status": event.get("status"),
+        "url": event.get("htmlLink"),
+        "attendees": [a.get("email") for a in event.get("attendees", []) if a.get("email")]
+    }

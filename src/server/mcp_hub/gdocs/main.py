@@ -7,8 +7,7 @@ from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from googleapiclient.errors import HttpError
 
-
-from . import auth, prompts
+from . import auth, prompts, utils
 
 # --- LLM and Environment Configuration ---
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')

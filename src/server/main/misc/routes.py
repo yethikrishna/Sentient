@@ -230,23 +230,6 @@ async def get_role_from_claims_endpoint(payload: dict = Depends(auth_helper.get_
     user_role = payload.get(f"{CUSTOM_CLAIMS_NAMESPACE}role", "free")
     return JSONResponse(status_code=status.HTTP_200_OK, content={"role": user_role})
 
-@router.post("/utils/authenticate-google", summary="Validate or Refresh Stored Google Token (Dummy)")
-async def authenticate_google_endpoint(user_id: str = Depends(PermissionChecker(required_permissions=["manage:google_auth"]))):
-    user_profile = await mongo_manager.get_user_profile(user_id)
-    
-    encrypted_google_refresh_token_gmail = (
-        user_profile.get("userData", {})
-        .get("google_services", {})
-        .get("gmail", {})
-        .get("encrypted_refresh_token")
-    ) if user_profile else None
-
-    if not encrypted_google_refresh_token_gmail:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google Gmail credentials not found for user. Please authenticate via client.")
-
-    print(f"[{datetime.datetime.now()}] [GOOGLE_AUTH_DUMMY_VALIDATION] Found stored Google Gmail token for user {user_id}. Assuming valid for dummy purposes.")
-    return JSONResponse(content={"success": True, "message": "Google Gmail token present and assumed valid (dummy check)."})
-
 # === Activity Route ===
 @router.post("/activity/heartbeat", summary="User Activity Heartbeat")
 async def user_activity_heartbeat_endpoint(user_id: str = Depends(PermissionChecker(required_permissions=["write:profile"]))):

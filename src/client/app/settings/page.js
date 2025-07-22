@@ -20,14 +20,15 @@ import {
 	IconMessageChatbot,
 	IconBrandWhatsapp,
 	IconBrandLinkedin,
-	IconHelpCircle
+	IconHelpCircle,
+	IconKeyboard
 } from "@tabler/icons-react"
 import { useState, useEffect, useCallback } from "react"
 import { Tooltip } from "react-tooltip"
 import { cn } from "@utils/cn"
 
 const HelpTooltip = ({ content }) => (
-	<div className="absolute top-6 right-6 z-40">
+	<div className="fixed bottom-6 left-6 z-40">
 		<button
 			data-tooltip-id="page-help-tooltip"
 			data-tooltip-content={content}
@@ -76,6 +77,10 @@ const questions = [
 			{
 				value: "America/Los_Angeles",
 				label: "Pacific Time (US & Canada)"
+			},
+			{
+				value: "America/St_Johns",
+				label: "Newfoundland (NDT)"
 			},
 			{ value: "Europe/London", label: "London, Dublin (GMT/BST)" },
 			{ value: "Europe/Berlin", label: "Berlin, Paris (CET)" },
@@ -390,6 +395,66 @@ const LinkedInSettings = () => {
 	)
 }
 
+const ShortcutsSettings = () => {
+	const shortcuts = {
+		Global: [
+			{ keys: ["Ctrl", "M"], description: "Open Chat" },
+			{ keys: ["Ctrl", "B"], description: "Toggle Notifications" },
+			{ keys: ["Esc"], description: "Close Modal / Chat" },
+			{ keys: ["Ctrl", "K"], description: "Open Command Palette" }
+		],
+		Navigation: [
+			{ keys: ["Ctrl", "H"], description: "Go to Home" },
+			{ keys: ["Ctrl", "J"], description: "Go to Notes" },
+			{ keys: ["Ctrl", "A"], description: "Go to Tasks" },
+			{ keys: ["Ctrl", "I"], description: "Go to Integrations" },
+			{ keys: ["Ctrl", "S"], description: "Go to Settings" }
+		]
+	}
+
+	return (
+		<section>
+			<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2 flex items-center gap-2">
+				<IconKeyboard />
+				Keyboard Shortcuts
+			</h2>
+			<div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)]">
+				<div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+					{Object.entries(shortcuts).map(([category, list]) => (
+						<div key={category}>
+							<h3 className="text-lg font-semibold text-[var(--color-accent-blue)] mb-4">
+								{category}
+							</h3>
+							<div className="space-y-3">
+								{list.map((shortcut) => (
+									<div
+										key={shortcut.description}
+										className="flex justify-between items-center text-sm"
+									>
+										<span className="text-neutral-300">
+											{shortcut.description}
+										</span>
+										<div className="flex items-center gap-2">
+											{shortcut.keys.map((key) => (
+												<kbd
+													key={key}
+													className="px-2 py-1.5 text-xs font-semibold text-gray-300 bg-neutral-700 border border-neutral-600 rounded-md"
+												>
+													{key}
+												</kbd>
+											))}
+										</div>
+									</div>
+								))}
+							</div>
+						</div>
+					))}
+				</div>
+			</div>
+		</section>
+	)
+}
+
 const TestingTools = () => {
 	const [serviceName, setServiceName] = useState("gmail")
 	const [eventData, setEventData] = useState(
@@ -442,10 +507,6 @@ const TestingTools = () => {
 		} else if (newService === "gcalendar") {
 			setEventData(
 				'{\n  "summary": "Finalize Q3 report",\n  "description": "Need to finalize the Q3 sales report with Sarah before the end of the week."\n}'
-			)
-		} else if (newService === "journal_block") {
-			setEventData(
-				'{\n  "content": "Remind me to call the dentist tomorrow to book an appointment.",\n  "page_date": "2024-07-26"\n}'
 			)
 		}
 	}
@@ -555,7 +616,6 @@ const TestingTools = () => {
 						>
 							<option value="gmail">Gmail</option>
 							<option value="gcalendar">Google Calendar</option>
-							<option value="journal_block">Journal</option>
 						</select>
 					</div>
 					<div>
@@ -1039,7 +1099,7 @@ const ProfileSettings = ({ initialData, onSave, isSaving }) => {
 								/>
 							</button>
 							{openSections[key] && (
-								<div className="space-y-6 mt-4 pl-8 border-l-2 border-[var(--color-primary-surface-elevated)]">
+								<div className="space-y-6 mt-4 pl-4 md:pl-8 border-l-2 border-[var(--color-primary-surface-elevated)]">
 									{questions
 										.filter((q) => q.section === key)
 										.map((q) => (
@@ -1348,14 +1408,14 @@ const ProfilePage = () => {
 	}, [fetchData])
 
 	const ProfileHeader = () => (
-		<div className="flex items-center gap-6 mb-10">
+		<div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 mb-10">
 			<img
 				src={profileData?.picture || "/images/half-logo-dark.svg"}
 				alt="Profile"
-				className="w-24 h-24 rounded-full border-4 border-[var(--color-primary-surface-elevated)] shadow-lg"
+				className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-4 border-[var(--color-primary-surface-elevated)] shadow-lg"
 			/>
 			<div>
-				<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)]">
+				<h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)]">
 					{profileData?.personalInfo?.name || "Your Profile"}
 				</h1>
 				<p className="text-[var(--color-text-secondary)] mt-1">
@@ -1367,8 +1427,16 @@ const ProfilePage = () => {
 
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
-			<Tooltip id="settings-tooltip" style={{ zIndex: 9999 }} />
-			<Tooltip id="page-help-tooltip" style={{ zIndex: 9999 }} />
+			<Tooltip
+				id="settings-tooltip"
+				place="right-start"
+				style={{ zIndex: 9999 }}
+			/>
+			<Tooltip
+				id="page-help-tooltip"
+				place="right-start"
+				style={{ zIndex: 9999 }}
+			/>
 			<div className="flex-1 flex flex-col overflow-hidden relative">
 				<main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 custom-scrollbar">
 					<HelpTooltip content="Customize your experience here. Teach Sentient about yourself, change its personality, manage notifications, and connect your LinkedIn profile." />
@@ -1382,7 +1450,9 @@ const ProfilePage = () => {
 						<AIPersonalitySettings />
 						<WhatsAppSettings />
 						<LinkedInSettings />
-						{process.env.NEXT_PUBLIC_ENVIRONMENT !== "prod" && (
+						<ShortcutsSettings />
+						{(process.env.NEXT_PUBLIC_ENVIRONMENT !== "prod" ||
+							process.env.NEXT_PUBLIC_ENVIRONMENT !== "stag") && (
 							<TestingTools />
 						)}
 					</div>

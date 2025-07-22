@@ -6,24 +6,27 @@ print(f"[{datetime.datetime.now()}] [STARTUP] Main Server application script exe
 
 from contextlib import asynccontextmanager
 import logging
+from bson import ObjectId
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.encoders import ENCODERS_BY_TYPE
 
 from main.config import APP_SERVER_PORT
 from main.dependencies import mongo_manager
 from main.auth.routes import router as auth_router
-from main.chat.routes import router as chat_router
 from main.notifications.routes import router as notifications_router
 from main.integrations.routes import router as integrations_router
 from main.misc.routes import router as misc_router
-from main.agents.routes import router as agents_router
-from main.journal.routes import router as journal_router
+from main.tasks.routes import router as agents_router
 from main.settings.routes import router as settings_router # Import the new router
 from main.testing.routes import router as testing_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__) 
+
+# Add a custom encoder for ObjectId to FastAPI's internal dictionary
+ENCODERS_BY_TYPE[ObjectId] = str
 
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI):
@@ -39,7 +42,7 @@ async def lifespan(app_instance: FastAPI):
 app = FastAPI(title="Sentient Main Server", version="2.2.0", docs_url="/docs", redoc_url="/redoc", lifespan=lifespan)
 
 app.add_middleware(
-    CORSMiddleware, 
+    CORSMiddleware,
     allow_origins=["*"], # More permissive for development
     allow_credentials=True, 
     allow_methods=["*"], 
@@ -47,12 +50,10 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
-app.include_router(chat_router)
 app.include_router(notifications_router)
 app.include_router(integrations_router)
 app.include_router(misc_router)
 app.include_router(agents_router)
-app.include_router(journal_router)
 app.include_router(settings_router) # Add the new router
 app.include_router(testing_router)
 

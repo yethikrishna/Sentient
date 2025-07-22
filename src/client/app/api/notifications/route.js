@@ -16,7 +16,7 @@ export const GET = withAuth(async function GET(request, { authHeader }) {
 
 		const data = await response.json()
 		if (!response.ok) {
-			throw new Error(data.error || "Failed to fetch notifications")
+			throw new Error(data.detail || "Failed to fetch notifications")
 		}
 		return NextResponse.json(data)
 	} catch (error) {

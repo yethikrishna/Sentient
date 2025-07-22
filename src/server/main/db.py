@@ -1,22 +1,25 @@
 # src/server/main/db.py
 import os
 import datetime
-import uuid 
+import uuid
+import json
+import logging
 import motor.motor_asyncio
 from pymongo import ASCENDING, DESCENDING, IndexModel, ReturnDocument
 from pymongo.errors import DuplicateKeyError
 from typing import Dict, List, Optional, Any, Tuple
+from workers.tasks import execute_task_plan
 
 # Import config from the current 'main' directory
 from main.config import MONGO_URI, MONGO_DB_NAME
 
 USER_PROFILES_COLLECTION = "user_profiles" 
-CHAT_HISTORY_COLLECTION = "chat_history"
 NOTIFICATIONS_COLLECTION = "notifications" 
 POLLING_STATE_COLLECTION = "polling_state_store" 
 PROCESSED_ITEMS_COLLECTION = "processed_items_log" 
 TASK_COLLECTION = "tasks"
-JOURNAL_BLOCKS_COLLECTION = "journal_blocks"
+
+logger = logging.getLogger(__name__)
 
 class MongoManager:
     def __init__(self):
@@ -24,12 +27,10 @@ class MongoManager:
         self.db = self.client[MONGO_DB_NAME]
         
         self.user_profiles_collection = self.db[USER_PROFILES_COLLECTION]
-        self.chat_history_collection = self.db[CHAT_HISTORY_COLLECTION]
         self.notifications_collection = self.db[NOTIFICATIONS_COLLECTION]
         self.polling_state_collection = self.db[POLLING_STATE_COLLECTION]
         self.processed_items_collection = self.db[PROCESSED_ITEMS_COLLECTION]
         self.task_collection = self.db[TASK_COLLECTION]
-        self.journal_blocks_collection = self.db[JOURNAL_BLOCKS_COLLECTION]
         
         print(f"[{datetime.datetime.now()}] [MainServer_MongoManager] Initialized. Database: {MONGO_DB_NAME}")
 
@@ -43,12 +44,6 @@ class MongoManager:
                 IndexModel([("userData.google_services.gmail.encrypted_refresh_token", ASCENDING)], 
                            name="google_gmail_token_idx", sparse=True),
                 IndexModel([("userData.onboardingComplete", ASCENDING)], name="user_onboarding_status_idx", sparse=True)
-            ],
-            self.chat_history_collection: [
-                IndexModel([("user_id", ASCENDING), ("chat_id", ASCENDING)], name="user_chat_id_idx"),
-                IndexModel([("messages.message", "text")], name="message_text_idx"),
-                IndexModel([("user_id", ASCENDING), ("last_updated", DESCENDING)], name="chat_last_updated_idx"), # Kept for sorting chats
-                IndexModel([("user_id", ASCENDING), ("messages.timestamp", DESCENDING)], name="message_timestamp_idx", sparse=True)
             ],
             self.notifications_collection: [
                 IndexModel([("user_id", ASCENDING)], name="notification_user_id_idx"),
@@ -72,12 +67,6 @@ class MongoManager:
                 IndexModel([("status", ASCENDING), ("agent_id", ASCENDING)], name="task_status_agent_idx", sparse=True), 
                 IndexModel([("task_id", ASCENDING)], unique=True, name="task_id_unique_idx")
             ],
-            self.journal_blocks_collection: [
-                IndexModel([("block_id", ASCENDING)], unique=True, name="journal_block_id_unique_idx"),
-                IndexModel([("user_id", ASCENDING), ("page_date", DESCENDING), ("order", ASCENDING)], name="journal_user_date_order_idx"),
-                IndexModel([("linked_task_id", ASCENDING)], name="journal_linked_task_idx", sparse=True),
-                IndexModel([("content", "text")], name="journal_content_text_idx")
-            ]
         }
 
         for collection, indexes in collections_with_indexes.items():
@@ -145,93 +134,6 @@ class MongoManager:
             upsert=True 
         )
         return result.matched_count > 0 or result.upserted_id is not None
-
-    # --- Chat History Methods ---
-    async def add_chat_message(self, user_id: str, chat_id: str, message_data: Dict) -> str:
-        if not all([user_id, chat_id, message_data]):
-            raise ValueError("user_id, chat_id, and message_data are required.")
-        
-        message_data["timestamp"] = datetime.datetime.now(datetime.timezone.utc)
-        message_id = message_data.get("id", str(uuid.uuid4())) 
-        message_data["id"] = message_id
-
-        result = await self.chat_history_collection.update_one(
-            {"user_id": user_id, "chat_id": chat_id},
-            {"$push": {"messages": message_data},
-             "$set": {"last_updated": datetime.datetime.now(datetime.timezone.utc)},
-             "$setOnInsert": {"user_id": user_id, "chat_id": chat_id, "created_at": datetime.datetime.now(datetime.timezone.utc)}
-            },
-            upsert=True
-        )
-        if result.matched_count > 0 or result.upserted_id is not None:
-            return message_id
-        raise Exception(f"Failed to add/update chat message for user {user_id}, chat {chat_id}")
-
-    async def get_chat_history(self, user_id: str, chat_id: str) -> List[Dict]:
-        if not user_id or not chat_id: return []
-        chat_doc = await self.chat_history_collection.find_one(
-            {"user_id": user_id, "chat_id": chat_id}, {"messages": 1, "_id": 0}
-        )
-        return chat_doc.get("messages", []) if chat_doc else []
-
-    async def get_all_chats_for_user(self, user_id: str) -> List[Dict]:
-        if not user_id: return []
-        cursor = self.chat_history_collection.find(
-            {"user_id": user_id},
-            {"chat_id": 1, "title": 1, "last_updated": 1, "_id": 0}
-        ).sort("last_updated", DESCENDING)
-        return await cursor.to_list(length=None)
-
-    async def delete_chat_history(self, user_id: str, chat_id: str) -> bool:
-        if not user_id or not chat_id: return False
-        result = await self.chat_history_collection.delete_one({"user_id": user_id, "chat_id": chat_id})
-        return result.deleted_count > 0
-
-    async def update_chat_message(self, user_id: str, chat_id: str, message_id: str, update_data: Dict) -> bool:
-        if not all([user_id, chat_id, message_id, update_data]):
-            raise ValueError("user_id, chat_id, message_id, and update_data are required.")
-
-        set_payload = {f"messages.$.{key}": value for key, value in update_data.items()}
-        set_payload["last_updated"] = datetime.datetime.now(datetime.timezone.utc)
-        
-        result = await self.chat_history_collection.update_one(
-            {"user_id": user_id, "chat_id": chat_id, "messages.id": message_id},
-            {"$set": set_payload}
-        )
-        if result.matched_count == 0:
-            print(f"[{datetime.datetime.now()}] [DB_UPDATE_WARN] No message found with ID {message_id} in chat {chat_id} for user {user_id} to update.")
-            return False
-        return result.modified_count > 0
-
-    async def create_new_chat_session(self, user_id: str, chat_id: str, title: Optional[str] = "New Chat") -> bool:
-        if not user_id or not chat_id: return False
-        now_utc = datetime.datetime.now(datetime.timezone.utc)
-        # Use update_one with upsert to avoid race conditions and ensure idempotency.
-        # If a chat with this ID somehow already exists, this does nothing.
-        result = await self.chat_history_collection.update_one(
-            {"user_id": user_id, "chat_id": chat_id},
-            {
-                "$setOnInsert": {
-                    "user_id": user_id,
-                    "chat_id": chat_id,
-                    "title": title,
-                    "messages": [],
-                    "created_at": now_utc,
-                    "last_updated": now_utc
-                }
-            },
-            upsert=True
-        )
-        return result.upserted_id is not None
-
-    async def rename_chat(self, user_id: str, chat_id: str, new_title: str) -> bool:
-        if not all([user_id, chat_id, new_title]):
-            return False
-        result = await self.chat_history_collection.update_one(
-            {"user_id": user_id, "chat_id": chat_id},
-            {"$set": {"title": new_title, "last_updated": datetime.datetime.now(datetime.timezone.utc)}}
-        )
-        return result.modified_count > 0
 
     # --- Notification Methods ---
     async def get_notifications(self, user_id: str) -> List[Dict]:
@@ -305,6 +207,155 @@ class MongoManager:
             upsert=True
         )
         return result.matched_count > 0 or result.upserted_id is not None
+
+    # --- Task Methods ---
+    async def add_task(self, user_id: str, task_data: dict) -> str:
+        """Creates a new task document and returns its ID."""
+        task_id = str(uuid.uuid4())
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+
+        schedule = task_data.get("schedule")
+        if isinstance(schedule, str):
+            try:
+                schedule = json.loads(schedule)
+            except json.JSONDecodeError:
+                schedule = None
+
+        assignee = task_data.get("assignee", "user")
+        # Tasks assigned to AI start planning, user tasks are pending.
+        status = "planning" if assignee == "ai" else "pending"
+
+        initial_run = {
+            "run_id": str(uuid.uuid4()),
+            "status": status,
+            "plan": [],
+            "clarifying_questions": [],
+            "progress_updates": [],
+            "result": None,
+            "error": None,
+            "prompt": task_data.get("description")
+        }
+
+        task_doc = {
+            "task_id": task_id,
+            "user_id": user_id,
+            "description": task_data.get("description", "New Task"),
+            "status": status,
+            "assignee": assignee,
+            "priority": task_data.get("priority", 1),
+            "runs": [initial_run],
+            "schedule": schedule,
+            "enabled": True,
+            "original_context": {"source": "manual_creation"},
+            "created_at": now_utc,
+            "updated_at": now_utc,
+            "chat_history": [],
+            "next_execution_at": None,
+            "last_execution_at": None,
+        }
+
+        await self.task_collection.insert_one(task_doc)
+        logger.info(f"Created new manual task {task_id} for user {user_id} with status 'planning'.")
+        return task_id
+
+    async def get_task(self, task_id: str, user_id: str) -> Optional[Dict]:
+        """Fetches a single task by its ID, ensuring it belongs to the user."""
+        return await self.task_collection.find_one({"task_id": task_id, "user_id": user_id})
+
+    async def get_all_tasks_for_user(self, user_id: str) -> List[Dict]:
+        """Fetches all tasks for a given user."""
+        cursor = self.task_collection.find({"user_id": user_id}).sort("created_at", -1)
+        return await cursor.to_list(length=None)
+
+    async def update_task(self, task_id: str, updates: Dict) -> bool:
+        """Updates an existing task document."""
+        updates["updated_at"] = datetime.datetime.now(datetime.timezone.utc)
+        result = await self.task_collection.update_one(
+            {"task_id": task_id},
+            {"$set": updates}
+        )
+        return result.modified_count > 0
+
+    async def add_answers_to_task(self, task_id: str, answers: List[Dict], user_id: str) -> bool:
+        """Finds a task and updates its clarifying questions with user answers."""
+        task = await self.get_task(task_id, user_id)
+        if not task:
+            return False
+
+        current_questions = task.get("clarifying_questions", [])
+        for answer_data in answers:
+            for question in current_questions:
+                if question.get("question_id") == answer_data.get("question_id"):
+                    question["answer"] = answer_data.get("answer_text")
+                    break
+        return await self.update_task(task_id, {"clarifying_questions": current_questions})
+
+    async def delete_task(self, task_id: str, user_id: str) -> str:
+        """Deletes a task."""
+        result = await self.task_collection.delete_one({"task_id": task_id, "user_id": user_id})
+        return "Task deleted successfully." if result.deleted_count > 0 else None
+
+    async def decline_task(self, task_id: str, user_id: str) -> str:
+        """Declines a task by setting its status to 'declined'."""
+        success = await self.update_task(task_id, {"status": "declined"})
+        return "Task declined." if success else None
+
+    async def execute_task_immediately(self, task_id: str, user_id: str) -> str:
+        """Triggers the immediate execution of a task."""
+        task = await self.get_task(task_id, user_id)
+        if not task:
+            return None
+        execute_task_plan.delay(task_id, user_id)
+        return "Task execution has been initiated."
+
+    async def cancel_latest_run(self, task_id: str) -> bool:
+        """Pops the last run from the array and reverts the task status to completed."""
+        update_payload = {
+            "$set": {
+                "status": "completed",
+                "updated_at": datetime.datetime.now(datetime.timezone.utc)
+            },
+            "$pop": {"runs": 1}  # Removes the last element from the 'runs' array
+        }
+        result = await self.task_collection.update_one({"task_id": task_id}, update_payload) # noqa: E501
+        return result.modified_count > 0
+
+    async def delete_notifications_for_task(self, user_id: str, task_id: str):
+        """Deletes all notifications associated with a specific task_id for a user."""
+        if not user_id or not task_id:
+            return
+        await self.notifications_collection.update_one(
+            {"user_id": user_id},
+            {"$pull": {"notifications": {"task_id": task_id}}}
+        )
+        logger.info(f"Deleted notifications for task {task_id} for user {user_id}.")
+
+    async def rerun_task(self, original_task_id: str, user_id: str) -> Optional[str]:
+        """Duplicates a task to be re-run."""
+        original_task = await self.get_task(original_task_id, user_id)
+        if not original_task:
+            return None
+
+        new_task_doc = original_task.copy()
+        new_task_id = str(uuid.uuid4())
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+
+        # Reset fields for a new run
+        if "_id" in new_task_doc:
+            del new_task_doc["_id"] # Let Mongo generate a new one
+        new_task_doc["task_id"] = new_task_id
+        new_task_doc["status"] = "planning"
+        new_task_doc["created_at"] = now_utc
+        new_task_doc["updated_at"] = now_utc
+        new_task_doc["progress_updates"] = []
+        new_task_doc["result"] = None
+        new_task_doc["error"] = None
+        new_task_doc["last_execution_at"] = None
+        new_task_doc["next_execution_at"] = None
+
+        await self.task_collection.insert_one(new_task_doc)
+        return new_task_id
+
 
     async def close(self):
         if self.client:

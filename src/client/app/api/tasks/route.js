@@ -9,7 +9,9 @@ const appServerUrl =
 
 export const GET = withAuth(async function GET(request, { authHeader }) {
 	try {
-		const response = await fetch(`${appServerUrl}/agents/fetch-tasks`, {
+		// The backend endpoint is a POST, but it doesn't require a body.
+		// We use POST here to align with the backend's expectation.
+		const response = await fetch(`${appServerUrl}/tasks/fetch-tasks`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json", ...authHeader }
 		})

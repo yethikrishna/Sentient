@@ -21,6 +21,13 @@ module.exports = {
 				fifth: "moveInCircle 20s ease infinite",
 				"meteor-effect": "meteor 5s linear infinite"
 			},
+			colors: {
+				"sentient-blue": "#4a9eff",
+				"sentient-blue-dark": "#3a8eff",
+				"dark-bg": "#111111",
+				"dark-surface": "#1a1a1a",
+				"dark-surface-elevated": "#2a2a2a"
+			},
 			keyframes: {
 				meteor: {
 					"0%": { transform: "translateY(-20%) translateX(-50%)" },

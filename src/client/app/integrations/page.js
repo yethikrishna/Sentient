@@ -37,7 +37,7 @@ import ModalDialog from "@components/ModalDialog"
 import { motion, AnimatePresence } from "framer-motion"
 
 const HelpTooltip = ({ content }) => (
-	<div className="absolute top-6 right-6 z-40">
+	<div className="fixed bottom-6 left-6 z-40">
 		<button
 			data-tooltip-id="page-help-tooltip"
 			data-tooltip-content={content}
@@ -209,18 +209,18 @@ const FilterInputSection = ({
 			{description && (
 				<p className="text-gray-400 text-sm mb-4">{description}</p>
 			)}
-			<div className="flex gap-2 mb-4">
+			<div className="flex flex-col sm:flex-row gap-2 mb-4">
 				<input
 					type="text"
 					value={inputValue}
 					onChange={(e) => setInputValue(e.target.value)}
 					onKeyDown={(e) => e.key === "Enter" && handleAdd()}
 					placeholder={placeholder}
-					className="flex-grow bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+					className="flex-grow bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)] w-full"
 				/>
 				<button
 					onClick={handleAdd}
-					className="flex flex-row items-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors"
+					className="flex flex-row items-center justify-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors"
 				>
 					<IconPlus className="w-4 h-4 mr-2" /> Add
 				</button>
@@ -562,7 +562,7 @@ const IntegrationsPage = () => {
 				"google_search",
 				"progress_updater",
 				"chat_tools",
-				"journal"
+				"tasks"
 			]
 			const connectable = integrationsWithIcons.filter(
 				(i) =>
@@ -701,10 +701,18 @@ const IntegrationsPage = () => {
 
 	return (
 		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
-			<Tooltip id="integrations-tooltip" style={{ zIndex: 9999 }} />
-			<Tooltip id="page-help-tooltip" style={{ zIndex: 9999 }} />
+			<Tooltip
+				id="integrations-tooltip"
+				place="right-start"
+				style={{ zIndex: 9999 }}
+			/>
+			<Tooltip
+				id="page-help-tooltip"
+				place="right-start"
+				style={{ zIndex: 9999 }}
+			/>
 			<div className="flex-1 flex flex-col overflow-hidden relative">
-				<header className="flex items-center justify-between p-4 md:px-8 md:py-6 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)]">
+				<header className="flex items-center justify-between p-4 sm:p-6 md:px-8 md:py-6 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)]">
 					<HelpTooltip content="Connect your apps here. This allows Sentient to access information and perform actions on your behalf." />
 					<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)] flex items-center gap-3">
 						Integrations

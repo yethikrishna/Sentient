@@ -173,10 +173,9 @@ class PermissionChecker:
     def __init__(self, required_permissions: List[str]):
         self.required_permissions = set(required_permissions)
 
-    async def __call__(self, token: str = Depends(oauth2_scheme), auth_helper: AuthHelper = Depends()):
-        from main.dependencies import auth_helper as global_auth_helper
-
-        user_id, token_permissions_list = await global_auth_helper.get_current_user_id_and_permissions(token=token)
+    async def __call__(self, token: str = Depends(oauth2_scheme)):
+        from main.dependencies import auth_helper
+        user_id, token_permissions_list = await auth_helper.get_current_user_id_and_permissions(token=token)
         token_permissions_set = set(token_permissions_list)
 
         if not self.required_permissions.issubset(token_permissions_set):

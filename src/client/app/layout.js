@@ -13,7 +13,7 @@ import { PostHogProvider } from "@components/PostHogProvider"
  */
 export const metadata = {
 	title: "Sentient", // Title of the application, displayed in browser tab or window title
-	description: "Your personal & private AI companion with agents & memory" // Description of the application, used for SEO purposes
+	description: "Your autopilot for productivity" // Description of the application, used for SEO purposes
 }
 
 /**
@@ -30,6 +30,12 @@ export const metadata = {
 export default function RootLayout({ children }) {
 	return (
 		<html lang="en" suppressHydrationWarning>
+			<head>
+				<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+				<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+				<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+				<link rel="manifest" href="/site.webmanifest" />
+			</head>
 			<Auth0Provider>
 				<body className="font-Inter">
 					<PostHogProvider>

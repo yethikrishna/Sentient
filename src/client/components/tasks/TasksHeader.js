@@ -6,10 +6,11 @@ import {
 	IconList,
 	IconCalendar,
 	IconLayoutGrid, // This is This Month
-	IconCalendarWeek // This is This Week
+	IconCalendarWeek, // This is This Week
+	IconHelpCircle
 } from "@tabler/icons-react"
 
-const TasksHeader = () => {
+const TasksHeader = ({ onOpenDemo }) => {
 	const [userDetails, setUserDetails] = useState(null)
 
 	const fetchUserDetails = useCallback(async () => {
@@ -52,7 +53,17 @@ const TasksHeader = () => {
 				</h1>
 			</div>
 
-			<div className="flex items-center gap-2 sm:gap-4"></div>
+			<div className="flex items-center gap-2 sm:gap-4">
+				<button
+					onClick={onOpenDemo}
+					className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-sentient-blue/20 rounded-full border border-sentient-blue/50 pulse-glow-animation"
+					data-tooltip-id="tasks-tooltip"
+					data-tooltip-content="Interactive Walkthrough"
+				>
+					<IconHelpCircle size={18} />
+					<span>Help</span>
+				</button>
+			</div>
 		</header>
 	)
 }

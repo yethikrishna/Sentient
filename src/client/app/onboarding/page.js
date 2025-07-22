@@ -309,7 +309,7 @@ const OnboardingPage = () => {
 				})
 			}
 			posthog?.capture("onboarding_completed")
-			router.push("/tasks")
+			router.push("/tasks?show_demo=true")
 		} catch (error) {
 			toast.error(`Error: ${error.message}`)
 			setStage("questions") // Go back to questions on error
@@ -899,22 +899,9 @@ const OnboardingPage = () => {
 						),
 						title: "Explore Tasks",
 						description:
-							"Write down your thoughts and let Sentient proactively manage your day.",
+							"Write down your tasks and let Sentient proactively manage your day.",
 						buttonText: "Go to Tasks",
-						onClick: () => router.push("/tasks")
-					},
-					{
-						icon: (
-							<IconSparkles
-								size={32}
-								className="text-yellow-400"
-							/>
-						),
-						title: "Explore What's Possible",
-						description:
-							"See examples of what you can automate and achieve with your new AI.",
-						buttonText: "Go to Tasks",
-						onClick: () => router.push("/tasks")
+						onClick: () => router.push("/tasks?show_demo=true")
 					}
 				]
 				return (
@@ -960,7 +947,7 @@ const OnboardingPage = () => {
 							))}
 						</div>
 						<button
-							onClick={() => router.push("/tasks")}
+							onClick={() => router.push("/tasks?show_demo=true")}
 							className="text-neutral-400 hover:text-white underline"
 						>
 							Or, just take me to the app

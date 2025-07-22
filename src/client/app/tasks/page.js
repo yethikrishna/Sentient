@@ -9,10 +9,11 @@ import React, {
 } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { parseISO } from "date-fns"
-import { IconLoader } from "@tabler/icons-react"
-import { AnimatePresence } from "framer-motion"
+import { IconLoader, IconX } from "@tabler/icons-react"
+import { AnimatePresence, motion } from "framer-motion"
 import toast from "react-hot-toast"
 import { Tooltip } from "react-tooltip"
+import Script from "next/script"
 
 // New component imports
 import TasksHeader from "@components/tasks/TasksHeader"
@@ -21,6 +22,60 @@ import AllTasksView from "@components/tasks/AllTasksView"
 // Existing component imports (modals remain)
 import TaskDetailsModal from "@components/tasks/TaskDetailsModal"
 import EditTaskModal from "@components/tasks/EditTaskModal"
+
+const StorylaneDemoModal = ({ onClose }) => {
+	return (
+		<>
+			<Script async src="https://js.storylane.io/js/v2/storylane.js" />
+			<motion.div
+				initial={{ opacity: 0 }}
+				animate={{ opacity: 1 }}
+				exit={{ opacity: 0 }}
+				onClick={onClose}
+				className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 p-4"
+			>
+				<motion.div
+					initial={{ scale: 0.9, y: 20 }}
+					animate={{ scale: 1, y: 0 }}
+					exit={{ scale: 0.9, y: 20 }}
+					onClick={(e) => e.stopPropagation()}
+					className="bg-neutral-900/80 backdrop-blur-md p-2 rounded-2xl shadow-xl w-full max-w-5xl h-[90vh] border border-neutral-700 flex flex-col"
+				>
+					<div className="flex justify-between items-center pb-2 flex-shrink-0">
+						<h2 className="text-xl font-semibold text-white pl-2">
+							Interactive Walkthrough
+						</h2>
+						<button
+							onClick={onClose}
+							className="p-1 rounded-full hover:bg-neutral-800"
+						>
+							<IconX size={20} />
+						</button>
+					</div>
+					<div className="flex-1 w-full h-full">
+						<iframe
+							loading="lazy"
+							className="sl-demo"
+							src="https://app.storylane.io/demo/d6oo4tbg4fbb?embed=inline"
+							name="sl-embed"
+							allow="fullscreen"
+							allowFullScreen
+							style={{
+								width: "100%",
+								height: "100%",
+								border: "1px solid rgba(63,95,172,0.35)",
+								boxShadow:
+									"0px 0px 18px rgba(26, 19, 72, 0.15)",
+								borderRadius: "10px",
+								boxSizing: "border-box"
+							}}
+						></iframe>
+					</div>
+				</motion.div>
+			</motion.div>
+		</>
+	)
+}
 
 function TasksPageContent() {
 	const searchParams = useSearchParams()
@@ -34,6 +89,17 @@ function TasksPageContent() {
 	// Modal States
 	const [selectedTask, setSelectedTask] = useState(null) // For viewing details
 	const [editingTask, setEditingTask] = useState(null) // For editing
+	const [isDemoModalOpen, setIsDemoModalOpen] = useState(false)
+
+	// Check for query param to auto-open demo on first visit from onboarding
+	useEffect(() => {
+		const showDemo = searchParams.get("show_demo")
+		if (showDemo === "true") {
+			setIsDemoModalOpen(true)
+			// Clean the URL so the modal doesn't reappear on refresh
+			router.replace("/tasks", { scroll: false })
+		}
+	}, [searchParams, router])
 
 	useEffect(() => {
 		const taskIdParam = searchParams.get("taskId")
@@ -241,7 +307,7 @@ function TasksPageContent() {
 			/>
 
 			<main className="flex-1 flex flex-col overflow-hidden relative">
-				<TasksHeader />
+				<TasksHeader onOpenDemo={() => setIsDemoModalOpen(true)} />
 				{isLoading ? (
 					<div className="flex justify-center items-center flex-1">
 						<IconLoader className="w-10 h-10 animate-spin text-[var(--color-accent-blue)]" />
@@ -263,6 +329,11 @@ function TasksPageContent() {
 			</main>
 
 			<AnimatePresence>
+				{isDemoModalOpen && (
+					<StorylaneDemoModal
+						onClose={() => setIsDemoModalOpen(false)}
+					/>
+				)}
 				{selectedTask && (
 					<TaskDetailsModal
 						task={selectedTask}

@@ -1451,7 +1451,8 @@ const ProfilePage = () => {
 						<WhatsAppSettings />
 						<LinkedInSettings />
 						<ShortcutsSettings />
-						{process.env.NEXT_PUBLIC_ENVIRONMENT !== "prod" || process.env.NEXT_PUBLIC_ENVIRONMENT !== "stag" && (
+						{(process.env.NEXT_PUBLIC_ENVIRONMENT !== "prod" ||
+							process.env.NEXT_PUBLIC_ENVIRONMENT !== "stag") && (
 							<TestingTools />
 						)}
 					</div>

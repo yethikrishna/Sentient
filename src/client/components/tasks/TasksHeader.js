@@ -46,21 +46,21 @@ const TasksHeader = ({ onOpenDemo }) => {
 	]
 
 	return (
-		<header className="flex flex-wrap items-center justify-between gap-4 p-4 md:px-8 md:py-6 border-b border-[var(--color-primary-surface)] flex-shrink-0">
-			<div className="flex items-center gap-6">
-				<h1 className="text-3xl lg:text-4xl font-semibold text-white">
+		<header className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-primary-surface)] bg-[var(--color-primary-background)]">
+			<div>
+				<h1 className="text-2xl font-semibold text-[var(--color-text-primary)] font-Inter">
 					{getGreeting()}, {userDetails?.given_name || "User"}
 				</h1>
 			</div>
 
-			<div className="flex items-center gap-2 sm:gap-4">
+			<div className="flex items-center gap-3">
 				<button
 					onClick={onOpenDemo}
-					className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-sentient-blue/20 rounded-full border border-sentient-blue/50 pulse-glow-animation"
+					className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] bg-[var(--color-primary-surface)] hover:bg-[var(--color-primary-surface-elevated)] rounded-lg border border-[var(--color-primary-surface)] hover:border-[var(--color-accent-blue)] transition-all duration-200"
 					data-tooltip-id="tasks-tooltip"
 					data-tooltip-content="Interactive Walkthrough"
 				>
-					<IconHelpCircle size={18} />
+					<IconHelpCircle size={16} />
 					<span>Help</span>
 				</button>
 			</div>

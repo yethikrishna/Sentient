@@ -65,7 +65,7 @@ const QuickAddTask = ({ onTaskAdded }) => {
 	}
 
 	return (
-		<div className="relative p-2 mb-4 bg-dark-surface rounded-lg border border-dark-surface-elevated focus-within:ring-2 focus-within:ring-sentient-blue transition-all">
+		<div className="flex items-center gap-3 p-3 mb-4 bg-[var(--color-primary-surface)] border border-[var(--color-primary-surface-elevated)] rounded-lg focus-within:border-[var(--color-accent-blue)] transition-colors">
 			<textarea
 				ref={inputRef}
 				value={prompt}
@@ -77,39 +77,36 @@ const QuickAddTask = ({ onTaskAdded }) => {
 					}
 				}}
 				placeholder="Add a new task for yourself or Sentient..."
-				className="w-full bg-transparent p-2 pr-28 text-white placeholder-neutral-500 focus:ring-0 focus:outline-none resize-none max-h-48 custom-scrollbar"
+				className="flex-1 bg-transparent text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] resize-none outline-none font-Inter"
 				rows={1}
 				disabled={isAdding}
 			/>
-			<div className="absolute top-1/2 right-3 -translate-y-1/2 flex items-center gap-2">
+			<div className="flex items-center gap-2">
 				<button
 					onClick={() =>
 						setAssignee(assignee === "user" ? "ai" : "user")
 					}
-					className="p-2 rounded-full hover:bg-dark-surface-elevated"
+					className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-primary-surface-elevated)] rounded-md transition-colors"
 					data-tooltip-id="tasks-tooltip"
 					data-tooltip-content={`Assign to: ${
 						assignee === "ai" ? "AI" : "Me"
 					}`}
 				>
 					{assignee === "ai" ? (
-						<IconSparkles
-							size={18}
-							className="text-sentient-blue"
-						/>
+						<IconSparkles size={16} className="text-[var(--color-accent-blue)]" />
 					) : (
-						<IconUser size={18} className="text-neutral-400" />
+						<IconUser size={16} />
 					)}
 				</button>
 				<button
 					onClick={handleAddTask}
 					disabled={isAdding || !prompt.trim()}
-					className="p-2 bg-sentient-blue rounded-full text-white disabled:opacity-50"
+					className="p-2 bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white rounded-md disabled:opacity-50 transition-colors"
 				>
 					{isAdding ? (
-						<IconLoader size={18} className="animate-spin" />
+						<IconLoader size={16} className="animate-spin" />
 					) : (
-						<IconPlus size={18} />
+						<IconPlus size={16} />
 					)}
 				</button>
 			</div>
@@ -142,14 +139,14 @@ const SortableHeader = ({
 		<button
 			onClick={() => onSort(sortKey)}
 			className={cn(
-				"flex items-center justify-center gap-1 font-bold text-neutral-400 hover:text-white transition-colors group",
+				"flex items-center justify-center gap-1 text-sm font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors",
 				className
 			)}
 		>
 			<span>{title}</span>
 			<IconComponent
-				size={16}
-				className={cn(iconClassName, "group-hover:text-white")}
+				size={14}
+				className={cn(iconClassName, "transition-colors")}
 			/>
 		</button>
 	)
@@ -175,28 +172,31 @@ const TaskListItem = ({
 						e.stopPropagation()
 						onAssigneeChange(task.task_id, "ai")
 					}}
-					className="p-1 rounded-full hover:bg-blue-500/20 group/assignee"
+					className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-accent-blue)] hover:bg-[var(--color-primary-surface-elevated)] rounded transition-colors"
 					data-tooltip-id="tasks-tooltip"
 					data-tooltip-content="Assign to AI"
 				>
-					<IconUser
-						size={18}
-						className="text-neutral-400 group-hover/assignee:text-blue-400 transition-colors"
-					/>
+					<IconUser size={16} />
 				</button>
 			)
 		}
 		if (task.assignee === "ai") {
 			return (
-				<IconSparkles
-					size={18}
-					className="text-blue-400"
-					data-tooltip-id="tasks-tooltip"
-					data-tooltip-content="Assigned to AI"
-				/>
+				<div className="p-2">
+					<IconSparkles
+						size={16}
+						className="text-[var(--color-accent-blue)]"
+						data-tooltip-id="tasks-tooltip"
+						data-tooltip-content="Assigned to AI"
+					/>
+				</div>
 			)
 		}
-		return <IconSparkles size={18} className="text-neutral-400" />
+		return (
+			<div className="p-2">
+				<IconSparkles size={16} className="text-[var(--color-text-muted)]" />
+			</div>
+		)
 	}, [task, onAssigneeChange])
 
 	const priorityInfo = priorityMap[task.priority] || priorityMap.default
@@ -220,18 +220,18 @@ const TaskListItem = ({
 				if (e.target.closest("button")) return
 				onViewDetails(task)
 			}}
-			className="grid items-center p-2 border-b border-dark-surface-elevated hover:bg-dark-surface cursor-pointer text-sm group"
+			className="grid items-center p-3 border-b border-[var(--color-primary-surface)] hover:bg-[var(--color-primary-surface)] cursor-pointer text-sm group transition-colors"
 			style={{ gridTemplateColumns }}
 		>
 			<div className="truncate pr-4 font-medium flex items-center gap-2">
-				<div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+				<div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
 					{task.assignee === "user" && task.status === "pending" && (
 						<button
 							onClick={(e) => {
 								e.stopPropagation()
 								onMarkComplete(task.task_id)
 							}}
-							className="p-1 rounded text-neutral-400 hover:bg-green-500/20 hover:text-green-400"
+							className="p-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-accent-green)] hover:bg-[var(--color-primary-surface-elevated)] rounded transition-colors"
 							data-tooltip-id="tasks-tooltip"
 							data-tooltip-content="Mark Complete"
 						>
@@ -243,7 +243,7 @@ const TaskListItem = ({
 							e.stopPropagation()
 							onRerunTask(task.task_id)
 						}}
-						className="p-1 rounded text-neutral-400 hover:bg-dark-surface-elevated"
+						className="p-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-accent-blue)] hover:bg-[var(--color-primary-surface-elevated)] rounded transition-colors"
 						data-tooltip-id="tasks-tooltip"
 						data-tooltip-content="Rerun Task"
 					>
@@ -254,7 +254,7 @@ const TaskListItem = ({
 							e.stopPropagation()
 							onEditTask(task)
 						}}
-						className="p-1 rounded text-neutral-400 hover:bg-dark-surface-elevated"
+						className="p-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-accent-orange)] hover:bg-[var(--color-primary-surface-elevated)] rounded transition-colors"
 						data-tooltip-id="tasks-tooltip"
 						data-tooltip-content="Edit"
 					>
@@ -265,7 +265,7 @@ const TaskListItem = ({
 							e.stopPropagation()
 							onDeleteTask(task.task_id)
 						}}
-						className="p-1 rounded text-neutral-400 hover:bg-red-500/20 hover:text-red-400"
+						className="p-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-accent-red)] hover:bg-[var(--color-primary-surface-elevated)] rounded transition-colors"
 						data-tooltip-id="tasks-tooltip"
 						data-tooltip-content="Delete"
 					>
@@ -399,30 +399,30 @@ const AllTasksView = ({
 		: "grid-cols-[minmax(0,_1fr)_120px_120px_120px_150px]" // No change needed here
 
 	return (
-		<div className="w-full max-w-6xl mx-auto">
-			<div className="flex items-center justify-end gap-4 p-2 mb-2">
-				<div className="flex items-center gap-4">
-					<div>
-						<label className="text-xs text-neutral-400 mr-2">
+		<div className="h-full flex flex-col">
+			<div className="flex items-center justify-between p-6 border-b border-[var(--color-primary-surface)]">
+				<div className="flex items-center gap-6">
+					<div className="flex items-center gap-2">
+						<label className="text-sm text-[var(--color-text-secondary)] font-medium">
 							Show:
 						</label>
 						<select
 							value={activeTab}
 							onChange={(e) => setActiveTab(e.target.value)}
-							className="bg-dark-surface p-1 rounded text-sm"
+							className="bg-[var(--color-primary-surface)] border border-[var(--color-primary-surface-elevated)] rounded-md px-3 py-1.5 text-sm text-[var(--color-text-primary)] focus:border-[var(--color-accent-blue)] outline-none"
 						>
 							<option value="oneTime">One-time</option>
 							<option value="recurring">Recurring</option>
 						</select>
 					</div>
-					<div>
-						<label className="text-xs text-neutral-400 mr-2">
+					<div className="flex items-center gap-2">
+						<label className="text-sm text-[var(--color-text-secondary)] font-medium">
 							Group by:
 						</label>
 						<select
 							value={groupBy}
 							onChange={(e) => setGroupBy(e.target.value)}
-							className="bg-dark-surface p-1 rounded text-sm"
+							className="bg-[var(--color-primary-surface)] border border-[var(--color-primary-surface-elevated)] rounded-md px-3 py-1.5 text-sm text-[var(--color-text-primary)] focus:border-[var(--color-accent-blue)] outline-none"
 						>
 							<option value="status">Status</option>
 							<option value="none">None</option>
@@ -431,94 +431,107 @@ const AllTasksView = ({
 				</div>
 			</div>
 
-			{/* Conditionally render the new QuickAddTask component */}
-			{activeTab === "oneTime" && (
-				<QuickAddTask onTaskAdded={onTaskAdded} />
-			)}
+			<div className="flex-1 flex flex-col overflow-hidden">
+				<div className="p-6 pb-0">
+					{activeTab === "oneTime" && (
+						<QuickAddTask onTaskAdded={onTaskAdded} />
+					)}
+				</div>
 
-			<div className="bg-dark-surface/50 border border-dark-surface-elevated rounded-lg overflow-hidden">
-				<div className="overflow-x-auto custom-scrollbar">
-					<div className="min-w-[700px]">
-						<div
-							className={cn(
-								"hidden md:grid items-center p-2 border-b border-dark-surface-elevated text-xs uppercase",
-								gridCols
-							)}
-						>
-							<div className="px-2">Name</div>
-							<SortableHeader
-								title="Assignee"
-								sortKey="assignee"
-								sortConfig={sortConfig}
-								onSort={handleSort}
-							/>
-							{!isRecurring && (
-								<SortableHeader
-									title="Due Date"
-									sortKey="dueDate"
-									sortConfig={sortConfig}
-									onSort={handleSort}
-								/>
-							)}
-							<SortableHeader
-								title="Priority"
-								sortKey="priority"
-								sortConfig={sortConfig}
-								onSort={handleSort}
-							/>
-							<div className="text-center font-bold text-neutral-400">
-								Status
+				<div className="flex-1 overflow-hidden px-6">
+					<div className="h-full bg-[var(--color-primary-surface)] border border-[var(--color-primary-surface-elevated)] rounded-lg overflow-hidden">
+						<div className="overflow-x-auto custom-scrollbar h-full">
+							<div className="min-w-[700px] h-full flex flex-col">
+								<div
+									className={cn(
+										"hidden md:grid items-center p-3 border-b border-[var(--color-primary-surface-elevated)] text-xs uppercase font-medium text-[var(--color-text-secondary)]",
+										gridCols
+									)}
+								>
+									<div className="px-2">Name</div>
+									<SortableHeader
+										title="Assignee"
+										sortKey="assignee"
+										sortConfig={sortConfig}
+										onSort={handleSort}
+									/>
+									{!isRecurring && (
+										<SortableHeader
+											title="Due Date"
+											sortKey="dueDate"
+											sortConfig={sortConfig}
+											onSort={handleSort}
+										/>
+									)}
+									<SortableHeader
+										title="Priority"
+										sortKey="priority"
+										sortConfig={sortConfig}
+										onSort={handleSort}
+									/>
+									<div className="text-center font-medium text-[var(--color-text-secondary)]">
+										Status
+									</div>
+								</div>
+
+								<div className="flex-1 overflow-y-auto">
+									{Object.keys(processedTasks).length > 0 ? (
+										<AnimatePresence>
+											{Object.entries(processedTasks).map(
+												([groupName, groupTasks]) => (
+													<motion.div key={groupName} layout>
+														{groupBy !== "none" &&
+															groupTasks.length > 0 && (
+																<div className="p-3 bg-[var(--color-primary-surface-elevated)] border-b border-[var(--color-primary-surface)]">
+																	<h3 className="font-medium text-sm text-[var(--color-text-primary)]">
+																		{groupName} ({groupTasks.length})
+																	</h3>
+																</div>
+															)}
+														{groupTasks.length > 0 &&
+															groupTasks.map((task) => (
+																<TaskListItem
+																	key={task.task_id}
+																	task={task}
+																	onViewDetails={
+																		onViewDetails
+																	}
+																	onEditTask={onEditTask}
+																	onDeleteTask={
+																		onDeleteTask
+																	}
+																	onRerunTask={
+																		onRerunTask
+																	}
+																	onMarkComplete={
+																		onMarkComplete
+																	}
+																	onAssigneeChange={
+																		onAssigneeChange
+																	}
+																	activeTab={activeTab}
+																/>
+															))}
+													</motion.div>
+												)
+											)}
+										</AnimatePresence>
+									) : (
+										<div className="flex items-center justify-center h-full text-center p-8">
+											<div>
+												<div className="text-4xl mb-3 text-[var(--color-text-muted)]">📝</div>
+												<div className="text-lg font-medium text-[var(--color-text-primary)] mb-2">
+													No {isRecurring ? "recurring" : "one-time"} tasks found
+												</div>
+												<div className="text-sm text-[var(--color-text-secondary)]">
+													{!isRecurring ? "Create your first task above!" : "Set up recurring workflows to automate your tasks."}
+												</div>
+											</div>
+										</div>
+									)}
+								</div>
 							</div>
 						</div>
-
-						{Object.keys(processedTasks).length > 0 ? (
-							<AnimatePresence>
-								{Object.entries(processedTasks).map(
-									([groupName, groupTasks]) => (
-										<motion.div key={groupName} layout>
-											{groupBy !== "none" &&
-												groupTasks.length > 0 && (
-													<div className="p-2 bg-dark-surface-elevated">
-														<h3 className="font-semibold text-sm text-neutral-300">
-															{groupName} (
-															{groupTasks.length})
-														</h3>
-													</div>
-												)}
-											{groupTasks.length > 0 &&
-												groupTasks.map((task) => (
-													<TaskListItem
-														key={task.task_id}
-														task={task}
-														onViewDetails={
-															onViewDetails
-														}
-														onEditTask={onEditTask}
-														onDeleteTask={
-															onDeleteTask
-														}
-														onRerunTask={
-															onRerunTask
-														}
-														onMarkComplete={
-															onMarkComplete
-														}
-														onAssigneeChange={
-															onAssigneeChange
-														}
-														activeTab={activeTab}
-													/>
-												))}
-										</motion.div>
-									)
-								)}
-							</AnimatePresence>
-						) : (
-							<div className="text-center p-10 text-neutral-500">
-								No {isRecurring ? "recurring" : "one-time"}{" "}
-								tasks found.
-							</div>
-						)}
 					</div>
 				</div>
 			</div>

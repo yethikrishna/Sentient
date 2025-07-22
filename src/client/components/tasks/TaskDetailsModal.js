@@ -100,7 +100,7 @@ const TaskDetailsModal = ({
 			initial={{ opacity: 0 }}
 			animate={{ opacity: 1 }}
 			exit={{ opacity: 0 }}
-			className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 p-4"
+			className="fixed inset-0 bg-black/50 flex justify-center items-center z-50 p-4"
 			onClick={onClose}
 		>
 			<Tooltip
@@ -109,64 +109,74 @@ const TaskDetailsModal = ({
 				style={{ zIndex: 99999 }}
 			/>
 			<motion.div
-				initial={{ scale: 0.9, y: 20 }}
-				animate={{ scale: 1, y: 0 }}
-				exit={{ scale: 0.9, y: 20 }}
+				initial={{ scale: 0.95, opacity: 0 }}
+				animate={{ scale: 1, opacity: 1 }}
+				exit={{ scale: 0.95, opacity: 0 }}
+				transition={{ duration: 0.2 }}
 				onClick={(e) => e.stopPropagation()}
-				className="bg-dark-surface p-6 rounded-2xl shadow-xl w-full max-w-3xl border border-dark-surface-elevated max-h-[90vh] flex flex-col"
+				className="bg-[var(--color-primary-background)] border border-[var(--color-primary-surface-elevated)] rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col"
 			>
-				<div className="flex justify-between items-start mb-6">
+
+				<div className="flex justify-between items-start p-6 border-b border-[var(--color-primary-surface)]">
 					<div className="flex-1 min-w-0">
-						<h3 className="text-2xl font-semibold text-white truncate pr-4">
+						<h3 className="text-xl font-semibold text-[var(--color-text-primary)] truncate pr-4">
 							{task.description}
 						</h3>
 					</div>
 					<button
 						onClick={onClose}
-						className="p-1 rounded-full hover:bg-dark-surface-elevated flex-shrink-0"
+						className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-primary-surface)] rounded-md transition-colors flex-shrink-0"
 					>
-						<IconX size={20} />
+						<IconX size={16} />
 					</button>
 				</div>
 
-				<div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6">
+				<div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
 					{/* Main Task Content & Original Outcome */}
-					<TaskDetailsContent task={task} />
+					<div className="bg-[var(--color-primary-surface)] border border-[var(--color-primary-surface-elevated)] rounded-lg p-4">
+						<TaskDetailsContent task={task} />
+					</div>
 
 					{/* Follow-up Section for Changes, Clarifications, and Approvals */}
 					{(chatHistory.length > 0 ||
 						task.status === "clarification_pending" ||
 						task.status === "approval_pending") && (
-						<div className="pt-6 mt-6 border-t border-dark-surface-elevated space-y-4">
-							<h4 className="text-lg font-semibold text-white">
+						<div className="bg-[var(--color-primary-surface)] border border-[var(--color-primary-surface-elevated)] rounded-lg p-4 space-y-4">
+							<h4 className="text-lg font-semibold text-[var(--color-text-primary)]">
 								Conversation & Changes
 							</h4>
 
 							{/* Chat History */}
-							{chatHistory.map((msg, index) => (
-								<div
-									key={index}
-									className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-								>
+							<div className="space-y-3">
+								{chatHistory.map((msg, index) => (
 									<div
-										className={`p-3 rounded-lg max-w-[80%] ${msg.role === "user" ? "bg-sentient-blue" : "bg-neutral-700"}`}
+										key={index}
+										className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
 									>
-										<p className="text-sm whitespace-pre-wrap">
-											{msg.content}
-										</p>
+										<div
+											className={`p-3 rounded-lg max-w-[80%] ${
+												msg.role === "user"
+													? "bg-[var(--color-accent-blue)] text-white"
+													: "bg-[var(--color-primary-surface-elevated)] text-[var(--color-text-primary)]"
+											}`}
+										>
+											<p className="text-sm whitespace-pre-wrap">
+												{msg.content}
+											</p>
+										</div>
 									</div>
-								</div>
-							))}
+								))}
+							</div>
 
 							{/* Clarification Questions */}
 							{task.status === "clarification_pending" && (
-								<div className="bg-neutral-700/50 p-4 rounded-lg space-y-3">
-									<p className="text-sm font-semibold">
+								<div className="bg-[var(--color-accent-orange)]/10 border border-[var(--color-accent-orange)]/20 rounded-lg p-4 space-y-4">
+									<p className="font-medium text-[var(--color-text-primary)]">
 										I need more information to proceed:
 									</p>
 									{latestRun.clarifying_questions.map((q) => (
-										<div key={q.question_id}>
-											<label className="text-xs text-neutral-400 block mb-1">
+										<div key={q.question_id} className="space-y-2">
+											<label className="text-sm text-[var(--color-text-secondary)] block font-medium">
 												{q.text}
 											</label>
 											<textarea
@@ -181,8 +191,9 @@ const TaskDetailsModal = ({
 														e.target.value
 													)
 												}
-												rows={2}
-												className="w-full p-2 bg-dark-bg border border-dark-surface-elevated rounded-md text-sm"
+												rows={3}
+												className="w-full p-3 bg-[var(--color-primary-surface)] border border-[var(--color-primary-surface-elevated)] rounded-lg text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:border-[var(--color-accent-blue)] outline-none"
+												placeholder="Your answer..."
 											/>
 										</div>
 									))}
@@ -200,7 +211,7 @@ const TaskDetailsModal = ({
 												)
 												onClose()
 											}}
-											className="px-4 py-2 text-sm bg-sentient-blue rounded-lg hover:bg-sentient-blue-dark"
+											className="px-4 py-2 bg-[var(--color-accent-orange)] hover:bg-[var(--color-accent-orange)]/80 text-white rounded-lg font-medium transition-colors"
 										>
 											Submit Answers
 										</button>
@@ -210,31 +221,29 @@ const TaskDetailsModal = ({
 
 							{/* New Plan for Approval */}
 							{task.status === "approval_pending" && (
-								<div className="bg-neutral-700/50 p-4 rounded-lg space-y-4">
-									<p className="text-sm font-semibold text-center">
+								<div className="bg-[var(--color-accent-green)]/10 border border-[var(--color-accent-green)]/20 rounded-lg p-4 space-y-4">
+									<p className="font-medium text-[var(--color-text-primary)] text-center">
 										New plan requires your approval:
 									</p>
 									<div className="space-y-2">
-										{(latestRun.plan || []).map(
-											(step, index) => (
-												<div
-													key={index}
-													className="flex items-start gap-3 bg-dark-surface/70 p-3 rounded-md border border-dark-surface-elevated"
-												>
-													<div className="flex-shrink-0 text-[var(--color-accent-blue)] font-bold mt-0.5">
-														{index + 1}.
-													</div>
-													<div>
-														<p className="font-semibold text-white">
-															{step.tool}
-														</p>
-														<p className="text-sm text-[var(--color-text-secondary)]">
-															{step.description}
-														</p>
-													</div>
+										{(latestRun.plan || []).map((step, index) => (
+											<div
+												key={index}
+												className="flex items-start gap-3 bg-[var(--color-primary-surface-elevated)] p-3 rounded-lg"
+											>
+												<div className="flex-shrink-0 w-6 h-6 bg-[var(--color-accent-blue)] rounded-full flex items-center justify-center text-white font-medium text-xs">
+													{index + 1}
 												</div>
-											)
-										)}
+												<div>
+													<p className="font-medium text-[var(--color-text-primary)]">
+														{step.tool}
+													</p>
+													<p className="text-sm text-[var(--color-text-secondary)] mt-1">
+														{step.description}
+													</p>
+												</div>
+											</div>
+										))}
 									</div>
 									<div className="flex justify-center gap-3">
 										<button
@@ -243,7 +252,7 @@ const TaskDetailsModal = ({
 												onClose()
 											}}
 											disabled={missingTools.length > 0}
-											className="px-4 py-2 text-sm bg-green-500/20 text-green-300 rounded-lg hover:bg-green-500/40 disabled:opacity-50"
+											className="px-4 py-2 bg-[var(--color-accent-green)] hover:bg-[var(--color-accent-green-hover)] text-white rounded-lg font-medium disabled:opacity-50 transition-colors"
 										>
 											Approve Plan
 										</button>
@@ -252,7 +261,7 @@ const TaskDetailsModal = ({
 												onDelete(task.task_id)
 												onClose()
 											}}
-											className="px-4 py-2 text-sm bg-red-500/20 text-red-300 rounded-lg hover:bg-red-500/40"
+											className="px-4 py-2 bg-[var(--color-accent-red)] hover:bg-[var(--color-accent-red-hover)] text-white rounded-lg font-medium transition-colors"
 										>
 											Disapprove
 										</button>
@@ -265,20 +274,20 @@ const TaskDetailsModal = ({
 				</div>
 
 				{missingTools.length > 0 && (
-					<div className="bg-yellow-900/50 border border-yellow-500/50 p-3 rounded-lg flex items-center gap-3 mt-4">
-						<IconAlertTriangle className="text-yellow-400" />
-						<p className="text-yellow-300 text-sm">
+					<div className="bg-[var(--color-accent-orange)]/10 border border-[var(--color-accent-orange)]/20 rounded-lg p-4 m-6 flex items-center gap-3">
+						<IconAlertTriangle className="text-[var(--color-accent-orange)]" size={20} />
+						<p className="text-[var(--color-text-primary)] text-sm font-medium">
 							This plan requires tools you haven't connected:{" "}
-							<b>{missingTools.join(", ")}</b>.
+							<span className="font-semibold">{missingTools.join(", ")}</span>
 						</p>
 						<ConnectToolButton toolName="" />
 					</div>
 				)}
 
 				{/* Footer with actions and chat input */}
-				<div className="mt-6 pt-4 border-t border-dark-surface-elevated">
+				<div className="border-t border-[var(--color-primary-surface)] p-6">
 					{task.status === "completed" ? (
-						<div className="flex flex-col gap-3">
+						<div className="space-y-3">
 							{task.assignee === "ai" && (
 								<div className="flex items-center gap-3">
 									<input
@@ -292,13 +301,13 @@ const TaskDetailsModal = ({
 											handleSendChatMessage()
 										}
 										placeholder="Need changes? Chat with the AI..."
-										className="flex-grow p-2 bg-neutral-800/50 border border-neutral-700 rounded-lg"
+										className="flex-grow p-3 bg-[var(--color-primary-surface)] border border-[var(--color-primary-surface-elevated)] rounded-lg text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:border-[var(--color-accent-blue)] outline-none"
 									/>
 									<button
 										onClick={handleSendChatMessage}
-										className="p-2 bg-sentient-blue rounded-lg hover:bg-sentient-blue-dark transition-colors"
+										className="p-3 bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white rounded-lg transition-colors"
 									>
-										<IconSend size={18} />
+										<IconSend size={16} />
 									</button>
 								</div>
 							)}
@@ -307,27 +316,27 @@ const TaskDetailsModal = ({
 									onArchiveTask(task.task_id)
 									onClose()
 								}}
-								className="w-full text-center py-2 text-sm bg-green-500/20 text-green-300 rounded-lg hover:bg-green-500/40 flex items-center justify-center gap-2"
+								className="w-full py-3 text-sm bg-[var(--color-accent-green)]/20 text-[var(--color-accent-green)] border border-[var(--color-accent-green)]/30 rounded-lg hover:bg-[var(--color-accent-green)]/30 transition-colors flex items-center justify-center gap-2 font-medium"
 							>
 								<IconArchive size={16} /> Archive Task
 							</button>
 						</div>
 					) : (
-						<div className="flex justify-end gap-2">
+						<div className="flex justify-end gap-3">
 							<button
 								onClick={() => {
 									onDelete(task.task_id)
 									onClose()
 								}}
-								className="py-2 px-4 text-sm rounded-lg hover:bg-red-500/20 text-red-300"
+								className="px-4 py-2 text-sm text-[var(--color-accent-red)] hover:bg-[var(--color-accent-red)]/10 rounded-lg transition-colors flex items-center gap-2"
 							>
-								<IconTrash size={16} />
+								<IconTrash size={16} /> Delete
 							</button>
 							<button
 								onClick={() => onEdit(task)}
-								className="py-2 px-4 text-sm rounded-lg hover:bg-orange-500/20 text-orange-400"
+								className="px-4 py-2 text-sm text-[var(--color-accent-orange)] hover:bg-[var(--color-accent-orange)]/10 rounded-lg transition-colors flex items-center gap-2"
 							>
-								<IconPencil size={16} />
+								<IconPencil size={16} /> Edit
 							</button>
 							{task.assignee === "user" &&
 								task.status === "pending" && (
@@ -336,10 +345,9 @@ const TaskDetailsModal = ({
 											onMarkComplete(task.task_id)
 											onClose()
 										}}
-										className="py-2 px-4 text-sm rounded-lg bg-green-500/20 text-green-300 hover:bg-green-500/40 flex items-center gap-2"
+										className="px-4 py-2 text-sm bg-[var(--color-accent-green)] hover:bg-[var(--color-accent-green-hover)] text-white rounded-lg transition-colors flex items-center gap-2"
 									>
-										<IconCircleCheck size={16} /> Mark
-										Complete
+										<IconCircleCheck size={16} /> Mark Complete
 									</button>
 								)}
 						</div>

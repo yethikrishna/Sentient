@@ -32,27 +32,36 @@ const StorylaneDemoModal = ({ onClose }) => {
 				animate={{ opacity: 1 }}
 				exit={{ opacity: 0 }}
 				onClick={onClose}
-				className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 p-4"
+				className="fixed inset-0 bg-black/70 backdrop-blur-2xl flex justify-center items-center z-50 p-4"
 			>
 				<motion.div
-					initial={{ scale: 0.9, y: 20 }}
-					animate={{ scale: 1, y: 0 }}
-					exit={{ scale: 0.9, y: 20 }}
+					initial={{ scale: 0.8, y: 40, opacity: 0 }}
+					animate={{ scale: 1, y: 0, opacity: 1 }}
+					exit={{ scale: 0.8, y: 40, opacity: 0 }}
+					transition={{ type: "spring", duration: 0.6, bounce: 0.3 }}
 					onClick={(e) => e.stopPropagation()}
-					className="bg-neutral-900/80 backdrop-blur-md p-2 rounded-2xl shadow-xl w-full max-w-5xl h-[90vh] border border-neutral-700 flex flex-col"
+					className="relative bg-gradient-to-br from-white/15 via-white/10 to-white/15 backdrop-blur-2xl p-6 rounded-3xl shadow-2xl w-full max-w-6xl h-[90vh] border border-white/20 flex flex-col overflow-hidden"
 				>
-					<div className="flex justify-between items-center pb-2 flex-shrink-0">
-						<h2 className="text-xl font-semibold text-white pl-2">
-							Interactive Walkthrough
-						</h2>
+					<div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-purple-500/5 to-pink-500/10 rounded-3xl" />
+					<div className="absolute inset-0 backdrop-blur-3xl bg-black/20 rounded-3xl border border-white/10 shadow-inner" />
+					<div className="absolute -top-4 -right-4 w-24 h-24 bg-gradient-to-br from-blue-400/20 to-purple-400/20 rounded-full blur-2xl animate-pulse" />
+					<div className="absolute -bottom-4 -left-4 w-32 h-32 bg-gradient-to-br from-purple-400/20 to-pink-400/20 rounded-full blur-2xl animate-pulse" />
+					
+					<div className="relative flex justify-between items-center pb-6 flex-shrink-0 z-10">
+						<div>
+							<h2 className="text-3xl font-bold bg-gradient-to-r from-white via-blue-100 to-purple-100 bg-clip-text text-transparent drop-shadow-2xl">
+								🎥 Interactive Walkthrough
+							</h2>
+							<div className="w-1/3 h-1 bg-gradient-to-r from-blue-500/50 via-purple-500/50 to-pink-500/50 rounded-full blur-sm mt-2" />
+						</div>
 						<button
 							onClick={onClose}
-							className="p-1 rounded-full hover:bg-neutral-800"
+							className="relative p-3 rounded-2xl bg-white/10 hover:bg-white/20 backdrop-blur-lg border border-white/20 hover:border-white/30 transition-all duration-300 transform hover:scale-110 shadow-lg group"
 						>
-							<IconX size={20} />
+							<IconX size={20} className="text-white/70 group-hover:text-white transition-colors" />
 						</button>
 					</div>
-					<div className="flex-1 w-full h-full">
+					<div className="relative flex-1 w-full h-full z-10">
 						<iframe
 							loading="lazy"
 							className="sl-demo"
@@ -63,10 +72,9 @@ const StorylaneDemoModal = ({ onClose }) => {
 							style={{
 								width: "100%",
 								height: "100%",
-								border: "1px solid rgba(63,95,172,0.35)",
-								boxShadow:
-									"0px 0px 18px rgba(26, 19, 72, 0.15)",
-								borderRadius: "10px",
+								border: "1px solid rgba(255,255,255,0.2)",
+								boxShadow: "0px 0px 30px rgba(59, 130, 246, 0.15)",
+								borderRadius: "20px",
 								boxSizing: "border-box"
 							}}
 						></iframe>
@@ -299,21 +307,21 @@ function TasksPageContent() {
 	)
 
 	return (
-		<div className="flex h-screen bg-gradient-to-br from-neutral-900 via-black to-neutral-900 text-white overflow-hidden pl-0 md:pl-20">
+		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-hidden pl-0 md:pl-20 font-Inter">
 			<Tooltip
 				id="tasks-tooltip"
 				place="right-start"
 				style={{ zIndex: 9999 }}
 			/>
 
-			<main className="flex-1 flex flex-col overflow-hidden relative">
+			<main className="flex-1 flex flex-col overflow-hidden">
 				<TasksHeader onOpenDemo={() => setIsDemoModalOpen(true)} />
 				{isLoading ? (
 					<div className="flex justify-center items-center flex-1">
-						<IconLoader className="w-10 h-10 animate-spin text-[var(--color-accent-blue)]" />
+						<IconLoader className="w-8 h-8 animate-spin text-[var(--color-accent-blue)]" />
 					</div>
 				) : (
-					<div className="p-4 md:p-6 flex-1 overflow-y-auto custom-scrollbar">
+					<div className="flex-1 overflow-hidden">
 						<AllTasksView
 							tasks={[...oneOffTasks, ...workflowTasks]}
 							onViewDetails={setSelectedTask}

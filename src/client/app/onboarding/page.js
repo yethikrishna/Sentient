@@ -449,8 +449,21 @@ const OnboardingPage = () => {
 						>
 							Your proactive AI, ready to get to know you.
 						</motion.p>
-						<motion.div variants={itemVariants}>
-							<BlinkingInstructions text="Press Enter to begin" />
+						<motion.div
+							variants={itemVariants}
+							className="mt-12 flex flex-col items-center gap-4"
+						>
+							<motion.button
+								onClick={() => setStage("questions")}
+								className="rounded-lg bg-[var(--color-accent-blue)] px-8 py-3 text-lg font-semibold text-white transition-colors hover:bg-[var(--color-accent-blue-hover)]"
+								whileHover={{ scale: 1.05 }}
+								whileTap={{ scale: 0.95 }}
+							>
+								Let's Begin
+							</motion.button>
+							<div className="hidden md:block">
+								<BlinkingInstructions text="or press Enter" />
+							</div>
 						</motion.div>
 					</motion.div>
 				)
@@ -490,7 +503,7 @@ const OnboardingPage = () => {
 										<IconSparkles className="text-[var(--color-accent-blue)]" />
 									</div>
 									<div className="bg-neutral-800 p-4 rounded-xl rounded-tl-none min-h-[60px] w-full">
-										<div className="text-lg text-neutral-300">
+										<div className="text-base sm:text-lg text-neutral-300">
 											{isRevisiting ? (
 												<p>{sentientComment}</p>
 											) : (
@@ -527,335 +540,377 @@ const OnboardingPage = () => {
 												duration: 0.5,
 												delay: 0.2
 											}}
-											className="bg-neutral-800/50 border border-neutral-700 p-8 rounded-2xl w-full"
+											className="bg-neutral-800/50 border border-neutral-700 p-6 md:p-8 rounded-2xl w-full"
 										>
-											<label className="text-xl sm:text-2xl font-semibold mb-3 flex items-center gap-4 text-neutral-100">
-												<span className="text-neutral-500">
+											<div className="flex items-start gap-4">
+												<span className="text-neutral-500 mt-1.5 flex-shrink-0">
 													{currentQuestion.icon}
 												</span>
-												{currentQuestion.question}
-											</label>
-											{currentQuestion.description && (
-												<p className="text-sm sm:text-base text-neutral-400 mb-6 ml-10 sm:ml-12">
-													{
-														currentQuestion.description
-													}
-												</p>
-											)}
-											<div className="mt-4 ml-12">
-												{(() => {
-													switch (
-														currentQuestion.type
-													) {
-														case "text-input":
-															return (
-																<input
-																	type="text"
-																	value={
-																		answers[
-																			currentQuestion
-																				.id
-																		] || ""
-																	}
-																	onChange={(
-																		e
-																	) =>
-																		handleAnswer(
-																			currentQuestion.id,
-																			e
-																				.target
-																				.value
-																		)
-																	}
-																	className="w-full py-3 px-4 text-lg rounded-xl bg-neutral-900 text-white border border-neutral-600 focus:ring-2 focus:ring-[var(--color-accent-blue)]/50 placeholder:text-neutral-500 transition-all"
-																	placeholder={
-																		currentQuestion.placeholder
-																	}
-																	required={
-																		currentQuestion.required
-																	}
-																	autoFocus
-																/>
-															)
-														case "select":
-															return (
-																<select
-																	value={
-																		answers[
-																			currentQuestion
-																				.id
-																		] || ""
-																	}
-																	onChange={(
-																		e
-																	) =>
-																		handleAnswer(
-																			currentQuestion.id,
-																			e
-																				.target
-																				.value
-																		)
-																	}
-																	className="w-full px-4 py-3 text-lg rounded-xl bg-neutral-900 text-white border border-neutral-600 focus:ring-2 focus:ring-[var(--color-accent-blue)]/50 appearance-none"
-																	required={
-																		currentQuestion.required
-																	}
-																>
-																	{currentQuestion.options.map(
-																		(
-																			option
-																		) => (
-																			<option
-																				key={
-																					option.value
-																				}
+												<div className="w-full flex-1">
+													<label className="text-xl sm:text-2xl font-semibold text-neutral-100 block">
+														{
+															currentQuestion.question
+														}
+													</label>
+													{currentQuestion.description && (
+														<p className="text-sm sm:text-base text-neutral-400 mb-6 mt-2">
+															{
+																currentQuestion.description
+															}
+														</p>
+													)}
+													<div className="mt-6">
+														{(() => {
+															switch (
+																currentQuestion.type
+															) {
+																case "text-input":
+																	return (
+																		<input
+																			type="text"
+																			value={
+																				answers[
+																					currentQuestion
+																						.id
+																				] ||
+																				""
+																			}
+																			onChange={(
+																				e
+																			) =>
+																				handleAnswer(
+																					currentQuestion.id,
+																					e
+																						.target
+																						.value
+																				)
+																			}
+																			className="w-full py-2 px-3 text-base sm:py-3 sm:px-4 sm:text-lg rounded-xl bg-neutral-900 text-white border border-neutral-600 focus:ring-2 focus:ring-[var(--color-accent-blue)]/50 placeholder:text-neutral-500 transition-all"
+																			placeholder={
+																				currentQuestion.placeholder
+																			}
+																			required={
+																				currentQuestion.required
+																			}
+																			autoFocus
+																		/>
+																	)
+																case "select":
+																	return (
+																		<select
+																			value={
+																				answers[
+																					currentQuestion
+																						.id
+																				] ||
+																				""
+																			}
+																			onChange={(
+																				e
+																			) =>
+																				handleAnswer(
+																					currentQuestion.id,
+																					e
+																						.target
+																						.value
+																				)
+																			}
+																			className="w-full px-3 py-2 text-base sm:px-4 sm:py-3 sm:text-lg rounded-xl bg-neutral-900 text-white border border-neutral-600 focus:ring-2 focus:ring-[var(--color-accent-blue)]/50 appearance-none"
+																			required={
+																				currentQuestion.required
+																			}
+																		>
+																			{currentQuestion.options.map(
+																				(
+																					option
+																				) => (
+																					<option
+																						key={
+																							option.value
+																						}
+																						value={
+																							option.value
+																						}
+																						disabled={
+																							option.disabled
+																						}
+																						className="text-black bg-white"
+																					>
+																						{
+																							option.label
+																						}
+																					</option>
+																				)
+																			)}
+																		</select>
+																	)
+																case "textarea":
+																	return (
+																		<textarea
+																			value={
+																				answers[
+																					currentQuestion
+																						.id
+																				] ||
+																				""
+																			}
+																			onChange={(
+																				e
+																			) =>
+																				handleAnswer(
+																					currentQuestion.id,
+																					e
+																						.target
+																						.value
+																				)
+																			}
+																			className="w-full px-3 py-2 text-base sm:px-4 sm:py-3 sm:text-lg rounded-xl bg-neutral-900 text-white border border-neutral-600 focus:ring-2 focus:ring-[var(--color-accent-blue)]/50 placeholder:text-neutral-500 min-h-[140px] resize-y"
+																			placeholder={
+																				currentQuestion.placeholder
+																			}
+																			autoFocus
+																		/>
+																	)
+																case "location":
+																	return (
+																		<div className="space-y-4">
+																			<input
+																				type="text"
+																				placeholder="Or enter Locality, City, State..."
 																				value={
-																					option.value
-																				}
-																				disabled={
-																					option.disabled
-																				}
-																				className="text-black bg-white"
-																			>
-																				{
-																					option.label
-																				}
-																			</option>
-																		)
-																	)}
-																</select>
-															)
-														case "textarea":
-															return (
-																<textarea
-																	value={
-																		answers[
-																			currentQuestion
-																				.id
-																		] || ""
-																	}
-																	onChange={(
-																		e
-																	) =>
-																		handleAnswer(
-																			currentQuestion.id,
-																			e
-																				.target
-																				.value
-																		)
-																	}
-																	className="w-full px-4 py-3 text-lg rounded-xl bg-neutral-900 text-white border border-neutral-600 focus:ring-2 focus:ring-[var(--color-accent-blue)]/50 placeholder:text-neutral-500 min-h-[140px] resize-y"
-																	placeholder={
-																		currentQuestion.placeholder
-																	}
-																	autoFocus
-																/>
-															)
-														case "location":
-															return (
-																<div className="space-y-4">
-																	<input
-																		type="text"
-																		placeholder="Or enter Locality, City, State..."
-																		value={
-																			typeof answers[
-																				currentQuestion
-																					.id
-																			] ===
-																			"string"
-																				? answers[
+																					typeof answers[
 																						currentQuestion
 																							.id
-																					]
-																				: ""
-																		}
-																		onChange={(
-																			e
-																		) =>
-																			handleAnswer(
-																				"location",
-																				e
-																					.target // eslint-disable-line
-																					.value
-																			)
-																		}
-																		className="w-full py-3 px-4 text-lg rounded-xl bg-neutral-900 text-white border border-neutral-600 focus:ring-2 focus:ring-[var(--color-accent-blue)]/50 placeholder:text-neutral-500 transition-all"
-																	/>
-																	<div className="flex items-center gap-4">
-																		<hr className="flex-grow border-neutral-700" />
-																		<span className="text-neutral-500 text-sm">
-																			OR
-																		</span>
-																		<hr className="flex-grow border-neutral-700" />
-																	</div>
-																	<button
-																		type="button"
-																		onClick={
-																			handleGetLocation
-																		}
-																		disabled={
-																			locationState.loading
-																		}
-																		className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-xl bg-neutral-700 text-white hover:bg-neutral-600 transition-colors disabled:opacity-50"
-																	>
-																		{locationState.loading ? (
-																			<IconLoader
-																				className="animate-spin"
-																				size={
-																					20
+																					] ===
+																					"string"
+																						? answers[
+																								currentQuestion
+																									.id
+																							]
+																						: ""
 																				}
-																			/>
-																		) : (
-																			<IconMapPin
-																				size={
-																					20
+																				onChange={(
+																					e
+																				) =>
+																					handleAnswer(
+																						"location",
+																						e
+																							.target // eslint-disable-line
+																							.value
+																					)
 																				}
+																				className="w-full py-2 px-3 text-base sm:py-3 sm:px-4 sm:text-lg rounded-xl bg-neutral-900 text-white border border-neutral-600 focus:ring-2 focus:ring-[var(--color-accent-blue)]/50 placeholder:text-neutral-500 transition-all"
 																			/>
-																		)}
-																		<span>
-																			Share
-																			Current
-																			Location
-																		</span>
-																	</button>
-																	{locationState.data &&
-																		!locationState.loading && (
-																			<div className="flex items-center justify-center gap-2 text-[var(--color-accent-green)] text-sm">
-																				<IconMapPinFilled
-																					size={
-																						16
-																					}
-																				/>
-																				<span>
-																					Location
-																					captured!
+																			<div className="flex items-center gap-4">
+																				<hr className="flex-grow border-neutral-700" />
+																				<span className="text-neutral-500 text-sm">
+																					OR
 																				</span>
+																				<hr className="flex-grow border-neutral-700" />
 																			</div>
-																		)}
-																</div>
-															)
-														case "single-choice":
-															return (
-																<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-																	{currentQuestion.options.map(
-																		(
-																			option
-																		) => {
-																			const optionValue =
-																				typeof option ===
-																				"object"
-																					? option.value
-																					: option
-																			const optionLabel =
-																				typeof option ===
-																				"object"
-																					? option.label
-																					: option
-
-																			return (
-																				<button
-																					type="button"
-																					key={
-																						optionValue
-																					}
-																					onClick={() =>
-																						handleAnswer(
-																							currentQuestion.id,
-																							optionValue
-																						)
-																					}
-																					className={cn(
-																						"p-4 sm:p-5 rounded-xl border-2 text-center font-semibold transition-all duration-200 text-base sm:text-lg",
-																						answers[
-																							currentQuestion
-																								.id
-																						] ===
-																							optionValue
-																							? "bg-[var(--color-accent-blue)] border-[var(--color-accent-blue)] text-white"
-																							: "bg-transparent border-neutral-600 hover:border-blue-500/50"
-																					)}
-																				>
-																					{
-																						optionLabel
-																					}
-																				</button>
-																			)
-																		}
-																	)}
-																</div>
-															)
-														case "multi-choice":
-															return (
-																<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-																	{currentQuestion.options.map(
-																		(
-																			option
-																		) => (
 																			<button
 																				type="button"
-																				key={
-																					option
+																				onClick={
+																					handleGetLocation
 																				}
-																				onClick={() =>
-																					handleMultiChoice(
-																						currentQuestion.id,
-																						option
-																					)
+																				disabled={
+																					locationState.loading
 																				}
-																				className={cn(
-																					"p-4 sm:p-5 rounded-xl border-2 text-center font-semibold transition-all duration-200 flex items-center justify-center gap-2 text-base sm:text-lg",
-																					(
-																						answers[
-																							currentQuestion
-																								.id
-																						] ||
-																						[]
-																					).includes(
-																						option
-																					)
-																						? "bg-[var(--color-accent-blue)] border-[var(--color-accent-blue)] text-white"
-																						: "bg-transparent border-neutral-600 hover:border-blue-500/50"
-																				)}
+																				className="w-full flex items-center justify-center gap-2 px-3 py-2 sm:py-3 rounded-xl bg-neutral-700 text-white hover:bg-neutral-600 transition-colors disabled:opacity-50"
 																			>
-																				{(
-																					answers[
-																						currentQuestion
-																							.id
-																					] ||
-																					[]
-																				).includes(
-																					option
-																				) && (
-																					<IconCheck
+																				{locationState.loading ? (
+																					<IconLoader
+																						className="animate-spin"
+																						size={
+																							20
+																						}
+																					/>
+																				) : (
+																					<IconMapPin
 																						size={
 																							20
 																						}
 																					/>
 																				)}
-																				{
-																					option
-																				}
+																				<span>
+																					Share
+																					Current
+																					Location
+																				</span>
 																			</button>
-																		)
-																	)}
-																</div>
-															)
-														default:
-															return null
-													}
-												})()}
+																			{locationState.data &&
+																				!locationState.loading && (
+																					<div className="flex items-center justify-center gap-2 text-[var(--color-accent-green)] text-sm">
+																						<IconMapPinFilled
+																							size={
+																								16
+																							}
+																						/>
+																						<span>
+																							Location
+																							captured!
+																						</span>
+																					</div>
+																				)}
+																		</div>
+																	)
+																case "single-choice":
+																	return (
+																		<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+																			{currentQuestion.options.map(
+																				(
+																					option
+																				) => {
+																					const optionValue =
+																						typeof option ===
+																						"object"
+																							? option.value
+																							: option
+																					const optionLabel =
+																						typeof option ===
+																						"object"
+																							? option.label
+																							: option
+
+																					return (
+																						<button
+																							type="button"
+																							key={
+																								optionValue
+																							}
+																							onClick={() =>
+																								handleAnswer(
+																									currentQuestion.id,
+																									optionValue
+																								)
+																							}
+																							className={cn(
+																								"p-4 sm:p-5 rounded-xl border-2 text-center font-semibold transition-all duration-200 text-base sm:text-lg",
+																								answers[
+																									currentQuestion
+																										.id
+																								] ===
+																									optionValue
+																									? "bg-[var(--color-accent-blue)] border-[var(--color-accent-blue)] text-white"
+																									: "bg-transparent border-neutral-600 hover:border-blue-500/50"
+																							)}
+																						>
+																							{
+																								optionLabel
+																							}
+																						</button>
+																					)
+																				}
+																			)}
+																		</div>
+																	)
+																case "multi-choice":
+																	return (
+																		<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+																			{currentQuestion.options.map(
+																				(
+																					option
+																				) => (
+																					<button
+																						type="button"
+																						key={
+																							option
+																						}
+																						onClick={() =>
+																							handleMultiChoice(
+																								currentQuestion.id,
+																								option
+																							)
+																						}
+																						className={cn(
+																							"p-4 sm:p-5 rounded-xl border-2 text-center font-semibold transition-all duration-200 flex items-center justify-center gap-2 text-base sm:text-lg",
+																							(
+																								answers[
+																									currentQuestion
+																										.id
+																								] ||
+																								[]
+																							).includes(
+																								option
+																							)
+																								? "bg-[var(--color-accent-blue)] border-[var(--color-accent-blue)] text-white"
+																								: "bg-transparent border-neutral-600 hover:border-blue-500/50"
+																						)}
+																					>
+																						{(
+																							answers[
+																								currentQuestion
+																									.id
+																							] ||
+																							[]
+																						).includes(
+																							option
+																						) && (
+																							<IconCheck
+																								size={
+																									20
+																								}
+																							/>
+																						)}
+																						{
+																							option
+																						}
+																					</button>
+																				)
+																			)}
+																		</div>
+																	)
+																default:
+																	return null
+															}
+														})()}
+													</div>
+												</div>
 											</div>
 										</motion.div>
 									)}
 								</AnimatePresence>
 								{isInputVisible && (
-									<BlinkingInstructions
-										text={
-											currentQuestion.type === "textarea"
-												? "Press Shift + Enter for a new line"
-												: "Press Enter to continue • ← to go back"
-										}
-									/>
+									<>
+										{/* --- MOBILE NAVIGATION BUTTONS --- */}
+										<div className="mt-8 flex w-full justify-between md:hidden">
+											<button
+												onClick={handleBack}
+												className={cn(
+													"rounded-lg bg-neutral-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-neutral-600",
+													currentQuestionIndex === 0
+														? "invisible" // Use invisible to maintain layout
+														: "visible"
+												)}
+											>
+												Back
+											</button>
+											<button
+												onClick={handleNext}
+												disabled={
+													!isCurrentQuestionAnswered()
+												}
+												className="rounded-lg bg-[var(--color-accent-blue)] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-accent-blue-hover)] disabled:opacity-50"
+											>
+												{currentQuestionIndex <
+												questions.length - 1
+													? "Next"
+													: "Finish"}
+											</button>
+										</div>
+
+										{/* --- DESKTOP INSTRUCTIONS --- */}
+										<div className="hidden md:block">
+											<BlinkingInstructions
+												text={
+													currentQuestion.type ===
+													"textarea"
+														? "Press Shift + Enter for a new line"
+														: "Press Enter to continue • ← to go back"
+												}
+											/>
+										</div>
+									</>
 								)}
 							</motion.div>
 						</AnimatePresence>

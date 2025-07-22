@@ -258,3 +258,8 @@ dump.rdb
 gows.db-shm 
 gows.db-wal
 gows.db
+
+# YoYo AI version control directory
+.yoyo/
+settings.local.json
+settings.json

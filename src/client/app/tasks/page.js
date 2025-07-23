@@ -12,6 +12,7 @@ import { parseISO } from "date-fns"
 import { IconLoader, IconX } from "@tabler/icons-react"
 import { AnimatePresence, motion } from "framer-motion"
 import toast from "react-hot-toast"
+import { cn } from "@utils/cn"
 import { Tooltip } from "react-tooltip"
 import Script from "next/script"
 
@@ -217,14 +218,8 @@ function TasksPageContent() {
 	}, []) // Empty dependency array means this runs once on mount
 
 	const handleAddTask = useCallback(() => {
-		if (groupBy !== "status") {
-			toast.error("Please group by status to add a new task.", {
-				position: "bottom-center"
-			})
-			return
-		}
 		setIsAddingNewTask(true)
-	}, [groupBy])
+	}, [])
 
 	const handleTaskAdded = useCallback(
 		(isSuccess) => {
@@ -399,8 +394,13 @@ function TasksPageContent() {
 				style={{ zIndex: 9999 }}
 			/>
 
-			<div className="flex flex-1 overflow-hidden">
-				<main className="flex-1 flex flex-col overflow-hidden">
+			<div className="flex flex-1 overflow-hidden relative">
+				<main
+					className={cn(
+						"flex-1 flex flex-col overflow-hidden",
+						selectedTask && "hidden md:flex"
+					)}
+				>
 					<TasksHeader
 						onOpenDemo={() => setIsDemoModalOpen(true)}
 						activeTab={activeTab}
@@ -432,6 +432,7 @@ function TasksPageContent() {
 				</main>
 
 				<TaskDetailsPanel
+					className={cn(selectedTask ? "flex" : "hidden md:flex")}
 					task={selectedTask}
 					allTools={allTools}
 					integrations={integrations}

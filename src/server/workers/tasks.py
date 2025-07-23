@@ -159,6 +159,69 @@ async def async_generate_chat_title(chat_id: str, user_id: str):
     finally:
         await db_manager.close()
 
+@celery_app.task(name="refine_and_plan_ai_task")
+def refine_and_plan_ai_task(task_id: str):
+    """
+    Asynchronously refines an AI-assigned task's details using an LLM,
+    updates the task in the DB, and then triggers the planning process.
+    """
+    logger.info(f"Refining and planning for AI task_id: {task_id}")
+    run_async(async_refine_and_plan_ai_task(task_id))
+
+async def async_refine_and_plan_ai_task(task_id: str):
+    """Async logic for refining an AI task and then kicking off the planner."""
+    db_manager = PlannerMongoManager()
+    try:
+        task = await db_manager.get_task(task_id)
+        if not task or task.get("assignee") != "ai":
+            logger.warning(f"Skipping refine/plan for task {task_id}: not found or not assigned to AI.")
+            return
+
+        user_id = task["user_id"]
+        user_profile = await db_manager.user_profiles_collection.find_one({"user_id": user_id})
+        personal_info = user_profile.get("userData", {}).get("personalInfo", {}) if user_profile else {}
+        user_name = personal_info.get("name", "User")
+        user_timezone_str = personal_info.get("timezone", "UTC")
+        try:
+            user_timezone = ZoneInfo(user_timezone_str)
+        except ZoneInfoNotFoundError:
+            user_timezone = ZoneInfo("UTC")
+        current_time_str = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
+
+        system_prompt = TASK_CREATION_PROMPT.format(
+            user_name=user_name,
+            user_timezone=user_timezone_str,
+            current_time=current_time_str
+        )
+        agent = get_qwen_assistant(system_message=system_prompt)
+        # Use the raw prompt from the task's description for parsing
+        messages = [{'role': 'user', 'content': task["description"]}]
+
+        response_str = ""
+        for chunk in agent.run(messages=messages):
+            if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
+                response_str = chunk[-1].get("content", "")
+
+        parsed_data = JsonExtractor.extract_valid_json(clean_llm_output(response_str))
+        if parsed_data:
+            # Ensure description is not empty, fall back to original prompt if needed
+            if not parsed_data.get("description"):
+                parsed_data["description"] = task["description"]
+            await db_manager.update_task_field(task_id, parsed_data)
+            logger.info(f"Successfully refined and updated AI task {task_id} with new details.")
+        else:
+            logger.warning(f"Could not parse details for AI task {task_id}, proceeding with raw description.")
+
+        # Now trigger the planning step, which is the main purpose of AI-assigned tasks
+        generate_plan_from_context.delay(task_id)
+        logger.info(f"Refinement complete for AI task {task_id}, dispatched to planner.")
+
+    except Exception as e:
+        logger.error(f"Error refining and planning AI task {task_id}: {e}", exc_info=True)
+        await db_manager.update_task_field(task_id, {"status": "error", "error": "Failed during initial refinement."})
+    finally:
+        await db_manager.close()
+
 @celery_app.task(name="process_task_change_request")
 def process_task_change_request(task_id: str, user_id: str, user_message: str):
     """Processes a user's change request on a completed task via the in-task chat."""

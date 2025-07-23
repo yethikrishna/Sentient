@@ -9,7 +9,7 @@ import uuid
 
 from main.dependencies import mongo_manager, websocket_manager
 from main.auth.utils import PermissionChecker, AuthHelper
-from workers.tasks import generate_plan_from_context, execute_task_plan, calculate_next_run, process_task_change_request, refine_task_details
+from workers.tasks import generate_plan_from_context, execute_task_plan, calculate_next_run, process_task_change_request, refine_task_details, refine_and_plan_ai_task
 from .models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest, AnswerClarificationsRequest, TaskActionRequest, TaskChatRequest, ProgressUpdateRequest
 from main.llm import get_qwen_assistant
 from json_extractor import JsonExtractor
@@ -103,52 +103,22 @@ async def add_task(
         refine_task_details.delay(task_id)
         return {"message": "Task added to your list.", "task_id": task_id}
 
-    # --- Full Path for AI-Assigned Tasks (requires sync LLM call) ---
+    # --- Async Path for AI-Assigned Tasks ---
     else:
-        user_profile = await mongo_manager.get_user_profile(user_id)
-        personal_info = user_profile.get("userData", {}).get("personalInfo", {}) if user_profile else {}
-        user_name = personal_info.get("name", "User")
-        user_timezone_str = personal_info.get("timezone", "UTC")
-        user_timezone = ZoneInfo(user_timezone_str)
-        current_time_str = datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
+        # Create a placeholder task immediately
+        task_data = {
+            "description": request.prompt,
+            "priority": 1,  # Default priority
+            "schedule": None,
+            "assignee": "ai"
+        }
+        task_id = await mongo_manager.add_task(user_id, task_data)
+        if not task_id:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create task.")
 
-        system_prompt = TASK_CREATION_PROMPT.format(
-            user_name=user_name,
-            user_timezone=user_timezone_str,
-            current_time=current_time_str
-        )
-        try:
-            agent = get_qwen_assistant(system_message=system_prompt)
-            messages = [{'role': 'user', 'content': request.prompt}]
-            response_str = ""
-            for chunk in agent.run(messages=messages):
-                if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
-                    response_str = chunk[-1].get("content", "")
-            parsed_data = JsonExtractor.extract_valid_json(response_str) or {}
-        except Exception as e:
-            logger.error(f"LLM parsing failed for AI task: {e}", exc_info=True)
-            parsed_data = {}
-
-    # Create task data dict
-        parsed_data = {"description": request.prompt, "priority": 1, "schedule": None}
-
-    # 3. Create task data dict
-    task_data = {
-        "description": parsed_data.get("description", request.prompt),
-        "schedule": parsed_data.get("schedule"),
-        "priority": parsed_data.get("priority", 1),
-        "assignee": request.assignee
-    }
-
-    # 4. Save to DB
-    task_id = await mongo_manager.add_task(user_id, task_data)
-    if not task_id:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create task.")
-
-    # Trigger planning since it's an AI task
-    generate_plan_from_context.delay(task_id)
-    message = "Task created! I'll start planning it out."
-    return {"message": message, "task_id": task_id}
+        # Asynchronously refine details and then trigger planning
+        refine_and_plan_ai_task.delay(task_id)
+        return {"message": "Task accepted! I'll start planning it out.", "task_id": task_id}
 
 @router.post("/fetch-tasks")
 async def fetch_tasks(

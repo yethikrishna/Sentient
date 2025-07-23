@@ -30,7 +30,7 @@ const InlineNewTaskCard = ({ onTaskAdded }) => {
 			const response = await fetch("/api/tasks/add", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ prompt, assignee, status: "planning" })
+				body: JSON.stringify({ prompt, assignee })
 			})
 			const data = await response.json()
 			if (!response.ok)

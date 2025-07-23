@@ -362,16 +362,17 @@ const AllTasksView = ({
 
 	const orderedGroupNames = useMemo(() => {
 		const groupOrder = [
-			"planning",
-			"pending",
-			"approval_pending",
 			"clarification_pending",
+			"planning",
+			"clarification_answered", // Labeled as "Re-planning"
+			"approval_pending",
 			"processing",
 			"active",
 			"completed",
+			"pending", // User-assigned tasks awaiting action
 			"error",
 			"cancelled",
-			"archived"
+			"archived",
 		]
 		const groupNames = Object.keys(processedTasks).sort((a, b) => {
 			const statusA =
@@ -391,8 +392,8 @@ const AllTasksView = ({
 
 	return (
 		<div className="h-full flex flex-col">
-			<div className="flex items-center justify-between p-6 border-b border-[var(--color-primary-surface)]">
-				<div className="flex items-center gap-6">
+			<div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 p-4 md:p-6 border-b border-[var(--color-primary-surface)]">
+				<div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
 					<div className="flex items-center gap-2">
 						<label className="text-sm text-[var(--color-text-secondary)] font-medium">
 							Show:
@@ -400,7 +401,7 @@ const AllTasksView = ({
 						<select
 							value={activeTab}
 							onChange={(e) => onTabChange(e.target.value)}
-							className="bg-[var(--color-primary-surface)] border border-[var(--color-primary-surface-elevated)] rounded-md px-3 py-1.5 text-sm text-[var(--color-text-primary)] focus:border-[var(--color-accent-blue)] outline-none"
+							className="w-full sm:w-auto bg-[var(--color-primary-surface)] border border-[var(--color-primary-surface-elevated)] rounded-md px-3 py-1.5 text-sm text-[var(--color-text-primary)] focus:border-[var(--color-accent-blue)] outline-none"
 						>
 							<option value="oneTime">One-time</option>
 							<option value="recurring">Recurring</option>
@@ -413,7 +414,7 @@ const AllTasksView = ({
 						<select
 							value={groupBy}
 							onChange={(e) => onGroupChange(e.target.value)}
-							className="bg-[var(--color-primary-surface)] border border-[var(--color-primary-surface-elevated)] rounded-md px-3 py-1.5 text-sm text-[var(--color-text-primary)] focus:border-[var(--color-accent-blue)] outline-none"
+							className="w-full sm:w-auto bg-[var(--color-primary-surface)] border border-[var(--color-primary-surface-elevated)] rounded-md px-3 py-1.5 text-sm text-[var(--color-text-primary)] focus:border-[var(--color-accent-blue)] outline-none"
 						>
 							<option value="status">Status</option>
 							<option value="none">None</option>
@@ -422,28 +423,26 @@ const AllTasksView = ({
 				</div>
 				<button
 					onClick={onAddTask}
-					className="flex items-center gap-2 py-2 px-4 rounded-lg bg-sentient-blue hover:bg-sentient-blue-dark text-white text-sm font-medium transition-colors"
+					className="flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-sentient-blue hover:bg-sentient-blue-dark text-white text-sm font-medium transition-colors"
 				>
 					<IconPlus size={16} /> Add Task
 				</button>
 			</div>
 
 			<div className="flex-1 flex flex-col overflow-hidden">
-				<div className="flex-1 overflow-y-auto custom-scrollbar px-6 pt-6 pb-6">
-					{Object.keys(processedTasks).length > 0 ||
-					isAddingNewTask ? (
+				<div className="flex-1 overflow-y-auto custom-scrollbar px-4 md:px-6 pt-6 pb-6">
+					<AnimatePresence>
+						{isAddingNewTask && (
+							<InlineNewTaskCard onTaskAdded={onTaskAdded} />
+						)}
+					</AnimatePresence>
+
+					{Object.keys(processedTasks).length > 0 ? (
 						<AnimatePresence>
 							{orderedGroupNames.map((groupName) => {
 								const groupTasks =
 									processedTasks[groupName] || []
-								if (
-									groupTasks.length === 0 &&
-									!(
-										isAddingNewTask &&
-										groupName === "Planning"
-									)
-								)
-									return null
+								if (groupTasks.length === 0) return null
 								return (
 									<React.Fragment key={groupName}>
 										{groupBy !== "none" ? (
@@ -461,15 +460,6 @@ const AllTasksView = ({
 												}
 											>
 												<div className="space-y-3">
-													{isAddingNewTask &&
-														groupName ===
-															"Planning" && (
-															<InlineNewTaskCard
-																onTaskAdded={
-																	onTaskAdded
-																}
-															/>
-														)}
 													{groupTasks.map((task) => (
 														<TaskListItem
 															key={task.task_id}
@@ -492,13 +482,6 @@ const AllTasksView = ({
 											</CollapsibleSection>
 										) : (
 											<div className="space-y-3">
-												{isAddingNewTask && (
-													<InlineNewTaskCard
-														onTaskAdded={
-															onTaskAdded
-														}
-													/>
-												)}
 												{groupTasks.map((task) => (
 													<TaskListItem
 														key={task.task_id}
@@ -520,42 +503,27 @@ const AllTasksView = ({
 									</React.Fragment>
 								)
 							})}
-							{isAddingNewTask &&
-								groupBy === "status" &&
-								!processedTasks["Planning"] && (
-									<CollapsibleSection
-										title="Planning"
-										count={0}
-										isOpen={
-											openSections["Planning"] ?? true
-										}
-										onToggle={() =>
-											handleToggleSection("Planning")
-										}
-									>
-										<InlineNewTaskCard
-											onTaskAdded={onTaskAdded}
-										/>
-									</CollapsibleSection>
-								)}
 						</AnimatePresence>
 					) : (
-						<div className="flex items-center justify-center h-full text-center p-8">
-							<div>
-								<div className="text-4xl mb-3 text-[var(--color-text-muted)]">
-									📝
-								</div>
-								<div className="text-lg font-medium text-[var(--color-text-primary)] mb-2">
-									No {isRecurring ? "recurring" : "one-time"}{" "}
-									tasks found
-								</div>
-								<div className="text-sm text-[var(--color-text-secondary)]">
-									{!isRecurring
-										? "Create your first task above!"
-										: "Set up recurring workflows to automate your tasks."}
+						!isAddingNewTask && (
+							<div className="flex items-center justify-center h-full text-center p-8">
+								<div>
+									<div className="text-4xl mb-3 text-[var(--color-text-muted)]">
+										📝
+									</div>
+									<div className="text-lg font-medium text-[var(--color-text-primary)] mb-2">
+										No{" "}
+										{isRecurring ? "recurring" : "one-time"}{" "}
+										tasks found
+									</div>
+									<div className="text-sm text-[var(--color-text-secondary)]">
+										{!isRecurring
+											? "Create your first task above!"
+											: "Set up recurring workflows to automate your tasks."}
+									</div>
 								</div>
 							</div>
-						</div>
+						)
 					)}
 				</div>
 			</div>

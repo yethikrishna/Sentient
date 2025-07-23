@@ -27,7 +27,8 @@ const TaskDetailsPanel = ({
 	onRerun,
 	onAnswerClarifications,
 	onArchiveTask,
-	onMarkComplete
+	onMarkComplete,
+	className
 }) => {
 	const [isEditing, setIsEditing] = useState(false)
 	const [editableTask, setEditableTask] = useState(task)
@@ -79,7 +80,12 @@ const TaskDetailsPanel = ({
 	)
 
 	return (
-		<aside className="w-full max-w-2xl bg-neutral-900/80 backdrop-blur-xl shadow-2xl border-l border-neutral-700/80 flex flex-col flex-shrink-0">
+		<aside
+			className={cn(
+				"w-full max-w-2xl bg-neutral-900/80 backdrop-blur-xl shadow-2xl md:border-l border-neutral-700/80 flex flex-col flex-shrink-0",
+				className
+			)}
+		>
 			{!task ? (
 				<div className="flex flex-col items-center justify-center h-full text-center text-neutral-500 p-8">
 					<IconClipboardList size={48} className="mb-4" />

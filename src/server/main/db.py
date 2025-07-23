@@ -289,13 +289,31 @@ class MongoManager:
         if not task:
             return False
 
-        current_questions = task.get("clarifying_questions", [])
+        runs = task.get("runs", [])
+        if not runs:
+            # Fallback for older task structure without runs
+            current_questions = task.get("clarifying_questions", [])
+            for answer_data in answers:
+                for question in current_questions:
+                    if question.get("question_id") == answer_data.get("question_id"):
+                        question["answer"] = answer_data.get("answer_text")
+            return await self.update_task(task_id, {"clarifying_questions": current_questions})
+
+        # New logic for tasks with runs
+        latest_run = runs[-1]
+        if "clarifying_questions" not in latest_run:
+            return False # Nothing to update
+
+        current_questions = latest_run["clarifying_questions"]
+        answer_map = {ans.get("question_id"): ans.get("answer_text") for ans in answers}
+
         for answer_data in answers:
             for question in current_questions:
-                if question.get("question_id") == answer_data.get("question_id"):
-                    question["answer"] = answer_data.get("answer_text")
-                    break
-        return await self.update_task(task_id, {"clarifying_questions": current_questions})
+                q_id = question.get("question_id")
+                if q_id in answer_map:
+                    question["answer"] = answer_map[q_id]
+
+        return await self.update_task(task_id, {"runs": runs})
 
     async def delete_task(self, task_id: str, user_id: str) -> str:
         """Deletes a task."""

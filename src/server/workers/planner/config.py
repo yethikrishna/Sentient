@@ -230,7 +230,7 @@ INTEGRATIONS_CONFIG = {
             # URL is constructed dynamically based on user's supermemory_user_id
             "url": None
         }
-    },
+    }
 }
 
 

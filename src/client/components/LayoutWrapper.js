@@ -4,12 +4,14 @@ import { usePathname, useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "framer-motion"
 import toast from "react-hot-toast"
 import NotificationsOverlay from "@components/NotificationsOverlay"
-import { IconBell } from "@tabler/icons-react"
+import { IconBell, IconMessageChatbot } from "@tabler/icons-react"
 import FloatingNav from "@components/FloatingNav"
 import CommandPalette from "./CommandPallete"
 import { useGlobalShortcuts } from "@hooks/useGlobalShortcuts"
+import ChatOverlay from "@components/ChatOverlay"
 
 export default function LayoutWrapper({ children }) {
+	const [isChatOpen, setChatOpen] = useState(false)
 	const [isNotificationsOpen, setNotificationsOpen] = useState(false)
 	const [isCommandPaletteOpen, setCommandPaletteOpen] = useState(false)
 	const [unreadCount, setUnreadCount] = useState(0)
@@ -118,21 +120,28 @@ export default function LayoutWrapper({ children }) {
 		setUnreadCount(0)
 	}, [])
 
+	const handleChatOpen = useCallback(() => {
+		setChatOpen(true)
+	}, [])
+
 	// Use the new custom hook for shortcuts
-	useGlobalShortcuts(handleNotificationsOpen, () =>
-		setCommandPaletteOpen((prev) => !prev)
+	useGlobalShortcuts(
+		handleNotificationsOpen,
+		() => setCommandPaletteOpen((prev) => !prev),
+		handleChatOpen
 	)
 
 	useEffect(() => {
 		const handleEscape = (e) => {
 			if (e.key === "Escape") {
+				if (isChatOpen) setChatOpen(false)
 				if (isNotificationsOpen) setNotificationsOpen(false)
 				if (isCommandPaletteOpen) setCommandPaletteOpen(false)
 			}
 		}
 		window.addEventListener("keydown", handleEscape)
 		return () => window.removeEventListener("keydown", handleEscape)
-	}, [isNotificationsOpen, isCommandPaletteOpen])
+	}, [isChatOpen, isNotificationsOpen, isCommandPaletteOpen])
 
 	return (
 		<>
@@ -146,6 +155,13 @@ export default function LayoutWrapper({ children }) {
 			{children}
 			{showNav && (
 				<>
+					<button
+						onClick={handleChatOpen}
+						className="fixed bottom-[90px] right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-neutral-800/80 backdrop-blur-md border border-neutral-700 shadow-lg hover:bg-neutral-700 transition-colors"
+						aria-label="Open chat"
+					>
+						<IconMessageChatbot className="h-7 w-7 text-neutral-200" />
+					</button>
 					<button
 						onClick={handleNotificationsOpen}
 						className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-neutral-800/80 backdrop-blur-md border border-neutral-700 shadow-lg hover:bg-neutral-700 transition-colors"
@@ -161,6 +177,9 @@ export default function LayoutWrapper({ children }) {
 						)}
 					</button>
 					<AnimatePresence>
+						{isChatOpen && (
+							<ChatOverlay onClose={() => setChatOpen(false)} />
+						)}
 						{isNotificationsOpen && (
 							<NotificationsOverlay
 								onClose={() => setNotificationsOpen(false)}

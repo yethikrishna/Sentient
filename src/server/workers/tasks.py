@@ -121,6 +121,44 @@ def process_memory_item(user_id: str, fact_text: str, source_event_id: Optional[
 
     return run_async(async_process_memory())
 
+@celery_app.task(name="generate_chat_title")
+def generate_chat_title(chat_id: str, user_id: str):
+    """
+    Generates a concise title for a chat session based on its first message.
+    """
+    logger.info(f"Generating title for chat_id: {chat_id}")
+    run_async(async_generate_chat_title(chat_id, user_id))
+
+async def async_generate_chat_title(chat_id: str, user_id: str):
+    db_manager = PlannerMongoManager()
+    try:
+        chat = await db_manager.chats_collection.find_one({"chat_id": chat_id, "user_id": user_id})
+        if not chat or not chat.get("messages"):
+            logger.warning(f"Cannot generate title: Chat {chat_id} not found or has no messages.")
+            return
+
+        first_user_message = chat["messages"][0].get("content", "")
+        if len(first_user_message) < 10:
+            # Title is already good enough, or message too short to summarize
+            return
+
+        system_prompt = "You are a title generator. Create a very short, concise title (5 words max) for the following user query. Do not use quotes or any extra text. Just provide the title."
+        agent = get_qwen_assistant(system_message=system_prompt)
+        messages = [{'role': 'user', 'content': first_user_message}]
+
+        title = ""
+        for chunk in agent.run(messages=messages):
+            if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
+                title = chunk[-1].get("content", "").strip().strip('"')
+
+        if title:
+            await db_manager.update_chat(user_id, chat_id, {"title": title})
+            logger.info(f"Successfully generated and updated title for chat {chat_id}: '{title}'")
+    except Exception as e:
+        logger.error(f"Error generating title for chat {chat_id}: {e}", exc_info=True)
+    finally:
+        await db_manager.close()
+
 @celery_app.task(name="process_task_change_request")
 def process_task_change_request(task_id: str, user_id: str, user_message: str):
     """Processes a user's change request on a completed task via the in-task chat."""
@@ -729,14 +767,6 @@ def run_due_tasks():
     """Celery Beat task to check for and queue user-defined tasks (recurring and scheduled-once)."""
     logger.info("Scheduler: Checking for due user-defined tasks...")
     run_async(async_run_due_tasks())
-    # --- Proactivity Check Placeholder ---
-    # To implement proactive tasks (like daily summaries), you would:
-    # 1. Fetch all users from the database.
-    # 2. For each user, check their `preferences.proactivityLevel`.
-    # 3. If the level is 'Proactive' or 'Balanced', check if it's time for their daily summary
-    #    (respecting their timezone and `quietHours`).
-    # 4. If so, dispatch a new Celery task, e.g., `generate_daily_summary.delay(user_id)`.
-    # This `run_due_tasks` function is a good place to trigger that logic on a schedule.
 
 
 async def async_run_due_tasks():

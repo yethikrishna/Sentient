@@ -207,14 +207,4 @@ INTEGRATIONS_CONFIG = {
             "url": None
         }
     },
-    "tasks": {
-        "display_name": "Tasks",
-        "description": "The agent's tool for creating tasks and reminders. Use this to log future personal events, appointments, or simple reminders for the user.",
-        "auth_type": "builtin",
-        "icon": "IconChecklist",
-        "mcp_server_config": {
-            "name": "tasks_server",
-            "url": os.getenv("TASKS_MCP_SERVER_URL", "http://localhost:9018/sse")
-        }
-    }
 }

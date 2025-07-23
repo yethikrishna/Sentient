@@ -48,7 +48,7 @@ const TasksHeader = ({ onOpenDemo }) => {
 	return (
 		<header className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-primary-surface)] bg-[var(--color-primary-background)]">
 			<div>
-				<h1 className="text-2xl font-semibold text-[var(--color-text-primary)] font-Inter">
+				<h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-br from-white to-neutral-400 py-1">
 					{getGreeting()}, {userDetails?.given_name || "User"}
 				</h1>
 			</div>

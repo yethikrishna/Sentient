@@ -1,31 +1,27 @@
 "use client"
 
-import React from "react"
+import React, { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@utils/cn"
 import { IconChevronDown } from "@tabler/icons-react"
 
-const CollapsibleSection = ({
-	title,
-	count,
-	isOpen,
-	toggleOpen,
-	children
-}) => {
+const CollapsibleSection = ({ title, count, children, isOpen, onToggle }) => {
 	return (
-		<div>
+		<motion.div layout className="mb-6">
 			<button
-				onClick={toggleOpen}
-				className="w-full flex justify-between items-center py-2 px-1 text-left hover:bg-dark-surface/50 rounded-lg transition-colors"
+				onClick={onToggle}
+				className="w-full flex justify-between items-center p-3 hover:bg-[var(--color-primary-surface)]/50 rounded-lg transition-colors"
 			>
-				<h2 className="text-lg font-semibold text-neutral-200 flex items-center gap-2">
-					{title} ({count})
-				</h2>
+				<h3 className="font-medium text-base text-[var(--color-text-primary)]">
+					{title}{" "}
+					<span className="text-sm text-neutral-400">({count})</span>
+				</h3>
 				<IconChevronDown
 					className={cn(
-						"transform transition-transform duration-200",
+						"transform transition-transform duration-300 text-neutral-400",
 						isOpen ? "rotate-180" : "rotate-0"
 					)}
+					size={20}
 				/>
 			</button>
 			<AnimatePresence>
@@ -37,11 +33,11 @@ const CollapsibleSection = ({
 						transition={{ duration: 0.3, ease: "easeInOut" }}
 						className="overflow-hidden"
 					>
-						<div className="space-y-2 pt-2 pb-2">{children}</div>
+						<div className="pt-2 space-y-3">{children}</div>
 					</motion.div>
 				)}
 			</AnimatePresence>
-		</div>
+		</motion.div>
 	)
 }
 

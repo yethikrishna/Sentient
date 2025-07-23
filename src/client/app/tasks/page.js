@@ -46,7 +46,7 @@ const StorylaneDemoModal = ({ onClose }) => {
 					<div className="absolute inset-0 backdrop-blur-3xl bg-black/20 rounded-3xl border border-white/10 shadow-inner" />
 					<div className="absolute -top-4 -right-4 w-24 h-24 bg-gradient-to-br from-blue-400/20 to-purple-400/20 rounded-full blur-2xl animate-pulse" />
 					<div className="absolute -bottom-4 -left-4 w-32 h-32 bg-gradient-to-br from-purple-400/20 to-pink-400/20 rounded-full blur-2xl animate-pulse" />
-					
+
 					<div className="relative flex justify-between items-center pb-6 flex-shrink-0 z-10">
 						<div>
 							<h2 className="text-3xl font-bold bg-gradient-to-r from-white via-blue-100 to-purple-100 bg-clip-text text-transparent drop-shadow-2xl">
@@ -58,7 +58,10 @@ const StorylaneDemoModal = ({ onClose }) => {
 							onClick={onClose}
 							className="relative p-3 rounded-2xl bg-white/10 hover:bg-white/20 backdrop-blur-lg border border-white/20 hover:border-white/30 transition-all duration-300 transform hover:scale-110 shadow-lg group"
 						>
-							<IconX size={20} className="text-white/70 group-hover:text-white transition-colors" />
+							<IconX
+								size={20}
+								className="text-white/70 group-hover:text-white transition-colors"
+							/>
 						</button>
 					</div>
 					<div className="relative flex-1 w-full h-full z-10">
@@ -73,7 +76,8 @@ const StorylaneDemoModal = ({ onClose }) => {
 								width: "100%",
 								height: "100%",
 								border: "1px solid rgba(255,255,255,0.2)",
-								boxShadow: "0px 0px 30px rgba(59, 130, 246, 0.15)",
+								boxShadow:
+									"0px 0px 30px rgba(59, 130, 246, 0.15)",
 								borderRadius: "20px",
 								boxSizing: "border-box"
 							}}
@@ -98,6 +102,11 @@ function TasksPageContent() {
 	const [selectedTask, setSelectedTask] = useState(null) // For viewing details
 	const [editingTask, setEditingTask] = useState(null) // For editing
 	const [isDemoModalOpen, setIsDemoModalOpen] = useState(false)
+
+	// View control states
+	const [activeTab, setActiveTab] = useState("oneTime")
+	const [groupBy, setGroupBy] = useState("status")
+	const [isAddingNewTask, setIsAddingNewTask] = useState(false)
 
 	// Check for query param to auto-open demo on first visit from onboarding
 	useEffect(() => {
@@ -160,6 +169,23 @@ function TasksPageContent() {
 		fetchTasks()
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [])
+
+	const handleAddTask = useCallback(() => {
+		if (groupBy !== "status") {
+			toast.error("Please group by status to add a new task.", {
+				position: "bottom-center"
+			})
+			return
+		}
+		setIsAddingNewTask(true)
+	}, [groupBy])
+
+	const handleTaskAdded = useCallback((isSuccess) => {
+		setIsAddingNewTask(false)
+		if (isSuccess) {
+			fetchTasks()
+		}
+	}, [fetchTasks])
 
 	const handleAction = useCallback(
 		async (actionFn, successMessage, ...args) => {
@@ -315,7 +341,13 @@ function TasksPageContent() {
 			/>
 
 			<main className="flex-1 flex flex-col overflow-hidden">
-				<TasksHeader onOpenDemo={() => setIsDemoModalOpen(true)} />
+				<TasksHeader
+					onOpenDemo={() => setIsDemoModalOpen(true)}
+					activeTab={activeTab}
+					onTabChange={setActiveTab}
+					groupBy={groupBy}
+					onGroupChange={setGroupBy}
+				/>
 				{isLoading ? (
 					<div className="flex justify-center items-center flex-1">
 						<IconLoader className="w-8 h-8 animate-spin text-[var(--color-accent-blue)]" />
@@ -330,7 +362,13 @@ function TasksPageContent() {
 							onRerunTask={handleRerunTask}
 							onMarkComplete={handleMarkComplete}
 							onAssigneeChange={handleAssigneeChange}
-							onTaskAdded={fetchTasks}
+							activeTab={activeTab}
+							groupBy={groupBy}
+							onTabChange={setActiveTab}
+							onGroupChange={setGroupBy}
+							isAddingNewTask={isAddingNewTask}
+							onAddTask={handleAddTask}
+							onTaskAdded={handleTaskAdded}
 						/>
 					</div>
 				)}
@@ -389,3 +427,4 @@ export default function TasksPage() {
 		</Suspense>
 	)
 }
+

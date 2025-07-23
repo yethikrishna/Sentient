@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useMemo, useEffect } from "react"
+import React, { useState, useMemo, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { format, parseISO } from "date-fns"
 import {
@@ -11,24 +11,22 @@ import {
 	IconCircleCheck,
 	IconPlus,
 	IconRepeat,
-	IconArrowUp,
-	IconArrowDown,
-	IconSelector,
 	IconLoader
 } from "@tabler/icons-react"
 import { taskStatusColors, priorityMap } from "./constants"
 import { cn } from "@utils/cn"
 import toast from "react-hot-toast"
+import CollapsibleSection from "./CollapsibleSection"
 
-// New component for inline task adding
-const QuickAddTask = ({ onTaskAdded }) => {
+const InlineNewTaskCard = ({ onTaskAdded }) => {
 	const [prompt, setPrompt] = useState("")
-	const [assignee, setAssignee] = useState("user") // 'user' or 'ai'
-	const [isAdding, setIsAdding] = useState(false)
-	const inputRef = React.useRef(null)
+	const [assignee, setAssignee] = useState("user")
+	const [isSaving, setIsSaving] = useState(false)
+	const inputRef = useRef(null)
 
 	// Auto-resize textarea
 	useEffect(() => {
+		inputRef.current?.focus()
 		const textarea = inputRef.current
 		if (textarea) {
 			textarea.style.height = "auto"
@@ -37,118 +35,107 @@ const QuickAddTask = ({ onTaskAdded }) => {
 		}
 	}, [prompt])
 
-	const handleAddTask = async () => {
-		if (!prompt.trim() || isAdding) return
-
-		setIsAdding(true)
+	const handleSave = async () => {
+		if (!prompt.trim()) {
+			toast.error("Please provide a task description.")
+			return
+		}
+		setIsSaving(true)
 		try {
 			const response = await fetch("/api/tasks/add", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ prompt, assignee })
+				body: JSON.stringify({ prompt, assignee, status: "planning" })
 			})
-
 			const data = await response.json()
-			if (!response.ok) {
+			if (!response.ok)
 				throw new Error(data.error || "Failed to add task")
-			}
 			toast.success("Task added.")
-			setPrompt("")
-			onTaskAdded() // Refresh the list
+			onTaskAdded(true)
 		} catch (error) {
 			toast.error(error.message)
+			onTaskAdded(false)
 		} finally {
-			setIsAdding(false)
-			// Refocus input for the next task
-			inputRef.current?.focus()
+			setIsSaving(false)
+		}
+	}
+
+	const handleCancel = () => {
+		onTaskAdded(false)
+	}
+
+	const handleKeyDown = (e) => {
+		if (e.key === "Enter" && !e.shiftKey) {
+			e.preventDefault()
+			handleSave()
+		}
+		if (e.key === "Escape") {
+			e.preventDefault()
+			handleCancel()
 		}
 	}
 
 	return (
-		<div className="flex items-center gap-3 p-3 mb-4 bg-[var(--color-primary-surface)] border border-[var(--color-primary-surface-elevated)] rounded-lg focus-within:border-[var(--color-accent-blue)] transition-colors">
+		<motion.div
+			layout
+			initial={{ opacity: 0 }}
+			animate={{ opacity: 1 }}
+			exit={{ opacity: 0 }}
+			className="bg-[var(--color-primary-surface)] p-4 rounded-lg border border-[var(--color-accent-blue)]"
+		>
 			<textarea
 				ref={inputRef}
 				value={prompt}
 				onChange={(e) => setPrompt(e.target.value)}
-				onKeyDown={(e) => {
-					if (e.key === "Enter" && !e.shiftKey) {
-						e.preventDefault()
-						handleAddTask()
-					}
-				}}
-				placeholder="Add a new task for yourself or Sentient..."
-				className="flex-1 bg-transparent text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] resize-none outline-none font-Inter"
+				onKeyDown={handleKeyDown}
+				placeholder="What needs to be done?"
+				className="w-full bg-transparent text-white placeholder-neutral-500 resize-none focus:ring-0 focus:outline-none mb-3 font-medium"
 				rows={1}
-				disabled={isAdding}
 			/>
-			<div className="flex items-center gap-2">
-				<button
-					onClick={() =>
-						setAssignee(assignee === "user" ? "ai" : "user")
-					}
-					className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-primary-surface-elevated)] rounded-md transition-colors"
-					data-tooltip-id="tasks-tooltip"
-					data-tooltip-content={`Assign to: ${
-						assignee === "ai" ? "AI" : "Me"
-					}`}
-				>
-					{assignee === "ai" ? (
-						<IconSparkles size={16} className="text-[var(--color-accent-blue)]" />
-					) : (
-						<IconUser size={16} />
-					)}
-				</button>
-				<button
-					onClick={handleAddTask}
-					disabled={isAdding || !prompt.trim()}
-					className="p-2 bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white rounded-md disabled:opacity-50 transition-colors"
-				>
-					{isAdding ? (
-						<IconLoader size={16} className="animate-spin" />
-					) : (
-						<IconPlus size={16} />
-					)}
-				</button>
+			<div className="flex justify-between items-center mt-3 pt-3 border-t border-[var(--color-primary-surface-elevated)]">
+				<div className="flex items-center gap-4">
+					<button
+						onClick={() =>
+							setAssignee(assignee === "user" ? "ai" : "user")
+						}
+						className="flex items-center gap-1.5 text-neutral-400 hover:text-white transition-colors text-xs"
+						data-tooltip-id="tasks-tooltip"
+						data-tooltip-content={`Assign to: ${
+							assignee === "ai" ? "AI" : "Me"
+						}`}
+					>
+						{assignee === "ai" ? (
+							<IconSparkles
+								size={14}
+								className="text-sentient-blue"
+							/>
+						) : (
+							<IconUser size={14} />
+						)}
+						<span>{assignee === "ai" ? "Sentient" : "Me"}</span>
+					</button>
+				</div>
+				<div className="flex items-center gap-2">
+					<button
+						onClick={handleCancel}
+						className="text-neutral-400 hover:text-white text-xs font-semibold py-1 px-3 rounded-md hover:bg-neutral-700 transition-colors"
+					>
+						Cancel
+					</button>
+					<button
+						onClick={handleSave}
+						disabled={isSaving || !prompt.trim()}
+						className="bg-sentient-blue hover:bg-sentient-blue-dark text-white text-xs font-semibold py-1 px-3 rounded-md disabled:opacity-50 flex items-center gap-1"
+					>
+						{isSaving ? (
+							<IconLoader size={14} className="animate-spin" />
+						) : (
+							"Add Task"
+						)}
+					</button>
+				</div>
 			</div>
-		</div>
-	)
-}
-
-// Sortable Header component for table columns
-const SortableHeader = ({
-	title,
-	sortKey,
-	sortConfig,
-	onSort,
-	className = ""
-}) => {
-	const isSorting = sortConfig.key === sortKey
-	const isAscending = isSorting && sortConfig.direction === "ascending"
-
-	let IconComponent
-	let iconClassName = "text-neutral-600"
-
-	if (isSorting) {
-		IconComponent = isAscending ? IconArrowUp : IconArrowDown
-		iconClassName = "text-white"
-	} else {
-		IconComponent = IconSelector
-	}
-
-	return (
-		<button
-			onClick={() => onSort(sortKey)}
-			className={cn(
-				"flex items-center justify-center gap-1 text-sm font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors",
-				className
-			)}
-		>
-			<span>{title}</span>
-			<IconComponent
-				size={14}
-				className={cn(iconClassName, "transition-colors")}
-			/>
-		</button>
+		</motion.div>
 	)
 }
 
@@ -163,6 +150,7 @@ const TaskListItem = ({
 	activeTab
 }) => {
 	const statusInfo = taskStatusColors[task.status] || taskStatusColors.default
+	const priorityInfo = priorityMap[task.priority] || priorityMap.default
 
 	const assigneeDisplay = useMemo(() => {
 		if (task.assignee === "user" && task.status === "pending") {
@@ -172,43 +160,39 @@ const TaskListItem = ({
 						e.stopPropagation()
 						onAssigneeChange(task.task_id, "ai")
 					}}
-					className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-accent-blue)] hover:bg-[var(--color-primary-surface-elevated)] rounded transition-colors"
+					className="flex items-center gap-1.5 text-neutral-400 hover:text-white transition-colors"
 					data-tooltip-id="tasks-tooltip"
 					data-tooltip-content="Assign to AI"
 				>
-					<IconUser size={16} />
+					<IconUser size={14} />
+					<span>Me</span>
 				</button>
 			)
 		}
 		if (task.assignee === "ai") {
 			return (
-				<div className="p-2">
-					<IconSparkles
-						size={16}
-						className="text-[var(--color-accent-blue)]"
-						data-tooltip-id="tasks-tooltip"
-						data-tooltip-content="Assigned to AI"
-					/>
+				<div
+					className="flex items-center gap-1.5 text-neutral-400"
+					data-tooltip-id="tasks-tooltip"
+					data-tooltip-content="Assigned to AI"
+				>
+					<IconSparkles size={14} className="text-sentient-blue" />
+					<span>Sentient</span>
 				</div>
 			)
 		}
 		return (
-			<div className="p-2">
-				<IconSparkles size={16} className="text-[var(--color-text-muted)]" />
+			<div className="flex items-center gap-1.5 text-neutral-500">
+				<IconSparkles size={14} />
+				<span>Sentient</span>
 			</div>
 		)
 	}, [task, onAssigneeChange])
 
-	const priorityInfo = priorityMap[task.priority] || priorityMap.default
-
-	const dueDate = task.schedule?.run_at
-		? format(parseISO(task.schedule.run_at), "MMM d")
-		: "No date"
-
-	const gridTemplateColumns =
-		activeTab === "oneTime"
-			? "minmax(0, 1fr) 120px 120px 120px 150px"
-			: "minmax(0, 1fr) 120px 120px 150px"
+	const dueDate =
+		task.schedule?.run_at && activeTab !== "recurring"
+			? format(parseISO(task.schedule.run_at), "MMM d, yyyy")
+			: "No Due Date"
 
 	return (
 		<motion.div
@@ -220,72 +204,84 @@ const TaskListItem = ({
 				if (e.target.closest("button")) return
 				onViewDetails(task)
 			}}
-			className="grid items-center p-3 border-b border-[var(--color-primary-surface)] hover:bg-[var(--color-primary-surface)] cursor-pointer text-sm group transition-colors"
-			style={{ gridTemplateColumns }}
+			className="bg-[var(--color-primary-surface)] p-4 rounded-lg border border-[var(--color-primary-surface-elevated)] hover:border-[var(--color-accent-blue)] transition-all group relative cursor-pointer"
 		>
-			<div className="truncate pr-4 font-medium flex items-center gap-2">
-				<div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-					{task.assignee === "user" && task.status === "pending" && (
+			<div className="flex justify-between items-start gap-4">
+				<div className="flex items-start gap-2 flex-1 min-w-0">
+					<p className="font-medium text-[var(--color-text-primary)]">
+						{task.description}
+					</p>
+					<div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 pt-0.5">
+						{task.assignee === "user" && task.status === "pending" && (
+							<button
+								onClick={(e) => {
+									e.stopPropagation()
+									onMarkComplete(task.task_id)
+								}}
+								className="p-1.5 text-neutral-400 hover:text-green-400 hover:bg-neutral-700 rounded-md transition-colors"
+								data-tooltip-id="tasks-tooltip"
+								data-tooltip-content="Mark Complete"
+							>
+								<IconCircleCheck size={16} />
+							</button>
+						)}
 						<button
 							onClick={(e) => {
 								e.stopPropagation()
-								onMarkComplete(task.task_id)
+								onRerunTask(task.task_id)
 							}}
-							className="p-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-accent-green)] hover:bg-[var(--color-primary-surface-elevated)] rounded transition-colors"
+							className="p-1.5 text-neutral-400 hover:text-blue-400 hover:bg-neutral-700 rounded-md transition-colors"
 							data-tooltip-id="tasks-tooltip"
-							data-tooltip-content="Mark Complete"
+							data-tooltip-content="Rerun Task"
 						>
-							<IconCircleCheck size={14} />
+							<IconRepeat size={16} />
 						</button>
-					)}
-					<button
-						onClick={(e) => {
-							e.stopPropagation()
-							onRerunTask(task.task_id)
-						}}
-						className="p-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-accent-blue)] hover:bg-[var(--color-primary-surface-elevated)] rounded transition-colors"
-						data-tooltip-id="tasks-tooltip"
-						data-tooltip-content="Rerun Task"
-					>
-						<IconRepeat size={14} />
-					</button>
-					<button
-						onClick={(e) => {
-							e.stopPropagation()
-							onEditTask(task)
-						}}
-						className="p-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-accent-orange)] hover:bg-[var(--color-primary-surface-elevated)] rounded transition-colors"
-						data-tooltip-id="tasks-tooltip"
-						data-tooltip-content="Edit"
-					>
-						<IconPencil size={14} />
-					</button>
-					<button
-						onClick={(e) => {
-							e.stopPropagation()
-							onDeleteTask(task.task_id)
-						}}
-						className="p-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-accent-red)] hover:bg-[var(--color-primary-surface-elevated)] rounded transition-colors"
-						data-tooltip-id="tasks-tooltip"
-						data-tooltip-content="Delete"
-					>
-						<IconTrash size={14} />
-					</button>
+						<button
+							onClick={(e) => {
+								e.stopPropagation()
+								onEditTask(task)
+							}}
+							className="p-1.5 text-neutral-400 hover:text-orange-400 hover:bg-neutral-700 rounded-md transition-colors"
+							data-tooltip-id="tasks-tooltip"
+							data-tooltip-content="Edit"
+						>
+							<IconPencil size={16} />
+						</button>
+						<button
+							onClick={(e) => {
+								e.stopPropagation()
+								onDeleteTask(task.task_id)
+							}}
+							className="p-1.5 text-neutral-400 hover:text-red-400 hover:bg-neutral-700 rounded-md transition-colors"
+							data-tooltip-id="tasks-tooltip"
+							data-tooltip-content="Delete"
+						>
+							<IconTrash size={16} />
+						</button>
+					</div>
 				</div>
-				<span className="truncate">{task.description}</span>
+				<div className="flex items-center gap-2 text-xs flex-shrink-0">
+					<statusInfo.icon
+						className={cn("h-4 w-4", statusInfo.color)}
+					/>
+					<span className={cn(statusInfo.color, "font-medium")}>
+						{statusInfo.label}
+					</span>
+				</div>
 			</div>
-			<div className="flex items-center justify-center">
-				{assigneeDisplay}
-			</div>
-			{activeTab === "oneTime" && (
-				<div className="text-center text-neutral-400">{dueDate}</div>
-			)}
-			<div className={cn("text-center font-medium", priorityInfo.color)}>
-				{priorityInfo.label}
-			</div>
-			<div className="flex items-center justify-center gap-2">
-				<statusInfo.icon className={cn("h-4 w-4", statusInfo.color)} />
-				<span className={cn(statusInfo.color)}>{statusInfo.label}</span>
+
+			<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mt-4 pt-3 border-t border-[var(--color-primary-surface-elevated)] text-xs text-neutral-400">
+				<div className="flex items-center gap-4">
+					{assigneeDisplay}
+					{activeTab !== "recurring" && (
+						<span className="font-medium text-neutral-300">
+							{dueDate}
+						</span>
+					)}
+				</div>
+				<span className={cn("font-medium", priorityInfo.color)}>
+					{priorityInfo.label}
+				</span>
 			</div>
 		</motion.div>
 	)
@@ -299,32 +295,32 @@ const AllTasksView = ({
 	onRerunTask,
 	onMarkComplete,
 	onAssigneeChange,
+	activeTab,
+	groupBy,
+	onTabChange,
+	onGroupChange,
+	isAddingNewTask,
+	onAddTask,
 	onTaskAdded
 }) => {
-	const [activeTab, setActiveTab] = useState("oneTime") // 'oneTime', 'recurring'
-	const [groupBy, setGroupBy] = useState("status") // 'status', 'none'
 	const [sortConfig, setSortConfig] = useState({
-		key: "dueDate",
+		key: "priority",
 		direction: "ascending"
 	})
+	const [openSections, setOpenSections] = useState({})
 
-	const handleSort = (key) => {
-		setSortConfig((prevConfig) => {
-			if (prevConfig.key === key) {
-				// Flip direction if same key is clicked
-				return {
-					...prevConfig,
-					direction:
-						prevConfig.direction === "ascending"
-							? "descending"
-							: "ascending"
-				}
-			}
-			// Otherwise, set new key with default ascending direction
-			return { key, direction: "ascending" }
-		})
+	const handleToggleSection = (title) => {
+		setOpenSections((prev) => ({
+			...prev,
+			[title]: !(prev[title] ?? true) // Defaults to open, so first toggle closes it
+		}))
 	}
 
+	useEffect(() => {
+		if (isAddingNewTask && groupBy === "status") {
+			setOpenSections((prev) => ({ ...prev, Planning: true }))
+		}
+	}, [isAddingNewTask, groupBy])
 	const processedTasks = useMemo(() => {
 		const filteredTasks =
 			activeTab === "oneTime"
@@ -390,13 +386,46 @@ const AllTasksView = ({
 			return acc
 		}, {})
 
+		// Now sort the tasks within each group by priority
+		for (const key in grouped) {
+			grouped[key].sort((a, b) => {
+				const priorityA = a.priority ?? 2
+				const priorityB = b.priority ?? 2
+				return priorityA - priorityB
+			})
+		}
+
 		return grouped
 	}, [tasks, activeTab, groupBy, sortConfig])
 
+	const orderedGroupNames = useMemo(() => {
+		const groupOrder = [
+			"planning",
+			"pending",
+			"approval_pending",
+			"clarification_pending",
+			"processing",
+			"active",
+			"completed",
+			"error",
+			"cancelled",
+			"archived"
+		]
+		const groupNames = Object.keys(processedTasks).sort((a, b) => {
+			const statusA =
+				Object.keys(taskStatusColors).find(
+					(key) => taskStatusColors[key].label === a
+				) || ""
+			const statusB =
+				Object.keys(taskStatusColors).find(
+					(key) => taskStatusColors[key].label === b
+				) || ""
+			return groupOrder.indexOf(statusA) - groupOrder.indexOf(statusB)
+		})
+		return groupNames
+	}, [processedTasks])
+
 	const isRecurring = activeTab === "recurring"
-	const gridCols = isRecurring
-		? "grid-cols-[minmax(0,_1fr)_120px_120px_150px]"
-		: "grid-cols-[minmax(0,_1fr)_120px_120px_120px_150px]" // No change needed here
 
 	return (
 		<div className="h-full flex flex-col">
@@ -408,7 +437,7 @@ const AllTasksView = ({
 						</label>
 						<select
 							value={activeTab}
-							onChange={(e) => setActiveTab(e.target.value)}
+							onChange={(e) => onTabChange(e.target.value)}
 							className="bg-[var(--color-primary-surface)] border border-[var(--color-primary-surface-elevated)] rounded-md px-3 py-1.5 text-sm text-[var(--color-text-primary)] focus:border-[var(--color-accent-blue)] outline-none"
 						>
 							<option value="oneTime">One-time</option>
@@ -421,7 +450,7 @@ const AllTasksView = ({
 						</label>
 						<select
 							value={groupBy}
-							onChange={(e) => setGroupBy(e.target.value)}
+							onChange={(e) => onGroupChange(e.target.value)}
 							className="bg-[var(--color-primary-surface)] border border-[var(--color-primary-surface-elevated)] rounded-md px-3 py-1.5 text-sm text-[var(--color-text-primary)] focus:border-[var(--color-accent-blue)] outline-none"
 						>
 							<option value="status">Status</option>
@@ -429,110 +458,159 @@ const AllTasksView = ({
 						</select>
 					</div>
 				</div>
+				<button
+					onClick={onAddTask}
+					className="flex items-center gap-2 py-2 px-4 rounded-lg bg-sentient-blue hover:bg-sentient-blue-dark text-white text-sm font-medium transition-colors"
+				>
+					<IconPlus size={16} /> Add Task
+				</button>
 			</div>
 
 			<div className="flex-1 flex flex-col overflow-hidden">
-				<div className="p-6 pb-0">
-					{activeTab === "oneTime" && (
-						<QuickAddTask onTaskAdded={onTaskAdded} />
-					)}
-				</div>
-
-				<div className="flex-1 overflow-hidden px-6">
-					<div className="h-full bg-[var(--color-primary-surface)] border border-[var(--color-primary-surface-elevated)] rounded-lg overflow-hidden">
-						<div className="overflow-x-auto custom-scrollbar h-full">
-							<div className="min-w-[700px] h-full flex flex-col">
-								<div
-									className={cn(
-										"hidden md:grid items-center p-3 border-b border-[var(--color-primary-surface-elevated)] text-xs uppercase font-medium text-[var(--color-text-secondary)]",
-										gridCols
-									)}
-								>
-									<div className="px-2">Name</div>
-									<SortableHeader
-										title="Assignee"
-										sortKey="assignee"
-										sortConfig={sortConfig}
-										onSort={handleSort}
-									/>
-									{!isRecurring && (
-										<SortableHeader
-											title="Due Date"
-											sortKey="dueDate"
-											sortConfig={sortConfig}
-											onSort={handleSort}
-										/>
-									)}
-									<SortableHeader
-										title="Priority"
-										sortKey="priority"
-										sortConfig={sortConfig}
-										onSort={handleSort}
-									/>
-									<div className="text-center font-medium text-[var(--color-text-secondary)]">
-										Status
-									</div>
-								</div>
-
-								<div className="flex-1 overflow-y-auto">
-									{Object.keys(processedTasks).length > 0 ? (
-										<AnimatePresence>
-											{Object.entries(processedTasks).map(
-												([groupName, groupTasks]) => (
-													<motion.div key={groupName} layout>
-														{groupBy !== "none" &&
-															groupTasks.length > 0 && (
-																<div className="p-3 bg-[var(--color-primary-surface-elevated)] border-b border-[var(--color-primary-surface)]">
-																	<h3 className="font-medium text-sm text-[var(--color-text-primary)]">
-																		{groupName} ({groupTasks.length})
-																	</h3>
-																</div>
-															)}
-														{groupTasks.length > 0 &&
-															groupTasks.map((task) => (
-																<TaskListItem
-																	key={task.task_id}
-																	task={task}
-																	onViewDetails={
-																		onViewDetails
-																	}
-																	onEditTask={onEditTask}
-																	onDeleteTask={
-																		onDeleteTask
-																	}
-																	onRerunTask={
-																		onRerunTask
-																	}
-																	onMarkComplete={
-																		onMarkComplete
-																	}
-																	onAssigneeChange={
-																		onAssigneeChange
-																	}
-																	activeTab={activeTab}
-																/>
-															))}
-													</motion.div>
-												)
-											)}
-										</AnimatePresence>
-									) : (
-										<div className="flex items-center justify-center h-full text-center p-8">
-											<div>
-												<div className="text-4xl mb-3 text-[var(--color-text-muted)]">📝</div>
-												<div className="text-lg font-medium text-[var(--color-text-primary)] mb-2">
-													No {isRecurring ? "recurring" : "one-time"} tasks found
+				<div className="flex-1 overflow-y-auto custom-scrollbar px-6 pt-6 pb-6">
+					{Object.keys(processedTasks).length > 0 ||
+					isAddingNewTask ? (
+						<AnimatePresence>
+							{orderedGroupNames.map((groupName) => {
+								const groupTasks =
+									processedTasks[groupName] || []
+								if (
+									groupTasks.length === 0 &&
+									!(
+										isAddingNewTask &&
+										groupName === "Planning"
+									)
+								)
+									return null
+								return (
+									<React.Fragment key={groupName}>
+										{groupBy !== "none" ? (
+											<CollapsibleSection
+												title={groupName}
+												count={groupTasks.length}
+												isOpen={
+													openSections[groupName] ??
+													true
+												}
+												onToggle={() =>
+													handleToggleSection(
+														groupName
+													)
+												}
+											>
+												<div className="space-y-3">
+													{isAddingNewTask &&
+														groupName ===
+															"Planning" && (
+															<InlineNewTaskCard
+																onTaskAdded={
+																	onTaskAdded
+																}
+															/>
+														)}
+													{groupTasks.map((task) => (
+														<TaskListItem
+															key={task.task_id}
+															task={task}
+															onViewDetails={
+																onViewDetails
+															}
+															onEditTask={
+																onEditTask
+															}
+															onDeleteTask={
+																onDeleteTask
+															}
+															onRerunTask={
+																onRerunTask
+															}
+															onMarkComplete={
+																onMarkComplete
+															}
+															onAssigneeChange={
+																onAssigneeChange
+															}
+															activeTab={
+																activeTab
+															}
+														/>
+													))}
 												</div>
-												<div className="text-sm text-[var(--color-text-secondary)]">
-													{!isRecurring ? "Create your first task above!" : "Set up recurring workflows to automate your tasks."}
-												</div>
+											</CollapsibleSection>
+										) : (
+											<div className="space-y-3">
+												{isAddingNewTask && (
+													<InlineNewTaskCard
+														onTaskAdded={
+															onTaskAdded
+														}
+													/>
+												)}
+												{groupTasks.map((task) => (
+													<TaskListItem
+														key={task.task_id}
+														task={task}
+														onViewDetails={
+															onViewDetails
+														}
+														onEditTask={onEditTask}
+														onDeleteTask={
+															onDeleteTask
+														}
+														onRerunTask={
+															onRerunTask
+														}
+														onMarkComplete={
+															onMarkComplete
+														}
+														onAssigneeChange={
+															onAssigneeChange
+														}
+														activeTab={activeTab}
+													/>
+												))}
 											</div>
-										</div>
-									)}
+										)}
+									</React.Fragment>
+								)
+							})}
+							{isAddingNewTask &&
+								groupBy === "status" &&
+								!processedTasks["Planning"] && (
+									<CollapsibleSection
+										title="Planning"
+										count={0}
+										isOpen={
+											openSections["Planning"] ?? true
+										}
+										onToggle={() =>
+											handleToggleSection("Planning")
+										}
+									>
+										<InlineNewTaskCard
+											onTaskAdded={onTaskAdded}
+										/>
+									</CollapsibleSection>
+								)}
+						</AnimatePresence>
+					) : (
+						<div className="flex items-center justify-center h-full text-center p-8">
+							<div>
+								<div className="text-4xl mb-3 text-[var(--color-text-muted)]">
+									📝
+								</div>
+								<div className="text-lg font-medium text-[var(--color-text-primary)] mb-2">
+									No {isRecurring ? "recurring" : "one-time"}{" "}
+									tasks found
+								</div>
+								<div className="text-sm text-[var(--color-text-secondary)]">
+									{!isRecurring
+										? "Create your first task above!"
+										: "Set up recurring workflows to automate your tasks."}
 								</div>
 							</div>
 						</div>
-					</div>
+					)}
 				</div>
 			</div>
 		</div>

@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from main.analytics import capture_event
 from qwen_agent.agents import Assistant
 from workers.celery_app import celery_app
-from workers.utils.api_client import notify_user
+from workers.utils.api_client import notify_user, push_progress_update
 
 # Load environment variables for the worker from its own config
 from workers.executor.config import (MONGO_URI, MONGO_DB_NAME,
@@ -75,6 +75,10 @@ async def add_progress_update(db, task_id: str, run_id: str, user_id: str, messa
     logger.info(f"Adding progress update to task {task_id}: '{message}'")
     progress_update = {"message": message, "timestamp": datetime.datetime.now(datetime.timezone.utc)}
     
+    # 1. Push to frontend via WebSocket in real-time
+    await push_progress_update(user_id, task_id, run_id, message)
+
+    # 2. Save to DB for persistence
     await db.tasks.update_one(
         {"task_id": task_id, "user_id": user_id, "runs.run_id": run_id},
         {"$push": {"runs.$.progress_updates": progress_update}}

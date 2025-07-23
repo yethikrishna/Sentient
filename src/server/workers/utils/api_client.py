@@ -77,3 +77,23 @@ async def notify_user(user_id: str, message: str, task_id: Optional[str] = None,
         logger.error(f"Failed to send notification for user {user_id}. Status: {e.response.status_code}, Response: {e.response.text}")
     except Exception as e:
         logger.error(f"An unexpected error occurred while sending notification for {user_id}: {e}", exc_info=True)
+
+async def push_progress_update(user_id: str, task_id: str, run_id: str, message: str):
+    """
+    Calls the main server's internal endpoint to push a progress update via WebSocket.
+    """
+    endpoint = f"{MAIN_SERVER_URL}/tasks/internal/progress-update"
+    payload = {
+        "user_id": user_id,
+        "task_id": task_id,
+        "run_id": run_id,
+        "message": message
+    }
+    try:
+        async with httpx.AsyncClient() as client:
+            # This is a fire-and-forget call, we don't need to wait long or handle the response extensively.
+            await client.post(endpoint, json=payload, timeout=5)
+            logger.info(f"Pushed progress update for task {task_id} to main server.")
+    except Exception as e:
+        # Log the error but don't let it crash the worker task.
+        logger.error(f"Failed to push progress update to main server for task {task_id}: {e}", exc_info=False)

@@ -18,10 +18,7 @@ import Script from "next/script"
 // New component imports
 import TasksHeader from "@components/tasks/TasksHeader"
 import AllTasksView from "@components/tasks/AllTasksView"
-
-// Existing component imports (modals remain)
-import TaskDetailsModal from "@components/tasks/TaskDetailsModal"
-import EditTaskModal from "@components/tasks/EditTaskModal"
+import TaskDetailsPanel from "@components/tasks/TaskDetailsPanel"
 
 const StorylaneDemoModal = ({ onClose }) => {
 	return (
@@ -98,9 +95,8 @@ function TasksPageContent() {
 	const [allTools, setAllTools] = useState([])
 	const [isLoading, setIsLoading] = useState(true)
 
-	// Modal States
-	const [selectedTask, setSelectedTask] = useState(null) // For viewing details
-	const [editingTask, setEditingTask] = useState(null) // For editing
+	// Panel State
+	const [selectedTask, setSelectedTask] = useState(null)
 	const [isDemoModalOpen, setIsDemoModalOpen] = useState(false)
 
 	// View control states
@@ -120,7 +116,7 @@ function TasksPageContent() {
 
 	useEffect(() => {
 		const taskIdParam = searchParams.get("taskId")
-		if (taskIdParam && !selectedTask && !editingTask) {
+		if (taskIdParam && !selectedTask) {
 			const taskInList = tasks.find((t) => t.task_id === taskIdParam)
 			if (taskInList) {
 				setSelectedTask(taskInList)
@@ -138,7 +134,7 @@ function TasksPageContent() {
 			}
 			router.replace("/tasks", { scroll: false })
 		}
-	}, [searchParams, tasks, isLoading, router, selectedTask, editingTask])
+	}, [searchParams, tasks, isLoading, router, selectedTask])
 
 	const fetchTasks = useCallback(async () => {
 		setIsLoading(true)
@@ -170,6 +166,56 @@ function TasksPageContent() {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [])
 
+	// Listen for real-time progress updates from WebSocket
+	useEffect(() => {
+		const handleProgressUpdate = (event) => {
+			const { task_id, run_id, update } = event.detail
+
+			const updateTaskState = (task) => {
+				if (!task) return null
+				// Ensure runs is an array
+				const runs = Array.isArray(task.runs) ? task.runs : []
+				const newRuns = runs.map((run) => {
+					if (run.run_id === run_id) {
+						// Ensure progress_updates is an array
+						const progressUpdates = Array.isArray(
+							run.progress_updates
+						)
+							? run.progress_updates
+							: []
+						return {
+							...run,
+							progress_updates: [...progressUpdates, update]
+						}
+					}
+					return run
+				})
+				return { ...task, runs: newRuns }
+			}
+
+			setTasks((prevTasks) =>
+				prevTasks.map((task) =>
+					task.task_id === task_id ? updateTaskState(task) : task
+				)
+			)
+
+			setSelectedTask((prevSelectedTask) =>
+				prevSelectedTask?.task_id === task_id
+					? updateTaskState(prevSelectedTask)
+					: prevSelectedTask
+			)
+		}
+
+		window.addEventListener("taskProgressUpdate", handleProgressUpdate)
+
+		return () => {
+			window.removeEventListener(
+				"taskProgressUpdate",
+				handleProgressUpdate
+			)
+		}
+	}, []) // Empty dependency array means this runs once on mount
+
 	const handleAddTask = useCallback(() => {
 		if (groupBy !== "status") {
 			toast.error("Please group by status to add a new task.", {
@@ -180,12 +226,15 @@ function TasksPageContent() {
 		setIsAddingNewTask(true)
 	}, [groupBy])
 
-	const handleTaskAdded = useCallback((isSuccess) => {
-		setIsAddingNewTask(false)
-		if (isSuccess) {
-			fetchTasks()
-		}
-	}, [fetchTasks])
+	const handleTaskAdded = useCallback(
+		(isSuccess) => {
+			setIsAddingNewTask(false)
+			if (isSuccess) {
+				fetchTasks()
+			}
+		},
+		[fetchTasks]
+	)
 
 	const handleAction = useCallback(
 		async (actionFn, successMessage, ...args) => {
@@ -306,7 +355,7 @@ function TasksPageContent() {
 	}
 
 	const handleUpdateTask = async (updatedTask) => {
-		handleAction(
+		await handleAction(
 			() =>
 				fetch("/api/tasks/update", {
 					method: "POST",
@@ -318,6 +367,16 @@ function TasksPageContent() {
 				}),
 			"Task updated!"
 		)
+		// After saving, update the selected task to show the new data
+		if (selectedTask && selectedTask.task_id === updatedTask.task_id) {
+			const refreshedTasks = await fetch("/api/tasks").then((res) =>
+				res.json()
+			)
+			const newlyUpdatedTask = refreshedTasks.tasks.find(
+				(t) => t.task_id === updatedTask.task_id
+			)
+			setSelectedTask(newlyUpdatedTask || null)
+		}
 	}
 
 	const workflowTasks = useMemo(
@@ -340,73 +399,75 @@ function TasksPageContent() {
 				style={{ zIndex: 9999 }}
 			/>
 
-			<main className="flex-1 flex flex-col overflow-hidden">
-				<TasksHeader
-					onOpenDemo={() => setIsDemoModalOpen(true)}
-					activeTab={activeTab}
-					onTabChange={setActiveTab}
-					groupBy={groupBy}
-					onGroupChange={setGroupBy}
+			<div className="flex flex-1 overflow-hidden">
+				<main className="flex-1 flex flex-col overflow-hidden">
+					<TasksHeader
+						onOpenDemo={() => setIsDemoModalOpen(true)}
+						activeTab={activeTab}
+						onTabChange={setActiveTab}
+						groupBy={groupBy}
+						onGroupChange={setGroupBy}
+					/>
+					{isLoading ? (
+						<div className="flex justify-center items-center flex-1">
+							<IconLoader className="w-8 h-8 animate-spin text-[var(--color-accent-blue)]" />
+						</div>
+					) : (
+						<div className="flex-1 overflow-hidden">
+							<AllTasksView
+								tasks={[...oneOffTasks, ...workflowTasks]}
+								onViewDetails={setSelectedTask}
+								onMarkComplete={handleMarkComplete}
+								onAssigneeChange={handleAssigneeChange}
+								activeTab={activeTab}
+								groupBy={groupBy}
+								onTabChange={setActiveTab}
+								onGroupChange={setGroupBy}
+								isAddingNewTask={isAddingNewTask}
+								onAddTask={handleAddTask}
+								onTaskAdded={handleTaskAdded}
+							/>
+						</div>
+					)}
+				</main>
+
+				<TaskDetailsPanel
+					task={selectedTask}
+					allTools={allTools}
+					integrations={integrations}
+					onClose={() => setSelectedTask(null)}
+					onSave={handleUpdateTask}
+					onApprove={(taskId) => {
+						handleApproveTask(taskId)
+						setSelectedTask(null)
+					}}
+					onDelete={(taskId) => {
+						handleDeleteTask(taskId)
+						setSelectedTask(null)
+					}}
+					onRerun={(taskId) => {
+						handleRerunTask(taskId)
+						setSelectedTask(null)
+					}}
+					onAnswerClarifications={(taskId, answers) => {
+						handleAnswerClarifications(taskId, answers)
+						setSelectedTask(null)
+					}}
+					onArchiveTask={(taskId) => {
+						handleArchiveTask(taskId)
+						setSelectedTask(null)
+					}}
+					onMarkComplete={(taskId) => {
+						handleMarkComplete(taskId)
+						setSelectedTask(null)
+					}}
 				/>
-				{isLoading ? (
-					<div className="flex justify-center items-center flex-1">
-						<IconLoader className="w-8 h-8 animate-spin text-[var(--color-accent-blue)]" />
-					</div>
-				) : (
-					<div className="flex-1 overflow-hidden">
-						<AllTasksView
-							tasks={[...oneOffTasks, ...workflowTasks]}
-							onViewDetails={setSelectedTask}
-							onEditTask={setEditingTask}
-							onDeleteTask={handleDeleteTask}
-							onRerunTask={handleRerunTask}
-							onMarkComplete={handleMarkComplete}
-							onAssigneeChange={handleAssigneeChange}
-							activeTab={activeTab}
-							groupBy={groupBy}
-							onTabChange={setActiveTab}
-							onGroupChange={setGroupBy}
-							isAddingNewTask={isAddingNewTask}
-							onAddTask={handleAddTask}
-							onTaskAdded={handleTaskAdded}
-						/>
-					</div>
-				)}
-			</main>
+			</div>
 
 			<AnimatePresence>
 				{isDemoModalOpen && (
 					<StorylaneDemoModal
 						onClose={() => setIsDemoModalOpen(false)}
-					/>
-				)}
-				{selectedTask && (
-					<TaskDetailsModal
-						task={selectedTask}
-						onClose={() => setSelectedTask(null)}
-						onEdit={(taskToEdit) => {
-							setEditingTask(taskToEdit)
-							setSelectedTask(null)
-						}}
-						onApprove={handleApproveTask}
-						onDelete={(taskId) => handleDeleteTask(taskId)}
-						integrations={integrations}
-						onAnswerClarifications={handleAnswerClarifications}
-						onArchiveTask={handleArchiveTask}
-						onMarkComplete={handleMarkComplete}
-						onUpdateTask={handleUpdateTask}
-					/>
-				)}
-				{editingTask && (
-					<EditTaskModal
-						task={editingTask}
-						onClose={() => setEditingTask(null)}
-						onSave={(updatedTask) => {
-							handleUpdateTask(updatedTask)
-							setEditingTask(null)
-						}}
-						integrations={integrations}
-						allTools={allTools}
 					/>
 				)}
 			</AnimatePresence>
@@ -427,4 +488,3 @@ export default function TasksPage() {
 		</Suspense>
 	)
 }
-

@@ -7,10 +7,10 @@ from typing import List, Dict, Any, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import uuid
 
-from main.dependencies import mongo_manager
+from main.dependencies import mongo_manager, websocket_manager
 from main.auth.utils import PermissionChecker, AuthHelper
 from workers.tasks import generate_plan_from_context, execute_task_plan, calculate_next_run, process_task_change_request, refine_task_details
-from .models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest, AnswerClarificationsRequest, TaskActionRequest, TaskChatRequest
+from .models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest, AnswerClarificationsRequest, TaskActionRequest, TaskChatRequest, ProgressUpdateRequest
 from main.llm import get_qwen_assistant
 from json_extractor import JsonExtractor
 from .prompts import TASK_CREATION_PROMPT
@@ -352,3 +352,30 @@ async def task_chat(
     # Re-trigger the planner for the same task
     generate_plan_from_context.delay(task_id)
     return JSONResponse(content={"message": "Change request received. The task is now being re-planned."})
+
+@router.post("/internal/progress-update", include_in_schema=False)
+async def internal_progress_update(request: ProgressUpdateRequest):
+    # This is an internal endpoint called by workers. It should not be exposed publicly.
+    # No auth check is performed, relying on network security (internal calls only).
+    logger.info(f"Received internal progress update for task {request.task_id}")
+    try:
+        await websocket_manager.send_personal_json_message(
+            {
+                "type": "task_progress_update",
+                "payload": {
+                    "task_id": request.task_id,
+                    "run_id": request.run_id,
+                    "update": {
+                        "message": request.message,
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }
+                }
+            },
+            request.user_id,
+            connection_type="notifications" # Use the existing notifications channel
+        )
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Failed to push progress update via websocket for task {request.task_id}: {e}", exc_info=True)
+        # Don't fail the worker, just log it.
+        return {"status": "error", "detail": str(e)}

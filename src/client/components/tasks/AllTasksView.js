@@ -142,9 +142,6 @@ const InlineNewTaskCard = ({ onTaskAdded }) => {
 const TaskListItem = ({
 	task,
 	onViewDetails,
-	onEditTask,
-	onDeleteTask,
-	onRerunTask,
 	onMarkComplete,
 	onAssigneeChange,
 	activeTab
@@ -212,52 +209,20 @@ const TaskListItem = ({
 						{task.description}
 					</p>
 					<div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 pt-0.5">
-						{task.assignee === "user" && task.status === "pending" && (
-							<button
-								onClick={(e) => {
-									e.stopPropagation()
-									onMarkComplete(task.task_id)
-								}}
-								className="p-1.5 text-neutral-400 hover:text-green-400 hover:bg-neutral-700 rounded-md transition-colors"
-								data-tooltip-id="tasks-tooltip"
-								data-tooltip-content="Mark Complete"
-							>
-								<IconCircleCheck size={16} />
-							</button>
-						)}
-						<button
-							onClick={(e) => {
-								e.stopPropagation()
-								onRerunTask(task.task_id)
-							}}
-							className="p-1.5 text-neutral-400 hover:text-blue-400 hover:bg-neutral-700 rounded-md transition-colors"
-							data-tooltip-id="tasks-tooltip"
-							data-tooltip-content="Rerun Task"
-						>
-							<IconRepeat size={16} />
-						</button>
-						<button
-							onClick={(e) => {
-								e.stopPropagation()
-								onEditTask(task)
-							}}
-							className="p-1.5 text-neutral-400 hover:text-orange-400 hover:bg-neutral-700 rounded-md transition-colors"
-							data-tooltip-id="tasks-tooltip"
-							data-tooltip-content="Edit"
-						>
-							<IconPencil size={16} />
-						</button>
-						<button
-							onClick={(e) => {
-								e.stopPropagation()
-								onDeleteTask(task.task_id)
-							}}
-							className="p-1.5 text-neutral-400 hover:text-red-400 hover:bg-neutral-700 rounded-md transition-colors"
-							data-tooltip-id="tasks-tooltip"
-							data-tooltip-content="Delete"
-						>
-							<IconTrash size={16} />
-						</button>
+						{task.assignee === "user" &&
+							task.status === "pending" && (
+								<button
+									onClick={(e) => {
+										e.stopPropagation()
+										onMarkComplete(task.task_id)
+									}}
+									className="p-1.5 text-neutral-400 hover:text-green-400 hover:bg-neutral-700 rounded-md transition-colors"
+									data-tooltip-id="tasks-tooltip"
+									data-tooltip-content="Mark Complete"
+								>
+									<IconCircleCheck size={16} />
+								</button>
+							)}
 					</div>
 				</div>
 				<div className="flex items-center gap-2 text-xs flex-shrink-0">
@@ -290,9 +255,6 @@ const TaskListItem = ({
 const AllTasksView = ({
 	tasks,
 	onViewDetails,
-	onEditTask,
-	onDeleteTask,
-	onRerunTask,
 	onMarkComplete,
 	onAssigneeChange,
 	activeTab,
@@ -515,15 +477,6 @@ const AllTasksView = ({
 															onViewDetails={
 																onViewDetails
 															}
-															onEditTask={
-																onEditTask
-															}
-															onDeleteTask={
-																onDeleteTask
-															}
-															onRerunTask={
-																onRerunTask
-															}
 															onMarkComplete={
 																onMarkComplete
 															}
@@ -552,13 +505,6 @@ const AllTasksView = ({
 														task={task}
 														onViewDetails={
 															onViewDetails
-														}
-														onEditTask={onEditTask}
-														onDeleteTask={
-															onDeleteTask
-														}
-														onRerunTask={
-															onRerunTask
 														}
 														onMarkComplete={
 															onMarkComplete

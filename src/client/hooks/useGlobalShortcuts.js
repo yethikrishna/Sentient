@@ -11,7 +11,8 @@ import { usePathname, useRouter } from "next/navigation"
  */
 export function useGlobalShortcuts(
 	onNotificationsOpen,
-	onCommandPaletteToggle
+	onCommandPaletteToggle,
+	onChatOpen
 ) {
 	const router = useRouter()
 	const pathname = usePathname()
@@ -32,13 +33,16 @@ export function useGlobalShortcuts(
 					case "k":
 						onCommandPaletteToggle()
 						break
+					case "m":
+						onChatOpen()
+						break
 					default:
 						return
 				}
 				e.preventDefault()
 			}
 		},
-		[router, onNotificationsOpen, onCommandPaletteToggle]
+		[router, onNotificationsOpen, onCommandPaletteToggle, onChatOpen]
 	)
 
 	useEffect(() => {

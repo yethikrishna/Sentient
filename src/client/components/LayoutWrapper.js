@@ -82,6 +82,13 @@ export default function LayoutWrapper({ children }) {
 							),
 							{ duration: 10000 }
 						)
+					} else if (data.type === "task_progress_update") {
+						// Dispatch a custom event that the tasks page can listen for
+						window.dispatchEvent(
+							new CustomEvent("taskProgressUpdate", {
+								detail: data.payload
+							})
+						)
 					}
 				}
 				ws.onclose = () => {

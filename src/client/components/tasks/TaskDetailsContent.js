@@ -1,113 +1,277 @@
 "use client"
 
-import React, { Fragment } from "react"
+import React from "react"
 import { cn } from "@utils/cn"
 import { taskStatusColors, priorityMap } from "./constants"
-import { IconBrain } from "@tabler/icons-react"
+import {
+	IconGripVertical,
+	IconPlus,
+	IconSparkles,
+	IconUser,
+	IconX
+} from "@tabler/icons-react"
+import ScheduleEditor from "@components/tasks/ScheduleEditor"
 
-const TaskDetailsContent = ({ task }) => {
+const TaskDetailsContent = ({
+	task,
+	isEditing,
+	editableTask,
+	handleFieldChange,
+	handleScheduleChange,
+	handleAddStep,
+	handleRemoveStep,
+	handleStepChange,
+	allTools,
+	integrations
+}) => {
 	if (!task) {
 		return null
 	}
 
-	const statusInfo = taskStatusColors[task.status] || taskStatusColors.default
-	const priorityInfo = priorityMap[task.priority] || priorityMap.default
-	let runs = task.runs || []
+	const displayTask = isEditing ? editableTask : task
+	const statusInfo =
+		taskStatusColors[displayTask.status] || taskStatusColors.default
+	const priorityInfo =
+		priorityMap[displayTask.priority] || priorityMap.default
+	let runs = displayTask.runs || []
 
-	// --- Migration for old tasks without the 'runs' structure ---
-	// If no runs exist but the task is completed and has old-style result/error/plan/progress,
-	// create a single "legacy" run to display its content.
 	if (
 		runs.length === 0 &&
-		(task.result ||
-			task.error ||
-			task.plan?.length > 0 ||
-			task.progress_updates?.length > 0)
+		(displayTask.result ||
+			displayTask.error ||
+			displayTask.plan?.length > 0 ||
+			displayTask.progress_updates?.length > 0)
 	) {
 		runs.push({
 			run_id: "legacy",
-			status: task.status, // Use overall task status for this legacy run
-			plan: task.plan,
-			clarifying_questions: task.clarifying_questions,
-			progress_updates: task.progress_updates,
-			result: task.result,
-			error: task.error
+			status: displayTask.status,
+			plan: displayTask.plan,
+			clarifying_questions: displayTask.clarifying_questions,
+			progress_updates: displayTask.progress_updates,
+			result: displayTask.result,
+			error: displayTask.error
 		})
 	}
 
 	return (
 		<div className="space-y-6">
-			<div className="flex items-center gap-4 text-sm">
-				<span className="text-sm text-neutral-400">Status:</span>
-				<span
-					className={cn(
-						"font-semibold py-0.5 px-2 rounded-full text-xs flex items-center gap-1",
-						statusInfo.color,
-						statusInfo.border.replace("border-", "bg-") + "/20"
+			{/* --- META INFO & ASSIGNEE --- */}
+			<div className="grid grid-cols-2 gap-6">
+				<div>
+					<label className="text-sm font-medium text-neutral-400 block mb-2">
+						Meta
+					</label>
+					<div className="flex items-center gap-4 text-sm bg-neutral-800/50 p-3 rounded-lg">
+						<span className="text-sm text-neutral-400">
+							Status:
+						</span>
+						<span
+							className={cn(
+								"font-semibold py-0.5 px-2 rounded-full text-xs flex items-center gap-1",
+								statusInfo.color,
+								statusInfo.border.replace("border-", "bg-") +
+									"/20"
+							)}
+						>
+							<statusInfo.icon size={12} />
+							{statusInfo.label}
+						</span>
+						<div className="w-px h-4 bg-neutral-700"></div>
+						<span className="text-sm text-neutral-400">
+							Priority:
+						</span>
+						{isEditing ? (
+							<select
+								value={editableTask.priority}
+								onChange={(e) =>
+									handleFieldChange(
+										"priority",
+										Number(e.target.value)
+									)
+								}
+								className="bg-neutral-700/50 border border-neutral-600 rounded-md px-2 py-1 text-xs appearance-none"
+							>
+								<option value={0}>High</option>
+								<option value={1}>Medium</option>
+								<option value={2}>Low</option>
+							</select>
+						) : (
+							<span
+								className={cn(
+									"font-semibold",
+									priorityInfo.color
+								)}
+							>
+								{priorityInfo.label}
+							</span>
+						)}
+					</div>
+				</div>
+				<div>
+					<label className="text-sm font-medium text-neutral-400 block mb-2">
+						Assignee
+					</label>
+					{isEditing ? (
+						<div className="flex gap-1 p-1 bg-neutral-800/50 rounded-lg border border-neutral-700 w-full">
+							<button
+								onClick={() =>
+									handleFieldChange("assignee", "ai")
+								}
+								className={cn(
+									"flex-1 flex items-center justify-center gap-2 py-1.5 rounded-md text-sm transition-colors",
+									editableTask.assignee === "ai"
+										? "bg-blue-600 text-white font-medium"
+										: "hover:bg-neutral-700"
+								)}
+							>
+								<IconSparkles size={16} /> Sentient
+							</button>
+							<button
+								onClick={() =>
+									handleFieldChange("assignee", "user")
+								}
+								className={cn(
+									"flex-1 flex items-center justify-center gap-2 py-1.5 rounded-md text-sm transition-colors",
+									editableTask.assignee === "user"
+										? "bg-blue-600 text-white font-medium"
+										: "hover:bg-neutral-700"
+								)}
+							>
+								<IconUser size={16} /> Me
+							</button>
+						</div>
+					) : (
+						<div className="flex items-center gap-2 bg-neutral-800/50 p-3 rounded-lg text-sm">
+							{displayTask.assignee === "ai" ? (
+								<IconSparkles
+									size={16}
+									className="text-blue-400"
+								/>
+							) : (
+								<IconUser
+									size={16}
+									className="text-neutral-400"
+								/>
+							)}
+							<span className="font-medium">
+								{displayTask.assignee === "ai"
+									? "Sentient"
+									: "Me"}
+							</span>
+						</div>
 					)}
-				>
-					<statusInfo.icon size={12} />
-					{statusInfo.label}
-				</span>
-				<div className="w-px h-4 bg-[var(--color-primary-surface-elevated)]"></div>
-				<span className="text-sm text-neutral-400">Priority:</span>
-				<span className={cn("font-semibold", priorityInfo.color)}>
-					{priorityInfo.label}
-				</span>
+				</div>
 			</div>
 
-			{runs.map((run, runIndex) => {
-				const { thoughts, finalAnswer, mainContent } =
-					run.result && typeof run.result === "string"
-						? {
-								thoughts: run.result.match(
-									/<think>([\s\S]*?)<\/think>/
-								)?.[1],
-								finalAnswer: run.result.match(
-									/<final_answer>([\s\S]*?)<\/final_answer>/
-								)?.[1],
-								mainContent: run.result
-									.replace(/<think>[\s\S]*?<\/think>/g, "")
-									.replace(
-										/<final_answer>[\s\S]*?<\/final_answer>/g,
-										""
+			{/* --- SCHEDULE --- */}
+			<div>
+				<label className="text-sm font-medium text-neutral-400 block mb-2">
+					Schedule
+				</label>
+				{isEditing ? (
+					<ScheduleEditor
+						schedule={
+							editableTask.schedule || {
+								type: "once",
+								run_at: null
+							}
+						}
+						setSchedule={handleScheduleChange}
+					/>
+				) : displayTask.schedule ? (
+					<div className="bg-neutral-800/50 p-3 rounded-lg text-sm">
+						{displayTask.schedule.type === "recurring"
+							? `Recurring: ${displayTask.schedule.frequency} on ${displayTask.schedule.days?.join(", ")} at ${displayTask.schedule.time}`
+							: `Once: ${displayTask.schedule.run_at ? new Date(displayTask.schedule.run_at).toLocaleString() : "ASAP"}`}
+					</div>
+				) : (
+					<p className="text-sm text-neutral-500">Not scheduled.</p>
+				)}
+			</div>
+
+			{/* --- PLAN & OUTCOME --- */}
+			{isEditing ? (
+				<div className="space-y-3">
+					<label className="text-sm font-medium text-neutral-300">
+						Plan Steps
+					</label>
+					{(editableTask.plan || []).map((step, index) => (
+						<div
+							key={index}
+							className="flex items-center gap-2 p-2 bg-neutral-800/30 rounded-lg border border-neutral-700/50"
+						>
+							<IconGripVertical className="h-5 w-5 text-neutral-500 cursor-grab flex-shrink-0" />
+							<select
+								value={step.tool}
+								onChange={(e) =>
+									handleStepChange(
+										index,
+										"tool",
+										e.target.value
 									)
-							}
-						: {
-								thoughts: null,
-								finalAnswer: null,
-								mainContent: run.result
-							}
-
-				return (
-					<Fragment key={run.run_id}>
-						{runIndex > 0 && (
-							<div className="pt-4 border-t border-dashed border-neutral-700">
-								<p className="text-center text-xs font-semibold text-neutral-500 uppercase">
-									Change Request #{runIndex}
-								</p>
-							</div>
-						)}
-
+								}
+								className="w-1/3 p-2 bg-neutral-700 border border-neutral-600 rounded-md text-sm appearance-none"
+							>
+								<option value="">Select tool...</option>
+								{allTools.map((tool) => (
+									<option key={tool.name} value={tool.name}>
+										{tool.display_name}
+									</option>
+								))}
+							</select>
+							<input
+								type="text"
+								value={step.description}
+								onChange={(e) =>
+									handleStepChange(
+										index,
+										"description",
+										e.target.value
+									)
+								}
+								className="flex-grow p-2 bg-neutral-700 border border-neutral-600 rounded-md text-sm"
+								placeholder="Step description..."
+							/>
+							<button
+								onClick={() => handleRemoveStep(index)}
+								className="p-2 text-red-400 hover:bg-red-500/10 rounded-full flex-shrink-0"
+							>
+								<IconX size={16} />
+							</button>
+						</div>
+					))}
+					<button
+						onClick={handleAddStep}
+						className="flex items-center gap-1.5 text-xs py-1.5 px-3 rounded-full bg-neutral-700 hover:bg-neutral-600 font-medium"
+					>
+						<IconPlus size={14} /> Add Step
+					</button>
+				</div>
+			) : (
+				runs.map((run) => (
+					<div
+						key={run.run_id || "default-run"}
+						className="space-y-6 border-t border-neutral-800 pt-6 first:border-t-0 first:pt-0"
+					>
 						{run.plan && run.plan.length > 0 && (
 							<div>
-								<h4 className="text-lg font-semibold text-white mb-3">
+								<h4 className="font-semibold text-neutral-300 mb-2">
 									Plan
 								</h4>
 								<div className="space-y-2">
 									{run.plan.map((step, index) => (
 										<div
 											key={index}
-											className="flex items-start gap-3 bg-dark-surface/70 p-3 rounded-md border border-dark-surface-elevated"
+											className="flex items-start gap-3 p-3 bg-neutral-800/50 rounded-lg border border-neutral-700/50"
 										>
-											<div className="flex-shrink-0 text-[var(--color-accent-blue)] font-bold mt-0.5">
-												{index + 1}.
+											<div className="flex-shrink-0 w-5 h-5 bg-neutral-700 rounded-full flex items-center justify-center text-xs font-bold">
+												{index + 1}
 											</div>
 											<div>
-												<p className="font-semibold text-white">
+												<p className="text-sm font-medium text-neutral-100">
 													{step.tool}
 												</p>
-												<p className="text-sm text-[var(--color-text-secondary)]">
+												<p className="text-sm text-neutral-400">
 													{step.description}
 												</p>
 											</div>
@@ -116,113 +280,94 @@ const TaskDetailsContent = ({ task }) => {
 								</div>
 							</div>
 						)}
-
-						{run.progress_updates?.length > 0 && (
-							<div>
-								<h4 className="text-lg font-semibold text-white mb-4">
-									Progress
-								</h4>
-								<div className="space-y-4">
-									{run.progress_updates.map(
-										(update, index) => (
-											<div
-												key={index}
-												className="flex gap-4"
-											>
-												<div className="flex flex-col items-center">
-													<div className="w-4 h-4 bg-blue-500 rounded-full border-2 border-neutral-800"></div>
-													{index <
-														run.progress_updates
-															.length -
-															1 && (
-														<div className="w-0.5 flex-grow bg-[var(--color-primary-surface-elevated)]"></div>
-													)}
-												</div>
-												<div>
-													<p className="text-sm text-white -mt-1">
-														{update.message}
-													</p>
-													<p className="text-xs text-[var(--color-text-muted)] mt-1.5">
-														{new Date(
-															update.timestamp
-														).toLocaleString()}
-													</p>
-												</div>
-											</div>
-										)
-									)}
-								</div>
-							</div>
-						)}
-
-						{(run.result || run.error) && (
-							<div className="pt-4 border-t border-[var(--color-primary-surface-elevated)]">
-								<h4 className="text-lg font-semibold text-white mb-4">
-									Outcome
-								</h4>
-								{run.error ? (
-									<pre className="text-sm bg-red-900/30 p-4 rounded-md text-red-300 whitespace-pre-wrap font-mono border border-[var(--color-accent-red)]/50">
-										{run.error}
-									</pre>
-								) : (
-									<div className="space-y-4 text-gray-300">
-										{thoughts && (
-											<details className="bg-[var(--color-primary-surface)]/50 rounded-lg p-3 border border-[var(--color-primary-surface-elevated)]">
-												<summary
-													className="cursor-pointer text-sm text-[var(--color-text-secondary)] font-semibold hover:text-white flex items-center gap-2"
-													data-tooltip-id="task-details-tooltip"
-													data-tooltip-content="See the step-by-step reasoning the agent used to produce the result."
+						{run.clarifying_questions &&
+							run.clarifying_questions.length > 0 && (
+								<div>
+									<h4 className="font-semibold text-neutral-300 mb-2">
+										Clarifying Questions
+									</h4>
+									<div className="space-y-2">
+										{run.clarifying_questions.map(
+											(q, index) => (
+												<div
+													key={index}
+													className="p-3 bg-yellow-500/10 border border-yellow-500/20 text-yellow-300 rounded-lg text-sm"
 												>
-													{/* Tooltip component is assumed to be globally available or imported elsewhere */}
-													<Tooltip
-														place="right-start"
-														id="task-details-tooltip"
-														style={{ zIndex: 9999 }}
-													/>
-													<IconBrain
-														size={16}
-														className="text-yellow-400"
-													/>{" "}
-													View Agent's Thoughts
-												</summary>
-												<pre className="mt-3 text-xs text-gray-400 whitespace-pre-wrap font-mono">
-													{thoughts}
-												</pre>
-											</details>
-										)}
-										{mainContent &&
-											typeof mainContent === "string" && (
-												<div
-													dangerouslySetInnerHTML={{
-														__html: mainContent.replace(
-															/\n/g,
-															"<br />"
-														)
-													}}
-												/>
-											)}
-										{finalAnswer && (
-											<div className="mt-2 p-4 bg-green-900/30 border border-[var(--color-accent-green)]/50 rounded-lg">
-												<p className="text-sm font-semibold text-green-300 mb-2">
-													Final Answer
-												</p>
-												<div
-													dangerouslySetInnerHTML={{
-														__html: finalAnswer.replace(
-															/\n/g,
-															"<br />"
-														)
-													}}
-												/>
-											</div>
+													<p>{q.text}</p>
+												</div>
+											)
 										)}
 									</div>
-								)}
+								</div>
+							)}
+						{run.progress_updates &&
+							run.progress_updates.length > 0 && (
+								<div>
+									<h4 className="font-semibold text-neutral-300 mb-2">
+										Progress
+									</h4>
+									<div className="bg-neutral-800/50 p-4 rounded-lg border border-neutral-700/50 text-sm text-neutral-300 space-y-3">
+										{run.progress_updates.map(
+											(update, index) => {
+												const isString =
+													typeof update === "string"
+												const message = isString
+													? update
+													: update.message
+												const timestamp = isString
+													? null
+													: new Date(
+															update.timestamp
+														).toLocaleTimeString(
+															[],
+															{
+																hour: "2-digit",
+																minute: "2-digit",
+																second: "2-digit"
+															}
+														)
+
+												return (
+													<div
+														key={index}
+														className="flex gap-3"
+													>
+														{timestamp && (
+															<span className="text-neutral-500 font-mono text-xs flex-shrink-0 pt-0.5">
+																[{timestamp}]
+															</span>
+														)}
+														<p>{message}</p>
+													</div>
+												)
+											}
+										)}
+									</div>
+								</div>
+							)}
+						{run.result && (
+							<div>
+								<h4 className="font-semibold text-neutral-300 mb-2">
+									Result
+								</h4>
+								<pre className="text-xs bg-neutral-800/50 p-3 rounded-lg whitespace-pre-wrap font-mono border border-neutral-700/50">
+									{JSON.stringify(run.result, null, 2)}
+								</pre>
 							</div>
 						)}
-					</Fragment>
-				)
-			})}
+						{run.error && (
+							<div>
+								<h4 className="font-semibold text-neutral-300 mb-2">
+									Error
+								</h4>
+								<p className="text-sm bg-red-500/10 border border-red-500/20 text-red-300 p-3 rounded-lg">
+									{run.error}
+								</p>
+							</div>
+						)}
+					</div>
+				))
+			)}
 		</div>
 	)
 }

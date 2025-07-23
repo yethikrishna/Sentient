@@ -1,4 +1,3 @@
-// A new file: src/client/components/tasks/ScheduleEditor.js
 "use client"
 
 import React from "react"
@@ -7,7 +6,7 @@ import { Tooltip } from "react-tooltip"
 
 const ScheduleEditor = ({ schedule, setSchedule }) => {
 	const handleTypeChange = (type) => {
-		const baseSchedule = { ...schedule, type }
+		const baseSchedule = { ...schedule, type: type }
 		if (type === "once") {
 			delete baseSchedule.frequency
 			delete baseSchedule.days
@@ -38,10 +37,10 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 						type="button"
 						onClick={() => handleTypeChange(value)}
 						className={cn(
-							"px-4 py-1.5 rounded-full text-sm",
+							"px-4 py-1.5 rounded-full text-sm font-medium",
 							(schedule.type || "once") === value
-								? "bg-[var(--color-accent-blue)] text-white"
-								: "bg-neutral-600 hover:bg-neutral-500"
+								? "bg-blue-600 text-white"
+								: "bg-neutral-700 hover:bg-neutral-600"
 						)}
 					>
 						{label}
@@ -66,7 +65,7 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 						onChange={(e) =>
 							setSchedule({ ...schedule, run_at: e.target.value })
 						}
-						className="w-full p-2 bg-neutral-600/80 border border-neutral-600 rounded-md focus:border-[var(--color-accent-blue)]"
+						className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:border-blue-500"
 					/>
 					<p className="text-xs text-gray-500 mt-1">
 						If left blank, the task will be planned immediately.
@@ -88,7 +87,7 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 									frequency: e.target.value
 								})
 							}
-							className="w-full p-2 bg-neutral-600/80 border border-neutral-600 rounded-md focus:border-[var(--color-accent-blue)]"
+							className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:border-blue-500"
 						>
 							<option value="daily">Daily</option>
 							<option value="weekly">Weekly</option>
@@ -103,7 +102,7 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 							Time (UTC)
 						</label>
 						<Tooltip
-							place="right-start"
+							place="top"
 							id="schedule-tooltip"
 							style={{ zIndex: 99999 }}
 						/>
@@ -116,7 +115,7 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 									time: e.target.value
 								})
 							}
-							className="w-full p-2 bg-neutral-600/80 border border-neutral-600 rounded-md focus:border-[var(--color-accent-blue)]"
+							className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:border-blue-500"
 						/>
 					</div>
 					{schedule.frequency === "weekly" && (
@@ -141,8 +140,8 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 										className={cn(
 											"px-3 py-1.5 rounded-full text-xs font-semibold",
 											(schedule.days || []).includes(day)
-												? "bg-[var(--color-accent-blue)] text-white"
-												: "bg-neutral-600 hover:bg-neutral-500"
+												? "bg-blue-600 text-white"
+												: "bg-neutral-700 hover:bg-neutral-600"
 										)}
 									>
 										{day.substring(0, 3)}

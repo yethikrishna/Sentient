@@ -1,8 +1,6 @@
-// A new file: src/client/components/tasks/EditTaskModal.js
 "use client"
 
 import React, { useState, useEffect } from "react"
-import toast from "react-hot-toast"
 import { motion } from "framer-motion"
 import {
 	IconX,
@@ -10,23 +8,16 @@ import {
 	IconPlus,
 	IconLoader,
 	IconSparkles,
-	IconUser
+	IconUser,
+	IconDeviceFloppy
 } from "@tabler/icons-react"
 import ScheduleEditor from "@components/tasks/ScheduleEditor"
-import ConnectToolButton from "@components/tasks/ConnectToolButton"
 import { cn } from "@utils/cn"
 
-const EditTaskModal = ({
-	task,
-	onClose,
-	onSave, // Expects a function that takes the updated task
-	integrations,
-	allTools
-}) => {
+const EditTaskModal = ({ task, onClose, onSave, allTools }) => {
 	const [isSubmitting, setIsSubmitting] = useState(false)
-
-	// Use local state for editing, and update parent on save
 	const [localTask, setLocalTask] = useState(task)
+
 	useEffect(() => {
 		setLocalTask(task)
 	}, [task])
@@ -65,14 +56,8 @@ const EditTaskModal = ({
 
 	const handleSubmit = async () => {
 		setIsSubmitting(true)
-		try {
-			// onSave is now the function from the parent that handles the API call and closes the modal.
-			await onSave(localTask)
-		} catch (error) {
-			// Errors are handled by the `handleAction` wrapper in the parent component.
-		} finally {
-			setIsSubmitting(false)
-		}
+		await onSave(localTask)
+		setIsSubmitting(false)
 	}
 
 	return (
@@ -81,223 +66,201 @@ const EditTaskModal = ({
 			animate={{ opacity: 1 }}
 			exit={{ opacity: 0 }}
 			onClick={onClose}
-			className="fixed inset-0 bg-black/70 backdrop-blur-2xl flex justify-center items-center z-50 p-4"
+			className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 p-4"
 		>
 			<motion.div
-				initial={{ scale: 0.8, y: 40, opacity: 0 }}
-				animate={{ scale: 1, y: 0, opacity: 1 }}
-				exit={{ scale: 0.8, y: 40, opacity: 0 }}
-				transition={{ type: "spring", duration: 0.6, bounce: 0.3 }}
+				initial={{ scale: 0.9, y: 20 }}
+				animate={{ scale: 1, y: 0 }}
+				exit={{ scale: 0.9, y: 20 }}
 				onClick={(e) => e.stopPropagation()}
-				className="relative bg-gradient-to-br from-white/15 via-white/10 to-white/15 p-8 rounded-3xl shadow-2xl w-full max-w-4xl border border-white/20 max-h-[90vh] flex flex-col backdrop-blur-2xl overflow-hidden"
+				className="bg-gradient-to-br from-[var(--color-primary-surface)] to-[var(--color-primary-background)] p-6 rounded-2xl shadow-xl w-full max-w-2xl border border-[var(--color-primary-surface-elevated)] max-h-[90vh] flex flex-col"
 			>
-				<div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-purple-500/5 to-pink-500/10 rounded-3xl" />
-				<div className="absolute inset-0 backdrop-blur-3xl bg-black/20 rounded-3xl border border-white/10 shadow-inner" />
-				<div className="absolute -top-4 -right-4 w-24 h-24 bg-gradient-to-br from-blue-400/20 to-purple-400/20 rounded-full blur-2xl animate-pulse" />
-				<div className="absolute -bottom-4 -left-4 w-32 h-32 bg-gradient-to-br from-purple-400/20 to-pink-400/20 rounded-full blur-2xl animate-pulse" />
-			
-				<div className="relative flex justify-between items-center mb-8 z-10">
-					<div>
-						<h3 className="text-3xl font-bold bg-gradient-to-r from-white via-blue-100 to-purple-100 bg-clip-text text-transparent drop-shadow-2xl">
-							✏️ Edit Task
-						</h3>
-						<div className="w-1/3 h-1 bg-gradient-to-r from-blue-500/50 via-purple-500/50 to-pink-500/50 rounded-full blur-sm mt-2" />
-					</div>
-					<button 
-						onClick={onClose} 
-						className="relative p-3 rounded-2xl bg-white/10 hover:bg-white/20 backdrop-blur-lg border border-white/20 hover:border-white/30 transition-all duration-300 transform hover:scale-110 shadow-lg group"
+				<header className="flex justify-between items-center mb-6 flex-shrink-0">
+					<h2 className="text-xl font-semibold text-white">
+						Edit Task
+					</h2>
+					<button
+						onClick={onClose}
+						className="p-1 rounded-full hover:bg-[var(--color-primary-surface-elevated)]"
 					>
-						<IconX className="text-white/70 group-hover:text-white transition-colors" />
+						<IconX size={20} />
 					</button>
-				</div>
-				<div className="relative overflow-y-auto custom-scrollbar pr-2 space-y-8 z-10">
-					{/* Plan Details */}
-					<div className="relative p-6 bg-gradient-to-br from-white/10 via-white/5 to-white/10 rounded-2xl border border-white/20 backdrop-blur-xl shadow-xl">
-						<div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 via-transparent to-purple-500/5 rounded-2xl" />
-						<div className="relative z-10">
-							<label className="text-lg font-bold text-white mb-4 block drop-shadow-lg">
-								🎯 Goal & Priority
-							</label>
-							<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-								<input
-									type="text"
-									value={localTask.description}
-									onChange={(e) =>
-										handleFieldChange(
-											"description",
-											e.target.value
-										)
-									}
-									className="md:col-span-2 p-4 bg-gradient-to-r from-white/10 to-white/5 border border-white/20 rounded-xl text-white placeholder-white/50 backdrop-blur-lg shadow-lg focus:ring-2 focus:ring-blue-400/50 focus:border-blue-400/50 transition-all duration-300"
-									placeholder="Task description..."
-								/>
-								<select
-									value={localTask.priority}
-									onChange={(e) =>
-										handleFieldChange(
-											"priority",
-											Number(e.target.value)
-										)
-									}
-									className="p-4 bg-gradient-to-r from-white/10 to-white/5 border border-white/20 rounded-xl text-white backdrop-blur-lg shadow-lg focus:ring-2 focus:ring-blue-400/50 focus:border-blue-400/50 transition-all duration-300 appearance-none"
-								>
-									<option value={0} className="bg-gray-900">🔴 High Priority</option>
-									<option value={1} className="bg-gray-900">🟡 Medium Priority</option>
-									<option value={2} className="bg-gray-900">🟢 Low Priority</option>
-								</select>
-							</div>
+				</header>
+
+				<main className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6">
+					{/* Goal & Priority */}
+					<div>
+						<label className="text-sm font-medium text-gray-300 mb-2 block">
+							Goal & Priority
+						</label>
+						<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+							<input
+								type="text"
+								value={localTask.description}
+								onChange={(e) =>
+									handleFieldChange(
+										"description",
+										e.target.value
+									)
+								}
+								className="md:col-span-2 p-3 bg-neutral-800/50 border border-neutral-700 rounded-lg transition-colors focus:border-[var(--color-accent-blue)]"
+								placeholder="Task description..."
+							/>
+							<select
+								value={localTask.priority}
+								onChange={(e) =>
+									handleFieldChange(
+										"priority",
+										Number(e.target.value)
+									)
+								}
+								className="p-3 bg-neutral-800/50 border border-neutral-700 rounded-lg appearance-none transition-colors focus:border-[var(--color-accent-blue)]"
+							>
+								<option value={0}>High Priority</option>
+								<option value={1}>Medium Priority</option>
+								<option value={2}>Low Priority</option>
+							</select>
 						</div>
 					</div>
 
 					{/* Plan Steps */}
-					<div className="relative p-6 bg-gradient-to-br from-white/10 via-white/5 to-white/10 rounded-2xl border border-white/20 backdrop-blur-xl shadow-xl space-y-4">
-						<div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 via-transparent to-pink-500/5 rounded-2xl" />
-						<div className="relative z-10">
-							<label className="text-lg font-bold text-white mb-4 block drop-shadow-lg">
-								📋 Plan Steps
-							</label>
-							{(localTask.plan || []).map((step, index) => (
-								<motion.div
-									key={index}
-									layout
-									className="flex items-start gap-4 p-4 bg-gradient-to-r from-white/10 to-white/5 rounded-xl border border-white/20 backdrop-blur-lg shadow-lg"
-								>
-									<IconGripVertical className="h-6 w-6 text-white/50 mt-2 drop-shadow-lg" />
-									<div className="flex-grow flex flex-col gap-3">
-										<div className="flex items-center gap-3">
-											<select
-												value={step.tool || ""}
-												onChange={(e) =>
-													handleStepChange(
-														index,
-														"tool",
-														e.target.value
-													)
-												}
-												className="w-2/5 p-3 bg-gradient-to-r from-white/10 to-white/5 border border-white/20 rounded-xl text-white backdrop-blur-lg shadow-lg focus:ring-2 focus:ring-purple-400/50 focus:border-purple-400/50 transition-all duration-300"
-											>
-												<option value="" className="bg-gray-900">
-													Select tool...
-												</option>
-												{allTools.map((tool) => (
-													<option
-														key={tool.name}
-														value={tool.name}
-														className="bg-gray-900"
-													>
-														{tool.display_name}
-													</option>
-												))}
-											</select>
-											<input
-												type="text"
-												value={step.description}
-												onChange={(e) =>
-													handleStepChange(
-														index,
-														"description",
-														e.target.value
-													)
-												}
-												className="flex-grow p-3 bg-gradient-to-r from-white/10 to-white/5 border border-white/20 rounded-xl text-white placeholder-white/50 backdrop-blur-lg shadow-lg focus:ring-2 focus:ring-purple-400/50 focus:border-purple-400/50 transition-all duration-300"
-												placeholder="Step description..."
-											/>
-											<button
-												type="button"
-												onClick={() =>
-													handleRemoveStep(index)
-												}
-												className="p-3 text-red-400 hover:bg-red-500/20 rounded-xl backdrop-blur-lg border border-red-400/30 hover:border-red-400/50 transition-all duration-300 transform hover:scale-110 shadow-lg"
-											>
-												<IconX size={16} />
-											</button>
-										</div>
-									</div>
-								</motion.div>
-							))}
-							<button
-								type="button"
-								onClick={handleAddStep}
-								className="flex items-center gap-2 py-3 px-6 rounded-2xl bg-gradient-to-r from-purple-500/20 to-pink-500/20 hover:from-purple-500/30 hover:to-pink-500/30 text-white backdrop-blur-lg border border-purple-400/30 transition-all duration-300 transform hover:scale-105 shadow-lg font-medium"
+					<div className="space-y-3">
+						<label className="text-sm font-medium text-gray-300">
+							Plan Steps
+						</label>
+						{(localTask.plan || []).map((step, index) => (
+							<div
+								key={index}
+								className="flex items-center gap-2 p-2 bg-neutral-800/30 rounded-lg border border-neutral-700/50"
 							>
-								<IconPlus size={16} /> ✨ Add Step
+								<IconGripVertical className="h-5 w-5 text-neutral-500 cursor-grab flex-shrink-0" />
+								<select
+									value={step.tool || ""}
+									onChange={(e) =>
+										handleStepChange(
+											index,
+											"tool",
+											e.target.value
+										)
+									}
+									className="w-1/3 p-2 bg-neutral-700 border border-neutral-600 rounded-md text-sm"
+								>
+									<option value="">Select tool...</option>
+									{allTools.map((tool) => (
+										<option
+											key={tool.name}
+											value={tool.name}
+										>
+											{tool.display_name}
+										</option>
+									))}
+								</select>
+								<input
+									type="text"
+									value={step.description}
+									onChange={(e) =>
+										handleStepChange(
+											index,
+											"description",
+											e.target.value
+										)
+									}
+									className="flex-grow p-2 bg-neutral-700 border border-neutral-600 rounded-md text-sm"
+									placeholder="Step description..."
+								/>
+								<button
+									onClick={() => handleRemoveStep(index)}
+									className="p-2 text-red-400 hover:bg-red-500/10 rounded-full flex-shrink-0"
+								>
+									<IconX size={16} />
+								</button>
+							</div>
+						))}
+						<button
+							onClick={handleAddStep}
+							className="flex items-center gap-1.5 text-xs py-1.5 px-3 rounded-full bg-neutral-700 hover:bg-neutral-600"
+						>
+							<IconPlus size={14} /> Add Step
+						</button>
+					</div>
+
+					{/* Assignee */}
+					<div>
+						<label className="block text-sm font-medium text-gray-300 mb-2">
+							Assignee
+						</label>
+						<div className="flex gap-1 p-1 bg-neutral-800/50 rounded-lg border border-neutral-700 w-full">
+							<button
+								onClick={() =>
+									handleFieldChange("assignee", "ai")
+								}
+								className={cn(
+									"flex-1 flex items-center justify-center gap-2 py-1.5 rounded-md text-sm transition-colors",
+									localTask.assignee === "ai"
+										? "bg-blue-600 text-white"
+										: "hover:bg-neutral-700"
+								)}
+							>
+								<IconSparkles size={16} /> Sentient
+							</button>
+							<button
+								onClick={() =>
+									handleFieldChange("assignee", "user")
+								}
+								className={cn(
+									"flex-1 flex items-center justify-center gap-2 py-1.5 rounded-md text-sm transition-colors",
+									localTask.assignee === "user"
+										? "bg-blue-600 text-white"
+										: "hover:bg-neutral-700"
+								)}
+							>
+								<IconUser size={16} /> Me
 							</button>
 						</div>
 					</div>
 
-					{/* Assignee */}
-					<div className="relative p-6 bg-gradient-to-br from-white/10 via-white/5 to-white/10 rounded-2xl border border-white/20 backdrop-blur-xl shadow-xl">
-						<div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 via-transparent to-cyan-500/5 rounded-2xl" />
-						<div className="relative z-10">
-							<label className="text-lg font-bold text-white mb-4 block drop-shadow-lg">
-								👤 Assignee
-							</label>
-							<div className="flex gap-3 p-2 bg-gradient-to-r from-white/10 to-white/5 rounded-2xl border border-white/20 backdrop-blur-lg shadow-lg">
-								<button
-									onClick={() =>
-										handleFieldChange("assignee", "ai")
-									}
-									className={cn(
-										"flex-1 flex items-center justify-center gap-3 py-4 rounded-xl text-sm transition-all duration-300 font-semibold backdrop-blur-lg border",
-										localTask.assignee === "ai"
-											? "bg-gradient-to-r from-blue-500 to-purple-500 text-white border-blue-400/50 shadow-lg shadow-blue-500/25"
-											: "hover:bg-white/10 text-white/70 border-white/20 hover:border-white/30"
-									)}
-								>
-									<IconSparkles size={18} /> ✨ Sentient
-								</button>
-								<button
-									onClick={() =>
-										handleFieldChange("assignee", "user")
-									}
-									className={cn(
-										"flex-1 flex items-center justify-center gap-3 py-4 rounded-xl text-sm transition-all duration-300 font-semibold backdrop-blur-lg border",
-										localTask.assignee === "user"
-											? "bg-gradient-to-r from-blue-500 to-purple-500 text-white border-blue-400/50 shadow-lg shadow-blue-500/25"
-											: "hover:bg-white/10 text-white/70 border-white/20 hover:border-white/30"
-									)}
-								>
-									<IconUser size={18} /> 👨‍💻 Me
-								</button>
-							</div>
-						</div>
-					</div>
-
 					{/* Schedule */}
-					<div className="relative p-6 bg-gradient-to-br from-white/10 via-white/5 to-white/10 rounded-2xl border border-white/20 backdrop-blur-xl shadow-xl">
-						<div className="absolute inset-0 bg-gradient-to-br from-green-500/5 via-transparent to-emerald-500/5 rounded-2xl" />
-						<div className="relative z-10">
-							<label className="text-lg font-bold text-white mb-4 block drop-shadow-lg">
-								📅 Schedule
-							</label>
-							<ScheduleEditor
-								schedule={
-									localTask.schedule || {
-										type: "once",
-										run_at: null
-									}
+					<div>
+						<label className="text-sm font-medium text-gray-300 mb-2 block">
+							Schedule
+						</label>
+						<ScheduleEditor
+							schedule={
+								localTask.schedule || {
+									type: "once",
+									run_at: null
 								}
-								setSchedule={handleScheduleChange}
-							/>
-						</div>
+							}
+							setSchedule={handleScheduleChange}
+						/>
 					</div>
-				</div>
-				<div className="relative flex justify-end gap-4 mt-8 pt-6 border-t border-white/20 z-10">
+				</main>
+
+				<footer className="mt-6 pt-4 border-t border-[var(--color-primary-surface-elevated)] flex justify-end gap-4 flex-shrink-0">
 					<button
+						type="button"
 						onClick={onClose}
-						className="py-4 px-8 rounded-2xl bg-gradient-to-r from-white/10 to-white/5 hover:from-white/15 hover:to-white/10 text-white backdrop-blur-lg border border-white/20 hover:border-white/30 transition-all duration-300 font-medium shadow-lg transform hover:scale-105"
+						className="py-2.5 px-6 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-sm transition-colors"
 					>
 						Cancel
 					</button>
 					<button
 						onClick={handleSubmit}
 						disabled={isSubmitting}
-						className="py-4 px-8 rounded-2xl bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 hover:shadow-2xl hover:shadow-blue-500/25 text-white font-semibold flex items-center gap-3 backdrop-blur-lg border border-white/20 transition-all duration-300 transform hover:scale-105 disabled:opacity-50"
+						className="py-2.5 px-6 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm flex items-center gap-2 disabled:opacity-50 transition-colors"
 					>
-						{isSubmitting && <IconLoader size={18} className="animate-spin" />}
-						{isSubmitting ? "💾 Saving..." : "✨ Save Changes"}
+						{isSubmitting && (
+							<IconLoader size={16} className="animate-spin" />
+						)}
+						{isSubmitting ? (
+							"Saving..."
+						) : (
+							<>
+								<IconDeviceFloppy size={16} /> Save Changes
+							</>
+						)}
 					</button>
-				</div>
+				</footer>
 			</motion.div>
 		</motion.div>
 	)

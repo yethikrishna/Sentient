@@ -37,7 +37,8 @@ class TaskChatRequest(BaseModel):
     taskId: str
     message: str
 
-class TaskChatRequest(BaseModel):
-    taskId: str
+class ProgressUpdateRequest(BaseModel):
+    user_id: str
+    task_id: str
+    run_id: str
     message: str
-

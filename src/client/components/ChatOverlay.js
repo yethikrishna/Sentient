@@ -4,61 +4,174 @@ import {
 	IconSend,
 	IconLoader,
 	IconPlayerStopFilled,
-	IconX
+	IconX,
+	IconPlus,
+	IconTrash,
+	IconMessage,
+	IconLayoutSidebarLeftCollapse,
+	IconLayoutSidebarLeftExpand
 } from "@tabler/icons-react"
 import toast from "react-hot-toast"
 import { cn } from "@utils/cn"
 import { Tooltip } from "react-tooltip"
 import { usePostHog } from "posthog-js/react"
 import { motion, AnimatePresence } from "framer-motion"
+import { formatDistanceToNow } from "date-fns"
 import ChatBubble from "@components/ChatBubble"
 
-// Simplified Switch component from old chat page
-const Switch = ({ checked, onCheckedChange }) => (
-	<button
-		type="button"
-		role="switch"
-		aria-checked={checked}
-		onClick={() => onCheckedChange(!checked)}
-		className={cn(
-			// Removed focus ring overrides to use global style
-			"relative inline-flex h-[18px] w-[34px] flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out",
-			checked ? "bg-[var(--color-accent-blue)]" : "bg-neutral-600"
-		)}
-	>
-		<span
-			aria-hidden="true"
-			className={cn(
-				"pointer-events-none inline-block h-[14px] w-[14px] transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-				checked ? "translate-x-[16px]" : "translate-x-0"
-			)}
-		/>
-	</button>
-)
+const ChatHistorySidebar = ({
+	chatList,
+	activeChatId,
+	onSelectChat,
+	onNewChat,
+	onDeleteChat,
+	isLoading,
+	isSidebarOpen,
+	toggleSidebar
+}) => {
+	return (
+		<motion.div
+			initial={false}
+			animate={{ width: isSidebarOpen ? 260 : 60 }}
+			transition={{ type: "spring", stiffness: 300, damping: 30 }}
+			className="bg-neutral-900/50 flex flex-col h-full border-r border-[var(--color-primary-surface)] flex-shrink-0"
+		>
+			<div className="flex items-center justify-between p-3 border-b border-[var(--color-primary-surface)]">
+				{isSidebarOpen && (
+					<h3 className="font-semibold text-white">Conversations</h3>
+				)}
+				<button
+					onClick={toggleSidebar}
+					className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-700 rounded-lg"
+				>
+					{isSidebarOpen ? (
+						<IconLayoutSidebarLeftCollapse size={18} />
+					) : (
+						<IconLayoutSidebarLeftExpand size={18} />
+					)}
+				</button>
+			</div>
+			<div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1.5">
+				{isLoading ? (
+					<div className="flex justify-center items-center h-full">
+						<IconLoader className="animate-spin text-neutral-500" />
+					</div>
+				) : (
+					chatList.map((chat) => (
+						<div
+							key={chat.chat_id}
+							className="relative group w-full"
+						>
+							<button
+								onClick={() => onSelectChat(chat.chat_id)}
+								className={cn(
+									"w-full text-left p-2.5 rounded-lg transition-colors text-sm flex items-center gap-3",
+									activeChatId === chat.chat_id
+										? "bg-[var(--color-accent-blue)] text-white font-medium"
+										: "text-neutral-300 hover:bg-neutral-700/50"
+								)}
+							>
+								<IconMessage
+									size={18}
+									className="flex-shrink-0"
+								/>
+								{isSidebarOpen && (
+									<span className="truncate flex-1">
+										{chat.title}
+									</span>
+								)}
+							</button>
+							{isSidebarOpen && activeChatId === chat.chat_id && (
+								<button
+									onClick={(e) => {
+										e.stopPropagation()
+										onDeleteChat(chat.chat_id)
+									}}
+									className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-neutral-400 hover:text-red-400 hover:bg-black/20 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+								>
+									<IconTrash size={14} />
+								</button>
+							)}
+						</div>
+					))
+				)}
+			</div>
+			<div className="p-2 border-t border-[var(--color-primary-surface)]">
+				<button
+					onClick={onNewChat}
+					className="w-full flex items-center justify-center gap-2 p-3 rounded-lg text-neutral-200 hover:bg-neutral-700/50 hover:text-white transition-colors"
+				>
+					<IconPlus size={18} />
+					{isSidebarOpen && (
+						<span className="font-medium text-sm">New Chat</span>
+					)}
+				</button>
+			</div>
+		</motion.div>
+	)
+}
 
 const ChatOverlay = ({ onClose }) => {
+	const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+	const [chatList, setChatList] = useState([])
+	const [activeChatId, setActiveChatId] = useState(null)
 	const [messages, setMessages] = useState([])
 	const [input, setInput] = useState("")
+	const [isLoadingHistory, setIsLoadingHistory] = useState(true)
+	const [isLoadingMessages, setIsLoadingMessages] = useState(false)
 	const [thinking, setThinking] = useState(false)
-	const [isInternetEnabled, setInternetEnabled] = useState(false)
-	const [isWeatherEnabled, setWeatherEnabled] = useState(false)
-	const [isNewsEnabled, setNewsEnabled] = useState(false)
-	const [isMapsEnabled, setMapsEnabled] = useState(false)
-	const [isShoppingEnabled, setShoppingEnabled] = useState(false)
 	const textareaRef = useRef(null)
 	const chatEndRef = useRef(null)
 	const abortControllerRef = useRef(null) // To abort fetch requests
 	const posthog = usePostHog()
 	const scrollContainerRef = useRef(null) // For scrolling
-	// Reset state when overlay is closed
-	// This effect now correctly handles cleanup on unmount
+
 	useEffect(() => {
+		const fetchHistory = async () => {
+			setIsLoadingHistory(true)
+			try {
+				const res = await fetch("/api/chat/history")
+				if (!res.ok) throw new Error("Failed to fetch chat history")
+				const data = await res.json()
+				setChatList(data.chats || [])
+				if (data.chats && data.chats.length > 0) {
+					setActiveChatId(data.chats[0].chat_id)
+				}
+			} catch (error) {
+				toast.error(error.message)
+			} finally {
+				setIsLoadingHistory(false)
+			}
+		}
+		fetchHistory()
+
 		return () => {
 			if (abortControllerRef.current) {
 				abortControllerRef.current.abort()
 			}
 		}
 	}, [])
+
+	useEffect(() => {
+		const fetchMessages = async () => {
+			if (!activeChatId) {
+				setMessages([])
+				return
+			}
+			setIsLoadingMessages(true)
+			try {
+				const res = await fetch(`/api/chat/history/${activeChatId}`)
+				if (!res.ok) throw new Error("Failed to fetch messages")
+				const data = await res.json()
+				setMessages(data.messages || [])
+			} catch (error) {
+				toast.error(error.message)
+			} finally {
+				setIsLoadingMessages(false)
+			}
+		}
+		fetchMessages()
+	}, [activeChatId])
 
 	const handleInputChange = (e) => {
 		const value = e.target.value
@@ -92,33 +205,22 @@ const ChatOverlay = ({ onClose }) => {
 		setThinking(true)
 		abortControllerRef.current = new AbortController()
 
-		// Format for backend
-		const apiMessages = updatedMessages.map(({ role, content }) => ({
+		const apiMessages = updatedMessages.map(({ role, content, id }) => ({
 			role,
-			content
+			content,
+			id
 		}))
 
 		try {
-			// Make the streaming call to our Next.js API route.
-			const response = await fetch(
-				"/api/chat/message", // Use the API route which proxies to the backend
-				{
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json"
-					},
-					body: JSON.stringify({
-						// The API route will forward these to the backend
-						messages: apiMessages,
-						enable_internet: isInternetEnabled,
-						enable_weather: isWeatherEnabled,
-						enable_news: isNewsEnabled,
-						enable_maps: isMapsEnabled,
-						enable_shopping: isShoppingEnabled
-					}),
-					signal: abortControllerRef.current.signal
-				}
-			)
+			const response = await fetch("/api/chat/message", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					messages: apiMessages,
+					chatId: activeChatId
+				}),
+				signal: abortControllerRef.current.signal
+			})
 			if (!response.ok || !response.body) {
 				const errorData = await response
 					.json()
@@ -140,15 +242,21 @@ const ChatOverlay = ({ onClose }) => {
 					const line = buffer.slice(0, newlineIndex)
 					buffer = buffer.slice(newlineIndex + 1)
 					if (line.trim() === "") continue // Skip empty lines
-
-					// Log the raw line received from the stream
-					console.log("[ChatStream] Received raw line:", line)
-
 					try {
 						const parsed = JSON.parse(line)
-						// Log the parsed JavaScript object
-						console.log("[ChatStream] Parsed data:", parsed)
-						if (parsed.type === "error") {
+						if (parsed.type === "chat_session") {
+							const { chatId: newChatId, tempTitle } = parsed
+							setActiveChatId(newChatId)
+							setChatList((prev) => [
+								{
+									chat_id: newChatId,
+									title: tempTitle,
+									updated_at: new Date().toISOString()
+								},
+								...prev
+							])
+							continue
+						} else if (parsed.type === "error") {
 							toast.error(`An error occurred: ${parsed.message}`)
 							continue
 						}
@@ -207,6 +315,39 @@ const ChatOverlay = ({ onClose }) => {
 		}
 	}
 
+	const handleNewChat = () => {
+		setActiveChatId(null)
+		setMessages([])
+		setInput("")
+	}
+
+	const handleDeleteChat = async (chatIdToDelete) => {
+		if (
+			!window.confirm(
+				"Are you sure you want to delete this conversation?"
+			)
+		)
+			return
+
+		const originalList = [...chatList]
+		setChatList((prev) => prev.filter((c) => c.chat_id !== chatIdToDelete))
+
+		if (activeChatId === chatIdToDelete) {
+			handleNewChat()
+		}
+
+		try {
+			const res = await fetch(`/api/chat/${chatIdToDelete}`, {
+				method: "DELETE"
+			})
+			if (!res.ok) throw new Error("Failed to delete chat")
+			toast.success("Chat deleted.")
+		} catch (error) {
+			toast.error(error.message)
+			setChatList(originalList) // Revert on error
+		}
+	}
+
 	useEffect(() => {
 		// Auto-scroll to bottom, using smooth behavior
 		if (chatEndRef.current)
@@ -223,118 +364,135 @@ const ChatOverlay = ({ onClose }) => {
 			onClick={handleBackdropClick}
 			className="fixed inset-0 bg-black/50 backdrop-blur-md z-50 flex items-center justify-center p-4"
 		>
+			<Tooltip
+				id="chat-overlay-tooltip"
+				place="right-start"
+				style={{ zIndex: 9999 }}
+			/>
 			<motion.div
 				initial={{ opacity: 0, y: 50, scale: 0.9 }}
 				animate={{ opacity: 1, y: 0, scale: 1 }}
 				exit={{ opacity: 0, y: 50, scale: 0.9 }}
 				transition={{ duration: 0.3, ease: "easeInOut" }}
-				className="bg-[var(--color-primary-background)] border border-[var(--color-primary-surface-elevated)] rounded-2xl w-full max-w-3xl h-[85vh] flex flex-col shadow-2xl"
+				className="bg-[var(--color-primary-background)] border border-[var(--color-primary-surface-elevated)] rounded-2xl w-full max-w-5xl h-[90vh] flex shadow-2xl overflow-hidden"
 			>
-				<Tooltip
-					id="chat-overlay-tooltip"
-					place="right-start"
-					style={{ zIndex: 9999 }}
+				<ChatHistorySidebar
+					chatList={chatList}
+					activeChatId={activeChatId}
+					onSelectChat={setActiveChatId}
+					onNewChat={handleNewChat}
+					onDeleteChat={handleDeleteChat}
+					isLoading={isLoadingHistory}
+					isSidebarOpen={isSidebarOpen}
+					toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
 				/>
-				<header className="flex justify-between items-center p-4 border-b border-[var(--color-primary-surface)] flex-shrink-0">
-					<h2 className="text-xl font-semibold text-[var(--color-text-primary)]">
-						Chat with Sentient
-					</h2>
-					<button
-						onClick={onClose}
-						className="text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+
+				<div className="flex flex-col flex-1">
+					<header className="flex justify-between items-center p-4 border-b border-[var(--color-primary-surface)] flex-shrink-0">
+						<h2 className="text-xl font-semibold text-[var(--color-text-primary)]">
+							Chat with Sentient
+						</h2>
+						<button
+							onClick={onClose}
+							className="text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+						>
+							<IconX />
+						</button>
+					</header>
+
+					<div
+						ref={scrollContainerRef}
+						className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 custom-scrollbar"
 					>
-						<IconX />
-					</button>
-				</header>
-
-				<div
-					ref={scrollContainerRef}
-					className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 custom-scrollbar"
-				>
-					{messages.length === 0 && !thinking ? (
-						<div className="flex-1 flex flex-col justify-center items-center text-gray-400">
-							<p className="text-3xl text-[var(--color-text-primary)] mb-4 font-Inter text-center">
-								How can I help you today?
-							</p>
-						</div>
-					) : (
-						messages.map((msg, i) => (
-							<div
-								key={msg.id || i}
-								className={`flex w-full ${
-									msg.role === "user"
-										? "justify-end"
-										: "justify-start"
-								}`}
-							>
-								<ChatBubble
-									message={msg.content}
-									isUser={msg.role === "user"}
-									memoryUsed={msg.memoryUsed}
-									agentsUsed={msg.agentsUsed}
-									internetUsed={msg.internetUsed}
-								/>
+						{messages.length === 0 && !thinking ? (
+							<div className="flex-1 flex flex-col justify-center items-center text-gray-400">
+								<p className="text-3xl text-[var(--color-text-primary)] mb-4 font-Inter text-center">
+									How can I help you today?
+								</p>
 							</div>
-						))
-					)}
-					<AnimatePresence>
-						{thinking && (
-							<div className="flex justify-start w-full mt-2">
-								<motion.div
-									initial={{ opacity: 0, y: 10 }}
-									animate={{ opacity: 1, y: 0 }}
-									exit={{ opacity: 0 }}
-									className="flex items-center gap-2 p-3 bg-gray-700 rounded-lg"
+						) : isLoadingMessages ? (
+							<div className="flex-1 flex justify-center items-center">
+								<IconLoader className="animate-spin text-neutral-500" />
+							</div>
+						) : (
+							messages.map((msg, i) => (
+								<div
+									key={msg.id || i}
+									className={`flex w-full ${
+										msg.role === "user"
+											? "justify-end"
+											: "justify-start"
+									}`}
 								>
-									<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-75"></div>
-									<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-150"></div>
-									<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-300"></div>
-								</motion.div>
-							</div>
+									<ChatBubble
+										message={msg.content}
+										isUser={msg.role === "user"}
+										memoryUsed={msg.memoryUsed}
+										agentsUsed={msg.agentsUsed}
+										internetUsed={msg.internetUsed}
+									/>
+								</div>
+							))
 						)}
-					</AnimatePresence>
-					<div ref={chatEndRef} />{" "}
-					{/* This empty div is the target for scrolling */}
-				</div>
-
-				<div className="p-4 border-t border-[var(--color-primary-surface)]">
-					<div className="relative w-full flex flex-row gap-4 items-end px-4 py-2 bg-[var(--color-primary-background)] border-[1px] border-[var(--color-primary-surface-elevated)] rounded-lg">
-						<textarea
-							ref={textareaRef}
-							value={input}
-							onChange={handleInputChange}
-							onKeyDown={(e) => {
-								if (e.key === "Enter" && !e.shiftKey) {
-									e.preventDefault()
-									sendMessage()
-								}
-							}}
-							className="flex-grow p-2 pr-28 rounded-lg bg-transparent text-base text-[var(--color-text-primary)] focus:outline-none focus:ring-0 resize-none no-scrollbar overflow-y-auto"
-							placeholder="Type your message..."
-							style={{ maxHeight: "150px", minHeight: "24px" }}
-							rows={1}
-						/>
-						<div className="absolute right-4 bottom-3 flex flex-row items-center gap-2">
-							{thinking ? (
-								<button
-									onClick={handleStopStreaming}
-									className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-white bg-[var(--color-accent-red)] hover:bg-[var(--color-accent-red-hover)]"
-									data-tooltip-id="chat-overlay-tooltip"
-									data-tooltip-content="Stop Generation"
-								>
-									<IconPlayerStopFilled className="w-4 h-4 text-white" />
-								</button>
-							) : (
-								<button
-									onClick={sendMessage}
-									disabled={input.trim() === ""}
-									className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-white disabled:opacity-50 disabled:cursor-not-allowed bg-[var(--color-accent-blue)]"
-									data-tooltip-id="chat-overlay-tooltip"
-									data-tooltip-content="Send Message"
-								>
-									<IconSend className="w-4 h-4 text-white" />
-								</button>
+						<AnimatePresence>
+							{thinking && (
+								<div className="flex justify-start w-full mt-2">
+									<motion.div
+										initial={{ opacity: 0, y: 10 }}
+										animate={{ opacity: 1, y: 0 }}
+										exit={{ opacity: 0 }}
+										className="flex items-center gap-2 p-3 bg-gray-700 rounded-lg"
+									>
+										<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-75"></div>
+										<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-150"></div>
+										<div className="bg-gray-400 rounded-full h-2 w-2 animate-pulse delay-300"></div>
+									</motion.div>
+								</div>
 							)}
+						</AnimatePresence>
+						<div ref={chatEndRef} />{" "}
+						{/* This empty div is the target for scrolling */}
+					</div>
+
+					<div className="p-4 border-t border-[var(--color-primary-surface)]">
+						<div className="relative w-full flex flex-row gap-4 items-end px-4 py-2 bg-[var(--color-primary-background)] border-[1px] border-[var(--color-primary-surface-elevated)] rounded-lg">
+							<textarea
+								ref={textareaRef}
+								value={input}
+								onChange={handleInputChange}
+								onKeyDown={(e) => {
+									if (e.key === "Enter" && !e.shiftKey) {
+										e.preventDefault()
+										sendMessage()
+									}
+								}}
+								className="flex-grow p-2 pr-28 rounded-lg bg-transparent text-base text-[var(--color-text-primary)] focus:outline-none focus:ring-0 resize-none no-scrollbar overflow-y-auto"
+								placeholder="Type your message..."
+								style={{ maxHeight: "150px" }}
+								rows={1}
+							/>
+							<div className="absolute right-4 bottom-3 flex flex-row items-center gap-2">
+								{thinking ? (
+									<button
+										onClick={handleStopStreaming}
+										className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-white bg-[var(--color-accent-red)] hover:bg-[var(--color-accent-red-hover)]"
+										data-tooltip-id="chat-overlay-tooltip"
+										data-tooltip-content="Stop Generation"
+									>
+										<IconPlayerStopFilled className="w-4 h-4 text-white" />
+									</button>
+								) : (
+									<button
+										onClick={sendMessage}
+										disabled={input.trim() === ""}
+										className="p-2 hover-button scale-100 hover:scale-110 cursor-pointer rounded-full text-white disabled:opacity-50 disabled:cursor-not-allowed bg-[var(--color-accent-blue)]"
+										data-tooltip-id="chat-overlay-tooltip"
+										data-tooltip-content="Send Message"
+									>
+										<IconSend className="w-4 h-4 text-white" />
+									</button>
+								)}
+							</div>
 						</div>
 					</div>
 				</div>

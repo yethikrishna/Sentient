@@ -18,6 +18,7 @@ NOTIFICATIONS_COLLECTION = "notifications"
 POLLING_STATE_COLLECTION = "polling_state_store" 
 PROCESSED_ITEMS_COLLECTION = "processed_items_log" 
 TASK_COLLECTION = "tasks"
+CHATS_COLLECTION = "chats"
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ class MongoManager:
         self.polling_state_collection = self.db[POLLING_STATE_COLLECTION]
         self.processed_items_collection = self.db[PROCESSED_ITEMS_COLLECTION]
         self.task_collection = self.db[TASK_COLLECTION]
+        self.chats_collection = self.db[CHATS_COLLECTION]
         
         print(f"[{datetime.datetime.now()}] [MainServer_MongoManager] Initialized. Database: {MONGO_DB_NAME}")
 
@@ -66,6 +68,11 @@ class MongoManager:
                 IndexModel([("user_id", ASCENDING), ("status", ASCENDING), ("priority", ASCENDING)], name="task_user_status_priority_idx"),
                 IndexModel([("status", ASCENDING), ("agent_id", ASCENDING)], name="task_status_agent_idx", sparse=True), 
                 IndexModel([("task_id", ASCENDING)], unique=True, name="task_id_unique_idx")
+            ],
+            self.chats_collection: [
+                IndexModel([("user_id", ASCENDING), ("updated_at", DESCENDING)], name="chat_user_updated_idx"),
+                IndexModel([("chat_id", ASCENDING)], unique=True, name="chat_id_unique_idx"),
+                IndexModel([("user_id", ASCENDING)], name="chat_user_id_idx")
             ],
         }
 
@@ -356,6 +363,66 @@ class MongoManager:
         await self.task_collection.insert_one(new_task_doc)
         return new_task_id
 
+    # --- Chat Methods ---
+    async def get_user_chats(self, user_id: str) -> List[Dict]:
+        """Fetches all chat sessions for a user, sorted by last updated."""
+        cursor = self.chats_collection.find(
+            {"user_id": user_id},
+            {"chat_id": 1, "title": 1, "updated_at": 1, "_id": 0}
+        ).sort("updated_at", DESCENDING)
+        return await cursor.to_list(length=100) # Limit to 100 chats
+
+    async def get_chat(self, user_id: str, chat_id: str) -> Optional[Dict]:
+        """Fetches a single chat session with all messages."""
+        return await self.chats_collection.find_one(
+            {"user_id": user_id, "chat_id": chat_id}
+        )
+
+    async def create_chat(self, user_id: str, first_message: Dict) -> str:
+        """Creates a new chat session."""
+        chat_id = str(uuid.uuid4())
+        now = datetime.datetime.now(datetime.timezone.utc)
+        chat_doc = {
+            "chat_id": chat_id,
+            "user_id": user_id,
+            "title": first_message.get("content", "New Chat")[:50], # Temporary title
+            "created_at": now,
+            "updated_at": now,
+            "messages": [first_message]
+        }
+        await self.chats_collection.insert_one(chat_doc)
+        return chat_id
+
+    async def add_message_to_chat(self, user_id: str, chat_id: str, message: Dict) -> bool:
+        """Adds a message to an existing chat session."""
+        # Ensure message has a timestamp
+        if "timestamp" not in message:
+            message["timestamp"] = datetime.datetime.now(datetime.timezone.utc)
+
+        result = await self.chats_collection.update_one(
+            {"user_id": user_id, "chat_id": chat_id},
+            {
+                "$push": {"messages": message},
+                "$set": {"updated_at": datetime.datetime.now(datetime.timezone.utc)}
+            }
+        )
+        return result.modified_count > 0
+
+    async def update_chat(self, user_id: str, chat_id: str, updates: Dict) -> bool:
+        """Updates fields of a chat document, like the title."""
+        updates["updated_at"] = datetime.datetime.now(datetime.timezone.utc)
+        result = await self.chats_collection.update_one(
+            {"user_id": user_id, "chat_id": chat_id},
+            {"$set": updates}
+        )
+        return result.modified_count > 0
+
+    async def delete_chat(self, user_id: str, chat_id: str) -> bool:
+        """Deletes a chat session for a user."""
+        result = await self.chats_collection.delete_one(
+            {"user_id": user_id, "chat_id": chat_id}
+        )
+        return result.deleted_count > 0
 
     async def close(self):
         if self.client:

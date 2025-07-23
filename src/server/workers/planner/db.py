@@ -49,6 +49,7 @@ class PlannerMongoManager: # noqa: E501
         self.db = self.client[MONGO_DB_NAME]
         self.user_profiles_collection = self.db["user_profiles"]
         self.tasks_collection = self.db["tasks"]
+        self.chats_collection = self.db["chats"]
         logger.info("PlannerMongoManager initialized.")
 
     async def create_initial_task(self, user_id: str, description: str, action_items: list, topics: list, original_context: dict, source_event_id: str) -> Dict:
@@ -172,6 +173,15 @@ class PlannerMongoManager: # noqa: E501
         await self.tasks_collection.insert_one(task_doc)
         logger.info(f"Saved new plan with task_id: {task_id} for user: {user_id}")
         return task_id
+
+    async def update_chat(self, user_id: str, chat_id: str, updates: Dict) -> bool:
+        """Updates fields of a chat document, like the title."""
+        updates["updated_at"] = datetime.datetime.now(datetime.timezone.utc)
+        result = await self.chats_collection.update_one(
+            {"user_id": user_id, "chat_id": chat_id},
+            {"$set": updates}
+        )
+        return result.modified_count > 0
 
 
     async def close(self):

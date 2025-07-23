@@ -1,6 +1,7 @@
 "use client"
 
-import React from "react"
+import React, { useState } from "react"
+import toast from "react-hot-toast"
 import { cn } from "@utils/cn"
 import { taskStatusColors, priorityMap } from "./constants"
 import {
@@ -8,9 +9,83 @@ import {
 	IconPlus,
 	IconSparkles,
 	IconUser,
-	IconX
+	IconX,
+	IconLoader
 } from "@tabler/icons-react"
 import ScheduleEditor from "@components/tasks/ScheduleEditor"
+import ExecutionUpdate from "./ExecutionUpdate"
+
+// New component for handling clarification questions
+const ClarificationInputSection = ({ run, task, onAnswerClarifications }) => {
+	const [answers, setAnswers] = useState({})
+	const [isSubmitting, setIsSubmitting] = useState(false)
+
+	const handleAnswerChange = (questionId, text) => {
+		setAnswers((prev) => ({ ...prev, [questionId]: text }))
+	}
+
+	const handleSubmit = async () => {
+		const unansweredQuestions = run.clarifying_questions.filter(
+			(q) => !answers[q.question_id]?.trim()
+		)
+		if (unansweredQuestions.length > 0) {
+			toast.error("Please answer all questions before submitting.")
+			return
+		}
+
+		setIsSubmitting(true)
+		const answersPayload = Object.entries(answers).map(
+			([question_id, answer_text]) => ({
+				question_id,
+				answer_text
+			})
+		)
+		// This function is passed down from the main page and includes closing the panel
+		await onAnswerClarifications(task.task_id, answersPayload)
+		setIsSubmitting(false) // This might not be reached if the component unmounts
+	}
+
+	return (
+		<div>
+			<h4 className="font-semibold text-neutral-300 mb-2">
+				Clarifying Questions
+			</h4>
+			<div className="space-y-4 bg-yellow-500/10 border border-yellow-500/20 p-4 rounded-lg">
+				{run.clarifying_questions.map((q, index) => (
+					<div key={q.question_id || index}>
+						<label className="block text-sm font-medium text-yellow-200 mb-2">
+							{q.text}
+						</label>
+						<textarea
+							value={answers[q.question_id] || ""}
+							onChange={(e) =>
+								handleAnswerChange(
+									q.question_id,
+									e.target.value
+								)
+							}
+							rows={2}
+							className="w-full p-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm text-white transition-colors focus:border-yellow-400 focus:ring-0"
+							placeholder="Your answer..."
+						/>
+					</div>
+				))}
+				<div className="flex justify-end">
+					<button
+						onClick={handleSubmit}
+						disabled={isSubmitting}
+						className="px-4 py-2 text-sm font-semibold bg-yellow-400 text-black rounded-md hover:bg-yellow-300 disabled:opacity-50 flex items-center gap-2"
+					>
+						{isSubmitting && (
+							<IconLoader size={16} className="animate-spin" />
+						)}
+						{isSubmitting ? "Submitting..." : "Submit Answers"}
+					</button>
+				</div>
+			</div>
+		</div>
+	)
+}
 
 const TaskDetailsContent = ({
 	task,
@@ -22,7 +97,8 @@ const TaskDetailsContent = ({
 	handleRemoveStep,
 	handleStepChange,
 	allTools,
-	integrations
+	integrations,
+	onAnswerClarifications
 }) => {
 	if (!task) {
 		return null
@@ -281,66 +357,54 @@ const TaskDetailsContent = ({
 							</div>
 						)}
 						{run.clarifying_questions &&
-							run.clarifying_questions.length > 0 && (
-								<div>
-									<h4 className="font-semibold text-neutral-300 mb-2">
-										Clarifying Questions
-									</h4>
-									<div className="space-y-2">
-										{run.clarifying_questions.map(
-											(q, index) => (
-												<div
-													key={index}
-													className="p-3 bg-yellow-500/10 border border-yellow-500/20 text-yellow-300 rounded-lg text-sm"
-												>
-													<p>{q.text}</p>
-												</div>
-											)
-										)}
-									</div>
+						run.clarifying_questions.length > 0 &&
+						task.status === "clarification_pending" ? (
+							<ClarificationInputSection
+								run={run}
+								task={task}
+								onAnswerClarifications={onAnswerClarifications}
+							/>
+						) : run.clarifying_questions &&
+						  run.clarifying_questions.length > 0 ? (
+							<div>
+								<h4 className="font-semibold text-neutral-300 mb-2">
+									Clarifying Questions
+								</h4>
+								<div className="space-y-2">
+									{run.clarifying_questions.map(
+										(q, index) => (
+											<div
+												key={q.question_id || index}
+												className="p-3 bg-neutral-800/50 border border-neutral-700/50 rounded-lg text-sm"
+											>
+												<p className="text-yellow-300">
+													{q.text}
+												</p>
+												{q.answer && (
+													<p className="mt-2 pt-2 border-t border-neutral-700 text-neutral-300 italic">
+														Your Answer: {q.answer}
+													</p>
+												)}
+											</div>
+										)
+									)}
 								</div>
-							)}
+							</div>
+						) : null}
 						{run.progress_updates &&
 							run.progress_updates.length > 0 && (
 								<div>
 									<h4 className="font-semibold text-neutral-300 mb-2">
-										Progress
+										Execution Log
 									</h4>
-									<div className="bg-neutral-800/50 p-4 rounded-lg border border-neutral-700/50 text-sm text-neutral-300 space-y-3">
+									<div className="bg-neutral-800/50 p-4 rounded-lg border border-neutral-700/50 space-y-4">
 										{run.progress_updates.map(
-											(update, index) => {
-												const isString =
-													typeof update === "string"
-												const message = isString
-													? update
-													: update.message
-												const timestamp = isString
-													? null
-													: new Date(
-															update.timestamp
-														).toLocaleTimeString(
-															[],
-															{
-																hour: "2-digit",
-																minute: "2-digit",
-																second: "2-digit"
-															}
-														)
-
-												return (
-													<div
-														key={index}
-														className="flex gap-3"
-													>
-														{timestamp && (
-															<span className="text-neutral-500 font-mono text-xs flex-shrink-0 pt-0.5">
-																[{timestamp}]
-															</span>
-														)}
-														<p>{message}</p>
-													</div>
-												)
-											}
+											(update, index) => (
+												<ExecutionUpdate
+													key={index}
+													update={update}
+												/>
+											)
 										)}
 									</div>
 								</div>

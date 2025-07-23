@@ -41,4 +41,4 @@ class ProgressUpdateRequest(BaseModel):
     user_id: str
     task_id: str
     run_id: str
-    message: str
+    message: Any # Changed from str to Any to allow structured updates

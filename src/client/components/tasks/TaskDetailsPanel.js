@@ -135,6 +135,7 @@ const TaskDetailsPanel = ({
 							handleStepChange={handleStepChange}
 							allTools={allTools}
 							integrations={integrations}
+							onAnswerClarifications={onAnswerClarifications}
 						/>
 					</main>
 

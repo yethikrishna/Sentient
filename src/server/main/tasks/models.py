@@ -11,7 +11,6 @@ class Answer(BaseModel):
 
 class AddTaskRequest(BaseModel):
     prompt: str
-    assignee: str # "ai" or "user"
 
 class AnswerClarificationsRequest(BaseModel):
     task_id: str

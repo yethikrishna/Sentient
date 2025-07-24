@@ -6,11 +6,7 @@ import { format, parseISO } from "date-fns"
 import {
 	IconSparkles,
 	IconUser,
-	IconPencil,
-	IconTrash,
 	IconCircleCheck,
-	IconPlus,
-	IconRepeat,
 	IconLoader
 } from "@tabler/icons-react"
 import { taskStatusColors, priorityMap } from "./constants"
@@ -93,28 +89,6 @@ const InlineNewTaskCard = ({ onTaskAdded }) => {
 				rows={1}
 			/>
 			<div className="flex justify-between items-center mt-3 pt-3 border-t border-[var(--color-primary-surface-elevated)]">
-				<div className="flex items-center gap-4">
-					<button
-						onClick={() =>
-							setAssignee(assignee === "user" ? "ai" : "user")
-						}
-						className="flex items-center gap-1.5 text-neutral-400 hover:text-white transition-colors text-xs"
-						data-tooltip-id="tasks-tooltip"
-						data-tooltip-content={`Assign to: ${
-							assignee === "ai" ? "AI" : "Me"
-						}`}
-					>
-						{assignee === "ai" ? (
-							<IconSparkles
-								size={14}
-								className="text-sentient-blue"
-							/>
-						) : (
-							<IconUser size={14} />
-						)}
-						<span>{assignee === "ai" ? "Sentient" : "Me"}</span>
-					</button>
-				</div>
 				<div className="flex items-center gap-2">
 					<button
 						onClick={handleCancel}
@@ -255,14 +229,10 @@ const TaskListItem = ({
 const AllTasksView = ({
 	tasks,
 	onViewDetails,
-	onMarkComplete,
-	onAssigneeChange,
 	activeTab,
 	groupBy,
 	onTabChange,
 	onGroupChange,
-	isAddingNewTask,
-	onAddTask,
 	onTaskAdded
 }) => {
 	const [sortConfig, setSortConfig] = useState({
@@ -278,11 +248,6 @@ const AllTasksView = ({
 		}))
 	}
 
-	useEffect(() => {
-		if (isAddingNewTask && groupBy === "status") {
-			setOpenSections((prev) => ({ ...prev, Planning: true }))
-		}
-	}, [isAddingNewTask, groupBy])
 	const processedTasks = useMemo(() => {
 		const filteredTasks =
 			activeTab === "oneTime"
@@ -372,7 +337,7 @@ const AllTasksView = ({
 			"pending", // User-assigned tasks awaiting action
 			"error",
 			"cancelled",
-			"archived",
+			"archived"
 		]
 		const groupNames = Object.keys(processedTasks).sort((a, b) => {
 			const statusA =
@@ -421,21 +386,13 @@ const AllTasksView = ({
 						</select>
 					</div>
 				</div>
-				<button
-					onClick={onAddTask}
-					className="flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-sentient-blue hover:bg-sentient-blue-dark text-white text-sm font-medium transition-colors"
-				>
-					<IconPlus size={16} /> Add Task
-				</button>
 			</div>
 
 			<div className="flex-1 flex flex-col overflow-hidden">
-				<div className="flex-1 overflow-y-auto custom-scrollbar px-4 md:px-6 pt-6 pb-6">
-					<AnimatePresence>
-						{isAddingNewTask && (
-							<InlineNewTaskCard onTaskAdded={onTaskAdded} />
-						)}
-					</AnimatePresence>
+				<div className="flex-1 overflow-y-auto custom-scrollbar px-4 md:px-6 pt-6 pb-6 space-y-4">
+					{activeTab === "oneTime" && (
+						<InlineNewTaskCard onTaskAdded={onTaskAdded} />
+					)}
 
 					{Object.keys(processedTasks).length > 0 ? (
 						<AnimatePresence>
@@ -467,12 +424,6 @@ const AllTasksView = ({
 															onViewDetails={
 																onViewDetails
 															}
-															onMarkComplete={
-																onMarkComplete
-															}
-															onAssigneeChange={
-																onAssigneeChange
-															}
 															activeTab={
 																activeTab
 															}
@@ -489,12 +440,6 @@ const AllTasksView = ({
 														onViewDetails={
 															onViewDetails
 														}
-														onMarkComplete={
-															onMarkComplete
-														}
-														onAssigneeChange={
-															onAssigneeChange
-														}
 														activeTab={activeTab}
 													/>
 												))}
@@ -505,7 +450,7 @@ const AllTasksView = ({
 							})}
 						</AnimatePresence>
 					) : (
-						!isAddingNewTask && (
+						<div className="flex items-center justify-center h-full text-center p-8">
 							<div className="flex items-center justify-center h-full text-center p-8">
 								<div>
 									<div className="text-4xl mb-3 text-[var(--color-text-muted)]">
@@ -523,7 +468,7 @@ const AllTasksView = ({
 									</div>
 								</div>
 							</div>
-						)
+						</div>
 					)}
 				</div>
 			</div>

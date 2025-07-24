@@ -228,13 +228,10 @@ class MongoManager:
             except json.JSONDecodeError:
                 schedule = None
 
-        assignee = task_data.get("assignee", "user")
-        # Tasks assigned to AI start planning, user tasks are pending.
-        status = "planning" if assignee == "ai" else "pending"
-
+        # All new tasks are assigned to AI and start in the 'planning' state.
         initial_run = {
             "run_id": str(uuid.uuid4()),
-            "status": status,
+            "status": "planning",
             "plan": [],
             "clarifying_questions": [],
             "progress_updates": [],
@@ -247,8 +244,8 @@ class MongoManager:
             "task_id": task_id,
             "user_id": user_id,
             "description": task_data.get("description", "New Task"),
-            "status": status,
-            "assignee": assignee,
+            "status": "planning",
+            "assignee": "ai",
             "priority": task_data.get("priority", 1),
             "runs": [initial_run],
             "schedule": schedule,

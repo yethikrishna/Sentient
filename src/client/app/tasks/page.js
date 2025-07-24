@@ -103,7 +103,6 @@ function TasksPageContent() {
 	// View control states
 	const [activeTab, setActiveTab] = useState("oneTime")
 	const [groupBy, setGroupBy] = useState("status")
-	const [isAddingNewTask, setIsAddingNewTask] = useState(false)
 
 	// Keep selectedTask in sync with the main tasks list
 	useEffect(() => {
@@ -249,20 +248,6 @@ function TasksPageContent() {
 		}
 	}, []) // Empty dependency array means this runs once on mount
 
-	const handleAddTask = useCallback(() => {
-		setIsAddingNewTask(true)
-	}, [])
-
-	const handleTaskAdded = useCallback(
-		(isSuccess) => {
-			setIsAddingNewTask(false)
-			if (isSuccess) {
-				fetchTasks()
-			}
-		},
-		[fetchTasks]
-	)
-
 	const handleAction = useCallback(
 		async (actionFn, successMessage, ...args) => {
 			const toastId = toast.loading("Processing...")
@@ -353,34 +338,6 @@ function TasksPageContent() {
 		)
 	}
 
-	const handleMarkComplete = (taskId) => {
-		handleAction(
-			() =>
-				fetch("/api/tasks/update", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ taskId, status: "completed" })
-				}),
-			"Task marked as complete."
-		)
-	}
-
-	const handleAssigneeChange = (taskId, newAssignee) => {
-		const successMessage =
-			newAssignee === "ai"
-				? "Task assigned to AI for planning."
-				: "Task assigned to you."
-		handleAction(
-			() =>
-				fetch("/api/tasks/update", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ taskId, assignee: newAssignee })
-				}),
-			successMessage
-		)
-	}
-
 	const handleSendTaskChatMessage = (taskId, message) =>
 		handleAction(
 			() =>
@@ -460,15 +417,11 @@ function TasksPageContent() {
 							<AllTasksView
 								tasks={[...oneOffTasks, ...workflowTasks]}
 								onViewDetails={setSelectedTask}
-								onMarkComplete={handleMarkComplete}
-								onAssigneeChange={handleAssigneeChange}
 								activeTab={activeTab}
 								groupBy={groupBy}
 								onTabChange={setActiveTab}
 								onGroupChange={setGroupBy}
-								isAddingNewTask={isAddingNewTask}
-								onAddTask={handleAddTask}
-								onTaskAdded={handleTaskAdded}
+								onTaskAdded={fetchTasks}
 							/>
 						</div>
 					)}
@@ -498,7 +451,6 @@ function TasksPageContent() {
 						handleArchiveTask(taskId)
 						setSelectedTask(null)
 					}}
-					onMarkComplete={handleMarkComplete}
 					onSendChatMessage={handleSendTaskChatMessage}
 				/>
 			</div>

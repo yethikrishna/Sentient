@@ -46,14 +46,16 @@ def get_planner_agent(available_tools: dict, current_time_str: str, user_name: s
         logger.error(f"Failed to initialize Qwen Planner Agent: {e}", exc_info=True)
         raise
     
-def get_question_generator_agent(supermemory_mcp_url: str, original_context: dict, topics: list, available_tools: dict):
+def get_question_generator_agent(
+    original_context: dict,
+    available_tools_for_prompt: dict,
+    mcp_servers_for_agent: dict
+):
     """Initializes a unified Qwen agent to verify context and generate clarifying questions."""
     original_context_str = json.dumps(original_context, indent=2, default=str)
-    tools_list_str = "\n".join([f"- {name}: {desc}" for name, desc in available_tools.items()])
+
     system_prompt = prompts.QUESTION_GENERATOR_SYSTEM_PROMPT.format(
         original_context=original_context_str,
-        topics=", ".join(topics),
-        available_tools=tools_list_str
     )
     llm_cfg = {
         'model': config.OPENAI_MODEL_NAME,
@@ -61,14 +63,7 @@ def get_question_generator_agent(supermemory_mcp_url: str, original_context: dic
         'api_key': config.OPENAI_API_KEY,
     }
     
-    tools_config = [{
-        "mcpServers": {
-            "supermemory": {
-                "url": supermemory_mcp_url,
-                "transport": "sse"
-            }
-        }
-    }]
+    tools_config = [{"mcpServers": mcp_servers_for_agent}]
     
     agent = Assistant(
         llm=llm_cfg,

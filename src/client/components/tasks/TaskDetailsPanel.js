@@ -27,7 +27,6 @@ const TaskDetailsPanel = ({
 	onRerun,
 	onAnswerClarifications,
 	onArchiveTask,
-	onMarkComplete,
 	className,
 	onSendChatMessage
 }) => {
@@ -202,22 +201,6 @@ const TaskDetailsPanel = ({
 											Approve & Run
 										</ActionButton>
 									)}
-									{task.status === "pending" &&
-										task.assignee === "user" && (
-											<ActionButton
-												onClick={() =>
-													onMarkComplete(task.task_id)
-												}
-												icon={
-													<IconCircleCheck
-														size={16}
-													/>
-												}
-												className="bg-green-600 text-white hover:bg-green-500"
-											>
-												Mark as Complete
-											</ActionButton>
-										)}
 									<ActionButton
 										onClick={() =>
 											onArchiveTask(task.task_id)

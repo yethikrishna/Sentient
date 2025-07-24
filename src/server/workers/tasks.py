@@ -8,12 +8,13 @@ import os
 import httpx
 from dateutil import rrule
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from main.analytics import capture_event
 
 from workers.config import SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX, SUPPORTED_POLLING_SERVICES
 from json_extractor import JsonExtractor
 from workers.utils.api_client import notify_user, push_task_list_update
+from main.config import INTEGRATIONS_CONFIG
 from main.tasks.prompts import TASK_CREATION_PROMPT
 from main.llm import get_qwen_assistant
 from workers.celery_app import celery_app
@@ -21,6 +22,7 @@ from workers.planner.llm import get_planner_agent, get_question_generator_agent
 from workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions
 from workers.supermemory_agent_utils import get_supermemory_qwen_agent, get_db_manager as get_memory_db_manager
 from workers.executor.tasks import execute_task_plan
+from workers.planner.prompts import TOOL_SELECTOR_SYSTEM_PROMPT
 
 # Imports for extractor logic
 from workers.extractor.llm import get_extractor_agent
@@ -55,6 +57,63 @@ def clean_llm_output(text: str) -> str:
         return ""
     cleaned_text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
     return cleaned_text.strip()
+
+# --- Tool Selection Logic (adapted from chat utils) ---
+def _get_tool_lists(user_integrations: Dict) -> Tuple[Dict, Dict]:
+    """
+    Separates tools into connected/available and disconnected lists.
+    Includes built-in tools in the connected list.
+    """
+    connected_tools = {}
+    disconnected_tools = {}
+    for tool_name, config in INTEGRATIONS_CONFIG.items():
+        is_connectable = config.get("auth_type") in ["oauth", "manual"]
+        is_builtin = config.get("auth_type") == "builtin"
+
+        if is_builtin:
+            connected_tools[tool_name] = config.get("description", "")
+            continue
+
+        if is_connectable:
+            if user_integrations.get(tool_name, {}).get("connected", False):
+                connected_tools[tool_name] = config.get("description", "")
+            else:
+                disconnected_tools[tool_name] = config.get("description", "")
+    return connected_tools, disconnected_tools
+
+async def _select_relevant_tools(query: str, available_tools_map: Dict[str, str]) -> List[str]:
+    """
+    Uses a lightweight LLM call to select relevant tools for a given query.
+    """
+    if not available_tools_map:
+        return []
+
+    try:
+        tools_description = "\n".join(f"- `{name}`: {desc}" for name, desc in available_tools_map.items())
+        prompt = f"User Query: \"{query}\"\n\nAvailable Tools:\n{tools_description}"
+
+        selector_agent = get_qwen_assistant(system_message=TOOL_SELECTOR_SYSTEM_PROMPT, function_list=[])
+        messages = [{'role': 'user', 'content': prompt}]
+
+        def _run_selector_sync():
+            final_content_str = ""
+            for chunk in selector_agent.run(messages=messages):
+                if isinstance(chunk, list) and chunk:
+                    last_message = chunk[-1]
+                    if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
+                        final_content_str = last_message["content"]
+            return final_content_str
+
+        final_content_str = await asyncio.to_thread(_run_selector_sync)
+        selected_tools = JsonExtractor.extract_valid_json(final_content_str)
+        if isinstance(selected_tools, list):
+            logger.info(f"Tool selector identified relevant tools for context search: {selected_tools}")
+            return selected_tools
+        return []
+    except Exception as e:
+        logger.error(f"Error during tool selection for context search: {e}", exc_info=True)
+        return list(available_tools_map.keys())
+
 # Helper to run async code in Celery's sync context
 def run_async(coro):
     try:
@@ -391,27 +450,64 @@ def process_action_item(user_id: str, action_items: list, topics: list, source_e
 
 async def get_clarifying_questions(user_id: str, task_description: str, topics: list, original_context: dict, db_manager: PlannerMongoManager) -> List[str]:
     """
-    Uses a unified agent to search memory and generate clarifying questions if needed.
+    Uses a unified agent to search memory and relevant tools, then generates clarifying questions if needed.
     Returns a list of questions, which is empty if no clarification is required.
     """
     user_profile = await db_manager.user_profiles_collection.find_one({"user_id": user_id})
-    supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id") if user_profile else None
-
-    if not supermemory_user_id:
-        logger.warning(f"User {user_id} has no Supermemory ID. Cannot verify context.")
+    if not user_profile:
+        logger.error(f"User profile not found for {user_id}. Cannot verify context.")
         return [f"Can you tell me more about '{topic}'?" for topic in topics]
 
-    supermemory_mcp_url = f"{SUPERMEMORY_MCP_BASE_URL.rstrip('/')}/{supermemory_user_id}{SUPERMEMORY_MCP_ENDPOINT_SUFFIX}"
-    available_tools = get_all_mcp_descriptions()
+    user_integrations = user_profile.get("userData", {}).get("integrations", {})
+    supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id")
+    
+    if not supermemory_user_id:
+        logger.warning(f"User {user_id} has no Supermemory ID. Cannot verify context with memory.")
 
+    # 1. Get all available (connected + built-in) tools for the user
+    connected_tools, _ = _get_tool_lists(user_integrations)
+
+    # 2. Select tools relevant to the task description
+    relevant_tool_names = await _select_relevant_tools(task_description, connected_tools)
+
+    # 3. Always include supermemory for context verification
+    final_tool_names = set(relevant_tool_names)
+    final_tool_names.add("supermemory")
+    
+    logger.info("Selected tools for context verification: " + ", ".join(final_tool_names))
+
+    # 4. Build the MCP server config and prompt info for the agent
+    mcp_servers_for_agent = {}
+    available_tools_for_prompt = {}
+
+    for tool_name in final_tool_names:
+        config = INTEGRATIONS_CONFIG.get(tool_name)
+        if not config: continue
+
+        available_tools_for_prompt[tool_name] = config.get("description", "")
+        
+        if tool_name == "supermemory":
+            if supermemory_user_id:
+                supermemory_mcp_url = f"{SUPERMEMORY_MCP_BASE_URL.rstrip('/')}/{supermemory_user_id}{SUPERMEMORY_MCP_ENDPOINT_SUFFIX}"
+                mcp_servers_for_agent["supermemory"] = {"url": supermemory_mcp_url, "transport": "sse"}
+        else:
+            mcp_config = config.get("mcp_server_config")
+            if mcp_config and mcp_config.get("url"):
+                 mcp_servers_for_agent[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
+
+    if not mcp_servers_for_agent:
+        logger.warning(f"No MCP servers could be configured for context search for user {user_id}. Cannot verify context.")
+        return []
+
+    logger.info(f"Context Verifier for user {user_id} will use tools: {list(mcp_servers_for_agent.keys())}")
+    
     agent = get_question_generator_agent(
-        supermemory_mcp_url=supermemory_mcp_url,
         original_context=original_context,
-        topics=topics,
-        available_tools=available_tools
+        available_tools_for_prompt=available_tools_for_prompt,
+        mcp_servers_for_agent=mcp_servers_for_agent
     )
 
-    user_prompt = f"Based on the task '{task_description}' and the provided context, please determine if any clarifying questions are necessary."
+    user_prompt = f"Based on the task '{task_description}' and the provided context, please use your tools to find relevant information and then determine if any clarifying questions are necessary."
     messages = [{'role': 'user', 'content': user_prompt}]
 
     final_response_str = ""

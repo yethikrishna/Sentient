@@ -12,7 +12,7 @@ import React from "react"
  *
  * This component is responsible for checking the user's authentication and onboarding status,
  * then redirecting them to the appropriate page (/auth/login, /onboarding, or /chat).
- * It displays a loading animation during this process. 
+ * It displays a loading animation during this process.
  * The final destination for an authenticated and onboarded user is /chat.
  * @returns {React.ReactNode} - The Home component UI.
  */
@@ -124,7 +124,7 @@ const Home = () => {
 
 	// Show a loading screen while checking authentication or onboarding status.
 	return (
-		<div className="flex-1 min-h-screen flex flex-col items-center justify-center bg-[var(--color-primary-background)]">
+		<div className="flex-1 min-h-screen flex flex-col items-center justify-center bg-black">
 			<div className="flex flex-col items-center justify-center h-full backdrop-blur-xs">
 				<AnimatedLogo />
 				<h1 className="text-white text-4xl mt-4">Sentient</h1>
@@ -134,4 +134,3 @@ const Home = () => {
 }
 
 export default Home
-

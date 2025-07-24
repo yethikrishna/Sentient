@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react"
 import { Command } from "cmdk"
 import {
-	IconHome,
+	IconMessage,
 	IconChecklist,
 	IconPlugConnected,
 	IconAdjustments,
@@ -44,8 +44,8 @@ const CommandPalette = ({ open, setOpen }) => {
 					<Command.Item
 						onSelect={() => runCommand(() => router.push("/chat"))}
 					>
-						<IconHome className="mr-2 h-4 w-4" />
-						Go to Home
+						<IconMessage className="mr-2 h-4 w-4" />
+						Go to Chat
 					</Command.Item>
 					<Command.Item
 						onSelect={() =>

@@ -325,7 +325,7 @@ export default function ChatPage({ params }) {
 	const urlChatId = params.chatId ? params.chatId[0] : null
 
 	const [activeChatId, setActiveChatId] = useState(urlChatId)
-	const [isHistoryOpen, setIsHistoryOpen] = useState(true)
+	const [isHistoryOpen, setIsHistoryOpen] = useState(false)
 	const [activeDomain, setActiveDomain] = useState("Featured")
 	const [chatList, setChatList] = useState([])
 	const [messages, setMessages] = useState([])
@@ -589,6 +589,8 @@ export default function ChatPage({ params }) {
 	}
 
 	const handleNewChat = () => {
+		setActiveChatId(null)
+		setMessages([])
 		router.push("/chat")
 	}
 

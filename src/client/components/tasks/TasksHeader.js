@@ -1,54 +1,13 @@
 "use client"
 
-import React, { useState, useEffect, useCallback } from "react"
-import toast from "react-hot-toast"
-import {
-	IconList,
-	IconCalendar,
-	IconLayoutGrid, // This is This Month
-	IconCalendarWeek, // This is This Week
-	IconHelpCircle
-} from "@tabler/icons-react"
+import React from "react"
+import { IconHelpCircle } from "@tabler/icons-react"
 
 const TasksHeader = ({ onOpenDemo }) => {
-	const [userDetails, setUserDetails] = useState(null)
-
-	const fetchUserDetails = useCallback(async () => {
-		try {
-			const response = await fetch("/api/user/data")
-			if (!response.ok) throw new Error("Failed to fetch user details")
-			const result = await response.json()
-			const userName =
-				result?.data?.personalInfo?.name ||
-				result?.data?.onboardingAnswers?.["user-name"]
-			setUserDetails({ given_name: userName || "User" })
-		} catch (error) {
-			toast.error(`Error fetching user details: ${error.message}`)
-			setUserDetails({ given_name: "User" })
-		}
-	}, [])
-
-	useEffect(() => {
-		fetchUserDetails()
-	}, [fetchUserDetails])
-
-	const getGreeting = () => {
-		const hour = new Date().getHours()
-		if (hour < 12) return "Good Morning"
-		if (hour < 18) return "Good Afternoon"
-		return "Good Evening"
-	}
-
-	const viewOptions = [
-		{ id: "all", icon: IconList, label: "All Tasks" },
-		{ id: "week", icon: IconCalendarWeek, label: "This Week" },
-		{ id: "month", icon: IconLayoutGrid, label: "This Month" }
-	]
-
 	return (
-		<header className="flex flex-wrap items-center justify-between gap-4 px-4 sm:px-6 py-4 border-b border-[var(--color-primary-surface)] bg-[var(--color-primary-background)]">
+		<header className="flex flex-wrap items-center justify-between gap-4 px-4 sm:px-6 py-4 border-b border-[var(--color-primary-surface)] bg-dark-surface">
 			<h1 className="text-2xl sm:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-br from-white to-neutral-400 py-1">
-				{getGreeting()}, {userDetails?.given_name || "User"}
+				Tasks
 			</h1>
 
 			<div className="flex items-center gap-3 shrink-0">

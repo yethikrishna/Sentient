@@ -5,7 +5,7 @@ import { FloatingDock } from "@components/ui/floating-dock"
 import {
 	IconAdjustments,
 	IconChecklist,
-	IconHome,
+	IconMessage,
 	IconLogout,
 	IconPlugConnected
 } from "@tabler/icons-react"
@@ -30,7 +30,7 @@ export default function FloatingNav() {
 			title: "Chat",
 			href: "/chat",
 			icon: (
-				<IconHome className="h-full w-full text-neutral-500 dark:text-neutral-300" />
+				<IconMessage className="h-full w-full text-neutral-500 dark:text-neutral-300" />
 			)
 		},
 		{

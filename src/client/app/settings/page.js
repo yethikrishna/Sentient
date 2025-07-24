@@ -404,7 +404,7 @@ const ShortcutsSettings = () => {
 			{ keys: ["Ctrl", "K"], description: "Open Command Palette" }
 		],
 		Navigation: [
-			{ keys: ["Ctrl", "H"], description: "Go to Home" },
+			{ keys: ["Ctrl", "H"], description: "Go to Chat" },
 			{ keys: ["Ctrl", "J"], description: "Go to Notes" },
 			{ keys: ["Ctrl", "A"], description: "Go to Tasks" },
 			{ keys: ["Ctrl", "I"], description: "Go to Integrations" },
@@ -1463,4 +1463,3 @@ const ProfilePage = () => {
 }
 
 export default ProfilePage
-

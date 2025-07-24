@@ -23,7 +23,7 @@ const Sidebar = () => {
 			.then((data) => setUserDetails(data))
 	}, [])
 	const navLinks = [
-		{ title: "Chat", href: "/chat", icon: <IconHome size={28} /> },
+		{ title: "Chat", href: "/chat", icon: <IconMessage size={28} /> },
 		{ title: "Tasks", href: "/tasks", icon: <IconChecklist size={28} /> },
 		{
 			title: "Integrations",

@@ -145,7 +145,7 @@ class MongoManager:
     # --- Notification Methods ---
     async def get_notifications(self, user_id: str) -> List[Dict]:
         if not user_id: return []
-        user_doc = await self.notifications_collection.find_one(
+        user_doc = await self.notifications_collection.find_one( # noqa: E501
             {"user_id": user_id}, {"notifications": 1}
         )
         notifications_list = user_doc.get("notifications", []) if user_doc else []
@@ -158,7 +158,9 @@ class MongoManager:
 
     async def add_notification(self, user_id: str, notification_data: Dict) -> Optional[Dict]:
         if not user_id or not notification_data: return None
-        notification_data["timestamp"] = datetime.datetime.now(datetime.timezone.utc)
+        # Store timestamp as an ISO 8601 string to ensure timezone correctness
+        # across all database and application layers.
+        notification_data["timestamp"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         notification_data["id"] = str(uuid.uuid4())
         result = await self.notifications_collection.update_one(
             {"user_id": user_id},

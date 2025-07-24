@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useCallback } from "react"
+import React, { useState, useEffect, useCallback } from "react" // eslint-disable-line
 import toast from "react-hot-toast"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
@@ -13,11 +13,33 @@ import {
 } from "@tabler/icons-react"
 import { formatDistanceToNow, parseISO } from "date-fns"
 
-const NotificationItem = ({ notification, onDelete, onClick }) => {
-	const formattedTimestamp = formatDistanceToNow(
-		parseISO(notification.timestamp),
-		{ addSuffix: true }
-	)
+const NotificationItem = ({
+	notification,
+	onDelete,
+	onClick,
+	userTimezone
+}) => {
+	let formattedTimestamp = "..." // Placeholder while timezone is loading
+
+	try {
+		const date = parseISO(notification.timestamp)
+		if (typeof userTimezone === "string") {
+			// If timezone is available, format to an absolute time string
+			formattedTimestamp = new Intl.DateTimeFormat(undefined, {
+				month: "short",
+				day: "numeric",
+				hour: "numeric",
+				minute: "2-digit",
+				hour12: true,
+				timeZone: userTimezone
+			}).format(date)
+		} else if (userTimezone === null) {
+			// Fallback to relative time if timezone fetch completes but is not set
+			formattedTimestamp = formatDistanceToNow(date, { addSuffix: true })
+		}
+	} catch (e) {
+		formattedTimestamp = "Recently" // Fallback for invalid date
+	}
 
 	return (
 		<motion.div
@@ -59,6 +81,7 @@ const NotificationsOverlay = ({ onClose }) => {
 	const [notifications, setNotifications] = useState([])
 	const [isLoading, setIsLoading] = useState(true)
 	const [error, setError] = useState(null)
+	const [userTimezone, setUserTimezone] = useState(undefined) // undefined: loading, null: not found, string: found
 	const router = useRouter()
 
 	const fetchNotifications = useCallback(async () => {
@@ -93,9 +116,28 @@ const NotificationsOverlay = ({ onClose }) => {
 		}
 	}, [])
 
+	const fetchUserData = useCallback(async () => {
+		try {
+			const response = await fetch("/api/user/data")
+			if (!response.ok) {
+				throw new Error("Failed to fetch user data")
+			}
+			const result = await response.json()
+			const timezone = result?.data?.personalInfo?.timezone
+			setUserTimezone(timezone || null) // Set to null if not found
+		} catch (err) {
+			console.error(
+				"NotificationsOverlay: Failed to fetch user timezone",
+				err
+			)
+			setUserTimezone(null) // Set to null on error to trigger fallback
+		}
+	}, [])
+
 	useEffect(() => {
 		fetchNotifications()
-	}, [fetchNotifications])
+		fetchUserData()
+	}, [fetchNotifications, fetchUserData])
 
 	const handleDelete = async (e, notificationId) => {
 		if (e && e.stopPropagation) e.stopPropagation()
@@ -220,6 +262,7 @@ const NotificationsOverlay = ({ onClose }) => {
 								<NotificationItem
 									key={notif.id}
 									notification={notif}
+									userTimezone={userTimezone}
 									onDelete={(id) => handleDelete(null, id)}
 									onClick={(n) =>
 										handleNotificationClick(null, n)

@@ -263,3 +263,5 @@ gows.db
 .yoyo/
 settings.local.json
 settings.json
+src/server/celerybeat-schedule-shm
+src/server/celerybeat-schedule-wal

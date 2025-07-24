@@ -27,10 +27,17 @@ export default function FloatingNav() {
 
 	const navLinks = [
 		{
-			title: "Home",
-			href: "/tasks",
+			title: "Chat",
+			href: "/home",
 			icon: (
 				<IconHome className="h-full w-full text-neutral-500 dark:text-neutral-300" />
+			)
+		},
+		{
+			title: "Tasks",
+			href: "/tasks",
+			icon: (
+				<IconChecklist className="h-full w-full text-neutral-500 dark:text-neutral-300" />
 			)
 		},
 		{

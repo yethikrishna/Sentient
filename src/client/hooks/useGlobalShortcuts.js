@@ -11,8 +11,7 @@ import { usePathname, useRouter } from "next/navigation"
  */
 export function useGlobalShortcuts(
 	onNotificationsOpen,
-	onCommandPaletteToggle,
-	onChatOpen
+	onCommandPaletteToggle
 ) {
 	const router = useRouter()
 	const pathname = usePathname()
@@ -25,6 +24,9 @@ export function useGlobalShortcuts(
 			if (e.ctrlKey) {
 				switch (e.key.toLowerCase()) {
 					case "h":
+						router.push("/home")
+						break
+					case "t":
 						router.push("/tasks")
 						break
 					case "b":
@@ -34,7 +36,7 @@ export function useGlobalShortcuts(
 						onCommandPaletteToggle()
 						break
 					case "m":
-						onChatOpen()
+						router.push("/home")
 						break
 					default:
 						return
@@ -42,7 +44,7 @@ export function useGlobalShortcuts(
 				e.preventDefault()
 			}
 		},
-		[router, onNotificationsOpen, onCommandPaletteToggle, onChatOpen]
+		[router, onNotificationsOpen, onCommandPaletteToggle]
 	)
 
 	useEffect(() => {

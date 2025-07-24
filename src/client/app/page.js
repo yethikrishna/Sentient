@@ -104,7 +104,7 @@ const Home = () => {
 			// In self-host mode, user is always "present", just need onboarding status.
 			if (onboarded !== null) {
 				if (onboarded) {
-					router.push("/tasks")
+					router.push("/home")
 				} else {
 					router.push("/onboarding")
 				}
@@ -115,7 +115,7 @@ const Home = () => {
 		// Only redirect if auth is loaded, user exists, and onboarding status is determined.
 		if (!isAuthLoading && user && onboarded !== null) {
 			if (onboarded) {
-				router.push("/tasks")
+				router.push("/home")
 			} else {
 				router.push("/onboarding")
 			}

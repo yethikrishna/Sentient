@@ -126,7 +126,7 @@ const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
 					<nav className="flex flex-col gap-2.5 mb-6">
 						<NavLink
 							href="/home"
-							icon={<IconHome />}
+							icon={<IconMessageChatbot />}
 							label="Home"
 						/>
 						<NavLink

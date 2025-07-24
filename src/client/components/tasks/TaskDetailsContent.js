@@ -39,7 +39,11 @@ const TaskChatSection = ({ task, onSendChatMessage }) => {
 			</h4>
 			<div className="space-y-4 max-h-64 overflow-y-auto custom-scrollbar pr-2">
 				{(task.chat_history || []).map((msg, index) => (
-					<ChatBubble key={index} message={msg.content} isUser={msg.role === 'user'} />
+					<ChatBubble
+						key={index}
+						message={msg.content}
+						isUser={msg.role === "user"}
+					/>
 				))}
 				<div ref={chatEndRef} />
 			</div>
@@ -187,7 +191,7 @@ const TaskDetailsContent = ({
 					<label className="text-sm font-medium text-neutral-400 block mb-2">
 						Meta
 					</label>
-					<div className="flex items-center gap-4 text-sm bg-neutral-800/50 p-3 rounded-lg">
+					<div className="flex min-w-fit w-full items-center gap-4 text-sm bg-neutral-800/50 p-3 rounded-lg">
 						<span className="text-sm text-neutral-400">
 							Status:
 						</span>
@@ -224,7 +228,7 @@ const TaskDetailsContent = ({
 						) : (
 							<span
 								className={cn(
-									"font-semibold",
+									"font-semibold w-full",
 									priorityInfo.color
 								)}
 							>
@@ -232,60 +236,6 @@ const TaskDetailsContent = ({
 							</span>
 						)}
 					</div>
-				</div>
-				<div>
-					<label className="text-sm font-medium text-neutral-400 block mb-2">
-						Assignee
-					</label>
-					{isEditing ? (
-						<div className="flex gap-1 p-1 bg-neutral-800/50 rounded-lg border border-neutral-700 w-full">
-							<button
-								onClick={() =>
-									handleFieldChange("assignee", "ai")
-								}
-								className={cn(
-									"flex-1 flex items-center justify-center gap-2 py-1.5 rounded-md text-sm transition-colors",
-									editableTask.assignee === "ai"
-										? "bg-blue-600 text-white font-medium"
-										: "hover:bg-neutral-700"
-								)}
-							>
-								<IconSparkles size={16} /> Sentient
-							</button>
-							<button
-								onClick={() =>
-									handleFieldChange("assignee", "user")
-								}
-								className={cn(
-									"flex-1 flex items-center justify-center gap-2 py-1.5 rounded-md text-sm transition-colors",
-									editableTask.assignee === "user"
-										? "bg-blue-600 text-white font-medium"
-										: "hover:bg-neutral-700"
-								)}
-							>
-								<IconUser size={16} /> Me
-							</button>
-						</div>
-					) : (
-						<div className="flex items-center gap-2 bg-neutral-800/50 p-3 rounded-lg text-sm">
-							{displayTask.assignee === "ai" ? (
-								<IconSparkles
-									size={16}
-									className="text-blue-400"
-								/>
-							) : (
-								<IconUser
-									size={16}
-									className="text-neutral-400"
-								/>
-							)}
-							<span className="font-medium">
-								{displayTask.assignee === "ai"
-									? "Sentient"
-									: "Me"}
-							</span>
-						</div>
-					)}
 				</div>
 			</div>
 
@@ -483,8 +433,12 @@ const TaskDetailsContent = ({
 				))
 			)}
 
-			{(task.status === "completed" || (task.chat_history && task.chat_history.length > 0)) && (
-				<TaskChatSection task={task} onSendChatMessage={onSendChatMessage} />
+			{(task.status === "completed" ||
+				(task.chat_history && task.chat_history.length > 0)) && (
+				<TaskChatSection
+					task={task}
+					onSendChatMessage={onSendChatMessage}
+				/>
 			)}
 		</div>
 	)

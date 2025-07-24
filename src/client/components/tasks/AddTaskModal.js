@@ -66,61 +66,6 @@ const AddTaskModal = ({ onClose, onTaskAdded }) => {
 					</button>
 				</div>
 
-				<div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6">
-					<div>
-						<label
-							htmlFor="task-prompt"
-							className="block text-sm font-medium text-gray-300 mb-2"
-						>
-							What needs to be done?
-						</label>
-						<textarea
-							id="task-prompt"
-							value={prompt}
-							onChange={(e) => setPrompt(e.target.value)}
-							rows={4}
-							className="w-full p-3 bg-neutral-800/50 border border-neutral-700 rounded-lg transition-colors focus:border-[var(--color-accent-blue)] focus:ring-0"
-							placeholder="e.g., Send a follow-up email to the new client about the proposal by tomorrow afternoon"
-							autoFocus
-						/>
-					</div>
-
-					<div>
-						<label className="block text-sm font-medium text-gray-300 mb-2">
-							Assign to
-						</label>
-						<div className="flex gap-2 p-1 bg-neutral-800/50 rounded-lg border border-neutral-700">
-							<button
-								onClick={() => setAssignee("ai")}
-								className={cn(
-									"flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm transition-colors",
-									assignee === "ai"
-										? "bg-[var(--color-accent-blue)] text-white"
-										: "hover:bg-neutral-700"
-								)}
-							>
-								<IconSparkles size={16} /> Sentient
-							</button>
-							<button
-								onClick={() => setAssignee("user")}
-								className={cn(
-									"flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm transition-colors",
-									assignee === "user"
-										? "bg-[var(--color-accent-blue)] text-white"
-										: "hover:bg-neutral-700"
-								)}
-							>
-								<IconUser size={16} /> Me
-							</button>
-						</div>
-						<p className="text-xs text-neutral-500 mt-2 px-1">
-							{assignee === "ai"
-								? "Sentient will create a plan and execute this task for you."
-								: "This task will be added to your to-do list for you to complete."}
-						</p>
-					</div>
-				</div>
-
 				<div className="mt-6 pt-4 border-t border-[var(--color-primary-surface-elevated)] flex justify-end gap-4 flex-shrink-0">
 					<button
 						type="button"

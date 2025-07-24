@@ -3,11 +3,10 @@
 import React, { useState, useEffect, useRef } from "react"
 import toast from "react-hot-toast"
 import { motion } from "framer-motion"
-import { IconSparkles, IconUser, IconLoader } from "@tabler/icons-react"
+import { IconLoader } from "@tabler/icons-react"
 
 const InlineNewTaskCard = ({ onTaskAdded }) => {
 	const [prompt, setPrompt] = useState("")
-	const [assignee, setAssignee] = useState("user")
 	const [isAdding, setIsAdding] = useState(false)
 	const textareaRef = useRef(null)
 
@@ -30,23 +29,20 @@ const InlineNewTaskCard = ({ onTaskAdded }) => {
 			const response = await fetch("/api/tasks/add", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ prompt, assignee })
+				body: JSON.stringify({ prompt })
 			})
 			const data = await response.json()
 			if (!response.ok)
 				throw new Error(data.error || "Failed to add task")
 			toast.success("Task added.")
-			onTaskAdded(true) // Indicate success
+			onTaskAdded() // Refresh task list
+			setPrompt("") // Clear input for next task
+			textareaRef.current?.focus() // Refocus input
 		} catch (error) {
 			toast.error(error.message)
-			onTaskAdded(false) // Indicate failure
 		} finally {
 			setIsAdding(false)
 		}
-	}
-
-	const handleCancel = () => {
-		onTaskAdded(false) // Just close it without refetching
 	}
 
 	return (
@@ -69,34 +65,10 @@ const InlineNewTaskCard = ({ onTaskAdded }) => {
 						e.preventDefault()
 						handleAddTask()
 					}
-					if (e.key === "Escape") {
-						handleCancel()
-					}
 				}}
 			/>
-			<div className="flex justify-between items-center">
-				<div className="flex items-center gap-1">
-					<button
-						onClick={() =>
-							setAssignee(assignee === "user" ? "ai" : "user")
-						}
-						className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-700/50 rounded-lg transition-colors text-xs flex items-center gap-1"
-					>
-						{assignee === "ai" ? (
-							<IconSparkles size={14} />
-						) : (
-							<IconUser size={14} />
-						)}
-						<span>{assignee === "ai" ? "Sentient" : "Me"}</span>
-					</button>
-				</div>
-				<div className="flex items-center gap-2">
-					<button
-						onClick={handleCancel}
-						className="text-sm text-neutral-400 hover:text-white px-3 py-1.5 rounded-md hover:bg-neutral-700"
-					>
-						Cancel
-					</button>
+			<div className="flex justify-end items-center">
+				<div className="flex items-center">
 					<button
 						onClick={handleAddTask}
 						disabled={isAdding || !prompt.trim()}

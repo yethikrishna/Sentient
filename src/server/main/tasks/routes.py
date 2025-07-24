@@ -87,38 +87,21 @@ async def add_task(
     request: AddTaskRequest,
     user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"])),
 ):
-    # --- Fast Path for User-Assigned Tasks ---
-    if request.assignee == "user":
-        task_data = {
-            "description": request.prompt,
-            "priority": 1, # Default priority
-            "schedule": None,
-            "assignee": "user"
-        }
-        task_id = await mongo_manager.add_task(user_id, task_data)
-        if not task_id:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create task.")
+	# All new tasks are assigned to the AI by default.
+	# Create a placeholder task immediately.
+	task_data = {
+		"description": request.prompt,
+		"priority": 1,  # Default priority
+		"schedule": None,
+		"assignee": "ai"
+	}
+	task_id = await mongo_manager.add_task(user_id, task_data)
+	if not task_id:
+		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create task.")
 
-        # Asynchronously refine the task details in the background
-        refine_task_details.delay(task_id)
-        return {"message": "Task added to your list.", "task_id": task_id}
-
-    # --- Async Path for AI-Assigned Tasks ---
-    else:
-        # Create a placeholder task immediately
-        task_data = {
-            "description": request.prompt,
-            "priority": 1,  # Default priority
-            "schedule": None,
-            "assignee": "ai"
-        }
-        task_id = await mongo_manager.add_task(user_id, task_data)
-        if not task_id:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create task.")
-
-        # Asynchronously refine details and then trigger planning
-        refine_and_plan_ai_task.delay(task_id)
-        return {"message": "Task accepted! I'll start planning it out.", "task_id": task_id}
+	# Asynchronously refine details and then trigger planning
+	refine_and_plan_ai_task.delay(task_id)
+	return {"message": "Task accepted! I'll start planning it out.", "task_id": task_id}
 
 @router.post("/fetch-tasks")
 async def fetch_tasks(

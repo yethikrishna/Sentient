@@ -48,7 +48,7 @@ const StorylaneDemoModal = ({ onClose }) => {
 					<div className="relative flex justify-between items-center pb-6 flex-shrink-0 z-10">
 						<div>
 							<h2 className="text-3xl font-bold bg-gradient-to-r from-white via-blue-100 to-purple-100 bg-clip-text text-transparent drop-shadow-2xl">
-								🎥 Interactive Walkthrough
+								���� Interactive Walkthrough
 							</h2>
 							<div className="w-1/3 h-1 bg-gradient-to-r from-blue-500/50 via-purple-500/50 to-pink-500/50 rounded-full blur-sm mt-2" />
 						</div>
@@ -387,14 +387,14 @@ function TasksPageContent() {
 	)
 
 	return (
-		<div className="flex-1 flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-hidden font-Inter md:pl-20">
+		<div className="flex-1 flex h-screen bg-dark-surface text-white overflow-hidden font-Inter">
 			<Tooltip
 				id="tasks-tooltip"
 				place="right-start"
 				style={{ zIndex: 9999 }}
 			/>
 
-			<div className="flex flex-1 overflow-hidden relative">
+			<div className="flex flex-1 overflow-hidden relative bg-dark-surface md:pl-20 pb-16 md:pb-0">
 				<main
 					className={cn(
 						"flex-1 flex flex-col overflow-hidden",
@@ -470,7 +470,7 @@ export default function TasksPage() {
 	return (
 		<Suspense
 			fallback={
-				<div className="flex-1 flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-hidden pl-0 md:pl-20 justify-center items-center">
+				<div className="flex-1 flex h-screen bg-dark-surface text-white overflow-hidden justify-center items-center">
 					<IconLoader className="w-10 h-10 animate-spin text-[var(--color-accent-blue)]" />
 				</div>
 			}

@@ -309,7 +309,7 @@ const UseCaseGrid = ({ useCases, onSelectPrompt }) => {
 							>
 								{useCase.action}{" "}
 								<span className="transition-transform group-hover:translate-x-1">
-									›
+									���
 								</span>
 							</button>
 						</motion.div>
@@ -634,7 +634,7 @@ export default function ChatPage({ params }) {
 	}
 
 	return (
-		<div className="flex-1 flex h-screen bg-black text-white overflow-hidden md:pl-20">
+		<div className="flex-1 flex bg-black text-white overflow-hidden md:pl-20">
 			<Tooltip id="home-tooltip" place="right" style={{ zIndex: 9999 }} />
 			<ChatHistorySidebar
 				chatList={chatList}
@@ -646,7 +646,7 @@ export default function ChatPage({ params }) {
 				onClose={() => setIsHistoryOpen(false)}
 				isSidebarOpen={isHistoryOpen}
 			/>
-			<div className="flex flex-col flex-1 relative bg-black">
+			<div className="flex flex-col flex-1 relative bg-black pb-16 md:pb-0">
 				<div className="absolute top-6 left-6 z-20 flex items-center gap-1">
 					<button
 						onClick={() => setIsHistoryOpen(!isHistoryOpen)}
@@ -693,11 +693,10 @@ export default function ChatPage({ params }) {
 							<div className="w-full max-w-4xl mx-auto mt-12">
 								<div className="w-full max-w-4xl mx-auto">
 									<div
-										className="p-0.5 rounded-2xl ${
-									!isFocused
-										? 'p-0.5 bg-gradient-to-tr from-blue-500 to-cyan-500'
-										: ''
-								} shadow-2xl shadow-black/40"
+										className={cn(
+											"rounded-2xl shadow-2xl shadow-black/40",
+											!isFocused && "p-0.5 bg-gradient-to-tr from-blue-500 to-cyan-500"
+										)}
 									>
 										<div className="relative bg-neutral-900 rounded-[15px] flex items-end">
 											<textarea
@@ -815,53 +814,59 @@ export default function ChatPage({ params }) {
 				</main>
 
 				{messages.length > 0 && !isLoadingMessages && (
-					<footer className="p-4 sm:p-6 z-10">
-						<div
-							className={`w-full max-w-4xl mx-auto p-0.5 rounded-2xl ${
-								!isFocused
-									? "p-0.5 bg-gradient-to-tr from-blue-500 to-cyan-500"
-									: ""
-							} shadow-2xl shadow-black/40`}
-						>
-							<div className="relative bg-neutral-900 rounded-[15px] flex items-end">
-								<textarea
-									ref={textareaRef}
-									value={input}
-									onChange={handleInputChange}
-									onKeyDown={(e) => {
-										if (e.key === "Enter" && !e.shiftKey) {
-											e.preventDefault()
-											sendMessage()
-										}
-									}}
-									placeholder="Ask me anything..."
-									className="w-full p-4 pr-24 bg-transparent text-base text-white placeholder-neutral-500 resize-none focus:outline-none overflow-y-auto custom-scrollbar"
-									rows={1}
-									style={{ maxHeight: "200px" }}
-								/>
-								<div className="absolute right-3 bottom-3 flex items-center gap-2">
-									{thinking ? (
-										<button
-											onClick={handleStopStreaming}
-											className="p-2.5 rounded-full text-white bg-red-600 hover:bg-red-500 transition-colors"
-											data-tooltip-id="home-tooltip"
-											data-tooltip-content="Stop Generation"
-										>
-											<IconPlayerStopFilled size={18} />
-										</button>
-									) : (
-										<button
-											onClick={sendMessage}
-											disabled={!input.trim()}
-											className="p-2.5 bg-gradient-to-tr from-blue-500 to-cyan-500 rounded-full text-white disabled:opacity-50 hover:from-blue-400 hover:to-cyan-400 transition-all shadow-md"
-										>
-											<IconSend size={18} />
-										</button>
-									)}
+					<div className="px-4 pt-2 pb-4 sm:px-6 sm:pb-6 bg-black border-t border-neutral-800/50">
+						<div className="w-full max-w-4xl mx-auto">
+							<div
+								className={cn(
+									"rounded-2xl shadow-2xl shadow-black/40",
+									!isFocused && "p-0.5 bg-gradient-to-tr from-blue-500 to-cyan-500"
+								)}
+							>
+								<div className="relative bg-neutral-900 rounded-[15px] flex items-end">
+									<textarea
+										ref={textareaRef}
+										value={input}
+										onChange={handleInputChange}
+										onFocus={() => setIsFocused(true)}
+										onBlur={() => setIsFocused(false)}
+										onKeyDown={(e) => {
+											if (
+												e.key === "Enter" &&
+												!e.shiftKey
+											) {
+												e.preventDefault()
+												sendMessage()
+											}
+										}}
+										placeholder="Ask me anything..."
+										className="w-full p-4 pr-24 bg-transparent text-base text-white placeholder-neutral-500 resize-none focus:outline-none overflow-y-auto custom-scrollbar"
+										rows={1}
+										style={{ maxHeight: "200px" }}
+									/>
+									<div className="absolute right-3 bottom-3 flex items-center gap-2">
+										{thinking ? (
+											<button
+												onClick={handleStopStreaming}
+												className="p-2.5 rounded-full text-white bg-red-600 hover:bg-red-500 transition-colors"
+												data-tooltip-id="home-tooltip"
+												data-tooltip-content="Stop Generation"
+											>
+												<IconPlayerStopFilled size={18} />
+											</button>
+										) : (
+											<button
+												onClick={sendMessage}
+												disabled={!input.trim()}
+												className="p-2.5 bg-gradient-to-tr from-blue-500 to-cyan-500 rounded-full text-white disabled:opacity-50 hover:from-blue-400 hover:to-cyan-400 transition-all shadow-md"
+											>
+												<IconSend size={18} />
+											</button>
+										)}
+									</div>
 								</div>
 							</div>
 						</div>
-					</footer>
+					</div>
 				)}
 			</div>
 		</div>

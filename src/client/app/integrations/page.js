@@ -700,7 +700,7 @@ const IntegrationsPage = () => {
 	}, [fetchIntegrations])
 
 	return (
-		<div className="flex-1 flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden md:pl-20">
+		<div className="flex-1 flex h-screen bg-dark-surface text-white overflow-x-hidden">
 			<Tooltip
 				id="integrations-tooltip"
 				place="right-start"
@@ -711,10 +711,10 @@ const IntegrationsPage = () => {
 				place="right-start"
 				style={{ zIndex: 9999 }}
 			/>
-			<div className="flex-1 flex flex-col overflow-hidden relative">
-				<header className="flex items-center justify-between p-4 sm:p-6 md:px-8 md:py-6 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)]">
+			<div className="flex-1 flex flex-col overflow-hidden relative bg-dark-surface md:pl-20 pb-16 md:pb-0">
+				<header className="flex items-center justify-between p-4 sm:p-6 md:px-8 md:py-6 bg-dark-surface border-b border-[var(--color-primary-surface)] shrink-0">
 					<HelpTooltip content="Connect your apps here. This allows Sentient to access information and perform actions on your behalf." />
-					<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)] flex items-center gap-3">
+					<h1 className="text-3xl lg:text-4xl font-semibold text-white flex items-center gap-3">
 						Integrations
 					</h1>
 					{/* This empty div is to help the justify-between on the header */}

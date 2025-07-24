@@ -24,7 +24,7 @@ export function useGlobalShortcuts(
 			if (e.ctrlKey) {
 				switch (e.key.toLowerCase()) {
 					case "h":
-						router.push("/home")
+						router.push("/chat")
 						break
 					case "t":
 						router.push("/tasks")
@@ -36,7 +36,7 @@ export function useGlobalShortcuts(
 						onCommandPaletteToggle()
 						break
 					case "m":
-						router.push("/home")
+						router.push("/chat")
 						break
 					default:
 						return

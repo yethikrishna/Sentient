@@ -17,7 +17,7 @@ MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_dev_db")
 
 # OpenAI API Standard Configuration
-OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL", "http://localhost:11434")
+OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL", "http://localhost:11434/v1/")
 OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "qwen3:4b")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ollama")
 SUPERMEMORY_MCP_BASE_URL = os.getenv("SUPERMEMORY_MCP_BASE_URL", "https://mcp.supermemory.ai/")

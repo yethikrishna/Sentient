@@ -185,12 +185,18 @@ function TasksPageContent() {
 	// Listen for custom event from LayoutWrapper to refresh tasks
 	useEffect(() => {
 		const handleBackendUpdate = () => {
-			console.log("Received tasksUpdatedFromBackend event, fetching tasks...")
+			console.log(
+				"Received tasksUpdatedFromBackend event, fetching tasks..."
+			)
 			toast.success("Task list updated from backend.")
 			fetchTasks()
 		}
 		window.addEventListener("tasksUpdatedFromBackend", handleBackendUpdate)
-		return () => window.removeEventListener("tasksUpdatedFromBackend", handleBackendUpdate)
+		return () =>
+			window.removeEventListener(
+				"tasksUpdatedFromBackend",
+				handleBackendUpdate
+			)
 	}, [fetchTasks])
 
 	// Listen for real-time progress updates from WebSocket
@@ -424,7 +430,7 @@ function TasksPageContent() {
 	)
 
 	return (
-		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-hidden pl-0 md:pl-20 font-Inter">
+		<div className="flex-1 flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-hidden font-Inter md:pl-20">
 			<Tooltip
 				id="tasks-tooltip"
 				place="right-start"
@@ -512,7 +518,7 @@ export default function TasksPage() {
 	return (
 		<Suspense
 			fallback={
-				<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-hidden pl-0 md:pl-20 justify-center items-center">
+				<div className="flex-1 flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-hidden pl-0 md:pl-20 justify-center items-center">
 					<IconLoader className="w-10 h-10 animate-spin text-[var(--color-accent-blue)]" />
 				</div>
 			}
@@ -521,3 +527,4 @@ export default function TasksPage() {
 		</Suspense>
 	)
 }
+

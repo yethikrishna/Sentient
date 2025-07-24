@@ -1,214 +1,98 @@
 "use client"
-import { useRouter, usePathname } from "next/navigation"
-import React, { useEffect, useState, useRef } from "react"
+import React, { useState, useEffect } from "react"
+import { usePathname } from "next/navigation"
+import Link from "next/link"
 import {
 	IconAdjustments,
-	IconBook,
 	IconChecklist,
-	IconChevronDown,
-	IconHome,
 	IconLogout,
-	IconPlus,
-	IconSearch,
+	IconPlugConnected,
 	IconUser,
-	IconX,
-	IconPlugConnected
+	IconMessage,
+	IconHome
 } from "@tabler/icons-react"
-import { AnimatePresence, motion } from "framer-motion"
 import { cn } from "@utils/cn"
-import { useSmoothScroll } from "@hooks/useSmoothScroll"
 
-const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
-	const router = useRouter()
-	const wsRef = useRef(null) // Removed chat list state and handlers
-	const scrollRef = useRef(null)
-
-	useSmoothScroll(scrollRef)
-	const logout = () => {
-		router.push("/auth/logout")
-	}
-
-	// Removed chat-related handlers: fetchChats, handleRenameChat, handleDeleteChat
-
-	// Separate effect for fetching data, depends on userDetails
+const Sidebar = () => {
+	const pathname = usePathname()
+	const [userDetails, setUserDetails] = useState(null)
+	const isSelfHost = process.env.NEXT_PUBLIC_ENVIRONMENT === "selfhost"
 	useEffect(() => {
-		if (!userDetails) {
-			return
+		fetch("/api/user/profile")
+			.then((res) => (res.ok ? res.json() : null))
+			.then((data) => setUserDetails(data))
+	}, [])
+	const navLinks = [
+		{ title: "Chat", href: "/chat", icon: <IconHome size={28} /> },
+		{ title: "Tasks", href: "/tasks", icon: <IconChecklist size={28} /> },
+		{
+			title: "Integrations",
+			href: "/integrations",
+			icon: <IconPlugConnected size={28} />
+		},
+		{
+			title: "Settings",
+			href: "/settings",
+			icon: <IconAdjustments size={28} />
 		}
-	}, [userDetails]) // Separate effect for fetching data, depends on userDetails
-
-	const NavLink = ({ href, icon, label }) => {
-		const pathname = usePathname() ?? ""
-		const isActive = pathname === href
-
-		return (
-			<motion.button
-				onClick={() => router.push(href)}
-				whileHover={{
-					backgroundColor: "rgba(17, 24, 39, 0.5)" // Equivalent to bg-gray-900/50
-				}}
-				whileTap={{ scale: 0.98 }}
-				className={cn(
-					"flex items-center gap-4 w-full text-left p-3.5 rounded-xl text-base font-semibold transition-all duration-200 group",
-					isActive
-						? "bg-darkblue text-white hover:bg-lightblue"
-						: "text-neutral-400 hover:text-white hover:bg-lightblue"
-				)}
-			>
-				<motion.div
-					className={cn(
-						"transition-colors",
-						isActive ? "text-lightblue" : "text-neutral-500"
-					)}
-				>
-					{React.cloneElement(icon, { size: 24 })}
-				</motion.div>
-				<span className="group-hover:translate-x-0.5 transition-transform duration-150">
-					{label}
-				</span>
-			</motion.button>
-		)
-	}
-
-	const [isProfileOpen, setProfileOpen] = useState(false)
-
+	]
 	return (
-		<>
-			<motion.div
-				initial={{ x: -320 }}
-				animate={{ x: isSidebarVisible ? 0 : -321 }}
-				transition={{ type: "spring", stiffness: 300, damping: 30 }}
-				className="fixed flex flex-col inset-y-0 left-0 z-50 w-[320px] bg-matteblack border-r border-neutral-800/50 font-Poppins"
-				onMouseLeave={() =>
-					window.innerWidth > 768 && setSidebarVisible(false)
-				}
-			>
-				<div
-					ref={scrollRef}
-					className="flex-1 flex flex-col p-5 overflow-y-auto no-scrollbar"
-				>
-					<motion.button
-						onClick={() => setSidebarVisible(false)}
-						className="absolute top-4 right-4 text-neutral-400 hover:text-white md:hidden p-1 hover:bg-lightblue rounded-lg transition-colors duration-150"
-						whileHover={{ scale: 1.1 }}
-						whileTap={{ scale: 0.9 }}
-					>
-						<IconX size={22} />
-					</motion.button>
-
-					{/* Sentient Logo section */}
-					<div className="flex items-center gap-3 mb-10 px-2">
-						<img
-							src="/images/half-logo-dark.svg"
-							alt="Logo"
-							className="w-9 h-9 opacity-80"
-						/>
-						<span className="text-2xl font-bold text-neutral-200">
-							Sentient
-						</span>
-					</div>
-
-					{/* Primary Actions */}
-					<div className="flex items-center gap-3 mb-8 px-1">
-						<button
-							onClick={() => router.push("/tasks?action=add")}
-							className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-darkblue text-white text-base font-semibold hover:bg-lightblue transition-colors shadow-lg shadow-blue-900/20"
-						>
-							<IconPlus size={20} />
-							Add task
-						</button>
-						<button className="p-3 text-neutral-400 hover:bg-lightblue rounded-xl transition-colors">
-							<IconSearch size={22} />
-						</button>
-					</div>
-
-					{/* Main Navigation */}
-					<nav className="flex flex-col gap-2.5 mb-6">
-						<NavLink
-							href="/home"
-							icon={<IconMessageChatbot />}
-							label="Home"
-						/>
-						<NavLink
-							href="/tasks"
-							icon={<IconChecklist />}
-							label="Tasks"
-						/>
-						<NavLink
-							href="/integrations"
-							icon={<IconPlugConnected />}
-							label="Integrations"
-						/>
-						<NavLink
-							href="/settings"
-							icon={<IconAdjustments />}
-							label="Settings"
-						/>
-					</nav>
-				</div>
-				<div className="p-3 border-t border-neutral-800/50">
-					<div className="relative">
-						<motion.button
-							onClick={() => setProfileOpen(!isProfileOpen)}
-							className="flex items-center w-full gap-3 p-2 rounded-xl hover:bg-lightblue transition-all duration-200 group"
-							whileHover={{ scale: 1.02 }}
-							whileTap={{ scale: 0.98 }}
-						>
-							{userDetails?.picture ? (
-								<motion.img
-									src={userDetails.picture}
-									alt="User"
-									className="w-10 h-10 rounded-full border-2 border-neutral-700"
-									whileHover={{ scale: 1.1 }}
-									transition={{ duration: 0.2 }}
-								/>
-							) : (
-								<motion.div
-									className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center border-2 border-neutral-700"
-									whileHover={{ scale: 1.1 }}
-									transition={{ duration: 0.2 }}
-								>
-									<IconUser className="w-5 h-5 text-white" />
-								</motion.div>
-							)}
-							<span className="font-semibold text-white text-base flex-1 text-left group-hover:translate-x-0.5 transition-transform duration-150">
-								{userDetails?.given_name || "User"}
-							</span>
-							<motion.div
-								animate={{ rotate: isProfileOpen ? 180 : 0 }}
-								transition={{ duration: 0.2 }}
+		<div className="hidden md:flex fixed top-0 left-0 h-screen w-20 bg-black border-r border-neutral-800/50 flex-col items-center justify-between py-5 z-40">
+			<div className="flex flex-col items-center gap-8 w-full">
+				<Link href="/chat">
+					<img
+						src="/images/half-logo-dark.svg"
+						alt="Logo"
+						className="w-8 h-8"
+					/>
+				</Link>
+				<nav className="flex flex-col items-center gap-2 w-full">
+					{navLinks.map((link) => {
+						const isActive = pathname.startsWith(link.href)
+						return (
+							<Link
+								href={link.href}
+								key={link.title}
+								className={cn(
+									"flex flex-col items-center gap-1.5 transition-colors duration-200 w-full py-3",
+									isActive
+										? "text-white bg-neutral-800 border-r-2 border-white"
+										: "text-neutral-400 hover:text-white hover:bg-neutral-800/50"
+								)}
 							>
-								<IconChevronDown className="w-5 h-5 text-neutral-400 transition-colors duration-150" />
-							</motion.div>
-						</motion.button>
-						<AnimatePresence>
-							{isProfileOpen && (
-								<motion.div
-									initial={{ opacity: 0, y: 10 }}
-									animate={{ opacity: 1, y: 0 }}
-									exit={{ opacity: 0, y: 10 }}
-									className="absolute bottom-full left-0 right-0 mb-3 bg-neutral-800 rounded-xl shadow-xl p-1 z-10"
-								>
-									<motion.button
-										onClick={logout}
-										className="flex items-center gap-3 w-full text-left px-3 py-2.5 rounded-lg text-base text-neutral-400 hover:bg-neutral-700 hover:text-white"
-									>
-										<IconLogout size={18} />
-										<span>Logout</span>
-									</motion.button>
-								</motion.div>
-							)}
-						</AnimatePresence>
-					</div>
-				</div>
-			</motion.div>
-			{/* Desktop hover trigger to show the sidebar */}
-			<div
-				className="hidden md:block fixed top-0 left-0 h-full w-5 z-40"
-				onMouseEnter={() => setSidebarVisible(true)}
-			/>
-		</>
+								{link.icon}
+								<span className="text-xs font-medium">
+									{link.title}
+								</span>
+							</Link>
+						)
+					})}
+				</nav>
+			</div>
+			<div className="flex flex-col items-center gap-4">
+				{!isSelfHost && (
+					<Link
+						href="/api/auth/logout"
+						className="flex flex-col items-center gap-1.5 text-neutral-400 hover:text-white transition-colors"
+					>
+						<IconLogout size={24} />
+					</Link>
+				)}
+				<Link href="/settings">
+					{userDetails?.picture ? (
+						<img
+							src={userDetails.picture}
+							alt="User"
+							className="w-9 h-9 rounded-full border-2 border-neutral-700"
+						/>
+					) : (
+						<div className="w-9 h-9 rounded-full bg-neutral-800 flex items-center justify-center border-2 border-neutral-700">
+							<IconUser className="w-5 h-5 text-white" />
+						</div>
+					)}
+				</Link>
+			</div>
+		</div>
 	)
 }
-
 export default Sidebar

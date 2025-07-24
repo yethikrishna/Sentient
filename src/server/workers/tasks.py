@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional, List
 from main.analytics import capture_event
 
 from workers.config import SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX, SUPPORTED_POLLING_SERVICES
-from json_extractor import JsonExtractor 
+from json_extractor import JsonExtractor
 from workers.utils.api_client import notify_user, push_task_list_update
 from main.tasks.prompts import TASK_CREATION_PROMPT
 from main.llm import get_qwen_assistant
@@ -94,7 +94,7 @@ def process_memory_item(user_id: str, fact_text: str, source_event_id: Optional[
 
             all_responses = list(agent.run(messages=messages))
             final_history = all_responses[-1] if all_responses else None
-            
+
             if not final_history:
                 logger.error(f"Supermemory agent produced no output for user {user_id}.")
                 return {"status": "failure", "reason": "Agent produced no output"}
@@ -146,10 +146,13 @@ async def async_generate_chat_title(chat_id: str, user_id: str):
         agent = get_qwen_assistant(system_message=system_prompt)
         messages = [{'role': 'user', 'content': first_user_message}]
 
-        title = ""
+        final_content = ""
         for chunk in agent.run(messages=messages):
             if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
-                title = chunk[-1].get("content", "").strip().strip('"')
+                final_content = chunk[-1].get("content", "")
+
+        # Clean the final output from the LLM before using it
+        title = clean_llm_output(final_content).strip().strip('"')
 
         if title:
             await db_manager.update_chat(user_id, chat_id, {"title": title})
@@ -225,44 +228,6 @@ async def async_refine_and_plan_ai_task(task_id: str):
     finally:
         await db_manager.close()
 
-@celery_app.task(name="generate_chat_title")
-def generate_chat_title(chat_id: str, user_id: str):
-    """
-    Generates a concise title for a chat session based on its first message.
-    """
-    logger.info(f"Generating title for chat_id: {chat_id}")
-    run_async(async_generate_chat_title(chat_id, user_id))
-
-async def async_generate_chat_title(chat_id: str, user_id: str):
-    db_manager = PlannerMongoManager()
-    try:
-        chat = await db_manager.chats_collection.find_one({"chat_id": chat_id, "user_id": user_id})
-        if not chat or not chat.get("messages"):
-            logger.warning(f"Cannot generate title: Chat {chat_id} not found or has no messages.")
-            return
-
-        first_user_message = chat["messages"][0].get("content", "")
-        if len(first_user_message) < 10:
-            # Title is already good enough, or message too short to summarize
-            return
-
-        system_prompt = "You are a title generator. Create a very short, concise title (5 words max) for the following user query. Do not use quotes or any extra text. Just provide the title."
-        agent = get_qwen_assistant(system_message=system_prompt)
-        messages = [{'role': 'user', 'content': first_user_message}]
-
-        title = ""
-        for chunk in agent.run(messages=messages):
-            if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
-                title = chunk[-1].get("content", "").strip().strip('"')
-
-        if title:
-            await db_manager.update_chat(user_id, chat_id, {"title": title})
-            logger.info(f"Successfully generated and updated title for chat {chat_id}: '{title}'")
-    except Exception as e:
-        logger.error(f"Error generating title for chat {chat_id}: {e}", exc_info=True)
-    finally:
-        await db_manager.close()
-
 @celery_app.task(name="process_task_change_request")
 def process_task_change_request(task_id: str, user_id: str, user_message: str):
     """Processes a user's change request on a completed task via the in-task chat."""
@@ -321,7 +286,7 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
     and then dispatches further Celery tasks.
     """
     logger.info(f"Extractor task running for event_id: {event_id} (service: {service_name}) for user {user_id}")
-    
+
     async def async_extract():
         db_manager = ExtractorMongoManager()
         try:
@@ -358,7 +323,7 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
 
             agent = get_extractor_agent(user_name, user_location, user_timezone)
             messages = [{'role': 'user', 'content': full_llm_input}]
-            
+
             final_content_str = ""
             for chunk in agent.run(messages=messages):
                 if isinstance(chunk, list) and chunk:
@@ -369,10 +334,10 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
             if not final_content_str.strip():
                 logger.error(f"Extractor LLM returned no response for event_id: {event_id}.")
                 return
-            
+
 
             cleaned_content = clean_llm_output(final_content_str)
-            logger.info(f"Extractor LLM response for event_id: {event_id} - {clean_llm_output}.")
+            logger.info(f"Extractor LLM response for event_id: {event_id} - {cleaned_content}.")
             extracted_data = JsonExtractor.extract_valid_json(cleaned_content)
             if not extracted_data:
                 logger.error(f"Could not extract valid JSON from LLM response for event_id: {event_id}. Response: '{cleaned_content}'")
@@ -395,13 +360,13 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
                 for item in action_items:
                     if not isinstance(item, str) or not item.strip():
                         continue
-                    
+
                     original_source_context = {
                         "source": service_name,
                         "event_id": event_id,
                         "content": event_data
                     }
-                    
+
                     # Dispatch directly to the planner/action item processor
                     process_action_item.delay(user_id, [item], topics, event_id, original_source_context)
                     logger.info(f"Dispatched action item from {service_name} for processing: '{item}'")
@@ -411,7 +376,7 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
                     process_memory_item.delay(user_id, fact, event_id)
 
             await db_manager.log_extraction_result(event_id, user_id, len(memory_items), len(action_items))
-        
+
         except Exception as e:
             logger.error(f"Error in extractor task for event_id: {event_id}: {e}", exc_info=True)
         finally:
@@ -453,7 +418,7 @@ async def get_clarifying_questions(user_id: str, task_description: str, topics: 
     for chunk in agent.run(messages=messages):
         if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
             final_response_str = chunk[-1].get("content", "")
-    
+
     response_data = JsonExtractor.extract_valid_json(clean_llm_output(final_response_str))
     if response_data and isinstance(response_data.get("clarifying_questions"), list):
         return response_data["clarifying_questions"]
@@ -464,6 +429,7 @@ async def get_clarifying_questions(user_id: str, task_description: str, topics: 
 async def async_process_action_item(user_id: str, action_items: list, topics: list, source_event_id: str, original_context: dict):
     """Async logic for the proactive task orchestrator."""
     db_manager = PlannerMongoManager()
+    task_id = None
     try:
         task_description = " ".join(map(str, action_items))
         # Per spec, create task with 'planning' status and immediately trigger planner.
@@ -554,14 +520,14 @@ async def async_generate_plan(task_id: str):
             user_location = f"latitude: {user_location_raw.get('latitude')}, longitude: {user_location_raw.get('longitude')}"
         else:
             user_location = user_location_raw
-        
+
         user_timezone_str = personal_info.get("timezone", "UTC")
         try:
             user_timezone = ZoneInfo(user_timezone_str)
         except ZoneInfoNotFoundError:
             logger.warning(f"Invalid timezone '{user_timezone_str}' for user {user_id}. Defaulting to UTC.")
             user_timezone = ZoneInfo("UTC")
-        
+
         current_user_time = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
 
         retrieved_context = latest_run.get("found_context", {}) # This field doesn't exist yet, but is good for future use
@@ -576,14 +542,14 @@ async def async_generate_plan(task_id: str):
             for q in latest_run["clarifying_questions"]:
                 if q.get("answer"):
                     answered_questions.append(f"User Clarification: Q: {q['text']} A: {q['answer']}")
-        
+
         if answered_questions:
             retrieved_context["user_clarifications"] = "\n".join(answered_questions)
-        
+
         available_tools = get_all_mcp_descriptions()
 
         planner_agent = get_planner_agent(available_tools, current_user_time, user_name, user_location, retrieved_context)
-        
+
         user_prompt_content = "Please create a plan for the following action items:\n- " + "\n- ".join(action_items)
         messages = [{'role': 'user', 'content': user_prompt_content}]
 
@@ -611,7 +577,7 @@ async def async_generate_plan(task_id: str):
             user_id, f"I've created a new plan for you: '{plan_data.get('description', '...')[:50]}...'", task_id,
             notification_type="taskNeedsApproval"
         )
-        
+
         # CRITICAL: Notify the frontend to refresh its task list
         await push_task_list_update(user_id, task_id, run_id)
         logger.info(f"Sent task_list_updated push notification for user {user_id}")
@@ -631,7 +597,7 @@ def process_linkedin_profile(user_id: str, linkedin_url: str):
     This is a fail-safe task that should not raise exceptions that would cause a retry loop.
     """
     logger.info(f"Starting LinkedIn scraping for user {user_id} at URL: {linkedin_url}")
-    
+
     linkedin_cookie = os.getenv("LINKEDIN_COOKIE")
 
     if not linkedin_cookie:
@@ -644,25 +610,25 @@ def process_linkedin_profile(user_id: str, linkedin_url: str):
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--incognito")
-    
+
     driver = None
     try:
         # Let Selenium/Chromedriver manage the user data directory automatically
         # by NOT specifying --user-data-dir.
         driver = webdriver.Chrome(options=chrome_options)
-        
+
         logger.info(f"Logging into LinkedIn using session cookie...")
         actions.login(driver, cookie=linkedin_cookie)
         logger.info("LinkedIn login successful via cookie.")
 
         person = Person(linkedin_url, driver=driver, scrape=True, close_on_complete=False)
-        
+
         if not person or not person.name:
              logger.error(f"Failed to scrape data for LinkedIn URL: {linkedin_url}")
              return {"status": "failure", "reason": "Scraping returned no data."}
 
         logger.info(f"Successfully scraped profile for: {person.name}")
-        
+
         facts_to_remember = []
         if person.name and person.name.strip():
             facts_to_remember.append(f"The user's full name is {person.name}.")
@@ -677,7 +643,7 @@ def process_linkedin_profile(user_id: str, linkedin_url: str):
             from_date = getattr(exp, 'from_date', 'an unknown start date')
             to_date = getattr(exp, 'to_date', 'an unknown end date')
             desc = getattr(exp, 'description', '')
-            
+
             exp_str = f"The user has experience as a {pos_title} at {inst_name} from {from_date} to {to_date}."
             if desc and str(desc).strip():
                 clean_desc = ' '.join(str(desc).split())
@@ -691,12 +657,12 @@ def process_linkedin_profile(user_id: str, linkedin_url: str):
             to_date = getattr(edu, 'to_date', 'an unknown end date')
             edu_str = f"The user studied at {inst_name}, pursuing {degree} from {from_date} to {to_date}."
             facts_to_remember.append(edu_str)
-        
+
         logger.info(f"Formatted {len(facts_to_remember)} facts from LinkedIn profile.")
 
         for fact in facts_to_remember:
             process_memory_item.delay(user_id, fact)
-        
+
         logger.info(f"Dispatched {len(facts_to_remember)} facts to Supermemory for user {user_id}.")
         return {"status": "success", "facts_generated": len(facts_to_remember)}
 
@@ -779,7 +745,7 @@ def poll_gcalendar_for_user(user_id: str, polling_state: dict):
 def schedule_all_polling():
     """Celery Beat task to check for and queue polling tasks for all services."""
     logger.info("Polling Scheduler: Checking for due polling tasks...")
-    
+
     async def async_schedule():
         db_manager = GmailPollerDB()
         try:
@@ -789,7 +755,7 @@ def schedule_all_polling():
             for service_name in SUPPORTED_POLLING_SERVICES:
                 due_tasks_states = await db_manager.get_due_polling_tasks_for_service(service_name)
                 logger.info(f"Found {len(due_tasks_states)} due tasks for {service_name}.")
-                
+
                 for task_state in due_tasks_states:
                     user_id = task_state["user_id"]
                     locked_task_state = await db_manager.set_polling_status_and_get(user_id, service_name)
@@ -874,7 +840,7 @@ async def async_run_due_tasks():
         for task in due_tasks:
             logger.info(f"Scheduler: Queuing user-defined task {task['task_id']} for execution.")
             execute_task_plan.delay(task['task_id'], task['user_id'])
-            
+
             # For recurring tasks, calculate the next run time.
             # For one-off tasks, this will effectively be cleared.
             next_run_time = None
@@ -887,7 +853,7 @@ async def async_run_due_tasks():
             }
             # One-off tasks have their next_execution_at set to None, so they won't run again.
             # Their status will be updated to 'processing' -> 'completed'/'error' by the executor.
-            
+
             await db_manager.tasks_collection.update_one(
                 {"_id": task["_id"]},
                 {"$set": update_fields}

@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "framer-motion"
 import NotificationsOverlay from "@components/NotificationsOverlay"
 import { IconBell } from "@tabler/icons-react"
-import FloatingNav from "@components/FloatingNav"
+import Sidebar from "@components/Sidebar"
 import CommandPalette from "./CommandPallete"
 import { useGlobalShortcuts } from "@hooks/useGlobalShortcuts"
 
@@ -55,7 +55,7 @@ export default function LayoutWrapper({ children }) {
 					)
 				ws.onmessage = (event) => {
 					const data = JSON.parse(event.data)
-          if (data.type === "task_progress_update") {
+					if (data.type === "task_progress_update") {
 						// Dispatch a custom event that the tasks page can listen for
 						window.dispatchEvent(
 							new CustomEvent("taskProgressUpdate", {
@@ -98,9 +98,8 @@ export default function LayoutWrapper({ children }) {
 	}, [])
 
 	// Use the new custom hook for shortcuts
-	useGlobalShortcuts(
-		handleNotificationsOpen,
-		() => setCommandPaletteOpen((prev) => !prev)
+	useGlobalShortcuts(handleNotificationsOpen, () =>
+		setCommandPaletteOpen((prev) => !prev)
 	)
 
 	useEffect(() => {
@@ -116,7 +115,7 @@ export default function LayoutWrapper({ children }) {
 
 	return (
 		<>
-			{showNav && <FloatingNav />}
+			{showNav && <Sidebar />}
 			{showNav && (
 				<CommandPalette
 					open={isCommandPaletteOpen}
@@ -124,7 +123,7 @@ export default function LayoutWrapper({ children }) {
 				/>
 			)}
 			{children}
-			{showNav && (
+			{showNav && !isMobile() && (
 				<>
 					<button
 						onClick={handleNotificationsOpen}
@@ -151,4 +150,10 @@ export default function LayoutWrapper({ children }) {
 			)}
 		</>
 	)
+}
+const isMobile = () => {
+	if (typeof window !== "undefined") {
+		return window.innerWidth < 768
+	}
+	return false
 }

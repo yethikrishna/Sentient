@@ -1426,7 +1426,7 @@ const ProfilePage = () => {
 	)
 
 	return (
-		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
+		<div className="flex-1 flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden md:pl-20">
 			<Tooltip
 				id="settings-tooltip"
 				place="right-start"
@@ -1437,7 +1437,7 @@ const ProfilePage = () => {
 				place="right-start"
 				style={{ zIndex: 9999 }}
 			/>
-			<div className="flex-1 flex flex-col overflow-hidden relative">
+			<div className="flex-1 flex flex-col overflow-hidden relative w-full">
 				<main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 custom-scrollbar">
 					<HelpTooltip content="Customize your experience here. Teach Sentient about yourself, change its personality, manage notifications, and connect your LinkedIn profile." />
 					<div className="w-full max-w-5xl mx-auto space-y-10">
@@ -1463,3 +1463,4 @@ const ProfilePage = () => {
 }
 
 export default ProfilePage
+

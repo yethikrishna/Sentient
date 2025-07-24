@@ -700,7 +700,7 @@ const IntegrationsPage = () => {
 	}, [fetchIntegrations])
 
 	return (
-		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
+		<div className="flex-1 flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden md:pl-20">
 			<Tooltip
 				id="integrations-tooltip"
 				place="right-start"
@@ -815,3 +815,4 @@ const IntegrationsPage = () => {
 }
 
 export default IntegrationsPage
+

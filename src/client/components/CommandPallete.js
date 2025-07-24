@@ -42,7 +42,7 @@ const CommandPalette = ({ open, setOpen }) => {
 
 				<Command.Group heading="Navigation">
 					<Command.Item
-						onSelect={() => runCommand(() => router.push("/home"))}
+						onSelect={() => runCommand(() => router.push("/chat"))}
 					>
 						<IconHome className="mr-2 h-4 w-4" />
 						Go to Home

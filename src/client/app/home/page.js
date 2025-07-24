@@ -18,23 +18,20 @@ export default function HomePage() {
 	const [isStreaming, setIsStreaming] = useState(false)
 	const messagesEndRef = useRef(null)
 
+	// Existing useEffect for params and pathname
 	useEffect(() => {
 		const urlChatId =
 			params.chatId ||
 			(Array.isArray(params.slug) ? params.slug[0] : null)
-
-		// If there's no chatId AND we're on the /chat route => reset everything
 		if (!urlChatId && pathname === "/chat") {
 			setMessages([])
 			setChatId(null)
 			return
 		}
-
 		setChatId(urlChatId)
 	}, [params, pathname])
 
-
-
+	// Existing useEffect for fetching history
 	useEffect(() => {
 		const fetchHistory = async () => {
 			if (!chatId) {
@@ -60,6 +57,22 @@ export default function HomePage() {
 		fetchHistory()
 	}, [chatId])
 
+	// New useEffect for route change
+	useEffect(() => {
+		const handleRouteChange = (url) => {
+			if (url === "/chat") {
+				setMessages([])
+				setChatId(null)
+			}
+		}
+
+		router.events.on("routeChangeComplete", handleRouteChange)
+
+		return () => {
+			router.events.off("routeChangeComplete", handleRouteChange)
+		}
+	}, [router])
+
 	const scrollToBottom = useCallback(() => {
 		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
 	}, [])
@@ -71,7 +84,6 @@ export default function HomePage() {
 		setChatId(null) // clear current chatId so that new chat gets created
 		router.push("/chat") // navigate to base chat page
 	}
-
 
 	const handleSend = async (e) => {
 		e.preventDefault()

@@ -17,6 +17,29 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 		setSchedule(baseSchedule)
 	}
 
+	const handleRunAtChange = (e) => {
+		const localDateTimeString = e.target.value
+		if (localDateTimeString) {
+			// The input value is a string like "2024-07-26T09:00".
+			// new Date() will parse this as 9 AM in the browser's local timezone.
+			const localDate = new Date(localDateTimeString)
+			// .toISOString() converts it to a UTC string, which is what we want to store.
+			setSchedule({ ...schedule, run_at: localDate.toISOString() })
+		} else {
+			setSchedule({ ...schedule, run_at: null })
+		}
+	}
+
+	const getLocalDateTimeString = (isoString) => {
+		if (!isoString) return ""
+		const date = new Date(isoString)
+		const tzOffset = date.getTimezoneOffset() * 60000 // offset in milliseconds
+		const localISOTime = new Date(date.getTime() - tzOffset)
+			.toISOString()
+			.slice(0, 16)
+		return localISOTime
+	}
+
 	const handleDayToggle = (day) => {
 		const currentDays = schedule.days || []
 		const newDays = currentDays.includes(day)
@@ -55,16 +78,8 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 					</label>
 					<input
 						type="datetime-local"
-						value={
-							schedule.run_at
-								? new Date(schedule.run_at)
-										.toISOString()
-										.slice(0, 16)
-								: ""
-						}
-						onChange={(e) =>
-							setSchedule({ ...schedule, run_at: e.target.value })
-						}
+						value={getLocalDateTimeString(schedule.run_at)}
+						onChange={handleRunAtChange}
 						className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:border-blue-500"
 					/>
 					<p className="text-xs text-gray-500 mt-1">
@@ -94,18 +109,9 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 						</select>
 					</div>
 					<div>
-						<label
-							className="text-xs text-gray-400 block mb-1"
-							data-tooltip-id="schedule-tooltip"
-							data-tooltip-content="Tasks are scheduled in Coordinated Universal Time (UTC) to ensure consistency across timezones."
-						>
-							Time (UTC)
+						<label className="text-xs text-gray-400 block mb-1">
+							Time (Local)
 						</label>
-						<Tooltip
-							place="top"
-							id="schedule-tooltip"
-							style={{ zIndex: 99999 }}
-						/>
 						<input
 							type="time"
 							value={schedule.time || "09:00"}

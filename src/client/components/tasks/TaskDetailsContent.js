@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import toast from "react-hot-toast"
 import { cn } from "@utils/cn"
 import { taskStatusColors, priorityMap } from "./constants"
@@ -10,10 +10,59 @@ import {
 	IconSparkles,
 	IconUser,
 	IconX,
-	IconLoader
+	IconLoader,
+	IconSend
 } from "@tabler/icons-react"
 import ScheduleEditor from "@components/tasks/ScheduleEditor"
 import ExecutionUpdate from "./ExecutionUpdate"
+import ChatBubble from "@components/ChatBubble"
+
+const TaskChatSection = ({ task, onSendChatMessage }) => {
+	const [message, setMessage] = useState("")
+	const chatEndRef = React.useRef(null)
+
+	useEffect(() => {
+		chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
+	}, [task.chat_history])
+
+	const handleSend = () => {
+		if (message.trim()) {
+			onSendChatMessage(task.task_id, message)
+			setMessage("")
+		}
+	}
+
+	return (
+		<div className="mt-6 pt-6 border-t border-neutral-800">
+			<h4 className="font-semibold text-neutral-300 mb-4">
+				Task Conversation
+			</h4>
+			<div className="space-y-4 max-h-64 overflow-y-auto custom-scrollbar pr-2">
+				{(task.chat_history || []).map((msg, index) => (
+					<ChatBubble key={index} message={msg.content} isUser={msg.role === 'user'} />
+				))}
+				<div ref={chatEndRef} />
+			</div>
+			<div className="mt-4 flex items-center gap-2">
+				<input
+					type="text"
+					value={message}
+					onChange={(e) => setMessage(e.target.value)}
+					onKeyDown={(e) => e.key === "Enter" && handleSend()}
+					placeholder="Ask for changes or follow-ups..."
+					className="flex-grow p-2 bg-neutral-800 border border-neutral-700 rounded-lg text-sm"
+				/>
+				<button
+					onClick={handleSend}
+					className="p-2 bg-blue-600 rounded-lg text-white hover:bg-blue-500 disabled:opacity-50"
+					disabled={!message.trim()}
+				>
+					<IconSend size={16} />
+				</button>
+			</div>
+		</div>
+	)
+}
 
 // New component for handling clarification questions
 const ClarificationInputSection = ({ run, task, onAnswerClarifications }) => {
@@ -98,7 +147,8 @@ const TaskDetailsContent = ({
 	handleStepChange,
 	allTools,
 	integrations,
-	onAnswerClarifications
+	onAnswerClarifications,
+	onSendChatMessage
 }) => {
 	if (!task) {
 		return null
@@ -431,6 +481,10 @@ const TaskDetailsContent = ({
 						)}
 					</div>
 				))
+			)}
+
+			{(task.status === "completed" || (task.chat_history && task.chat_history.length > 0)) && (
+				<TaskChatSection task={task} onSendChatMessage={onSendChatMessage} />
 			)}
 		</div>
 	)

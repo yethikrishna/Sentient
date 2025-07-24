@@ -139,6 +139,13 @@ async def update_task(
     update_data = request.dict(exclude_unset=True)
     update_data.pop("taskId", None)
 
+    # If the schedule is being updated, inject the user's timezone for recurring tasks.
+    if 'schedule' in update_data and update_data['schedule']:
+        if update_data['schedule'].get('type') == 'recurring':
+            user_profile = await mongo_manager.get_user_profile(user_id)
+            user_timezone_str = user_profile.get("userData", {}).get("personalInfo", {}).get("timezone", "UTC")
+            update_data['schedule']['timezone'] = user_timezone_str
+
     # If assignee is changed to 'ai' and task is in a non-planned state, trigger planning
     if 'assignee' in update_data and update_data['assignee'] == 'ai':
         if task.get('status') == 'pending': # Assuming 'pending' is the status for user-assigned tasks
@@ -246,6 +253,7 @@ async def approve_task(
     schedule_data = task_doc.get("schedule") or {}
 
     if schedule_data.get("type") == "recurring":
+        # The schedule object should contain the user's timezone, added when the task was created/updated.
         next_run = calculate_next_run(schedule_data)
         if next_run:
             update_data["next_execution_at"] = next_run
@@ -256,7 +264,11 @@ async def approve_task(
             update_data["error"] = "Could not calculate next run time for recurring task."
     elif schedule_data.get("type") == "once" and schedule_data.get("run_at"):
         run_at_time_str = schedule_data.get("run_at")
-        run_at_time = datetime.fromisoformat(run_at_time_str).replace(tzinfo=timezone.utc)
+        run_at_time = datetime.fromisoformat(run_at_time_str)
+        # Ensure datetime is timezone-aware for comparison. New data will have 'Z' and be aware.
+        if run_at_time.tzinfo is None:
+            # This branch is for backward compatibility. It ASSUMES the naive datetime was stored as UTC.
+            run_at_time = run_at_time.replace(tzinfo=timezone.utc)
         if run_at_time > datetime.now(timezone.utc):
             update_data["next_execution_at"] = run_at_time
             update_data["status"] = "pending"
@@ -348,4 +360,22 @@ async def internal_progress_update(request: ProgressUpdateRequest):
     except Exception as e:
         logger.error(f"Failed to push progress update via websocket for task {request.task_id}: {e}", exc_info=True)
         # Don't fail the worker, just log it.
+        return {"status": "error", "detail": str(e)}
+
+@router.post("/internal/task-update-push", include_in_schema=False)
+async def internal_task_update_push(request: ProgressUpdateRequest): # Reusing model for convenience
+    """
+    Internal endpoint for workers to tell the main server to push a generic
+    'tasks have changed' notification to the client via WebSocket.
+    """
+    logger.info(f"Received internal request to push task list update for user {request.user_id}")
+    try:
+        await websocket_manager.send_personal_json_message(
+            {"type": "task_list_updated"},
+            request.user_id,
+            connection_type="notifications"
+        )
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Failed to push task list update via websocket for user {request.user_id}: {e}", exc_info=True)
         return {"status": "error", "detail": str(e)}

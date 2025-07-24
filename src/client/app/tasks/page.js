@@ -105,6 +105,21 @@ function TasksPageContent() {
 	const [groupBy, setGroupBy] = useState("status")
 	const [isAddingNewTask, setIsAddingNewTask] = useState(false)
 
+	// Keep selectedTask in sync with the main tasks list
+	useEffect(() => {
+		if (selectedTask) {
+			const updatedSelectedTask = tasks.find(
+				(t) => t.task_id === selectedTask.task_id
+			)
+			if (updatedSelectedTask) {
+				setSelectedTask(updatedSelectedTask)
+			} else {
+				// If task is not in the list anymore (e.g., deleted), close the panel.
+				setSelectedTask(null)
+			}
+		}
+	}, [tasks, selectedTask])
+
 	// Check for query param to auto-open demo on first visit from onboarding
 	useEffect(() => {
 		const showDemo = searchParams.get("show_demo")
@@ -166,6 +181,17 @@ function TasksPageContent() {
 		fetchTasks()
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [])
+
+	// Listen for custom event from LayoutWrapper to refresh tasks
+	useEffect(() => {
+		const handleBackendUpdate = () => {
+			console.log("Received tasksUpdatedFromBackend event, fetching tasks...")
+			toast.success("Task list updated from backend.")
+			fetchTasks()
+		}
+		window.addEventListener("tasksUpdatedFromBackend", handleBackendUpdate)
+		return () => window.removeEventListener("tasksUpdatedFromBackend", handleBackendUpdate)
+	}, [fetchTasks])
 
 	// Listen for real-time progress updates from WebSocket
 	useEffect(() => {
@@ -349,6 +375,17 @@ function TasksPageContent() {
 		)
 	}
 
+	const handleSendTaskChatMessage = (taskId, message) =>
+		handleAction(
+			() =>
+				fetch("/api/tasks/chat", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ taskId, message })
+				}),
+			"Message sent. Re-planning task..."
+		)
+
 	const handleUpdateTask = async (updatedTask) => {
 		await handleAction(
 			() =>
@@ -450,18 +487,13 @@ function TasksPageContent() {
 						handleRerunTask(taskId)
 						setSelectedTask(null)
 					}}
-					onAnswerClarifications={(taskId, answers) => {
-						handleAnswerClarifications(taskId, answers)
-						setSelectedTask(null)
-					}}
+					onAnswerClarifications={handleAnswerClarifications}
 					onArchiveTask={(taskId) => {
 						handleArchiveTask(taskId)
 						setSelectedTask(null)
 					}}
-					onMarkComplete={(taskId) => {
-						handleMarkComplete(taskId)
-						setSelectedTask(null)
-					}}
+					onMarkComplete={handleMarkComplete}
+					onSendChatMessage={handleSendTaskChatMessage}
 				/>
 			</div>
 

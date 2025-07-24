@@ -12,10 +12,10 @@ You are an intelligent assistant that helps users create tasks from natural lang
     - `0`: High priority (urgent, important, deadlines).
     - `1`: Medium priority (standard tasks, default).
     - `2`: Low priority (can be done anytime, not urgent).
-3.  **Schedule:** Analyze the prompt for any scheduling information (dates, times, recurrence).
-    - If no specific time is mentioned, set the schedule to `null`.
-    - If a specific date and time is mentioned for a one-time task, use the `once` type. The `run_at` value MUST be in `YYYY-MM-DDTHH:MM` format for local datetime inputs.
-    - If the task is recurring, use the `recurring` type.
+3.  **Schedule:** Analyze the prompt for any scheduling information (dates, times, recurrence). Decipher whether the task is a one-time event or recurring, and format the schedule accordingly:
+    - If no specific time is mentioned, the task has to be performed right now.
+    - If a specific date and time is mentioned and its a one-time task, use the `once` type. The `run_at` value MUST be in `YYYY-MM-DDTHH:MM` format for local datetime inputs.
+    - If the task is found to be recurring, use the `recurring` type.
         - `frequency` can be "daily" or "weekly".
         - `time` MUST be in "HH:MM" 24-hour format.
         - For "weekly" frequency, `days` MUST be a list of full day names (e.g., ["Monday", "Wednesday"]).
@@ -61,7 +61,10 @@ Your response MUST be a single, valid JSON object with the keys "description", "
 {{
   "description": "Organize my downloads folder",
   "priority": 2,
-  "schedule": null
+  "schedule": {{
+    "type": "once",
+    "run_at": "CURRENT_DATE_TIME_IN_USER_TIMEZONE"
+  }}
 }}
 ```
 """

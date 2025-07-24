@@ -12,8 +12,8 @@ from typing import Dict, Any, Optional, List
 from main.analytics import capture_event
 
 from workers.config import SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX, SUPPORTED_POLLING_SERVICES
-from json_extractor import JsonExtractor
-from workers.utils.api_client import notify_user 
+from json_extractor import JsonExtractor 
+from workers.utils.api_client import notify_user, push_task_list_update
 from main.tasks.prompts import TASK_CREATION_PROMPT
 from main.llm import get_qwen_assistant
 from workers.celery_app import celery_app
@@ -204,6 +204,9 @@ async def async_refine_and_plan_ai_task(task_id: str):
 
         parsed_data = JsonExtractor.extract_valid_json(clean_llm_output(response_str))
         if parsed_data:
+            # Inject user's timezone into the schedule object if it exists
+            if 'schedule' in parsed_data and parsed_data.get('schedule'):
+                parsed_data['schedule']['timezone'] = user_timezone_str
             # Ensure description is not empty, fall back to original prompt if needed
             if not parsed_data.get("description"):
                 parsed_data["description"] = task["description"]
@@ -222,45 +225,44 @@ async def async_refine_and_plan_ai_task(task_id: str):
     finally:
         await db_manager.close()
 
-@celery_app.task(name="process_task_change_request")
-def process_task_change_request(task_id: str, user_id: str, user_message: str):
-    """Processes a user's change request on a completed task via the in-task chat."""
-    logger.info(f"Task Change Request: Received for task {task_id} from user {user_id}. Message: '{user_message}'")
-    run_async(async_process_change_request(task_id, user_id, user_message))
+@celery_app.task(name="generate_chat_title")
+def generate_chat_title(chat_id: str, user_id: str):
+    """
+    Generates a concise title for a chat session based on its first message.
+    """
+    logger.info(f"Generating title for chat_id: {chat_id}")
+    run_async(async_generate_chat_title(chat_id, user_id))
 
-async def async_process_change_request(task_id: str, user_id: str, user_message: str):
-    """Async logic for handling task change requests."""
+async def async_generate_chat_title(chat_id: str, user_id: str):
     db_manager = PlannerMongoManager()
     try:
-        # 1. Fetch the task and its full history
-        task = await db_manager.get_task(task_id)
-        if not task:
-            logger.error(f"Task Change Request: Task {task_id} not found.")
+        chat = await db_manager.chats_collection.find_one({"chat_id": chat_id, "user_id": user_id})
+        if not chat or not chat.get("messages"):
+            logger.warning(f"Cannot generate title: Chat {chat_id} not found or has no messages.")
             return
 
-        # 2. Append user message to the task's chat history
-        chat_history = task.get("chat_history", [])
-        chat_history.append({
-            "role": "user",
-            "content": user_message,
-            "timestamp": datetime.datetime.now(datetime.timezone.utc)
-        })
+        first_user_message = chat["messages"][0].get("content", "")
+        if len(first_user_message) < 10:
+            # Title is already good enough, or message too short to summarize
+            return
 
-        # 3. Update task status and chat history in DB
-        await db_manager.update_task_field(task_id, {
-            "chat_history": chat_history,
-            "status": "planning" # Revert to planning to re-evaluate
-        })
+        system_prompt = "You are a title generator. Create a very short, concise title (5 words max) for the following user query. Do not use quotes or any extra text. Just provide the title."
+        agent = get_qwen_assistant(system_message=system_prompt)
+        messages = [{'role': 'user', 'content': first_user_message}]
 
-        await notify_user(user_id, f"I've received your changes for '{task.get('description', 'the task')}' and will start working on them.", task_id)
+        title = ""
+        for chunk in agent.run(messages=messages):
+            if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
+                title = chunk[-1].get("content", "").strip().strip('"')
 
-        # 4. Re-trigger the main planner task
-        generate_plan_from_context.delay(task_id)
-        logger.info(f"Task Change Request: Dispatched task {task_id} back to planner with new context.")
+        if title:
+            await db_manager.update_chat(user_id, chat_id, {"title": title})
+            logger.info(f"Successfully generated and updated title for chat {chat_id}: '{title}'")
     except Exception as e:
-        logger.error(f"Error in async_process_change_request for task {task_id}: {e}", exc_info=True)
+        logger.error(f"Error generating title for chat {chat_id}: {e}", exc_info=True)
     finally:
         await db_manager.close()
+
 @celery_app.task(name="process_task_change_request")
 def process_task_change_request(task_id: str, user_id: str, user_message: str):
     """Processes a user's change request on a completed task via the in-task chat."""
@@ -609,6 +611,11 @@ async def async_generate_plan(task_id: str):
             user_id, f"I've created a new plan for you: '{plan_data.get('description', '...')[:50]}...'", task_id,
             notification_type="taskNeedsApproval"
         )
+        
+        # CRITICAL: Notify the frontend to refresh its task list
+        await push_task_list_update(user_id, task_id, run_id)
+        logger.info(f"Sent task_list_updated push notification for user {user_id}")
+
 
     except Exception as e:
         logger.error(f"Error generating plan for task {task_id}: {e}", exc_info=True)
@@ -741,6 +748,9 @@ async def async_refine_task_details(task_id: str):
 
         parsed_data = JsonExtractor.extract_valid_json(clean_llm_output(response_str))
         if parsed_data:
+            # Inject user's timezone into the schedule object if it exists
+            if 'schedule' in parsed_data and parsed_data.get('schedule'):
+                parsed_data['schedule']['timezone'] = user_timezone_str
             await db_manager.update_task_field(task_id, parsed_data)
             logger.info(f"Successfully refined and updated task {task_id} with new details.")
 
@@ -795,32 +805,43 @@ def schedule_all_polling():
     run_async(async_schedule())
 
 def calculate_next_run(schedule: Dict[str, Any], last_run: Optional[datetime.datetime] = None) -> Optional[datetime.datetime]:
-    """Calculates the next execution time for a scheduled task."""
-    now = datetime.datetime.now(datetime.timezone.utc)
-    start_time = last_run or now
+    """Calculates the next execution time for a scheduled task in UTC."""
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    user_timezone_str = schedule.get("timezone", "UTC")
+
+    try:
+        user_tz = ZoneInfo(user_timezone_str)
+    except ZoneInfoNotFoundError:
+        logger.warning(f"Invalid timezone '{user_timezone_str}'. Defaulting to UTC.")
+        user_tz = ZoneInfo("UTC")
+
+    # The reference time for 'after' should be in the user's timezone to handle day boundaries correctly
+    start_time_user_tz = (last_run or now_utc).astimezone(user_tz)
 
     try:
         frequency = schedule.get("frequency")
         time_str = schedule.get("time", "00:00")
         hour, minute = map(int, time_str.split(':'))
-        dtstart = start_time.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+        # Create the start datetime in the user's timezone
+        dtstart_user_tz = start_time_user_tz.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
         rule = None
         if frequency == 'daily':
-            rule = rrule.rrule(rrule.DAILY, dtstart=dtstart)
+            rule = rrule.rrule(rrule.DAILY, dtstart=dtstart_user_tz)
         elif frequency == 'weekly':
             days = schedule.get("days", [])
             if not days: return None
             weekday_map = {"Sunday": rrule.SU, "Monday": rrule.MO, "Tuesday": rrule.TU, "Wednesday": rrule.WE, "Thursday": rrule.TH, "Friday": rrule.FR, "Saturday": rrule.SA}
             byweekday = [weekday_map[day] for day in days if day in weekday_map]
             if not byweekday: return None
-            rule = rrule.rrule(rrule.WEEKLY, dtstart=dtstart, byweekday=byweekday)
+            rule = rrule.rrule(rrule.WEEKLY, dtstart=dtstart_user_tz, byweekday=byweekday)
 
         if rule:
-            next_run = rule.after(start_time)
-            if next_run and next_run.tzinfo is None:
-                next_run = next_run.replace(tzinfo=datetime.timezone.utc)
-            return next_run
+            next_run_user_tz = rule.after(start_time_user_tz)
+            if next_run_user_tz:
+                # Convert the result back to UTC for storage
+                return next_run_user_tz.astimezone(datetime.timezone.utc)
     except Exception as e:
         logger.error(f"Error calculating next run time for schedule {schedule}: {e}")
     return None

@@ -91,6 +91,12 @@ export default function LayoutWrapper({ children }) {
 								detail: data.payload
 							})
 						)
+					} else if (data.type === "task_list_updated") {
+						// This is a generic event telling the app that tasks have changed
+						// on the backend and the UI should refetch them.
+						window.dispatchEvent(
+							new CustomEvent("tasksUpdatedFromBackend")
+						)
 					}
 				}
 				ws.onclose = () => {

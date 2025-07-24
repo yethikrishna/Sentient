@@ -11,11 +11,11 @@ import {
 	IconX,
 	IconArrowRight
 } from "@tabler/icons-react"
-import { formatDistanceToNow } from "date-fns"
+import { formatDistanceToNow, parseISO } from "date-fns"
 
 const NotificationItem = ({ notification, onDelete, onClick }) => {
 	const formattedTimestamp = formatDistanceToNow(
-		new Date(notification.timestamp),
+		parseISO(notification.timestamp),
 		{ addSuffix: true }
 	)
 

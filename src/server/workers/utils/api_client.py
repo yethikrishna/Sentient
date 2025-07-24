@@ -97,3 +97,21 @@ async def push_progress_update(user_id: str, task_id: str, run_id: str, message:
     except Exception as e:
         # Log the error but don't let it crash the worker task.
         logger.error(f"Failed to push progress update to main server for task {task_id}: {e}", exc_info=False)
+async def push_task_list_update(user_id: str, task_id: str, run_id: str):
+    """
+    Calls the main server's internal endpoint to tell the client to refetch its task list.
+    """
+    endpoint = f"{MAIN_SERVER_URL}/tasks/internal/task-update-push"
+    # We can reuse the ProgressUpdateRequest model for simplicity as it has the required fields.
+    payload = {
+        "user_id": user_id,
+        "task_id": task_id,
+        "run_id": run_id,
+        "message": "refresh" # Message content isn't used but good to have
+    }
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.post(endpoint, json=payload, timeout=5)
+            logger.info(f"Pushed task list update notification for user {user_id}.")
+    except Exception as e:
+        logger.error(f"Failed to push task list update to main server for task {task_id}: {e}", exc_info=False)

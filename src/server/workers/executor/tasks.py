@@ -273,7 +273,8 @@ async def async_execute_task_plan(task_id: str, user_id: str):
         messages = [{'role': 'user', 'content': full_plan_prompt}]
         
         logger.info(f"Task {task_id}: Starting agent run.")
-        last_assistant_content = ""
+        last_assistant_content = "" # Buffer for the full response
+        processed_updates_count = 0   # Counter for updates already sent
         
         for current_history in executor_agent.run(messages=messages):
             if not current_history or not isinstance(current_history, list): continue
@@ -282,9 +283,9 @@ async def async_execute_task_plan(task_id: str, user_id: str):
             assistant_turn_start_index = next((i for i, msg in reversed(list(enumerate(current_history))) if msg.get("role") == "user"), -1) + 1
             for msg in current_history[assistant_turn_start_index:]:
                 if msg.get('role') == 'assistant' and msg.get('function_call'):
-                    assistant_turn_content += f'<tool_code name="{msg["function_call"].get("name")}">{msg["function_call"].get("arguments", "{}")}</tool_code>'
+                    assistant_turn_content += f'<tool_code name="{msg["function_call"].get("name")}">{msg["function_call"].get("arguments", "{}")}</tool_code>\n'
                 elif msg.get('role') == 'function':
-                    assistant_turn_content += f'<tool_result tool_name="{msg.get("name")}">{msg.get("content", "")}</tool_result>'
+                    assistant_turn_content += f'<tool_result tool_name="{msg.get("name")}">{msg.get("content", "")}</tool_result>\n'
                 elif msg.get('role') == 'assistant' and isinstance(msg.get('content'), str):
                     assistant_turn_content += msg.get('content', '')
 

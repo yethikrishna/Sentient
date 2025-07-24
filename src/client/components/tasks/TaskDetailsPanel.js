@@ -28,7 +28,8 @@ const TaskDetailsPanel = ({
 	onAnswerClarifications,
 	onArchiveTask,
 	onMarkComplete,
-	className
+	className,
+	onSendChatMessage
 }) => {
 	const [isEditing, setIsEditing] = useState(false)
 	const [editableTask, setEditableTask] = useState(task)
@@ -142,6 +143,7 @@ const TaskDetailsPanel = ({
 							allTools={allTools}
 							integrations={integrations}
 							onAnswerClarifications={onAnswerClarifications}
+							onSendChatMessage={onSendChatMessage}
 						/>
 					</main>
 

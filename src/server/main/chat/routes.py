@@ -111,16 +111,9 @@ async def chat_endpoint(
             }
             yield (json.dumps(error_response) + "\n").encode("utf-8")
         finally:
-            # Save the complete assistant response at the end of the stream
-            if assistant_response_buffer.strip() and chat_id:
-                assistant_message = {
-                    "id": str(uuid.uuid4()),
-                    "role": "assistant",
-                    "content": assistant_response_buffer,
-                    "timestamp": datetime.datetime.now(datetime.timezone.utc)
-                }
-                await mongo_manager.add_message_to_chat(user_id, chat_id, assistant_message)
-                logger.info(f"Saved assistant response to chat {chat_id} for user {user_id}")
+            # The `generate_chat_llm_stream` utility now handles saving the assistant's response.
+            # This prevents duplicate saves and ensures the correct logic is used.
+            logger.info(f"Stream finished for chat {chat_id} for user {user_id}.")
 
     return StreamingResponse(
         event_stream_generator(),

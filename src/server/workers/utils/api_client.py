@@ -4,7 +4,7 @@ import os
 import motor.motor_asyncio
 import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-from typing import Optional
+from typing import Optional, Any
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ async def notify_user(user_id: str, message: str, task_id: Optional[str] = None,
     except Exception as e:
         logger.error(f"An unexpected error occurred while sending notification for {user_id}: {e}", exc_info=True)
 
-async def push_progress_update(user_id: str, task_id: str, run_id: str, message: str):
+async def push_progress_update(user_id: str, task_id: str, run_id: str, message: Any):
     """
     Calls the main server's internal endpoint to push a progress update via WebSocket.
     """

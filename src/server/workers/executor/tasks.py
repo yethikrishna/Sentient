@@ -273,32 +273,32 @@ async def async_execute_task_plan(task_id: str, user_id: str):
         messages = [{'role': 'user', 'content': full_plan_prompt}]
         
         logger.info(f"Task {task_id}: Starting agent run.")
-        last_assistant_content = "" # Buffer for the full response
-        processed_updates_count = 0   # Counter for updates already sent
-        
-        for current_history in executor_agent.run(messages=messages):
-            if not current_history or not isinstance(current_history, list): continue
+        final_history = None
+        for history_step in executor_agent.run(messages=messages):
+            final_history = history_step 
 
-            assistant_turn_content = ""
-            assistant_turn_start_index = next((i for i, msg in reversed(list(enumerate(current_history))) if msg.get("role") == "user"), -1) + 1
-            for msg in current_history[assistant_turn_start_index:]:
-                if msg.get('role') == 'assistant' and msg.get('function_call'):
-                    assistant_turn_content += f'<tool_code name="{msg["function_call"].get("name")}">{msg["function_call"].get("arguments", "{}")}</tool_code>\n'
-                elif msg.get('role') == 'function':
-                    assistant_turn_content += f'<tool_result tool_name="{msg.get("name")}">{msg.get("content", "")}</tool_result>\n'
-                elif msg.get('role') == 'assistant' and isinstance(msg.get('content'), str):
-                    assistant_turn_content += msg.get('content', '')
+        if not final_history:
+            raise Exception("Agent did not produce any output.")
 
-            if len(assistant_turn_content) > len(last_assistant_content):
-                new_content_chunk = assistant_turn_content[len(last_assistant_content):]
-                new_updates = parse_agent_string_to_updates(new_content_chunk)
-                for update in new_updates:
-                    await add_progress_update(db, task_id, run_id, user_id, update, block_id)
-                last_assistant_content = assistant_turn_content
+        assistant_turn_content = ""
+        assistant_turn_start_index = next((i for i, msg in reversed(list(enumerate(final_history))) if msg.get("role") == "user"), -1) + 1
+        for msg in final_history[assistant_turn_start_index:]:
+            if msg.get('role') == 'assistant' and msg.get('function_call'):
+                assistant_turn_content += f'<tool_code name="{msg["function_call"].get("name")}">{msg["function_call"].get("arguments", "{}")}</tool_code>\n'
+            elif msg.get('role') == 'function':
+                assistant_turn_content += f'<tool_result tool_name="{msg.get("name")}">{msg.get("content", "")}</tool_result>\n'
+            elif msg.get('role') == 'assistant' and isinstance(msg.get('content'), str):
+                assistant_turn_content += msg.get('content', '')
 
-        logger.info(f"Task {task_id}: Agent run finished.")
-        final_answer_match = re.search(r'<answer>([\s\S]*?)</answer>', last_assistant_content, re.DOTALL)
-        final_content = final_answer_match.group(1).strip() if final_answer_match else "Task completed. Check the execution log for details."
+        logger.info(f"Task {task_id}: Agent run finished. Full response length: {len(assistant_turn_content)}")
+
+        updates = parse_agent_string_to_updates(assistant_turn_content)
+
+        for update in updates:
+            await add_progress_update(db, task_id, run_id, user_id, update, block_id)
+
+        final_answer_update = next((u for u in reversed(updates) if u.get("type") == "final_answer"), None)
+        final_content = final_answer_update.get("content") if final_answer_update else "Task completed. Check the execution log for details."
 
         logger.info(f"Task {task_id}: Final result: {final_content}")
         await add_progress_update(db, task_id, run_id, user_id, {"type": "info", "content": "Execution script finished."}, block_id=block_id)

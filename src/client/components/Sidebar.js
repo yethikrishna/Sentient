@@ -8,7 +8,8 @@ import {
 	IconLogout,
 	IconPlugConnected,
 	IconUser,
-	IconMessage
+	IconMessage,
+	IconFolder
 } from "@tabler/icons-react"
 import { cn } from "@utils/cn"
 
@@ -24,6 +25,11 @@ const Sidebar = () => {
 	const navLinks = [
 		{ title: "Chat", href: "/chat", icon: <IconMessage size={28} /> },
 		{ title: "Tasks", href: "/tasks", icon: <IconChecklist size={28} /> },
+		{
+			title: "Projects",
+			href: "/projects",
+			icon: <IconFolder size={28} />
+		},
 		{
 			title: "Integrations",
 			href: "/integrations",
@@ -123,4 +129,3 @@ const Sidebar = () => {
 	)
 }
 export default Sidebar
-

@@ -47,7 +47,7 @@ async def get_integration_sources(user_id: str = Depends(auth_helper.get_current
 
         all_sources.append(source_info)
 
-    return JSONResponse(content={"integrations": all_sources})
+    return {"integrations": all_sources}
 
 
 @router.post("/connect/manual", summary="Connect an integration using manual credentials")

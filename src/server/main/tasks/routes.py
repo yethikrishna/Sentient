@@ -63,7 +63,7 @@ async def generate_plan_from_prompt(
 
         task_data = JsonExtractor.extract_valid_json(response_str)
 
-        return JSONResponse(content=task_data)
+        return task_data
 
     except Exception as e:
         logger.error(f"Error generating plan from prompt for user {user_id}: {e}", exc_info=True)
@@ -80,28 +80,34 @@ async def get_task_details(
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 
-    return JSONResponse(content=task)
+    return task
 
 @router.post("/add-task", status_code=status.HTTP_201_CREATED)
 async def add_task(
     request: AddTaskRequest,
     user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"])),
 ):
-	# All new tasks are assigned to the AI by default.
-	# Create a placeholder task immediately.
-	task_data = {
-		"description": request.prompt,
-		"priority": 1,  # Default priority
-		"schedule": None,
-		"assignee": "ai"
-	}
-	task_id = await mongo_manager.add_task(user_id, task_data)
-	if not task_id:
-		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create task.")
+    project_id = request.project_id
+    if project_id:
+        is_member = await mongo_manager.is_user_in_project(user_id, project_id)
+        if not is_member:
+            raise HTTPException(status_code=403, detail="Not a member of this project.")
 
-	# Asynchronously refine details and then trigger planning
-	refine_and_plan_ai_task.delay(task_id)
-	return {"message": "Task accepted! I'll start planning it out.", "task_id": task_id}
+    # All new tasks are assigned to the AI by default.
+    # Create a placeholder task immediately.
+    task_data = {
+        "description": request.prompt,
+        "priority": 1,  # Default priority
+        "schedule": None,
+        "assignee": "ai"
+    }
+    task_id = await mongo_manager.add_task(user_id, task_data, project_id=project_id)
+    if not task_id:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create task.")
+
+    # Asynchronously refine details and then trigger planning
+    refine_and_plan_ai_task.delay(task_id)
+    return {"message": "Task accepted! I'll start planning it out.", "task_id": task_id}
 
 @router.post("/fetch-tasks")
 async def fetch_tasks(

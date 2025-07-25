@@ -1,0 +1,4 @@
+# src/server/mcp_hub/project/requirements.txt
+fastmcp
+python-dotenv
+motor

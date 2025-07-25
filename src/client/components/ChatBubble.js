@@ -171,7 +171,10 @@ const ChatBubble = ({
 	isUser,
 	memoryUsed,
 	agentsUsed,
-	internetUsed
+	internetUsed,
+	senderName,
+	senderPicture,
+	isProjectChat = false
 }) => {
 	const [copied, setCopied] = useState(false)
 	const [expandedStates, setExpandedStates] = useState({})
@@ -350,64 +353,94 @@ const ChatBubble = ({
 
 	return (
 		<div
-			className={`p-4 rounded-lg ${
-				isUser
-					? "bg-[var(--color-accent-blue)] text-white text-base font-medium self-end max-w-[80%] sm:max-w-md lg:max-w-lg"
-					: "bg-transparent text-base text-white self-start w-full"
-			} mb-2 relative`}
+			className={`flex gap-3 w-full ${isUser ? "justify-end" : "justify-start"}`}
 			style={{ wordBreak: "break-word" }}
 		>
-			{renderedContent}
-			{!isUser && (
-				<div className="flex justify-start items-center space-x-4 mt-6">
-					<Tooltip
-						place="right-start"
-						id="chat-bubble-tooltip"
-						style={{ zIndex: 9999 }}
-					/>
-					{memoryUsed && (
-						<span
-							data-tooltip-id="chat-bubble-tooltip"
-							data-tooltip-content="Memory was used to generate this response"
-							className="flex items-center text-[var(--color-accent-blue)]"
-						>
-							<IconBrain size={18} />
-						</span>
-					)}
-					{agentsUsed && (
-						<span
-							data-tooltip-id="chat-bubble-tooltip"
-							data-tooltip-content="Agents were used to process this response"
-							className="flex items-center text-[var(--color-text-secondary)]"
-						>
-							<IconSettings size={18} />
-						</span>
-					)}
-					{internetUsed && (
-						<span
-							data-tooltip-id="chat-bubble-tooltip"
-							data-tooltip-content="Internet was used to gather information for this response"
-							className="flex items-center text-[var(--color-text-secondary)]"
-						>
-							<IconGlobe size={18} />
-						</span>
-					)}
-					<button
-						onClick={handleCopyToClipboard}
-						className="flex items-center text-[var(--color-text-secondary)] hover:text-[var(--color-accent-green)] transition-colors"
-						data-tooltip-id="chat-bubble-tooltip"
-						data-tooltip-content={
-							copied ? "Copied!" : "Copy response"
-						}
-					>
-						{copied ? (
-							<IconCheck size={18} />
-						) : (
-							<IconClipboard size={18} />
-						)}
-					</button>
-				</div>
+			{isProjectChat && !isUser && (
+				<img
+					src="/images/half-logo-dark.svg"
+					alt="Agent"
+					className="w-8 h-8 rounded-full bg-neutral-700 p-1"
+				/>
 			)}
+			{isProjectChat && isUser && senderPicture && (
+				<img
+					src={senderPicture}
+					alt={senderName}
+					className="w-8 h-8 rounded-full"
+				/>
+			)}
+			<div
+				className={`p-4 rounded-lg ${
+					isUser
+						? "bg-[var(--color-accent-blue)] text-white text-base font-medium max-w-[80%] sm:max-w-md lg:max-w-lg"
+						: "bg-neutral-800 text-base text-white w-full"
+				} mb-2 relative`}
+			>
+				{isProjectChat && isUser && (
+					<p className="text-xs font-bold text-blue-200 mb-2">
+						{senderName || "User"}
+					</p>
+				)}
+				{isProjectChat && !isUser && (
+					<p className="text-xs font-bold text-neutral-400 mb-2">
+						Sentient
+					</p>
+				)}
+
+				{renderedContent}
+
+				{!isUser && (
+					<div className="flex justify-start items-center space-x-4 mt-6">
+						<Tooltip
+							place="right-start"
+							id="chat-bubble-tooltip"
+							style={{ zIndex: 9999 }}
+						/>
+						{memoryUsed && (
+							<span
+								data-tooltip-id="chat-bubble-tooltip"
+								data-tooltip-content="Memory was used to generate this response"
+								className="flex items-center text-[var(--color-accent-blue)]"
+							>
+								<IconBrain size={18} />
+							</span>
+						)}
+						{agentsUsed && (
+							<span
+								data-tooltip-id="chat-bubble-tooltip"
+								data-tooltip-content="Agents were used to process this response"
+								className="flex items-center text-[var(--color-text-secondary)]"
+							>
+								<IconSettings size={18} />
+							</span>
+						)}
+						{internetUsed && (
+							<span
+								data-tooltip-id="chat-bubble-tooltip"
+								data-tooltip-content="Internet was used to gather information for this response"
+								className="flex items-center text-[var(--color-text-secondary)]"
+							>
+								<IconGlobe size={18} />
+							</span>
+						)}
+						<button
+							onClick={handleCopyToClipboard}
+							className="flex items-center text-[var(--color-text-secondary)] hover:text-[var(--color-accent-green)] transition-colors"
+							data-tooltip-id="chat-bubble-tooltip"
+							data-tooltip-content={
+								copied ? "Copied!" : "Copy response"
+							}
+						>
+							{copied ? (
+								<IconCheck size={18} />
+							) : (
+								<IconClipboard size={18} />
+							)}
+						</button>
+					</div>
+				)}
+			</div>
 		</div>
 	)
 }

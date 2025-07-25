@@ -148,7 +148,7 @@ async def get_ai_personality_settings(
         if key not in preferences:
             preferences[key] = value
 
-    return JSONResponse(content=preferences)
+    return preferences
 
 
 @router.post("/ai-personality", summary="Update AI Personality Settings")

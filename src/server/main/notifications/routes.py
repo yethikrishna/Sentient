@@ -25,7 +25,7 @@ async def create_notification_internal(request: CreateNotificationRequest):
 @router.get("", summary="Get All User Notifications")
 async def get_notifications(user_id: str = Depends(PermissionChecker(required_permissions=["read:notifications"]))):
     notifications = await mongo_manager.get_notifications(user_id)
-    return JSONResponse(content={"notifications": notifications})
+    return {"notifications": notifications}
 
 @router.post("/delete", summary="Delete a User Notification")
 async def delete_notification(

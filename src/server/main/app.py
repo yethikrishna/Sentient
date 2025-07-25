@@ -20,6 +20,7 @@ from main.notifications.routes import router as notifications_router
 from main.integrations.routes import router as integrations_router
 from main.misc.routes import router as misc_router
 from main.tasks.routes import router as agents_router
+from main.projects.routes import router as projects_router
 from main.settings.routes import router as settings_router # Import the new router
 from main.testing.routes import router as testing_router
 
@@ -28,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 # Add a custom encoder for ObjectId to FastAPI's internal dictionary
 ENCODERS_BY_TYPE[ObjectId] = str
+ENCODERS_BY_TYPE[datetime.datetime] = lambda dt: dt.isoformat()
 
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI):
@@ -56,6 +58,7 @@ app.include_router(notifications_router)
 app.include_router(integrations_router)
 app.include_router(misc_router)
 app.include_router(agents_router)
+app.include_router(projects_router)
 app.include_router(settings_router) # Add the new router
 app.include_router(testing_router)
 

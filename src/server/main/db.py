@@ -19,6 +19,10 @@ POLLING_STATE_COLLECTION = "polling_state_store"
 PROCESSED_ITEMS_COLLECTION = "processed_items_log" 
 TASK_COLLECTION = "tasks"
 CHATS_COLLECTION = "chats"
+# New Collections for Projects
+PROJECTS_COLLECTION = "projects"
+PROJECT_MEMBERS_COLLECTION = "project_members"
+PROJECT_CONTEXT_ITEMS_COLLECTION = "project_context_items"
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +37,10 @@ class MongoManager:
         self.processed_items_collection = self.db[PROCESSED_ITEMS_COLLECTION]
         self.task_collection = self.db[TASK_COLLECTION]
         self.chats_collection = self.db[CHATS_COLLECTION]
+        # New Collections
+        self.projects_collection = self.db[PROJECTS_COLLECTION]
+        self.project_members_collection = self.db[PROJECT_MEMBERS_COLLECTION]
+        self.project_context_items_collection = self.db[PROJECT_CONTEXT_ITEMS_COLLECTION]
         
         print(f"[{datetime.datetime.now()}] [MainServer_MongoManager] Initialized. Database: {MONGO_DB_NAME}")
 
@@ -67,12 +75,27 @@ class MongoManager:
                 IndexModel([("user_id", ASCENDING), ("created_at", DESCENDING)], name="task_user_created_idx"),
                 IndexModel([("user_id", ASCENDING), ("status", ASCENDING), ("priority", ASCENDING)], name="task_user_status_priority_idx"),
                 IndexModel([("status", ASCENDING), ("agent_id", ASCENDING)], name="task_status_agent_idx", sparse=True), 
-                IndexModel([("task_id", ASCENDING)], unique=True, name="task_id_unique_idx")
+                IndexModel([("task_id", ASCENDING)], unique=True, name="task_id_unique_idx"),
+                IndexModel([("project_id", ASCENDING)], name="task_project_id_idx", sparse=True)
             ],
             self.chats_collection: [
                 IndexModel([("user_id", ASCENDING), ("updated_at", DESCENDING)], name="chat_user_updated_idx"),
                 IndexModel([("chat_id", ASCENDING)], unique=True, name="chat_id_unique_idx"),
-                IndexModel([("user_id", ASCENDING)], name="chat_user_id_idx")
+                IndexModel([("user_id", ASCENDING)], name="chat_user_id_idx"),
+                IndexModel([("project_id", ASCENDING)], name="chat_project_id_idx", sparse=True)
+            ],
+            # New Collections and Indexes
+            self.projects_collection: [
+                IndexModel([("project_id", ASCENDING)], unique=True, name="project_id_unique_idx"),
+                IndexModel([("owner_id", ASCENDING)], name="project_owner_id_idx")
+            ],
+            self.project_members_collection: [
+                IndexModel([("project_id", ASCENDING), ("user_id", ASCENDING)], unique=True, name="project_member_unique_idx"),
+                IndexModel([("user_id", ASCENDING)], name="project_member_user_id_idx")
+            ],
+            self.project_context_items_collection: [
+                IndexModel([("project_id", ASCENDING)], name="context_project_id_idx"),
+                IndexModel([("item_id", ASCENDING)], unique=True, name="context_item_id_unique_idx")
             ],
         }
 
@@ -218,8 +241,8 @@ class MongoManager:
         return result.matched_count > 0 or result.upserted_id is not None
 
     # --- Task Methods ---
-    async def add_task(self, user_id: str, task_data: dict) -> str:
-        """Creates a new task document and returns its ID."""
+    async def add_task(self, user_id: str, task_data: dict, project_id: Optional[str] = None) -> str:
+        """Creates a new task document, optionally associating it with a project."""
         task_id = str(uuid.uuid4())
         now_utc = datetime.datetime.now(datetime.timezone.utc)
 
@@ -245,6 +268,8 @@ class MongoManager:
         task_doc = {
             "task_id": task_id,
             "user_id": user_id,
+            "creator_id": user_id,
+            "project_id": project_id,
             "description": task_data.get("description", "New Task"),
             "status": "planning",
             "assignee": "ai",
@@ -269,8 +294,8 @@ class MongoManager:
         return await self.task_collection.find_one({"task_id": task_id, "user_id": user_id})
 
     async def get_all_tasks_for_user(self, user_id: str) -> List[Dict]:
-        """Fetches all tasks for a given user."""
-        cursor = self.task_collection.find({"user_id": user_id}).sort("created_at", -1)
+        """Fetches all personal (non-project) tasks for a given user."""
+        cursor = self.task_collection.find({"user_id": user_id, "project_id": None}).sort("created_at", -1)
         return await cursor.to_list(length=None)
 
     async def update_task(self, task_id: str, updates: Dict) -> bool:
@@ -381,22 +406,23 @@ class MongoManager:
         return new_task_id
 
     # --- Chat Methods ---
-    async def get_user_chats(self, user_id: str) -> List[Dict]:
-        """Fetches all chat sessions for a user, sorted by last updated."""
+    async def get_user_chats(self, user_id: str) -> List[Dict]: # noqa: E501
+        """Fetches all personal (non-project) chat sessions for a user, sorted by last updated."""
         cursor = self.chats_collection.find(
-            {"user_id": user_id},
+            {"user_id": user_id, "project_id": None},
             {"chat_id": 1, "title": 1, "updated_at": 1, "_id": 0}
         ).sort("updated_at", DESCENDING)
         return await cursor.to_list(length=100) # Limit to 100 chats
 
     async def get_chat(self, user_id: str, chat_id: str) -> Optional[Dict]:
-        """Fetches a single chat session with all messages."""
-        return await self.chats_collection.find_one(
-            {"user_id": user_id, "chat_id": chat_id}
-        )
+        """
+        Fetches a single chat session. The route handler is responsible for permission checking
+        (i.e., if it's a personal chat or if the user is a member of the project chat).
+        """
+        return await self.chats_collection.find_one({"chat_id": chat_id})
 
-    async def create_chat(self, user_id: str, first_message: Dict) -> str:
-        """Creates a new chat session."""
+    async def create_chat(self, user_id: str, first_message: Dict, project_id: Optional[str] = None) -> str:
+        """Creates a new chat session, optionally associating it with a project."""
         chat_id = str(uuid.uuid4())
         now = datetime.datetime.now(datetime.timezone.utc)
         chat_doc = {
@@ -405,19 +431,20 @@ class MongoManager:
             "title": first_message.get("content", "New Chat")[:50], # Temporary title
             "created_at": now,
             "updated_at": now,
-            "messages": [first_message]
+            "messages": [first_message],
+            "project_id": project_id
         }
         await self.chats_collection.insert_one(chat_doc)
         return chat_id
 
-    async def add_message_to_chat(self, user_id: str, chat_id: str, message: Dict) -> bool:
+    async def add_message_to_chat(self, chat_id: str, message: Dict) -> bool:
         """Adds a message to an existing chat session."""
         # Ensure message has a timestamp
         if "timestamp" not in message:
             message["timestamp"] = datetime.datetime.now(datetime.timezone.utc)
 
         result = await self.chats_collection.update_one(
-            {"user_id": user_id, "chat_id": chat_id},
+            {"chat_id": chat_id},
             {
                 "$push": {"messages": message},
                 "$set": {"updated_at": datetime.datetime.now(datetime.timezone.utc)}
@@ -439,6 +466,108 @@ class MongoManager:
         result = await self.chats_collection.delete_one(
             {"user_id": user_id, "chat_id": chat_id}
         )
+        return result.deleted_count > 0
+
+    # --- Project Methods ---
+    async def create_project(self, name: str, description: str, owner_id: str) -> Dict:
+        project_id = str(uuid.uuid4())
+        now = datetime.datetime.now(datetime.timezone.utc)
+        project_doc = {
+            "project_id": project_id,
+            "name": name,
+            "description": description,
+            "owner_id": owner_id,
+            "created_at": now,
+            "updated_at": now
+        }
+        await self.projects_collection.insert_one(project_doc)
+        return project_doc
+
+    async def add_project_member(self, project_id: str, user_id: str, role: str) -> bool:
+        now = datetime.datetime.now(datetime.timezone.utc)
+        member_doc = {
+            "project_id": project_id,
+            "user_id": user_id,
+            "role": role,
+            "joined_at": now
+        }
+        try:
+            await self.project_members_collection.insert_one(member_doc)
+            return True
+        except DuplicateKeyError:
+            logger.warning(f"User {user_id} is already a member of project {project_id}.")
+            return False
+
+    async def get_projects_for_user(self, user_id: str) -> List[Dict]:
+        pipeline = [
+            {"$match": {"user_id": user_id}},
+            {"$lookup": {
+                "from": "projects",
+                "localField": "project_id",
+                "foreignField": "project_id",
+                "as": "project_details"
+            }},
+            {"$unwind": "$project_details"},
+            {"$replaceRoot": {"newRoot": "$project_details"}}
+        ]
+        cursor = self.project_members_collection.aggregate(pipeline)
+        return await cursor.to_list(length=None)
+
+    async def get_project_by_id(self, project_id: str) -> Optional[Dict]:
+        return await self.projects_collection.find_one({"project_id": project_id})
+
+    async def is_user_in_project(self, user_id: str, project_id: str) -> bool:
+        count = await self.project_members_collection.count_documents(
+            {"project_id": project_id, "user_id": user_id}
+        )
+        return count > 0
+
+    async def is_project_owner(self, user_id: str, project_id: str) -> bool:
+        project = await self.get_project_by_id(project_id)
+        return project is not None and project.get("owner_id") == user_id
+
+    async def get_project_members(self, project_id: str) -> List[Dict]:
+        cursor = self.project_members_collection.find({"project_id": project_id})
+        return await cursor.to_list(length=None)
+
+    async def remove_project_member(self, project_id: str, user_id_to_remove: str) -> bool:
+        result = await self.project_members_collection.delete_one(
+            {"project_id": project_id, "user_id": user_id_to_remove}
+        )
+        return result.deleted_count > 0
+
+    async def delete_project_and_members(self, project_id: str) -> bool:
+        await self.project_members_collection.delete_many({"project_id": project_id})
+        await self.chats_collection.delete_many({"project_id": project_id})
+        await self.task_collection.delete_many({"project_id": project_id})
+        await self.project_context_items_collection.delete_many({"project_id": project_id})
+        result = await self.projects_collection.delete_one({"project_id": project_id})
+        return result.deleted_count > 0
+
+    async def get_chats_for_project(self, project_id: str) -> List[Dict]:
+        cursor = self.chats_collection.find(
+            {"project_id": project_id},
+            {"chat_id": 1, "title": 1, "updated_at": 1, "_id": 0}
+        ).sort("updated_at", DESCENDING)
+        return await cursor.to_list(length=None)
+
+    async def get_tasks_for_project(self, project_id: str) -> List[Dict]:
+        cursor = self.task_collection.find({"project_id": project_id}).sort("created_at", -1)
+        return await cursor.to_list(length=None)
+
+    async def add_context_item(self, project_id: str, creator_id: str, item_type: str, content: Any) -> Dict:
+        item_id = str(uuid.uuid4())
+        now = datetime.datetime.now(datetime.timezone.utc)
+        item_doc = {"item_id": item_id, "project_id": project_id, "creator_id": creator_id, "type": item_type, "content": content, "created_at": now}
+        await self.project_context_items_collection.insert_one(item_doc)
+        return item_doc
+
+    async def get_context_items(self, project_id: str) -> List[Dict]:
+        cursor = self.project_context_items_collection.find({"project_id": project_id}).sort("created_at", ASCENDING)
+        return await cursor.to_list(length=None)
+
+    async def delete_context_item(self, item_id: str) -> bool:
+        result = await self.project_context_items_collection.delete_one({"item_id": item_id})
         return result.deleted_count > 0
 
     async def close(self):

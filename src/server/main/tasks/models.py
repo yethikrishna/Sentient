@@ -11,6 +11,7 @@ class Answer(BaseModel):
 
 class AddTaskRequest(BaseModel):
     prompt: str
+    project_id: Optional[str] = None
 
 class AnswerClarificationsRequest(BaseModel):
     task_id: str

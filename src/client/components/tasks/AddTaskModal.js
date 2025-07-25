@@ -6,9 +6,10 @@ import { motion } from "framer-motion"
 import { IconX, IconLoader, IconSparkles, IconUser } from "@tabler/icons-react"
 import { cn } from "@utils/cn"
 
-const AddTaskModal = ({ onClose, onTaskAdded }) => {
+const AddTaskModal = ({ onClose, onTaskAdded, projectId }) => {
 	const [prompt, setPrompt] = useState("")
-	const [assignee, setAssignee] = useState("ai") // 'ai' or 'user'
+	// In projects, all new tasks are assigned to the AI for planning by default.
+	const assignee = "ai"
 	const [isProcessing, setIsProcessing] = useState(false)
 
 	const handleAddTask = async () => {
@@ -22,7 +23,11 @@ const AddTaskModal = ({ onClose, onTaskAdded }) => {
 			const response = await fetch("/api/tasks/add", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ prompt, assignee })
+				body: JSON.stringify({
+					prompt,
+					assignee,
+					project_id: projectId
+				})
 			})
 
 			const data = await response.json()
@@ -64,6 +69,22 @@ const AddTaskModal = ({ onClose, onTaskAdded }) => {
 					>
 						<IconX size={20} />
 					</button>
+				</div>
+
+				<div className="flex-grow overflow-y-auto custom-scrollbar pr-2">
+					<textarea
+						value={prompt}
+						onChange={(e) => setPrompt(e.target.value)}
+						placeholder="Describe the task for the project..."
+						className="w-full p-3 bg-neutral-800 border border-neutral-700 rounded-lg resize-none focus:border-blue-500 min-h-[120px]"
+						autoFocus
+						onKeyDown={(e) => {
+							if (e.key === "Enter" && !e.shiftKey) {
+								e.preventDefault()
+								handleAddTask()
+							}
+						}}
+					/>
 				</div>
 
 				<div className="mt-6 pt-4 border-t border-[var(--color-primary-surface-elevated)] flex justify-end gap-4 flex-shrink-0">

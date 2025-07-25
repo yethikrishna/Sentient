@@ -5,6 +5,7 @@ import datetime
 class ChatMessageInput(BaseModel):
     messages: List[Dict[str, Any]] # The full conversation history for context
     chatId: Optional[str] = None
+    projectId: Optional[str] = None
     pricing: Optional[str] = "free"
     credits: Optional[int] = 0
 

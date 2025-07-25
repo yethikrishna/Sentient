@@ -283,6 +283,16 @@ INTEGRATIONS_CONFIG = {
             # URL is constructed dynamically based on user's supermemory_user_id
             "url": None
         }
+    },
+    "project": {
+        "display_name": "Project Context",
+        "description": "Internal tool for accessing shared project context. Allows the agent to list and read text snippets and file information that has been added to a project's shared context.",
+        "auth_type": "internal", # This will hide it from the UI
+        "icon": "IconFolder", # Placeholder, not shown in UI
+        "mcp_server_config": {
+            "name": "project_server",
+            "url": os.getenv("PROJECT_MCP_SERVER_URL", "http://localhost:9020/sse")
+        }
     }
 }
 

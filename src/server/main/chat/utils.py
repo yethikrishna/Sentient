@@ -108,11 +108,12 @@ def _get_tool_lists(user_integrations: Dict) -> Tuple[Dict, Dict]:
     return connected_tools, disconnected_tools
 
 async def generate_chat_llm_stream(
-    user_id: str,
+    sender_user_id: str,
     messages: List[Dict[str, Any]],
     user_context: Dict[str, Any], # Basic context like name, timezone
     preferences: Dict[str, Any],  # Detailed AI personality preferences
-    db_manager: MongoManager) -> AsyncGenerator[Dict[str, Any], None]:
+    db_manager: MongoManager,
+    project_id: Optional[str] = None) -> AsyncGenerator[Dict[str, Any], None]:
     assistant_message_id = str(uuid.uuid4())
 
     try:
@@ -133,9 +134,9 @@ async def generate_chat_llm_stream(
 
         current_user_time = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
 
-        user_profile = await db_manager.get_user_profile(user_id)
+        user_profile = await db_manager.get_user_profile(sender_user_id)
         user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
-        supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id") if user_profile else None
+        supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id") if user_profile else None # This is user-specific, so it should be the sender's
 
         # Get both connected and disconnected tools
         connected_tools, disconnected_tools = _get_tool_lists(user_integrations)
@@ -153,6 +154,14 @@ async def generate_chat_llm_stream(
         for tool_name, config in INTEGRATIONS_CONFIG.items():
             if config.get("auth_type") == "builtin":
                  tool_name_to_desc_map[tool_name] = config.get("description")
+        
+        # --- NEW LOGIC for Project Context ---
+        if project_id:
+            # Add the project tool to the list of available tools for the selector
+            project_tool_config = INTEGRATIONS_CONFIG.get("project", {})
+            if project_tool_config:
+                tool_name_to_desc_map["project"] = project_tool_config.get("description")
+        # --- END NEW LOGIC ---
 
         # Now, populate MCP servers for all available (connected  built-in) tools
         for tool_name in tool_name_to_desc_map.keys():
@@ -160,12 +169,15 @@ async def generate_chat_llm_stream(
             if config:
                 mcp_config = config.get("mcp_server_config")
                 if mcp_config and mcp_config.get("url"):
-                    all_available_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
+                    headers = {"X-User-ID": sender_user_id}
+                    all_available_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": headers}
 
         last_user_query = messages[-1].get("content", "") if messages else ""
         relevant_tool_names = await _select_relevant_tools(last_user_query, tool_name_to_desc_map)
 
         mandatory_tools = {"tasks", "supermemory"}
+        if project_id:
+            mandatory_tools.add("project")
         final_tool_names = set(relevant_tool_names) | mandatory_tools
 
         filtered_mcp_servers = {}
@@ -180,7 +192,7 @@ async def generate_chat_llm_stream(
         logger.info(f"Final tools for agent: {list(filtered_mcp_servers.keys())}  json_validator")
         
     except Exception as e:
-        logger.error(f"Failed during initial setup for chat stream for user {user_id}: {e}", exc_info=True)
+        logger.error(f"Failed during initial setup for chat stream for user {sender_user_id}: {e}", exc_info=True)
         yield {"type": "error", "message": "Failed to set up chat stream."}
         return
 
@@ -200,6 +212,14 @@ async def generate_chat_llm_stream(
         if disconnected_tools_list_str else ""
     )
 
+    project_context_prompt_section = ""
+    if project_id:
+        project_context_prompt_section = (
+            f"**Project Context:**\n"
+            f"You are operating within a project. The ID for this project is `{project_id}`. "
+            f"You MUST use this ID when calling project-specific tools like `project-list_context_items`.\n\n"
+        )
+
     system_prompt = (
         f"You are {agent_name}, a personalized AI assistant. Your goal is to be as helpful as possible by using your available tools to directly execute tasks and help the user track their schedule.\n\n"
         f"**Critical Instructions:**\n"
@@ -212,6 +232,7 @@ async def generate_chat_llm_stream(
         f"- Your responses should be **{verbosity}**.\n"
         f"- Your tone should be **{humor_level}**.\n"
         f"- {emoji_usage}\n\n"
+        f"{project_context_prompt_section}"
         f"{disconnected_tools_prompt_section}"
         f"**User Context (for your reference):**\n"
         f"-   **User's Name:** {username}\n"
@@ -227,7 +248,7 @@ async def generate_chat_llm_stream(
             for new_history_step in qwen_assistant.run(messages=qwen_formatted_history):
                 loop.call_soon_threadsafe(queue.put_nowait, new_history_step)
         except Exception as e:
-            logger.error(f"Error in chat worker thread for user {user_id}: {e}", exc_info=True)
+            logger.error(f"Error in chat worker thread for user {sender_user_id}: {e}", exc_info=True)
             loop.call_soon_threadsafe(queue.put_nowait, {"_error": str(e)})
         finally:
             loop.call_soon_threadsafe(queue.put_nowait, None)
@@ -257,7 +278,7 @@ async def generate_chat_llm_stream(
         stream_interrupted = True
         raise
     except Exception as e:
-        logger.error(f"Error during main chat agent run for user {user_id}: {e}", exc_info=True)
+        logger.error(f"Error during main chat agent run for user {sender_user_id}: {e}", exc_info=True)
         yield {"type": "error", "message": "An unexpected error occurred in the chat agent."}
     finally:
         yield {"type": "assistantStream", "token": "", "done": True, "messageId": assistant_message_id}

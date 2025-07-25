@@ -336,6 +336,7 @@ export default function ChatPage({ params }) {
 	const textareaRef = useRef(null)
 	const chatEndRef = useRef(null)
 	const abortControllerRef = useRef(null)
+	const isCreatingChatRef = useRef(false)
 	const scrollContainerRef = useRef(null)
 	const [userDetails, setUserDetails] = useState(null)
 	const posthog = usePostHog()
@@ -386,7 +387,7 @@ export default function ChatPage({ params }) {
 
 	useEffect(() => {
 		const fetchMessages = async () => {
-			if (!activeChatId) {
+			if (!activeChatId || isCreatingChatRef.current) {
 				setMessages([])
 				return
 			}
@@ -449,6 +450,10 @@ export default function ChatPage({ params }) {
 		if (textareaRef.current) textareaRef.current.style.height = "auto"
 		setThinking(true)
 		abortControllerRef.current = new AbortController()
+
+		if (!activeChatId) {
+			isCreatingChatRef.current = true
+		}
 
 		const apiMessages = updatedMessages.map(({ role, content, id }) => ({
 			role,
@@ -578,6 +583,7 @@ export default function ChatPage({ params }) {
 		} finally {
 			setThinking(false)
 			abortControllerRef.current = null
+			isCreatingChatRef.current = false
 		}
 	}
 
@@ -695,7 +701,8 @@ export default function ChatPage({ params }) {
 									<div
 										className={cn(
 											"rounded-2xl shadow-2xl shadow-black/40",
-											!isFocused && "p-0.5 bg-gradient-to-tr from-blue-500 to-cyan-500"
+											!isFocused &&
+												"p-0.5 bg-gradient-to-tr from-blue-500 to-cyan-500"
 										)}
 									>
 										<div className="relative bg-neutral-900 rounded-[15px] flex items-end">
@@ -819,7 +826,8 @@ export default function ChatPage({ params }) {
 							<div
 								className={cn(
 									"rounded-2xl shadow-2xl shadow-black/40",
-									!isFocused && "p-0.5 bg-gradient-to-tr from-blue-500 to-cyan-500"
+									!isFocused &&
+										"p-0.5 bg-gradient-to-tr from-blue-500 to-cyan-500"
 								)}
 							>
 								<div className="relative bg-neutral-900 rounded-[15px] flex items-end">
@@ -851,7 +859,9 @@ export default function ChatPage({ params }) {
 												data-tooltip-id="home-tooltip"
 												data-tooltip-content="Stop Generation"
 											>
-												<IconPlayerStopFilled size={18} />
+												<IconPlayerStopFilled
+													size={18}
+												/>
 											</button>
 										) : (
 											<button

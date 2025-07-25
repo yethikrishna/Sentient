@@ -180,6 +180,10 @@ async def async_execute_task_plan(task_id: str, user_id: str):
         logger.error(f"Executor: Task {task_id} has no runs. Aborting.")
         return {"status": "error", "message": "Task has no execution runs."}
 
+    # --- PHASE 2 CHANGE: Use creator_id for credentials ---
+    creator_id = task.get("creator_id", user_id)
+    logger.info(f"Executor will use credentials of creator_id: {creator_id} for task {task_id}")
+
     latest_run = task["runs"][-1]
     run_id = latest_run["run_id"]
 
@@ -192,9 +196,9 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     await update_task_run_status(db, task_id, run_id, "processing", user_id, block_id=block_id)
     await add_progress_update(db, task_id, run_id, user_id, {"type": "info", "content": "Executor has picked up the task and is starting execution."}, block_id=block_id)
 
-    user_profile = await db.user_profiles.find_one({"user_id": user_id})
-    personal_info = user_profile.get("userData", {}).get("personalInfo", {}) if user_profile else {}
-    preferences = user_profile.get("userData", {}).get("preferences", {}) if user_profile else {}
+    creator_profile = await db.user_profiles.find_one({"user_id": creator_id})
+    personal_info = creator_profile.get("userData", {}).get("personalInfo", {}) if creator_profile else {}
+    preferences = creator_profile.get("userData", {}).get("preferences", {}) if creator_profile else {}
     user_name = personal_info.get("name", "User")
     user_location_raw = personal_info.get("location", "Not specified")
     if isinstance(user_location_raw, dict):
@@ -205,13 +209,13 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     required_tools_from_plan = {step['tool'] for step in latest_run.get('plan', [])}
     logger.info(f"Task {task_id}: Plan requires tools: {required_tools_from_plan}")
     
-    user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
-    supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id") if user_profile else None
+    creator_integrations = creator_profile.get("userData", {}).get("integrations", {}) if creator_profile else {}
+    supermemory_user_id = creator_profile.get("userData", {}).get("supermemory_user_id") if creator_profile else None
     
     active_mcp_servers = {}
     progress_updater_config = INTEGRATIONS_CONFIG.get("progress_updater", {}).get("mcp_server_config")
     if progress_updater_config:
-        active_mcp_servers[progress_updater_config["name"]] = {"url": progress_updater_config["url"], "headers": {"X-User-ID": user_id}}
+        active_mcp_servers[progress_updater_config["name"]] = {"url": progress_updater_config["url"], "headers": {"X-User-ID": creator_id}}
     if supermemory_user_id:
         active_mcp_servers["supermemory"] = {
             "transport": "sse",
@@ -227,11 +231,11 @@ async def async_execute_task_plan(task_id: str, user_id: str):
         if not mcp_config or tool_name in ["progress_updater", "supermemory"]:
             continue
         is_builtin = config.get("auth_type") == "builtin"
-        is_connected_via_oauth = user_integrations.get(tool_name, {}).get("connected", False)
+        is_connected_via_oauth = creator_integrations.get(tool_name, {}).get("connected", False)
         if is_builtin or is_connected_via_oauth:
-            active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
+            active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": creator_id}}
         else:
-            logger.warning(f"Task {task_id}: Plan requires tool '{tool_name}' but it is not available/connected for user {user_id}.")
+            logger.warning(f"Task {task_id}: Plan requires tool '{tool_name}' but it is not available/connected for creator {creator_id}.")
     tools_config = [{"mcpServers": active_mcp_servers}]
     logger.info(f"Task {task_id}: Executor configured with tools: {list(active_mcp_servers.keys())}")
 

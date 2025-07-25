@@ -195,10 +195,10 @@ async def get_user_data_endpoint(payload: dict = Depends(auth_helper.get_decoded
             profile_doc = await mongo_manager.get_user_profile(user_id)
 
     if profile_doc and "userData" in profile_doc:
-        return JSONResponse(content={"data": profile_doc["userData"], "status": 200})
+        return {"data": profile_doc["userData"], "status": 200}
     print(f"[{datetime.datetime.now()}] [GET_USER_DATA] No profile/userData for {user_id}. Creating basic entry.")
     await mongo_manager.update_user_profile(user_id, {"userData": {}}) 
-    return JSONResponse(content={"data": {}, "status": 200})
+    return {"data": {}, "status": 200}
 
 @router.websocket("/ws/notifications")
 async def notifications_websocket_endpoint(websocket: WebSocket):

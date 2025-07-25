@@ -28,7 +28,14 @@ async def chat_endpoint(
     user_id: str = Depends(PermissionChecker(required_permissions=["read:chat", "write:chat"]))
 ):
     chat_id = request_body.chatId
+    project_id = request_body.projectId
     is_new_chat = not chat_id
+
+    # Permission check for project
+    if project_id:
+        is_member = await mongo_manager.is_user_in_project(user_id, project_id)
+        if not is_member:
+            raise HTTPException(status_code=403, detail="Not a member of this project.")
 
     # 1. Get the last user message from the payload
     user_message = next((msg for msg in reversed(request_body.messages) if msg.get("role") == "user"), None)
@@ -39,12 +46,26 @@ async def chat_endpoint(
     if is_new_chat:
         # Add timestamp to the first message before creating chat
         user_message['timestamp'] = datetime.datetime.now(datetime.timezone.utc)
-        chat_id = await mongo_manager.create_chat(user_id, user_message)
+        chat_id = await mongo_manager.create_chat(user_id, user_message, project_id=project_id)
         # Trigger a background task to generate a better title from the first message
         generate_chat_title.delay(chat_id, user_id)
     else:
-        # If chat exists, just add the new user message
-        await mongo_manager.add_message_to_chat(user_id, chat_id, user_message)
+        # If chat exists, verify user has access before adding message
+        chat = await mongo_manager.get_chat(user_id, chat_id)
+        if not chat:
+            raise HTTPException(status_code=404, detail="Chat not found.")
+
+        chat_project_id = chat.get("project_id")
+        if chat_project_id:
+            if chat_project_id != project_id:
+                raise HTTPException(status_code=400, detail="Chat ID does not belong to the specified project.")
+            is_member = await mongo_manager.is_user_in_project(user_id, chat_project_id)
+            if not is_member:
+                raise HTTPException(status_code=403, detail="Not a member of this project.")
+        elif chat.get("user_id") != user_id:
+            raise HTTPException(status_code=403, detail="Access denied to this personal chat.")
+
+        await mongo_manager.add_message_to_chat(chat_id, user_message)
 
     # Fetch comprehensive user context
     user_profile = await mongo_manager.get_user_profile(user_id)
@@ -64,14 +85,15 @@ async def chat_endpoint(
         try:
             # If it's a new chat, send the new chat_id to the client first
             if is_new_chat:
-                yield json.dumps({"type": "chat_session", "chatId": chat_id, "tempTitle": user_message.get("content", "New Chat")[:50]}) + "\n"
+                yield json.dumps({"type": "chat_session", "chatId": chat_id, "projectId": project_id, "tempTitle": user_message.get("content", "New Chat")[:50]}) + "\n"
 
             async for event in generate_chat_llm_stream(
-                user_id,
-                request_body.messages,
-                user_context,
-                preferences,
-                db_manager=mongo_manager
+                sender_user_id=user_id,
+                messages=request_body.messages,
+                user_context=user_context,
+                preferences=preferences,
+                db_manager=mongo_manager,
+                project_id=project_id
             ):
                 if not event:
                     continue
@@ -111,18 +133,30 @@ async def chat_endpoint(
     )
 @router.get("/history", summary="Get all chat sessions for a user")
 async def get_chat_history(user_id: str = Depends(PermissionChecker(required_permissions=["read:chat"]))):
-    chats = await mongo_manager.get_user_chats(user_id)
+    chats = await mongo_manager.get_user_chats(user_id) # This now only gets personal chats
     # Convert datetime objects to ISO 8601 strings for JSON serialization
     for chat in chats:
         if "updated_at" in chat and isinstance(chat["updated_at"], datetime.datetime):
             chat["updated_at"] = chat["updated_at"].isoformat()
-    return JSONResponse(content={"chats": chats})
+    return {"chats": chats}
 
 @router.get("/history/{chat_id}", summary="Get messages for a specific chat session")
 async def get_chat_messages(chat_id: str, user_id: str = Depends(PermissionChecker(required_permissions=["read:chat"]))):
     chat = await mongo_manager.get_chat(user_id, chat_id)
     if not chat:
         raise HTTPException(status_code=404, detail="Chat session not found.")
+
+    # Permission check
+    chat_project_id = chat.get("project_id")
+    if chat_project_id:
+        is_member = await mongo_manager.is_user_in_project(user_id, chat_project_id)
+        if not is_member:
+            raise HTTPException(status_code=403, detail="Not a member of this project.")
+    elif chat.get("user_id") != user_id:
+        # It's a personal chat, check ownership
+        raise HTTPException(status_code=403, detail="Access denied to this personal chat.")
+
+
     # Convert ObjectId and datetime to string for JSON serialization
     if "_id" in chat:
         chat["_id"] = str(chat["_id"])
@@ -134,7 +168,7 @@ async def get_chat_messages(chat_id: str, user_id: str = Depends(PermissionCheck
     if "updated_at" in chat and isinstance(chat["updated_at"], datetime.datetime):
         chat["updated_at"] = chat["updated_at"].isoformat()
 
-    return JSONResponse(content=chat)
+    return chat
 
 @router.delete("/{chat_id}", summary="Delete a chat session")
 async def delete_chat(chat_id: str, user_id: str = Depends(PermissionChecker(required_permissions=["write:chat"]))):

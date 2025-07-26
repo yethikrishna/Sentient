@@ -149,209 +149,152 @@ const questions = [
 ]
 
 const WhatsAppSettings = () => {
-    // State for MCP Agent Connection
-    const [mcpNumber, setMcpNumber] = useState("");
-    const [isMcpConnected, setIsMcpConnected] = useState(false);
-    const [isMcpLoading, setIsMcpLoading] = useState(true);
-    const [isMcpSaving, setIsMcpSaving] = useState(false);
+	// State for System Notifications
+	const [notificationNumber, setNotificationNumber] = useState("")
+	const [isNotifLoading, setIsNotifLoading] = useState(true)
+	const [isNotifSaving, setIsNotifSaving] = useState(false)
 
-    // State for System Notifications
-    const [notificationNumber, setNotificationNumber] = useState("");
-    const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-    const [isNotifLoading, setIsNotifLoading] = useState(true);
-    const [isNotifSaving, setIsNotifSaving] = useState(false);
-    const [isTogglingNotifs, setIsTogglingNotifs] = useState(false);
+	const fetchNotificationSettings = useCallback(async () => {
+		setIsNotifLoading(true)
+		try {
+			const response = await fetch("/api/settings/whatsapp-notifications")
+			if (!response.ok)
+				throw new Error(
+					"Failed to fetch WhatsApp notification settings."
+				)
+			const data = await response.json()
+			setNotificationNumber(data.whatsapp_notifications_number || "")
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsNotifLoading(false)
+		}
+	}, [])
 
-    const fetchMcpSettings = useCallback(async () => {
-        setIsMcpLoading(true);
-        try {
-            const response = await fetch("/api/settings/whatsapp-mcp");
-            if (!response.ok) throw new Error("Failed to fetch WhatsApp MCP settings.");
-            const data = await response.json();
-            setMcpNumber(data.whatsapp_mcp_number || "");
-            setIsMcpConnected(data.connected || false);
-        } catch (error) {
-            toast.error(error.message);
-        } finally {
-            setIsMcpLoading(false);
-        }
-    }, []);
+	useEffect(() => {
+		fetchNotificationSettings()
+	}, [fetchNotificationSettings])
 
-    const fetchNotificationSettings = useCallback(async () => {
-        setIsNotifLoading(true);
-        try {
-            const response = await fetch("/api/settings/whatsapp-notifications");
-            if (!response.ok) throw new Error("Failed to fetch WhatsApp notification settings.");
-            const data = await response.json();
-            setNotificationNumber(data.whatsapp_notifications_number || "");
-            setNotificationsEnabled(data.notifications_enabled || false);
-        } catch (error) {
-            toast.error(error.message);
-        } finally {
-            setIsNotifLoading(false);
-        }
-    }, []);
+	const handleSaveNotifNumber = async () => {
+		setIsNotifSaving(true)
+		try {
+			const response = await fetch(
+				"/api/settings/whatsapp-notifications",
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						whatsapp_notifications_number: notificationNumber
+					})
+				}
+			)
+			const data = await response.json()
+			if (!response.ok)
+				throw new Error(data.detail || "Failed to save number.")
+			toast.success("Notifications enabled for this number!")
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsNotifSaving(false)
+		}
+	}
 
-    useEffect(() => {
-        fetchMcpSettings();
-        fetchNotificationSettings();
-    }, [fetchMcpSettings, fetchNotificationSettings]);
+	const handleRemoveNotifNumber = async () => {
+		setIsNotifSaving(true)
+		try {
+			const response = await fetch(
+				"/api/settings/whatsapp-notifications",
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ whatsapp_notifications_number: "" })
+				}
+			)
+			if (!response.ok) throw new Error("Failed to remove number.")
+			setNotificationNumber("")
+			toast.success("Notification number removed.")
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsNotifSaving(false)
+		}
+	}
 
-    const handleMcpConnect = async () => {
-        setIsMcpSaving(true);
-        try {
-            const response = await fetch("/api/settings/whatsapp-mcp", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ whatsapp_mcp_number: mcpNumber })
-            });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.detail || "Failed to connect number.");
-            toast.success("WhatsApp Agent connected successfully!");
-            setIsMcpConnected(true);
-        } catch (error) {
-            toast.error(error.message);
-        } finally {
-            setIsMcpSaving(false);
-        }
-    };
+	const hasNotifNumber =
+		notificationNumber && notificationNumber.trim() !== ""
 
-    const handleMcpDisconnect = async () => {
-        setIsMcpSaving(true);
-        try {
-            const response = await fetch("/api/settings/whatsapp-mcp", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ whatsapp_mcp_number: "" }) // Send empty to disconnect
-            });
-            if (!response.ok) throw new Error("Failed to disconnect number.");
-            setMcpNumber("");
-            setIsMcpConnected(false);
-            toast.success("WhatsApp Agent disconnected.");
-        } catch (error) {
-            toast.error(error.message);
-        } finally {
-            setIsMcpSaving(false);
-        }
-    };
-
-    const handleSaveNotifNumber = async () => {
-        setIsNotifSaving(true);
-        try {
-            const response = await fetch("/api/settings/whatsapp-notifications", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ whatsapp_notifications_number: notificationNumber })
-            });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.detail || "Failed to save number.");
-            toast.success("Notification number saved!");
-        } catch (error) {
-            toast.error(error.message);
-        } finally {
-            setIsNotifSaving(false);
-        }
-    };
-
-    const handleRemoveNotifNumber = async () => {
-        setIsNotifSaving(true);
-        try {
-            const response = await fetch("/api/settings/whatsapp-notifications", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ whatsapp_notifications_number: "" })
-            });
-            if (!response.ok) throw new Error("Failed to remove number.");
-            setNotificationNumber("");
-            setNotificationsEnabled(false);
-            toast.success("Notification number removed.");
-        } catch (error) {
-            toast.error(error.message);
-        } finally {
-            setIsNotifSaving(false);
-        }
-    };
-
-    const handleToggleNotifications = async (enabled) => {
-        setIsTogglingNotifs(true);
-        setNotificationsEnabled(enabled); // Optimistic update
-        try {
-            const response = await fetch("/api/settings/whatsapp-notifications/toggle", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ enabled })
-            });
-            if (!response.ok) {
-                setNotificationsEnabled(!enabled); // Revert
-                throw new Error((await response.json()).error || "Failed to update settings.");
-            }
-            toast.success((await response.json()).message);
-        } catch (error) {
-            toast.error(error.message);
-        } finally {
-            setIsTogglingNotifs(false);
-        }
-    };
-
-    const hasNotifNumber = notificationNumber && notificationNumber.trim() !== "";
-
-    return (
-        <section className="space-y-8">
-            {/* MCP Agent Connection */}
-            <div>
-                <h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2">WhatsApp Agent Connection</h2>
-                <div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)]">
-                    <p className="text-gray-400 text-sm mb-4">Connect a WhatsApp number to allow your agent to send messages on your behalf as a tool. This number can be different from your notification number.</p>
-                    {isMcpLoading ? <div className="flex justify-center mt-4"><IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)]" /></div> : (
-                        <div className="flex flex-col sm:flex-row gap-2">
-                            <div className="relative flex-grow">
-                                <IconBrandWhatsapp className="absolute left-3 top-1/2 -translate-y-1/2 text-teal-500" size={20} />
-                                <input type="tel" value={mcpNumber} onChange={(e) => setMcpNumber(e.target.value)} placeholder="Enter number to use for agent" disabled={isMcpConnected} className="w-full pl-10 pr-4 bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)] disabled:opacity-70" />
-                            </div>
-                            {isMcpConnected ? (
-                                <button onClick={handleMcpDisconnect} disabled={isMcpSaving} className="flex items-center justify-center py-2 px-4 rounded-md bg-[var(--color-accent-red)]/80 hover:bg-[var(--color-accent-red)] text-white font-medium transition-colors"><IconX className="w-4 h-4 mr-2" /> Disconnect</button>
-                            ) : (
-                                <button onClick={handleMcpConnect} disabled={isMcpSaving || !mcpNumber.trim()} className="flex items-center justify-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors"><IconPlus className="w-4 h-4 mr-2" /> Connect</button>
-                            )}
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            {/* System Notifications */}
-            <div>
-                <h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2">WhatsApp Notifications</h2>
-                <div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)]">
-                    <p className="text-gray-400 text-sm mb-4">Receive important system notifications (e.g., task completions) on WhatsApp. Enter your number including the country code (e.g., +14155552671).</p>
-                    {isNotifLoading ? <div className="flex justify-center mt-4"><IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)]" /></div> : (
-                        <div className="space-y-4">
-                            <div className="flex flex-col sm:flex-row gap-2">
-                                <div className="relative flex-grow">
-                                    <IconBrandWhatsapp className="absolute left-3 top-1/2 -translate-y-1/2 text-green-500" size={20} />
-                                    <input type="tel" value={notificationNumber} onChange={(e) => setNotificationNumber(e.target.value)} placeholder="Enter number for notifications" className="w-full pl-10 pr-4 bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]" />
-                                </div>
-                                <div className="flex gap-2 justify-end">
-                                    <button onClick={handleSaveNotifNumber} disabled={isNotifSaving || !notificationNumber.trim()} className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors">{isNotifSaving ? <IconLoader className="w-4 h-4 mr-2 animate-spin" /> : <IconPlus className="w-4 h-4 mr-2" />} {hasNotifNumber ? "Update" : "Save"}</button>
-                                    {hasNotifNumber && <button onClick={handleRemoveNotifNumber} disabled={isNotifSaving} className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-red)]/80 hover:bg-[var(--color-accent-red)] text-white font-medium transition-colors"><IconX className="w-4 h-4 mr-2" /> Remove</button>}
-                                </div>
-                            </div>
-                            <div className={cn("flex items-center justify-between p-3 rounded-lg bg-neutral-800/50 border border-neutral-700/80 transition-opacity", !hasNotifNumber && "opacity-50")}>
-                                <div>
-                                    <h4 className="font-medium text-neutral-200">Enable System Notifications</h4>
-                                    <p className="text-xs text-neutral-400">Receive alerts for task completions, approvals, etc.</p>
-                                </div>
-                                <label className="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" className="sr-only peer" checked={notificationsEnabled} onChange={(e) => handleToggleNotifications(e.target.checked)} disabled={!hasNotifNumber || isTogglingNotifs} />
-                                    <div className="w-11 h-6 bg-neutral-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
-                                </label>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </section>
-    );
-};
+	return (
+		<section className="space-y-8">
+			{/* System Notifications */}
+			<div>
+				<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2">
+					WhatsApp Notifications
+				</h2>
+				<div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)]">
+					<p className="text-gray-400 text-sm mb-4">
+						Receive important system notifications (e.g., task
+						completions) on WhatsApp. Enter your number including
+						the country code (e.g., +14155552671).
+					</p>
+					{isNotifLoading ? (
+						<div className="flex justify-center mt-4">
+							<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)]" />
+						</div>
+					) : (
+						<div className="space-y-4">
+							<div className="flex flex-col sm:flex-row gap-2">
+								<div className="relative flex-grow">
+									<IconBrandWhatsapp
+										className="absolute left-3 top-1/2 -translate-y-1/2 text-green-500"
+										size={20}
+									/>
+									<input
+										type="tel"
+										value={notificationNumber}
+										onChange={(e) =>
+											setNotificationNumber(
+												e.target.value
+											)
+										}
+										placeholder="Enter number for notifications"
+										className="w-full pl-10 pr-4 bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+									/>
+								</div>
+								<div className="flex gap-2 justify-end">
+									<button
+										onClick={handleSaveNotifNumber}
+										disabled={
+											isNotifSaving ||
+											!notificationNumber.trim()
+										}
+										className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors"
+									>
+										{isNotifSaving ? (
+											<IconLoader className="w-4 h-4 mr-2 animate-spin" />
+										) : (
+											<IconPlus className="w-4 h-4 mr-2" />
+										)}{" "}
+										{hasNotifNumber ? "Update" : "Save"}
+									</button>
+									{hasNotifNumber && (
+										<button
+											onClick={handleRemoveNotifNumber}
+											disabled={isNotifSaving}
+											className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-red)]/80 hover:bg-[var(--color-accent-red)] text-white font-medium transition-colors"
+										>
+											<IconX className="w-4 h-4 mr-2" />{" "}
+											Remove
+										</button>
+									)}
+								</div>
+							</div>
+						</div>
+					)}
+				</div>
+			</div>
+		</section>
+	)
+}
 
 const LinkedInSettings = () => {
 	const [linkedinUrl, setLinkedinUrl] = useState("")

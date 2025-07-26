@@ -22,10 +22,10 @@ async def _waha_request(method: str, endpoint: str, params: Optional[Dict] = Non
     """Helper function to make authenticated requests to the WAHA API."""
     if not WAHA_URL or not WAHA_API_KEY:
         raise ConnectionError("WAHA_URL and WAHA_API_KEY must be configured.")
-
+    
     headers = {"X-Api-Key": WAHA_API_KEY, "Content-Type": "application/json"}
     url = f"{WAHA_URL.rstrip('/')}{endpoint}"
-
+    
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:
             res = await client.request(method, url, params=params, json=json, headers=headers)
@@ -50,3 +50,6 @@ async def send_whatsapp_message(chat_id: str, text: str) -> Optional[Dict]:
         await asyncio.sleep(1)
         response = await _waha_request("POST", "/api/sendText", json=payload)
         return response.json()
+    except Exception as e:
+        logger.error(f"Failed to send WhatsApp message to {chat_id}: {e}")
+        return None

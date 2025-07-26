@@ -37,10 +37,15 @@ async def get_whatsapp_chat_id(user_id: str) -> str:
     if not user_doc or not user_doc.get("userData"):
         raise ToolError(f"User profile not found for user_id: {user_id}.")
 
-    wa_prefs = user_doc.get("userData", {}).get("notificationPreferences", {}).get("whatsapp", {})
-    chat_id = wa_prefs.get("chatId")
+    # Correctly look for the agent's connection details under integrations
+    wa_integration = user_doc.get("userData", {}).get("integrations", {}).get("whatsapp", {})
 
-    if not wa_prefs.get("enabled") or not chat_id:
-        raise ToolError("WhatsApp is not configured for this user. Please ask them to set it up in Settings.")
+    if not wa_integration.get("connected"):
+        raise ToolError("WhatsApp Agent is not connected. Please connect it in the Integrations page.")
+
+    chat_id = wa_integration.get("credentials", {}).get("chatId")
+
+    if not chat_id:
+        raise ToolError("WhatsApp Agent is connected but the Chat ID is missing. Please try reconnecting.")
 
     return chat_id

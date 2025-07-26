@@ -21,7 +21,6 @@ import {
 	IconBrandSlack,
 	IconBrandNotion,
 	IconBrandGithub,
-	IconBrandTodoist,
 	IconBrandGoogleDrive,
 	IconFileText
 } from "@tabler/icons-react"

@@ -26,16 +26,22 @@ async def send_message(ctx: Context, message: str) -> Dict[str, Any]:
     try:
         user_id = auth.get_user_id_from_context(ctx)
         chat_id = await auth.get_whatsapp_chat_id(user_id)
-
+        
         result = await utils.send_whatsapp_message(chat_id, message)
-
+        
         if result and result.get("id"):
             return {"status": "success", "result": f"Message sent successfully. Message ID: {result['id']}"}
         else:
             raise Exception("Failed to send message via WAHA service or received an unexpected response.")
-
+    
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
 if __name__ == "__main__":
     host = os.getenv("MCP_SERVER_HOST", "127.0.0.1")
+    port = int(os.getenv("MCP_SERVER_PORT", 9024))
+    
+    print(f"Starting WhatsApp MCP Server on http://{host}:{port}")
+    mcp.run(transport="sse", host=host, port=port)
+
+

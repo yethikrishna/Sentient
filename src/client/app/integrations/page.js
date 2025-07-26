@@ -23,10 +23,9 @@ import {
 	IconTable,
 	IconMapPin,
 	IconShoppingCart,
-	IconChevronDown,
-	IconChevronUp,
 	IconX,
 	IconMail,
+	IconBrandWhatsapp,
 	IconUsers,
 	IconHelpCircle,
 	IconCalendarEvent,
@@ -74,7 +73,8 @@ const integrationIcons = {
 	news: IconNews,
 	todoist: IconBrandTodoist,
 	discord: IconBrandDiscord,
-	evernote: IconFileText
+	evernote: IconFileText,
+	whatsapp: IconBrandWhatsapp
 }
 
 const MANUAL_INTEGRATION_CONFIGS = {} // Manual integrations removed for Slack and Notion
@@ -183,6 +183,77 @@ const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {
 		<ModalDialog
 			title={`Connect to ${integration.display_name}`}
 			description="Follow the instructions below and enter your credentials."
+			onConfirm={handleSubmit}
+			onCancel={onClose}
+			confirmButtonText={isSubmitting ? "Connecting..." : "Connect"}
+			isConfirmDisabled={isSubmitting}
+			extraContent={modalContent}
+		/>
+	)
+}
+
+const WhatsAppConnectModal = ({ integration, onClose, onSuccess }) => {
+	const [number, setNumber] = useState("")
+	const [isSubmitting, setIsSubmitting] = useState(false)
+	const posthog = usePostHog()
+
+	if (!integration) return null
+
+	const handleSubmit = async () => {
+		if (!number.trim()) {
+			toast.error("Please provide a valid WhatsApp number.")
+			return
+		}
+
+		setIsSubmitting(true)
+		try {
+			const response = await fetch("/api/settings/whatsapp-mcp", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ whatsapp_mcp_number: number })
+			})
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(
+					data.detail || "Failed to connect WhatsApp Agent"
+				)
+			}
+			posthog?.capture("integration_connected", {
+				integration_name: "whatsapp",
+				auth_type: "manual"
+			})
+			toast.success("WhatsApp Agent connected successfully!")
+			onSuccess()
+			onClose()
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsSubmitting(false)
+		}
+	}
+
+	const modalContent = (
+		<div className="text-left space-y-4 my-4">
+			<p className="text-sm text-gray-400">
+				Enter your WhatsApp number including the country code (e.g.,
+				+14155552671). This number will be used by the agent to send
+				messages on your behalf as a tool.
+			</p>
+			<input
+				type="tel"
+				value={number}
+				onChange={(e) => setNumber(e.target.value)}
+				placeholder="+14155552671"
+				className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+				autoComplete="off"
+			/>
+		</div>
+	)
+
+	return (
+		<ModalDialog
+			title={`Connect to ${integration.display_name}`}
+			description="Connect a number for the agent to use as a tool."
 			onConfirm={handleSubmit}
 			onCancel={onClose}
 			confirmButtonText={isSubmitting ? "Connecting..." : "Connect"}
@@ -539,6 +610,7 @@ const IntegrationsPage = () => {
 	const [activeManualIntegration, setActiveManualIntegration] = useState(null)
 	const [processingIntegration, setProcessingIntegration] = useState(null)
 	const [selectedIntegration, setSelectedIntegration] = useState(null)
+	const [whatsAppToConnect, setWhatsAppToConnect] = useState(null)
 	const posthog = usePostHog()
 
 	const googleServices = [
@@ -590,72 +662,93 @@ const IntegrationsPage = () => {
 		}
 	}, [])
 
-	const handleTrelloConnect = (integration) => {
-		const trelloApiKey = integration.client_id
-		if (!trelloApiKey) {
-			toast.error(
-				"Trello API Key is not configured by the administrator."
-			)
-			return
-		}
-
-		const returnUrl = `${window.location.origin}/integrations`
-		const authUrl = `https://trello.com/1/authorize?expiration=never&name=Sentient&scope=read,write&response_type=token&key=${trelloApiKey}&return_url=${encodeURIComponent(returnUrl)}&callback_method=postMessage`
-
-		const authWindow = window.open(
-			authUrl,
-			"trelloAuth",
-			"width=600,height=700,noopener,noreferrer"
-		)
-
-		const handleMessage = async (event) => {
-			// Basic security checks
-			if (
-				event.source !== authWindow ||
-				event.origin !== "https://trello.com" ||
-				!event.data
-			) {
+		const handleTrelloConnect = (integration) => {
+			const trelloApiKey = integration.client_id
+			if (!trelloApiKey) {
+				toast.error(
+					"Trello API Key is not configured by the administrator."
+				)
 				return
 			}
 
-			const token = event.data
-			// Trello tokens are 64-char hex strings
-			if (token && /^[0-9a-f]{64}$/.test(token)) {
-				window.removeEventListener("message", handleMessage)
-				authWindow.close()
+			const returnUrl = `${window.location.origin}/integrations`
+			const authUrl = `https://trello.com/1/authorize?expiration=never&name=Sentient&scope=read,write&response_type=token&key=${trelloApiKey}&return_url=${encodeURIComponent(returnUrl)}&callback_method=postMessage`
 
-				setProcessingIntegration("trello")
-				try {
-					const response = await fetch(
-						"/api/settings/integrations/connect/manual",
-						{
-							method: "POST",
-							headers: { "Content-Type": "application/json" },
-							body: JSON.stringify({
-								service_name: "trello",
-								credentials: { token: token }
-							})
-						}
-					)
-					if (!response.ok)
-						throw new Error(
-							(await response.json()).error ||
-								"Failed to save Trello token."
+			const authWindow = window.open(
+				authUrl,
+				"trelloAuth",
+				"width=600,height=700,noopener,noreferrer"
+			)
+
+			// --- ADDED FOR DEBUGGING ---
+			// This listener will log EVERY message event that comes into the window,
+			// helping us see what Trello is sending back, even if it fails the security checks.
+			const debugListener = (event) => {
+				console.log("DEBUG: Received a postMessage event:", event)
+				console.log("DEBUG: Event Origin:", event.origin)
+				console.log("DEBUG: Event Data:", event.data)
+			}
+			window.addEventListener("message", debugListener)
+			// --- END OF DEBUGGING CODE ---
+
+			const handleMessage = async (event) => {
+				// Basic security checks
+				if (
+					event.source !== authWindow ||
+					event.origin !== "https://trello.com" ||
+					!event.data
+				) {
+					return
+				}
+
+				const token = event.data
+				// Trello tokens are 64-char hex strings
+				if (token && /^[0-9a-f]{64}$/.test(token)) {
+					// --- ADDED FOR DEBUGGING ---
+					// Clean up both listeners once we have a valid token
+					window.removeEventListener("message", debugListener)
+					// --- END OF DEBUGGING CODE ---
+
+					window.removeEventListener("message", handleMessage)
+					authWindow.close()
+
+					setProcessingIntegration("trello")
+					try {
+						const response = await fetch(
+							"/api/settings/integrations/connect/manual",
+							{
+								method: "POST",
+								headers: { "Content-Type": "application/json" },
+								body: JSON.stringify({
+									service_name: "trello",
+									credentials: { token: token }
+								})
+							}
 						)
-					toast.success("Trello connected successfully!")
-					fetchIntegrations()
-				} catch (error) {
-					toast.error(error.message)
-				} finally {
-					setProcessingIntegration(null)
+						if (!response.ok)
+							throw new Error(
+								(await response.json()).error ||
+									"Failed to save Trello token."
+							)
+						toast.success("Trello connected successfully!")
+						fetchIntegrations()
+					} catch (error) {
+						toast.error(error.message)
+					} finally {
+						setProcessingIntegration(null)
+					}
 				}
 			}
+
+			window.addEventListener("message", handleMessage, false)
 		}
 
-		window.addEventListener("message", handleMessage, false)
-	}
-
 	const handleConnect = (integration) => {
+		if (integration.name === "whatsapp") {
+			setWhatsAppToConnect(integration)
+			return
+		}
+
 		if (integration.auth_type === "oauth") {
 			const { name: serviceName, client_id: clientId } = integration
 			if (!clientId) {
@@ -890,6 +983,13 @@ const IntegrationsPage = () => {
 					<ManualTokenEntryModal
 						integration={activeManualIntegration}
 						onClose={() => setActiveManualIntegration(null)}
+						onSuccess={fetchIntegrations}
+					/>
+				)}
+				{whatsAppToConnect && (
+					<WhatsAppConnectModal
+						integration={whatsAppToConnect}
+						onClose={() => setWhatsAppToConnect(null)}
 						onSuccess={fetchIntegrations}
 					/>
 				)}

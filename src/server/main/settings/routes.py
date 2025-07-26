@@ -107,6 +107,7 @@ async def set_whatsapp_notification_number(
         update_payload = {
             "userData.notificationPreferences.whatsapp.number": whatsapp_number,
             "userData.notificationPreferences.whatsapp.chatId": chat_id,
+            "userData.notificationPreferences.whatsapp.enabled": True,
         }
         await mongo_manager.update_user_profile(user_id, update_payload)
         return JSONResponse(content={"message": "WhatsApp notification number updated successfully."})
@@ -133,28 +134,6 @@ async def get_whatsapp_notification_settings(
         "whatsapp_notifications_number": wa_prefs.get("number", ""),
         "notifications_enabled": wa_prefs.get("enabled", False)
     })
-
-
-@router.post("/whatsapp-notifications/toggle", summary="Enable or Disable WhatsApp Notifications")
-async def toggle_whatsapp_notifications(
-    request: WhatsAppNotificationRequest,
-    user_id: str = Depends(PermissionChecker(required_permissions=["write:config"]))
-):
-    user_profile = await mongo_manager.get_user_profile(user_id)
-    if not user_profile:
-        raise HTTPException(status_code=404, detail="User profile not found.")
-
-    wa_prefs = user_profile.get("userData", {}).get("notificationPreferences", {}).get("whatsapp", {})
-    if not wa_prefs.get("number") or not wa_prefs.get("chatId"):
-        raise HTTPException(status_code=400, detail="Cannot enable notifications without a configured WhatsApp number.")
-
-    update_payload = {"userData.notificationPreferences.whatsapp.enabled": request.enabled}
-    success = await mongo_manager.update_user_profile(user_id, update_payload)
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to update notification settings.")
-
-    status_text = "enabled" if request.enabled else "disabled"
-    return JSONResponse(content={"message": f"WhatsApp notifications {status_text}."})
 
 @router.get("/linkedin", summary="Get LinkedIn Profile URL")
 async def get_linkedin_url(

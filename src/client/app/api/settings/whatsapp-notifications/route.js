@@ -9,13 +9,19 @@ const appServerUrl =
 // Handler for updating or setting the WhatsApp number for notifications
 export const POST = withAuth(async function POST(request, { authHeader }) {
 	try {
-		const body = await request.json() // { whatsapp_notifications_number: "..." }
+		const body = await request.json() // { whatsapp_notifications_number: "..." or "" }
+		// When a number is saved, notifications are implicitly enabled.
+		// When it's removed, they are disabled.
+		const isEnabling =
+			body.whatsapp_notifications_number &&
+			body.whatsapp_notifications_number.trim() !== ""
+
 		const response = await fetch(
 			`${appServerUrl}/api/settings/whatsapp-notifications`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json", ...authHeader },
-				body: JSON.stringify(body)
+				body: JSON.stringify({ ...body, enabled: isEnabling })
 			}
 		)
 

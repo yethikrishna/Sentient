@@ -232,9 +232,9 @@ INTEGRATIONS_CONFIG = {
         }
     },
     "whatsapp": {
-        "display_name": "WhatsApp Messaging",
-        "description": "Send a direct message to the user on WhatsApp. Useful for delivering results, asking for follow-up, or sending proactive information.",
-        "auth_type": "builtin", # Uses existing WhatsApp number from settings
+        "display_name": "WhatsApp",
+        "description": "Connect a WhatsApp number to allow your agent to send messages on your behalf as a tool. This is different from your notification number.",
+        "auth_type": "manual",
         "icon": "IconBrandWhatsapp",
         "mcp_server_config": {
             "name": "whatsapp_server",

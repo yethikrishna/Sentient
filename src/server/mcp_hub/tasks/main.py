@@ -42,7 +42,7 @@ async def create_task_from_prompt(ctx: Context, prompt: str) -> Dict[str, Any]:
         personal_info = user_profile.get("userData", {}).get("personalInfo", {}) if user_profile else {}
         user_name = personal_info.get("name", "User")
         user_timezone_str = personal_info.get("timezone", "UTC")
-
+        
         try:
             user_timezone = ZoneInfo(user_timezone_str)
         except ZoneInfoNotFoundError:
@@ -55,7 +55,7 @@ async def create_task_from_prompt(ctx: Context, prompt: str) -> Dict[str, Any]:
             user_timezone=user_timezone_str,
             current_time=current_time_str
         )
-
+        
         agent = get_qwen_assistant(system_message=system_prompt)
         messages = [{'role': 'user', 'content': prompt}]
 
@@ -77,5 +77,18 @@ async def create_task_from_prompt(ctx: Context, prompt: str) -> Dict[str, Any]:
 
         if not task_id:
             raise Exception("Failed to save the task to the database.")
-
+        
         from workers.tasks import refine_and_plan_ai_task
+        refine_and_plan_ai_task.delay(task_id)
+
+        return {"status": "success", "result": f"Task '{task_data['description']}' has been created and is being planned."}
+    except Exception as e:
+        logger.error(f"Error in create_task_from_prompt: {e}", exc_info=True)
+        return {"status": "failure", "error": str(e)}
+
+if __name__ == "__main__":
+    host = os.getenv("MCP_SERVER_HOST", "127.0.0.1")
+    port = int(os.getenv("MCP_SERVER_PORT", 9018))
+    
+    print(f"Starting Tasks MCP Server on http://{host}:{port}")
+    mcp.run(transport="sse", host=host, port=port)

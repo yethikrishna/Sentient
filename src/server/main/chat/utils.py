@@ -165,8 +165,8 @@ async def generate_chat_llm_stream(
         last_user_query = messages[-1].get("content", "") if messages else ""
         relevant_tool_names = await _select_relevant_tools(last_user_query, tool_name_to_desc_map)
 
-        mandatory_tools = {"tasks", "supermemory"} # Make sure 'tasks' tool is always considered
-        final_tool_names = set(relevant_tool_names) | mandatory_tools
+        mandatory_tools = {"supermemory"} # Supermemory for context is always useful.
+        final_tool_names = set(relevant_tool_names) | mandatory_tools # The `tasks` tool will be selected by the LLM when needed.
 
         filtered_mcp_servers = {}
         # Build the list of tools for the agent, including MCPs and local tools

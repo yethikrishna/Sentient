@@ -1,3 +1,4 @@
+# src/server/mcp_hub/trello/test_client.py
 import json
 from qwen_agent.agents import Assistant
 
@@ -8,38 +9,51 @@ llm_cfg = {
     'api_key': 'EMPTY',
 }
 
-mcp_server_url = "http://127.0.0.1:9022/sse"
-USER_ID = "google-oauth2|115437244827618197332"
+# Trello MCP Server Configuration
+mcp_server_url = "http://127.0.0.1:9020/sse"
 
+# IMPORTANT: Replace with a valid User ID from your MongoDB that has Trello credentials
+USER_ID = "YOUR_USER_ID_HERE"
+
+# --- Agent Setup ---
 tools = [{
     "mcpServers": {
-        "discord_server": {
+        "trello_server": {
             "url": mcp_server_url,
             "headers": {"X-User-ID": USER_ID},
         }
     }
 }]
 
-print("Initializing Qwen agent for Discord...")
+print("Initializing Qwen agent for Trello...")
 agent = Assistant(
     llm=llm_cfg,
     function_list=tools,
-    name="DiscordAgent",
-    description="An agent that can interact with Discord.",
-    system_message="You are a helpful Discord assistant. Use the available tools to find channels and send messages."
+    name="TrelloAgent",
+    description="An agent that can manage Trello boards and cards.",
+    system_message="You are a helpful Trello assistant. Use the available tools to manage boards, lists, and cards. You need to find board and list IDs before creating cards."
 )
 
+# --- Interactive Chat Loop ---
 def run_agent_interaction():
-    print("\n--- Discord Agent Ready ---")
-    print("You can now interact with your Discord account.")
+    print("\n--- Trello Agent Ready ---")
+    print("You can now manage your Trello boards.")
     print("Type 'quit' or 'exit' to end the session.")
+    print("\nExample commands:")
+    print("  - list my Trello boards")
+    print("  - show me the lists on board with ID '...'")
+    print("  - create a card named 'New Feature Idea' in list with ID '...'")
+    print("-" * 25)
+
     messages = []
     while True:
         try:
             print("\nYou: ", end="")
             user_input = input()
             if user_input.lower() in ["quit", "exit", "q"]:
+                print("\n👋  Goodbye!")
                 break
+
             messages.append({'role': 'user', 'content': user_input})
             print("\nAgent: ", end="", flush=True)
             
@@ -53,8 +67,8 @@ def run_agent_interaction():
                         print(delta, end="", flush=True)
                         last_assistant_text = current_text
                 final_response_from_run = response
-            
-            print() # Newline after agent's response
+
+            print()
             if final_response_from_run:
                 messages = final_response_from_run
             else:
@@ -62,9 +76,11 @@ def run_agent_interaction():
                 messages.pop()
 
         except KeyboardInterrupt:
+            print("\n👋  Goodbye!")
             break
         except Exception as e:
             print(f"\nAn error occurred: {e}")
 
 if __name__ == "__main__":
     run_agent_interaction()
+

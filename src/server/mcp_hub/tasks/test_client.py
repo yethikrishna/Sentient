@@ -8,38 +8,50 @@ llm_cfg = {
     'api_key': 'EMPTY',
 }
 
-mcp_server_url = "http://127.0.0.1:9022/sse"
-USER_ID = "google-oauth2|115437244827618197332"
+# Tasks MCP Server Configuration
+mcp_server_url = "http://127.0.0.1:9018/sse"
 
+# IMPORTANT: Replace with a valid User ID from your MongoDB
+USER_ID = "YOUR_USER_ID_HERE"
+
+# --- Agent Setup ---
 tools = [{
     "mcpServers": {
-        "discord_server": {
+        "tasks_server": {
             "url": mcp_server_url,
             "headers": {"X-User-ID": USER_ID},
         }
     }
 }]
 
-print("Initializing Qwen agent for Discord...")
+print("Initializing Qwen agent for Tasks...")
 agent = Assistant(
     llm=llm_cfg,
     function_list=tools,
-    name="DiscordAgent",
-    description="An agent that can interact with Discord.",
-    system_message="You are a helpful Discord assistant. Use the available tools to find channels and send messages."
+    name="TaskCreatorAgent",
+    description="An agent that creates tasks from natural language.",
+    system_message="You are an assistant that creates tasks. Use the `create_task_from_prompt` tool to do so."
 )
 
+# --- Interactive Chat Loop ---
 def run_agent_interaction():
-    print("\n--- Discord Agent Ready ---")
-    print("You can now interact with your Discord account.")
+    print("\n--- Task Creator Agent Ready ---")
+    print("Describe the task you want to create.")
     print("Type 'quit' or 'exit' to end the session.")
+    print("\nExample commands:")
+    print("  - create a task to write a blog post about AI for next Friday")
+    print("  - add a to-do to call the doctor tomorrow morning")
+    print("-" * 25)
+
     messages = []
     while True:
         try:
             print("\nYou: ", end="")
             user_input = input()
             if user_input.lower() in ["quit", "exit", "q"]:
+                print("\n👋  Goodbye!")
                 break
+
             messages.append({'role': 'user', 'content': user_input})
             print("\nAgent: ", end="", flush=True)
             
@@ -53,8 +65,8 @@ def run_agent_interaction():
                         print(delta, end="", flush=True)
                         last_assistant_text = current_text
                 final_response_from_run = response
-            
-            print() # Newline after agent's response
+
+            print()
             if final_response_from_run:
                 messages = final_response_from_run
             else:
@@ -62,9 +74,11 @@ def run_agent_interaction():
                 messages.pop()
 
         except KeyboardInterrupt:
+            print("\n👋  Goodbye!")
             break
         except Exception as e:
             print(f"\nAn error occurred: {e}")
 
 if __name__ == "__main__":
     run_agent_interaction()
+

@@ -21,6 +21,7 @@ MONGO_URI = os.getenv("MONGO_URI")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
 AES_SECRET_KEY_HEX = os.getenv("AES_SECRET_KEY")
 AES_IV_HEX = os.getenv("AES_IV")
+DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
 AES_SECRET_KEY: Optional[bytes] = bytes.fromhex(AES_SECRET_KEY_HEX) if AES_SECRET_KEY_HEX and len(AES_SECRET_KEY_HEX) == 64 else None
 AES_IV: Optional[bytes] = bytes.fromhex(AES_IV_HEX) if AES_IV_HEX and len(AES_IV_HEX) == 32 else None
@@ -68,10 +69,10 @@ async def get_discord_creds(user_id: str) -> Dict[str, str]:
     access_token = token_info.get("access_token")
     if not access_token:
         raise ToolError("Invalid Discord OAuth token data in database. Re-authentication may be required.")
-    
-    # Discord OAuth for bots also provides a bot token within the main token response if 'bot' scope is used
-    bot_token = token_info.get("bot", {}).get("token")
+
+    # The bot token is static and comes from the environment, not the user's session
+    bot_token = DISCORD_BOT_TOKEN
     if not bot_token:
-        raise ToolError("Bot token not found in Discord credentials. Ensure 'bot' scope was granted.")
+        raise ToolError("Discord Bot Token is not configured on the server. Please set DISCORD_BOT_TOKEN.")
 
     return {"access_token": access_token, "bot_token": bot_token}

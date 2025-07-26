@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from main.dependencies import mongo_manager
 from main.auth.utils import PermissionChecker
 from main.notifications.whatsapp_client import check_phone_number_exists, send_whatsapp_message
-from main.settings.models import WhatsAppNumberRequest, ProfileUpdateRequest, LinkedInUrlRequest, AIPersonalitySettingsRequest
+from main.settings.models import WhatsAppMcpRequest, WhatsAppNotificationNumberRequest, WhatsAppNotificationRequest, ProfileUpdateRequest, LinkedInUrlRequest, AIPersonalitySettingsRequest
 from workers.tasks import process_linkedin_profile
 
 logger = logging.getLogger(__name__)
@@ -15,67 +15,146 @@ router = APIRouter(
     tags=["User Settings"]
 )
 
-@router.post("/whatsapp", summary="Set or Update WhatsApp Notification Number")
-async def set_whatsapp_number(
-    request: WhatsAppNumberRequest,
+@router.post("/whatsapp-mcp", summary="Connect or disconnect WhatsApp for the agent (MCP)")
+async def set_whatsapp_mcp_number(
+    request: WhatsAppMcpRequest,
     user_id: str = Depends(PermissionChecker(required_permissions=["write:config"]))
 ):
-    whatsapp_number = request.whatsapp_number.strip()
-    
-    # If the number is empty, it means the user is opting out.
+    whatsapp_number = request.whatsapp_mcp_number.strip() if request.whatsapp_mcp_number else ""
+
     if not whatsapp_number:
-        update_payload = {"userData.notificationPreferences.whatsapp.number": ""}
-        await mongo_manager.update_user_profile(user_id, update_payload)
-        return JSONResponse(content={"message": "WhatsApp notifications disabled."})
-
-    # Validate the number format and check with WAHA
-    try:
-        validation_result = await check_phone_number_exists(whatsapp_number)
-        if not validation_result or not validation_result.get("numberExists"):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="This phone number does not appear to be on WhatsApp."
-            )
-        
-        chat_id = validation_result.get("chatId")
-        if not chat_id:
-             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Could not retrieve Chat ID for the number."
-            )
-
-        # Save to user profile
         update_payload = {
-            "userData.notificationPreferences.whatsapp": {
-                "number": whatsapp_number,
-                "chatId": chat_id,
-                "enabled": True
+            "userData.integrations.whatsapp": {
+                "connected": False,
+                "credentials": None
             }
         }
         await mongo_manager.update_user_profile(user_id, update_payload)
-        
-        return JSONResponse(content={"message": "WhatsApp number updated successfully."})
+        return JSONResponse(content={"message": "WhatsApp Agent disconnected."})
+
+    try:
+        validation_result = await check_phone_number_exists(whatsapp_number)
+        if not validation_result or not validation_result.get("numberExists"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This phone number does not appear to be on WhatsApp.")
+
+        chat_id = validation_result.get("chatId")
+        if not chat_id:
+             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not retrieve Chat ID for the number.")
+
+        # For MCP, we store credentials under integrations
+        update_payload = {
+            "userData.integrations.whatsapp": {
+                "connected": True,
+                "auth_type": "manual_config",
+                "credentials": { # Store unencrypted, as it's just a number/ID
+                    "number": whatsapp_number,
+                    "chatId": chat_id
+                }
+            }
+        }
+        await mongo_manager.update_user_profile(user_id, update_payload)
+        return JSONResponse(content={"message": "WhatsApp Agent connected successfully."})
 
     except ConnectionError as e:
          raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Could not connect to WhatsApp service: {e}")
     except Exception as e:
-        logger.error(f"Error setting WhatsApp number for user {user_id}: {e}", exc_info=True)
+        logger.error(f"Error setting WhatsApp MCP number for user {user_id}: {e}", exc_info=True)
         # Re-raise HTTPException or handle others
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred.")
 
 
-@router.get("/whatsapp", summary="Get WhatsApp Notification Number")
-async def get_whatsapp_number(
+@router.get("/whatsapp-mcp", summary="Get WhatsApp MCP connection status")
+async def get_whatsapp_mcp_number(
     user_id: str = Depends(PermissionChecker(required_permissions=["read:config"]))
 ):
     user_profile = await mongo_manager.get_user_profile(user_id)
     if not user_profile:
-        return JSONResponse(content={"whatsapp_number": ""})
+        return JSONResponse(content={"whatsapp_mcp_number": "", "connected": False})
+
+    wa_integration = user_profile.get("userData", {}).get("integrations", {}).get("whatsapp", {})
+    return JSONResponse(content={
+        "whatsapp_mcp_number": wa_integration.get("credentials", {}).get("number", ""),
+        "connected": wa_integration.get("connected", False)
+    })
+
+
+@router.post("/whatsapp-notifications", summary="Set or Update WhatsApp number for notifications")
+async def set_whatsapp_notification_number(
+    request: WhatsAppNotificationNumberRequest,
+    user_id: str = Depends(PermissionChecker(required_permissions=["write:config"]))
+):
+    whatsapp_number = request.whatsapp_notifications_number.strip() if request.whatsapp_notifications_number else ""
+    if not whatsapp_number:
+        update_payload = {
+            "userData.notificationPreferences.whatsapp.number": "",
+            "userData.notificationPreferences.whatsapp.chatId": "",
+            "userData.notificationPreferences.whatsapp.enabled": False,
+        }
+        await mongo_manager.update_user_profile(user_id, update_payload)
+        return JSONResponse(content={"message": "WhatsApp notification number removed."})
+
+    try:
+        validation_result = await check_phone_number_exists(whatsapp_number)
+        if not validation_result or not validation_result.get("numberExists"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This phone number does not appear to be on WhatsApp.")
+
+        chat_id = validation_result.get("chatId")
+        if not chat_id:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not retrieve Chat ID for the number.")
+
+        update_payload = {
+            "userData.notificationPreferences.whatsapp.number": whatsapp_number,
+            "userData.notificationPreferences.whatsapp.chatId": chat_id,
+        }
+        await mongo_manager.update_user_profile(user_id, update_payload)
+        return JSONResponse(content={"message": "WhatsApp notification number updated successfully."})
+
+    except ConnectionError as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Could not connect to WhatsApp service: {e}")
+    except Exception as e:
+        logger.error(f"Error setting WhatsApp notification number for user {user_id}: {e}", exc_info=True)
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred.")
+
+
+@router.get("/whatsapp-notifications", summary="Get WhatsApp Notification settings")
+async def get_whatsapp_notification_settings(
+    user_id: str = Depends(PermissionChecker(required_permissions=["read:config"]))
+):
+    user_profile = await mongo_manager.get_user_profile(user_id)
+    if not user_profile:
+        return JSONResponse(content={"whatsapp_notifications_number": "", "notifications_enabled": False})
 
     wa_prefs = user_profile.get("userData", {}).get("notificationPreferences", {}).get("whatsapp", {})
-    return JSONResponse(content={"whatsapp_number": wa_prefs.get("number", "")})
+    return JSONResponse(content={
+        "whatsapp_notifications_number": wa_prefs.get("number", ""),
+        "notifications_enabled": wa_prefs.get("enabled", False)
+    })
+
+
+@router.post("/whatsapp-notifications/toggle", summary="Enable or Disable WhatsApp Notifications")
+async def toggle_whatsapp_notifications(
+    request: WhatsAppNotificationRequest,
+    user_id: str = Depends(PermissionChecker(required_permissions=["write:config"]))
+):
+    user_profile = await mongo_manager.get_user_profile(user_id)
+    if not user_profile:
+        raise HTTPException(status_code=404, detail="User profile not found.")
+
+    wa_prefs = user_profile.get("userData", {}).get("notificationPreferences", {}).get("whatsapp", {})
+    if not wa_prefs.get("number") or not wa_prefs.get("chatId"):
+        raise HTTPException(status_code=400, detail="Cannot enable notifications without a configured WhatsApp number.")
+
+    update_payload = {"userData.notificationPreferences.whatsapp.enabled": request.enabled}
+    success = await mongo_manager.update_user_profile(user_id, update_payload)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update notification settings.")
+
+    status_text = "enabled" if request.enabled else "disabled"
+    return JSONResponse(content={"message": f"WhatsApp notifications {status_text}."})
 
 @router.get("/linkedin", summary="Get LinkedIn Profile URL")
 async def get_linkedin_url(

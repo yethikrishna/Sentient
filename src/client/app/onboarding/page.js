@@ -302,7 +302,7 @@ const OnboardingPage = () => {
 				)
 			}
 			if (whatsappNumber && whatsappNumber.trim()) {
-				await fetch("/api/settings/whatsapp", {
+				await fetch("/api/settings/whatsapp-notifications", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({ whatsapp_number: whatsappNumber })

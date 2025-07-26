@@ -19,12 +19,12 @@ const NotificationItem = ({
 	onClick,
 	userTimezone
 }) => {
-	let formattedTimestamp = "..." // Placeholder while timezone is loading
+	let formattedTimestamp = "..." // Default placeholder
 
 	try {
 		const date = parseISO(notification.timestamp)
-		if (typeof userTimezone === "string") {
-			// If timezone is available, format to an absolute time string
+		if (userTimezone) {
+			// If timezone is available, format to an absolute, localized time string
 			formattedTimestamp = new Intl.DateTimeFormat(undefined, {
 				month: "short",
 				day: "numeric",
@@ -33,8 +33,8 @@ const NotificationItem = ({
 				hour12: true,
 				timeZone: userTimezone
 			}).format(date)
-		} else if (userTimezone === null) {
-			// Fallback to relative time if timezone fetch completes but is not set
+		} else {
+			// Fallback to relative time if timezone is not yet available or not set
 			formattedTimestamp = formatDistanceToNow(date, { addSuffix: true })
 		}
 	} catch (e) {
@@ -81,7 +81,7 @@ const NotificationsOverlay = ({ onClose }) => {
 	const [notifications, setNotifications] = useState([])
 	const [isLoading, setIsLoading] = useState(true)
 	const [error, setError] = useState(null)
-	const [userTimezone, setUserTimezone] = useState(undefined) // undefined: loading, null: not found, string: found
+	const [userTimezone, setUserTimezone] = useState(null)
 	const router = useRouter()
 
 	const fetchNotifications = useCallback(async () => {
@@ -116,28 +116,22 @@ const NotificationsOverlay = ({ onClose }) => {
 		}
 	}, [])
 
-	const fetchUserData = useCallback(async () => {
+	const fetchUserTimezone = useCallback(async () => {
 		try {
 			const response = await fetch("/api/user/data")
-			if (!response.ok) {
-				throw new Error("Failed to fetch user data")
-			}
+			if (!response.ok) throw new Error("Failed to fetch user data")
 			const result = await response.json()
 			const timezone = result?.data?.personalInfo?.timezone
-			setUserTimezone(timezone || null) // Set to null if not found
+			setUserTimezone(timezone)
 		} catch (err) {
-			console.error(
-				"NotificationsOverlay: Failed to fetch user timezone",
-				err
-			)
-			setUserTimezone(null) // Set to null on error to trigger fallback
+			console.error("Failed to fetch user timezone", err)
 		}
 	}, [])
 
 	useEffect(() => {
 		fetchNotifications()
-		fetchUserData()
-	}, [fetchNotifications, fetchUserData])
+		fetchUserTimezone()
+	}, [fetchNotifications, fetchUserTimezone])
 
 	const handleDelete = async (e, notificationId) => {
 		if (e && e.stopPropagation) e.stopPropagation()

@@ -882,7 +882,7 @@ def calculate_next_run(schedule: Dict[str, Any], last_run: Optional[datetime.dat
 
     try:
         frequency = schedule.get("frequency")
-        time_str = schedule.get("time", "00:00")
+        time_str = schedule.get("time", "09:00") # Default to 9 AM
         hour, minute = map(int, time_str.split(':'))
 
         # Create the start datetime in the user's timezone
@@ -890,13 +890,25 @@ def calculate_next_run(schedule: Dict[str, Any], last_run: Optional[datetime.dat
 
         rule = None
         if frequency == 'daily':
-            rule = rrule.rrule(rrule.DAILY, dtstart=dtstart_user_tz)
+            rule = rrule.rrule(
+                rrule.DAILY,
+                dtstart=dtstart_user_tz
+            )
         elif frequency == 'weekly':
-            days = schedule.get("days", [])
-            if not days: return None
-            weekday_map = {"Sunday": rrule.SU, "Monday": rrule.MO, "Tuesday": rrule.TU, "Wednesday": rrule.WE, "Thursday": rrule.TH, "Friday": rrule.FR, "Saturday": rrule.SA}
+            days = schedule.get("days")
+            # If days are not specified for a weekly task, default to Monday
+            if not days:
+                days = ["Monday"]
+
+            weekday_map = {
+                "Monday": rrule.MO, "Tuesday": rrule.TU, "Wednesday": rrule.WE,
+                "Thursday": rrule.TH, "Friday": rrule.FR, "Saturday": rrule.SA,
+                "Sunday": rrule.SU
+            }
             byweekday = [weekday_map[day] for day in days if day in weekday_map]
-            if not byweekday: return None
+            if not byweekday:
+                logger.warning(f"No valid weekdays found in schedule: {schedule}. Cannot calculate next run.")
+                return None
             rule = rrule.rrule(rrule.WEEKLY, dtstart=dtstart_user_tz, byweekday=byweekday)
 
         if rule:

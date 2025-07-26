@@ -7,11 +7,13 @@ import {
 	IconSettingsCog,
 	IconBrandGoogleDrive,
 	IconBrandSlack,
+	IconBrandDiscord,
 	IconBrandNotion,
 	IconPlugConnected,
 	IconPlugOff,
 	IconPlus,
 	IconCloud,
+	IconBrandTrello,
 	IconChartPie,
 	IconBrain,
 	IconBrandGithub,
@@ -35,6 +37,8 @@ import { cn } from "@utils/cn"
 import { usePostHog } from "posthog-js/react"
 import ModalDialog from "@components/ModalDialog"
 import { motion, AnimatePresence } from "framer-motion"
+
+import IconBrandTodoist from "@components/icons/IconBrandTodoist"
 
 const HelpTooltip = ({ content }) => (
 	<div className="fixed bottom-6 left-6 z-40">
@@ -65,8 +69,12 @@ const integrationIcons = {
 	quickchart: IconChartPie,
 	memory: IconBrain,
 	google_search: IconWorldSearch,
+	trello: IconBrandTrello,
 	github: IconBrandGithub,
-	news: IconNews
+	news: IconNews,
+	todoist: IconBrandTodoist,
+	discord: IconBrandDiscord,
+	evernote: IconFileText
 }
 
 const MANUAL_INTEGRATION_CONFIGS = {} // Manual integrations removed for Slack and Notion
@@ -582,6 +590,71 @@ const IntegrationsPage = () => {
 		}
 	}, [])
 
+	const handleTrelloConnect = (integration) => {
+		const trelloApiKey = integration.client_id
+		if (!trelloApiKey) {
+			toast.error(
+				"Trello API Key is not configured by the administrator."
+			)
+			return
+		}
+
+		const returnUrl = `${window.location.origin}/integrations`
+		const authUrl = `https://trello.com/1/authorize?expiration=never&name=Sentient&scope=read,write&response_type=token&key=${trelloApiKey}&return_url=${encodeURIComponent(returnUrl)}&callback_method=postMessage`
+
+		const authWindow = window.open(
+			authUrl,
+			"trelloAuth",
+			"width=600,height=700,noopener,noreferrer"
+		)
+
+		const handleMessage = async (event) => {
+			// Basic security checks
+			if (
+				event.source !== authWindow ||
+				event.origin !== "https://trello.com" ||
+				!event.data
+			) {
+				return
+			}
+
+			const token = event.data
+			// Trello tokens are 64-char hex strings
+			if (token && /^[0-9a-f]{64}$/.test(token)) {
+				window.removeEventListener("message", handleMessage)
+				authWindow.close()
+
+				setProcessingIntegration("trello")
+				try {
+					const response = await fetch(
+						"/api/settings/integrations/connect/manual",
+						{
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({
+								service_name: "trello",
+								credentials: { token: token }
+							})
+						}
+					)
+					if (!response.ok)
+						throw new Error(
+							(await response.json()).error ||
+								"Failed to save Trello token."
+						)
+					toast.success("Trello connected successfully!")
+					fetchIntegrations()
+				} catch (error) {
+					toast.error(error.message)
+				} finally {
+					setProcessingIntegration(null)
+				}
+			}
+		}
+
+		window.addEventListener("message", handleMessage, false)
+	}
+
 	const handleConnect = (integration) => {
 		if (integration.auth_type === "oauth") {
 			const { name: serviceName, client_id: clientId } = integration
@@ -591,6 +664,12 @@ const IntegrationsPage = () => {
 				)
 				return
 			}
+
+			if (serviceName === "trello") {
+				handleTrelloConnect(integration)
+				return
+			}
+
 			const redirectUri = `${window.location.origin}/api/settings/integrations/connect/oauth/callback`
 			let authUrl = ""
 			const scopes = {
@@ -628,6 +707,22 @@ const IntegrationsPage = () => {
 				authUrl = `https://api.notion.com/v1/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
 					redirectUri
 				)}&response_type=code&owner=user&state=${serviceName}`
+			} else if (serviceName === "todoist") {
+				const scope = "data:read_write"
+				authUrl = `https://todoist.com/oauth/authorize?client_id=${clientId}&scope=${scope}&state=${serviceName}`
+			} else if (serviceName === "discord") {
+				// Scopes for Discord: identify (read user info), guilds (list servers), bot (add bot to servers), applications.commands (for slash commands)
+				const scope = "identify guilds bot applications.commands"
+				// Permissions for the bot to read/send messages
+				const permissions = "274877908992"
+				authUrl = `https://discord.com/api/oauth2/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
+					redirectUri
+				)}&response_type=code&scope=${encodeURIComponent(scope)}&permissions=${permissions}&state=${serviceName}`
+			} else if (serviceName === "evernote") {
+				const serviceHost = "sandbox.evernote.com" // Use sandbox for dev
+				authUrl = `https://${serviceHost}/oauth2/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(
+					redirectUri
+				)}&state=${serviceName}`
 			}
 			if (authUrl) window.location.href = authUrl
 			else
@@ -689,7 +784,7 @@ const IntegrationsPage = () => {
 				success.charAt(0).toUpperCase() + success.slice(1)
 			posthog?.capture("integration_connected", {
 				integration_name: success,
-				auth_type: "oauth"
+				auth_type: "oauth_redirect"
 			})
 			toast.success(`Successfully connected to ${capitalized}!`)
 			window.history.replaceState({}, document.title, "/integrations")

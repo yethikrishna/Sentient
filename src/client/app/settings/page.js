@@ -767,7 +767,6 @@ const TestingTools = () => {
 const AIPersonalitySettings = () => {
 	const [settings, setSettings] = useState({
 		agentName: "Sentient",
-		responseVerbosity: "Balanced",
 		humorLevel: "Balanced",
 		useEmojis: true,
 		quietHours: { enabled: false, start: "22:00", end: "08:00" },
@@ -887,25 +886,6 @@ const AIPersonalitySettings = () => {
 								}
 								className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400"
 							/>
-						</div>
-						<div>
-							<label className="block text-sm font-medium text-gray-200 mb-2">
-								Response Verbosity
-							</label>
-							<select
-								value={settings.responseVerbosity}
-								onChange={(e) =>
-									handleInputChange(
-										"responseVerbosity",
-										e.target.value
-									)
-								}
-								className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white"
-							>
-								<option value="Concise">Concise</option>
-								<option value="Balanced">Balanced</option>
-								<option value="Detailed">Detailed</option>
-							</select>
 						</div>
 						<div>
 							<label className="block text-sm font-medium text-gray-200 mb-2">

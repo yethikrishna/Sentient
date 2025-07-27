@@ -14,7 +14,6 @@ class UserPreferences(BaseModel):
     corePriorities: List[str] = Field(default_factory=list)
     # New Persona & Interaction Settings
     agentName: Optional[str] = Field(default="Sentient")
-    responseVerbosity: Optional[str] = Field(default="Balanced")  # Concise, Balanced, Detailed
     humorLevel: Optional[str] = Field(default="Balanced")  # Strictly Formal, Balanced, Witty & Humorous
     useEmojis: Optional[bool] = Field(default=True)
     # New Proactivity & Boundary Settings

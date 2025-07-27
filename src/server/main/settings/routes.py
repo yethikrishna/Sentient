@@ -134,7 +134,6 @@ async def get_ai_personality_settings(
     # Ensure all keys exist with default values if not present
     defaults = {
         "agentName": "Sentient",
-        "responseVerbosity": "Balanced",
         "humorLevel": "Balanced",
         "useEmojis": True,
         "quietHours": {"enabled": False, "start": "22:00", "end": "08:00"},

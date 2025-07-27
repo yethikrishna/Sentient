@@ -84,7 +84,6 @@ async def save_onboarding_data_endpoint(
             "privacyFilters": default_privacy_filters,
             "preferences": {
                 "agentName": onboarding_data.get("agent-name") or "Sentient",
-                "responseVerbosity": onboarding_data.get("response-verbosity", "Balanced"),
                 # Set defaults for settings not in onboarding
                 "humorLevel": "Balanced",
                 "useEmojis": True,

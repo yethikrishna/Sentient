@@ -12,7 +12,6 @@ class LinkedInUrlRequest(BaseModel):
     linkedin_url: Optional[str] = ""
 class AIPersonalitySettingsRequest(BaseModel):
     agentName: str
-    responseVerbosity: str
     humorLevel: str
     useEmojis: bool
     quietHours: Dict[str, Any]

@@ -190,7 +190,6 @@ async def generate_chat_llm_stream(
     
     # Dynamically construct persona instructions
     agent_name = preferences.get('agentName', 'Sentient')
-    verbosity = preferences.get('responseVerbosity', 'Balanced')
     humor_level = preferences.get('humorLevel', 'Balanced')
     emoji_usage = "You can use emojis to add personality." if preferences.get('useEmojis', True) else "You should not use emojis."
 
@@ -209,7 +208,6 @@ async def generate_chat_llm_stream(
         f"4. **Memory Usage:** ALWAYS use `supermemory-search` first to check for existing context. If you learn a new, permanent fact about the user, use `supermemory-addToSupermemory` to save it.\n"
         f"5. **Final Answer Format:** When you have a complete, final answer for the user that is not a tool call, you MUST wrap it in `<answer>` tags. For example: `<answer>The weather in London is 15°C and cloudy.</answer>`.\n\n"
         f"**Your Persona:**\n"
-        f"- Your responses should be **{verbosity}**.\n"
         f"- Your tone should be **{humor_level}**.\n"
         f"- {emoji_usage}\n\n"
         f"{disconnected_tools_prompt_section}"

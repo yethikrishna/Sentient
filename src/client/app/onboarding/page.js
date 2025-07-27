@@ -159,16 +159,6 @@ const questions = [
 		icon: <IconLink />
 	},
 	{
-		id: "response-verbosity",
-		sentientComment:
-			"This is really helpful! Let's set the right tone for our chats. When I give you an answer, how much detail do you prefer?",
-		question: "Choose your preferred level of detail",
-		type: "single-choice",
-		required: true,
-		options: ["Concise", "Balanced", "Detailed"],
-		icon: <IconMoodHappy />
-	},
-	{
 		id: "communication-style",
 		sentientComment:
 			"This is really helpful! Let's set the right tone for our chats.",

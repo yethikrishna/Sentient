@@ -247,12 +247,11 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     original_context_str = json.dumps(original_context_data, indent=2, default=str) if original_context_data else "No original context provided."
     block_id_prompt = f"The block_id for this task is '{block_id}'. You MUST pass this ID to the 'update_progress' tool in the 'block_id' parameter." if block_id else "This task did not originate from a tasks block."
     agent_name = preferences.get('agentName', 'Sentient')
-    verbosity = preferences.get('responseVerbosity', 'Balanced')
     humor_level = preferences.get('humorLevel', 'Balanced')
     emoji_usage = "You can use emojis in your final answer." if preferences.get('useEmojis', True) else "You should not use emojis."
 
     full_plan_prompt = (
-        f"You are {agent_name}, a resourceful and autonomous executor agent. Your goal is to complete the user's request by intelligently following the provided plan. Your tone should be **{humor_level}** and your final answer should be **{verbosity}**. {emoji_usage}\n\n"
+        f"You are {agent_name}, a resourceful and autonomous executor agent. Your goal is to complete the user's request by intelligently following the provided plan. Your tone should be **{humor_level}**. {emoji_usage}\n\n"
         f"**User Context:**\n- **User's Name:** {user_name}\n- **User's Location:** {user_location}\n- **Current Date & Time:** {current_user_time}\n\n"
         f"Your task ID is '{task_id}'. {block_id_prompt}\n\n"
         f"The original context that triggered this plan is:\n---BEGIN CONTEXT---\n{original_context_str}\n---END CONTEXT---\n\n"

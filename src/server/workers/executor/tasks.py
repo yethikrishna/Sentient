@@ -270,29 +270,37 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     
     try:
         executor_agent = Assistant(llm=llm_cfg, function_list=tools_config, system_message="You are an autonomous executor agent...")
-        messages = [{'role': 'user', 'content': full_plan_prompt}]
+        initial_messages = [{'role': 'user', 'content': full_plan_prompt}]
         
         logger.info(f"Task {task_id}: Starting agent run.")
-        final_history = None
-        for history_step in executor_agent.run(messages=messages):
-            final_history = history_step 
 
-        if not final_history:
-            raise Exception("Agent did not produce any output.")
+        previous_history = initial_messages
+        final_answer_content = ""
 
-        assistant_turn_content = ""
-        assistant_turn_start_index = next((i for i, msg in reversed(list(enumerate(final_history))) if msg.get("role") == "user"), -1) + 1
-        for msg in final_history[assistant_turn_start_index:]:
-            if msg.get('role') == 'assistant' and msg.get('function_call'):
-                assistant_turn_content += f'<tool_code name="{msg["function_call"].get("name")}">{msg["function_call"].get("arguments", "{}")}</tool_code>\n'
-            elif msg.get('role') == 'function':
-                assistant_turn_content += f'<tool_result tool_name="{msg.get("name")}">{msg.get("content", "")}</tool_result>\n'
-            elif msg.get('role') == 'assistant' and isinstance(msg.get('content'), str):
-                assistant_turn_content += msg.get('content', '')
+        for current_history in executor_agent.run(messages=initial_messages):
+            # Find the new messages since the last step
+            new_messages = current_history[len(previous_history):]
 
-        logger.info(f"Task {task_id}: Agent run finished. Full response length: {len(assistant_turn_content)}")
+            # Process and log only the new part of the stream
+            if new_messages:
+                new_content_str = ""
+                for msg in new_messages:
+                    if msg.get('role') == 'assistant' and msg.get('function_call'):
+                        new_content_str += f'<tool_code name="{msg["function_call"].get("name")}">{msg["function_call"].get("arguments", "{}")}</tool_code>\n'
+                    elif msg.get('role') == 'function':
+                        new_content_str += f'<tool_result tool_name="{msg.get("name")}">{msg.get("content", "")}</tool_result>\n'
+                    elif msg.get('role') == 'assistant' and isinstance(msg.get('content'), str):
+                        new_content_str += msg.get('content', '')
 
-        updates = parse_agent_string_to_updates(assistant_turn_content)
+                updates = parse_agent_string_to_updates(new_content_str)
+                for update in updates:
+                    await add_progress_update(db, task_id, run_id, user_id, update, block_id)
+                    # Capture the final answer if it appears
+                    if update.get("type") == "final_answer":
+                        final_answer_content = update.get("content")
+
+            previous_history = current_history
+
 
         for update in updates:
             await add_progress_update(db, task_id, run_id, user_id, update, block_id)
@@ -300,12 +308,12 @@ async def async_execute_task_plan(task_id: str, user_id: str):
         final_answer_update = next((u for u in reversed(updates) if u.get("type") == "final_answer"), None)
         final_content = final_answer_update.get("content") if final_answer_update else "Task completed. Check the execution log for details."
 
-        logger.info(f"Task {task_id}: Final result: {final_content}")
+        logger.info(f"Task {task_id}: Final result: {final_answer_content}")
         await add_progress_update(db, task_id, run_id, user_id, {"type": "info", "content": "Execution script finished."}, block_id=block_id)
         capture_event(user_id, "task_execution_succeeded", {"task_id": task_id})
-        await update_task_run_status(db, task_id, run_id, "completed", user_id, details={"result": final_content}, block_id=block_id)
+        await update_task_run_status(db, task_id, run_id, "completed", user_id, details={"result": final_answer_content}, block_id=block_id)
 
-        return {"status": "success", "result": final_content}
+        return {"status": "success", "result": final_answer_content}
 
     except Exception as e:
         error_message = f"Executor agent failed: {str(e)}"

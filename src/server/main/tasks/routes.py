@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import uuid
 
@@ -237,7 +237,7 @@ async def approve_task(
 
     if schedule_data.get("type") == "recurring":
         # The schedule object should contain the user's timezone, added when the task was created/updated.
-        next_run = calculate_next_run(schedule_data)
+        next_run, _ = calculate_next_run(schedule_data)
         if next_run:
             update_data["next_execution_at"] = next_run
             update_data["status"] = "active"
@@ -247,17 +247,28 @@ async def approve_task(
             update_data["error"] = "Could not calculate next run time for recurring task."
     elif schedule_data.get("type") == "once" and schedule_data.get("run_at"):
         run_at_time_str = schedule_data.get("run_at")
-        run_at_time = datetime.fromisoformat(run_at_time_str)
-        # Ensure datetime is timezone-aware for comparison. New data will have 'Z' and be aware.
-        if run_at_time.tzinfo is None:
-            # This branch is for backward compatibility. It ASSUMES the naive datetime was stored as UTC.
-            run_at_time = run_at_time.replace(tzinfo=timezone.utc)
-        if run_at_time > datetime.now(timezone.utc):
-            update_data["next_execution_at"] = run_at_time
+        # Append :00 if seconds are missing for robust parsing
+        if len(run_at_time_str) == 16: # Format is YYYY-MM-DDTHH:MM
+            run_at_time_str += ":00"
+        user_timezone_str = schedule_data.get("timezone", "UTC")
+        try:
+            user_tz = ZoneInfo(user_timezone_str)
+        except ZoneInfoNotFoundError:
+            logger.warning(f"Invalid timezone '{user_timezone_str}' for task {task_id}. Defaulting to UTC.")
+            user_tz = ZoneInfo("UTC")
+
+        naive_run_at_time = datetime.fromisoformat(run_at_time_str)
+        utc_run_at_time = naive_run_at_time.replace(tzinfo=user_tz).astimezone(timezone.utc)
+
+        if utc_run_at_time > datetime.now(timezone.utc):
+            update_data["next_execution_at"] = utc_run_at_time
             update_data["status"] = "pending"
         else:
+            # Task is due now or in the past, execute immediately and update status
+            update_data["status"] = "processing"
             execute_task_plan.delay(task_id, user_id)
     else: # Default case: not scheduled, run immediately
+        update_data["status"] = "processing"
         execute_task_plan.delay(task_id, user_id)
     
     if update_data:

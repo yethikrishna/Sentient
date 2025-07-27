@@ -8,7 +8,7 @@ from main.config import ENVIRONMENT
 from main.dependencies import auth_helper
 from main.notifications.whatsapp_client import (check_phone_number_exists,
                                                  send_whatsapp_message)
-from workers.tasks import extract_from_context
+from workers.tasks import extract_from_context, run_due_tasks
 
 from .models import ContextInjectionRequest, WhatsAppTestRequest
 
@@ -97,6 +97,23 @@ async def send_test_whatsapp(
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+@router.post("/trigger-scheduler", summary="Manually trigger the task scheduler")
+async def trigger_scheduler(
+    user_id: str = Depends(auth_helper.get_current_user_id)
+):
+    _check_allowed_environments(
+        ["dev-local", "selfhost"],
+        "This endpoint is only available in development or self-host environments."
+    )
+    try:
+        run_due_tasks.delay()
+        logger.info(f"Manually triggered task scheduler by user {user_id}")
+        return {"message": "Task scheduler (run_due_tasks) triggered successfully. Check Celery worker logs for execution."}
+    except Exception as e:
+        logger.error(f"Failed to manually trigger scheduler: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to trigger scheduler task.")
+
 
 @router.post("/whatsapp/verify", summary="Verify if a WhatsApp number exists")
 async def verify_whatsapp_number(

@@ -79,6 +79,7 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 					<input
 						type="datetime-local"
 						value={getLocalDateTimeString(schedule.run_at)}
+						step="1" // Ensures seconds are included in the value
 						onChange={handleRunAtChange}
 						className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:border-blue-500"
 					/>

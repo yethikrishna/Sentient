@@ -866,7 +866,7 @@ def schedule_all_polling():
 
     run_async(async_schedule())
 
-def calculate_next_run(schedule: Dict[str, Any], last_run: Optional[datetime.datetime] = None) -> Optional[datetime.datetime]:
+def calculate_next_run(schedule: Dict[str, Any], last_run: Optional[datetime.datetime] = None) -> Tuple[Optional[datetime.datetime], Optional[str]]:
     """Calculates the next execution time for a scheduled task in UTC."""
     now_utc = datetime.datetime.now(datetime.timezone.utc)
     user_timezone_str = schedule.get("timezone", "UTC")
@@ -875,6 +875,7 @@ def calculate_next_run(schedule: Dict[str, Any], last_run: Optional[datetime.dat
         user_tz = ZoneInfo(user_timezone_str)
     except ZoneInfoNotFoundError:
         logger.warning(f"Invalid timezone '{user_timezone_str}'. Defaulting to UTC.")
+        user_timezone_str = "UTC"
         user_tz = ZoneInfo("UTC")
 
     # The reference time for 'after' should be in the user's timezone to handle day boundaries correctly
@@ -890,23 +891,23 @@ def calculate_next_run(schedule: Dict[str, Any], last_run: Optional[datetime.dat
 
         rule = None
         if frequency == 'daily':
-            rule = rrule.rrule(rrule.DAILY, dtstart=dtstart_user_tz)
+            rule = rrule.rrule(rrule.DAILY, dtstart=dtstart_user_tz, until=start_time_user_tz + datetime.timedelta(days=365))
         elif frequency == 'weekly':
             days = schedule.get("days", [])
-            if not days: return None
+            if not days: return None, user_timezone_str
             weekday_map = {"Sunday": rrule.SU, "Monday": rrule.MO, "Tuesday": rrule.TU, "Wednesday": rrule.WE, "Thursday": rrule.TH, "Friday": rrule.FR, "Saturday": rrule.SA}
             byweekday = [weekday_map[day] for day in days if day in weekday_map]
-            if not byweekday: return None
-            rule = rrule.rrule(rrule.WEEKLY, dtstart=dtstart_user_tz, byweekday=byweekday)
+            if not byweekday: return None, user_timezone_str
+            rule = rrule.rrule(rrule.WEEKLY, dtstart=dtstart_user_tz, byweekday=byweekday, until=start_time_user_tz + datetime.timedelta(days=365))
 
         if rule:
             next_run_user_tz = rule.after(start_time_user_tz)
             if next_run_user_tz:
                 # Convert the result back to UTC for storage
-                return next_run_user_tz.astimezone(datetime.timezone.utc)
+                return next_run_user_tz.astimezone(datetime.timezone.utc), user_timezone_str
     except Exception as e:
         logger.error(f"Error calculating next run time for schedule {schedule}: {e}")
-    return None
+    return None, user_timezone_str
 
 @celery_app.task(name="run_due_tasks")
 def run_due_tasks():
@@ -941,7 +942,7 @@ async def async_run_due_tasks():
             # For one-off tasks, this will effectively be cleared.
             next_run_time = None
             if task.get('schedule', {}).get('type') == 'recurring':
-                next_run_time = calculate_next_run(task['schedule'], last_run=now)
+                next_run_time, _ = calculate_next_run(task['schedule'], last_run=now)
 
             update_fields = {
                 "last_execution_at": now,

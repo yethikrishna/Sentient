@@ -510,6 +510,7 @@ const TestingTools = () => {
 			)
 		}
 	}
+	const [isTriggeringScheduler, setIsTriggeringScheduler] = useState(false)
 
 	const [whatsAppNumber, setWhatsAppNumber] = useState("")
 	const [isVerifying, setIsVerifying] = useState(false)
@@ -519,6 +520,23 @@ const TestingTools = () => {
 		message: ""
 	})
 
+	const handleTriggerScheduler = async () => {
+		setIsTriggeringScheduler(true)
+		try {
+			const response = await fetch("/api/testing/trigger-scheduler", {
+				method: "POST"
+			})
+			const result = await response.json()
+			if (!response.ok) {
+				throw new Error(result.detail || "Failed to trigger scheduler.")
+			}
+			toast.success(result.message)
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsTriggeringScheduler(false)
+		}
+	}
 	const handleVerifyWhatsApp = async () => {
 		if (!whatsAppNumber) {
 			toast.error("Please enter a phone number to verify.")
@@ -716,6 +734,31 @@ const TestingTools = () => {
 						{verificationResult.message}
 					</p>
 				)}
+			</div>
+			{/* Scheduler Test Tool */}
+			<div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)] mt-6">
+				<h3 className="font-semibold text-lg text-white mb-2">
+					Trigger Task Scheduler
+				</h3>
+				<p className="text-gray-400 text-sm mb-4">
+					Manually run the Celery Beat scheduler task
+					(`run_due_tasks`) to immediately check for and execute any
+					due scheduled or recurring tasks. This is useful for testing
+					without waiting for the 5-minute interval.
+				</p>
+				<div className="flex justify-end">
+					<button
+						onClick={handleTriggerScheduler}
+						disabled={isTriggeringScheduler}
+						className="flex items-center py-2 px-4 rounded-md bg-purple-600 hover:bg-purple-500 text-white font-medium transition-colors disabled:opacity-50"
+					>
+						{isTriggeringScheduler ? (
+							<IconLoader className="w-5 h-5 animate-spin" />
+						) : (
+							"Run Scheduler Now"
+						)}
+					</button>
+				</div>
 			</div>
 		</section>
 	)
@@ -1451,10 +1494,10 @@ const ProfilePage = () => {
 						<WhatsAppSettings />
 						<LinkedInSettings />
 						<ShortcutsSettings />
-						{(process.env.NEXT_PUBLIC_ENVIRONMENT !== "prod" ||
-							process.env.NEXT_PUBLIC_ENVIRONMENT !== "stag") && (
-							<TestingTools />
-						)}
+						{process.env.NEXT_PUBLIC_ENVIRONMENT !== "prod" &&
+							process.env.NEXT_PUBLIC_ENVIRONMENT !== "stag" && (
+								<TestingTools />
+							)}
 					</div>
 				</main>
 			</div>

@@ -38,9 +38,9 @@
 
 <br />
 
-> Hey there! I'm Sarthak, and I'm building **Sentient**: a personal AI assistant for anyone and everyone who wants to live their life more productively.
+> **Sentient** is a personal AI assistant for anyone and everyone who wants to live their life more productively.
 >
-> Sentient acts as your central command center, bridging the gap between your goals and the actions required to achieve them. It is designed to be a truly proactive partner that understands you, manages your digital life, and gets things done—without you having to type long, complex prompts.
+> It acts as your central command center, bridging the gap between your goals and the actions required to achieve them. It is designed to be a truly proactive partner that understands you, manages your digital life, and gets things done—without you having to type long, complex prompts.
 >
 > It can:
 > - **💬 Chat with you** about any topic via text or voice.
@@ -49,9 +49,7 @@
 > - **🗓️ Proactively manage your day**, reading your emails and calendar to suggest schedules and remind you of important events.
 > - **🔗 Integrate seamlessly** with the apps you use every day.
 >
-> And the best part? **The project is fully open-source.**
->
-> [Read our manifesto.](https://docs.google.com/document/d/1vbCGAbh9f8vXfPup_Z7cW__gnOLdRhEtHKyoIxJD8is/edit?tab=t.0#heading=h.2kit9yqvlc77)
+> For more information [read our manifesto.](https://docs.google.com/document/d/1vbCGAbh9f8vXfPup_Z7cW__gnOLdRhEtHKyoIxJD8is/edit?tab=t.0#heading=h.2kit9yqvlc77)
 
 ---
 

@@ -68,16 +68,6 @@ const questions = [
 		icon: <IconUser />
 	},
 	{
-		id: "agent-name",
-		sentientComment:
-			"Great to meet you, {user-name}! I'm your personal AI. You can call me Sentient, or you can give me a name of your own.",
-		question: "What would you like to call me? (Optional)",
-		type: "text-input",
-		required: false,
-		placeholder: "e.g., Jarvis, Athena, Friday",
-		icon: <IconMessageChatbot />
-	},
-	{
 		id: "timezone",
 		sentientComment:
 			"Great to meet you, {user-name}! To make sure I'm always on your time...",
@@ -147,49 +137,6 @@ const questions = [
 		required: true,
 		placeholder: "e.g., I enjoy hiking, learning guitar, and soccer.",
 		icon: <IconHeart />
-	},
-	{
-		id: "linkedin-url",
-		sentientComment:
-			"To get a better professional snapshot, you can also provide your LinkedIn profile URL. This is optional.",
-		question: "What is your LinkedIn Profile URL? (Optional)",
-		type: "text-input",
-		required: false,
-		placeholder: "https://www.linkedin.com/in/your-profile",
-		icon: <IconLink />
-	},
-	{
-		id: "communication-style",
-		sentientComment:
-			"This is really helpful! Let's set the right tone for our chats.",
-		question: "How should I communicate with you?",
-		type: "single-choice",
-		required: true,
-		options: [
-			"Casual & Friendly",
-			"Professional & Formal",
-			"Concise & To-the-point",
-			"Enthusiastic & Witty"
-		],
-		icon: <IconMoodHappy />
-	},
-	{
-		id: "core-priorities",
-		sentientComment:
-			"Last one! To help me focus on what's truly important to you...",
-		question: "What are your top 3 priorities right now?",
-		required: true,
-		type: "multi-choice",
-		limit: 3,
-		options: [
-			"Career Growth",
-			"Health & Wellness",
-			"Family & Relationships",
-			"Learning & Personal Growth",
-			"Financial Stability",
-			"Hobbies & Leisure"
-		],
-		icon: <IconListCheck />
 	}
 ]
 

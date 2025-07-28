@@ -188,11 +188,6 @@ async def generate_chat_llm_stream(
     queue: asyncio.Queue[Optional[Any]] = asyncio.Queue()
     stream_interrupted = False
     
-    # Dynamically construct persona instructions
-    agent_name = preferences.get('agentName', 'Sentient')
-    humor_level = preferences.get('humorLevel', 'Balanced')
-    emoji_usage = "You can use emojis to add personality." if preferences.get('useEmojis', True) else "You should not use emojis."
-
     disconnected_tools_list_str = "\n".join([f"- `{name}`: {desc}" for name, desc in disconnected_tools.items()])
     disconnected_tools_prompt_section = (
         f"**Disconnected Tools (User needs to connect these in Settings):**\n{disconnected_tools_list_str}\n\n"
@@ -200,16 +195,13 @@ async def generate_chat_llm_stream(
     )
 
     system_prompt = (
-        f"You are {agent_name}, a personalized AI assistant. Your goal is to be as helpful as possible by using your available tools to directly execute tasks and help the user track their schedule.\n\n"
+        f"You are Sentient, a personalized AI assistant. Your goal is to be as helpful as possible by using your available tools to directly execute tasks and help the user track their schedule.\n\n"
         f"**Critical Instructions:**\n"
         f"1. **Validate Complex JSON:** Before calling any tool that requires a complex JSON string as a parameter (like Notion's `content_blocks_json`), you MUST first pass your generated JSON string to the `json_validator` tool to ensure it is syntactically correct. Use the cleaned output from `json_validator` in the subsequent tool call.\n"
         f"2. **Handle Disconnected Tools:** You have a list of tools the user has not connected yet. If the user's query clearly refers to a capability from this list (e.g., asking to 'send a slack message' when Slack is disconnected), you MUST stop and politely inform the user that they need to connect the tool in the Integrations page. Do not proceed with other tools.\n"
         f"3. For any command to create, send, search, or read information (e.g., create a document, send an email, search for files), you MUST call the appropriate tool directly (e.g., `gdocs-createDocument`, `gmail-sendEmail`, `gdrive-gdrive_search`). Complete the task within the chat and provide the result to the user.\n"
         f"4. **Memory Usage:** ALWAYS use `supermemory-search` first to check for existing context. If you learn a new, permanent fact about the user, use `supermemory-addToSupermemory` to save it.\n"
         f"5. **Final Answer Format:** When you have a complete, final answer for the user that is not a tool call, you MUST wrap it in `<answer>` tags. For example: `<answer>The weather in London is 15°C and cloudy.</answer>`.\n\n"
-        f"**Your Persona:**\n"
-        f"- Your tone should be **{humor_level}**.\n"
-        f"- {emoji_usage}\n\n"
         f"{disconnected_tools_prompt_section}"
         f"**User Context (for your reference):**\n"
         f"-   **User's Name:** {username}\n"

@@ -14,7 +14,7 @@ from main.auth.utils import PermissionChecker, AuthHelper, aes_encrypt, aes_decr
 from main.config import AUTH0_AUDIENCE
 from main.dependencies import mongo_manager, auth_helper, websocket_manager as main_websocket_manager
 from pydantic import BaseModel
-from workers.tasks import process_memory_item, process_linkedin_profile
+from workers.tasks import process_memory_item
 
 # Google API libraries for validation
 from google.oauth2 import service_account
@@ -63,19 +63,6 @@ async def save_onboarding_data_endpoint(
         }
 
         onboarding_data = request_body.data
-        # Sanitize empty optional fields
-        onboarding_data["agent-name"] = onboarding_data.get("agent-name", "").strip()
-
-        # --- Handle LinkedIn URL ---
-        linkedin_url = onboarding_data.get("linkedin-url")
-        if linkedin_url and isinstance(linkedin_url, str) and "linkedin.com/in/" in linkedin_url:
-            logger.info(f"LinkedIn URL provided for user {user_id}. Dispatching scraping task.")
-            try:
-                process_linkedin_profile.delay(user_id, linkedin_url)
-            except Exception as celery_dispatch_error:
-                logger.error(f"Failed to dispatch LinkedIn scraping task for user {user_id}: {celery_dispatch_error}", exc_info=True)
-                # This is fail-safe, so we just log and continue.
-
         # --- Prepare data for MongoDB ---
         user_data_to_set: Dict[str, Any] = {
             "onboardingAnswers": onboarding_data,
@@ -83,15 +70,6 @@ async def save_onboarding_data_endpoint(
             "supermemory_user_id": supermemory_user_id,
             "privacyFilters": default_privacy_filters,
             "preferences": {
-                "agentName": onboarding_data.get("agent-name") or "Sentient",
-                # Set defaults for settings not in onboarding
-                "humorLevel": "Balanced",
-                "useEmojis": True,
-                "quietHours": {"enabled": False, "start": "22:00", "end": "08:00"},
-                "notificationControls": {"taskNeedsApproval": True, "taskCompleted": True, "taskFailed": False, "proactiveSummary": False, "importantInsights": False,
-                },
-                "communicationStyle": onboarding_data.get("communication-style", "Casual & Friendly"),
-                "corePriorities": onboarding_data.get("core-priorities", [])
             }
         }
 
@@ -131,9 +109,7 @@ async def save_onboarding_data_endpoint(
                 "location": "The user's location is at latitude {latitude}, longitude {longitude}.",
                 "timezone": "The user's timezone is {}.",
                 "professional-context": "Professionally, the user has shared: {}",
-                "personal-context": "Personally, the user is interested in: {}",
-                "communication-style": "The user prefers a {} communication style.",
-                "core-priorities": "The user's current life priorities are: {}."
+                "personal-context": "Personally, the user is interested in: {}"
             }
             onboarding_facts = []
             for key, value in onboarding_data.items():
@@ -147,8 +123,6 @@ async def save_onboarding_data_endpoint(
                     elif isinstance(value, str) and value.strip():
                         # Use a different phrasing for manual location
                         fact = f"The user's location is around '{value}'."
-                elif key == "core-priorities" and isinstance(value, list) and value:
-                    fact = fact_templates[key].format(", ".join(value))
                 elif isinstance(value, str) and value.strip():
                     fact = fact_templates[key].format(value)
 

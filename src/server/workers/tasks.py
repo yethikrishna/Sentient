@@ -34,11 +34,6 @@ from workers.poller.gcalendar.service import GCalendarPollingService
 from workers.poller.gmail.db import PollerMongoManager as GmailPollerDB
 from workers.poller.gcalendar.db import PollerMongoManager as GCalPollerDB
 
-# Imports for LinkedIn scraping
-from linkedin_scraper import Person, actions
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -684,91 +679,6 @@ async def async_generate_plan(task_id: str):
         await db_manager.update_task_status(task_id, "error", {"error": str(e)})
     finally:
         await db_manager.close()
-
-# --- LinkedIn Scraping Task ---
-@celery_app.task(name="process_linkedin_profile")
-def process_linkedin_profile(user_id: str, linkedin_url: str):
-    """
-    Scrapes a LinkedIn profile, formats the data, and sends it to Supermemory.
-    This is a fail-safe task that should not raise exceptions that would cause a retry loop.
-    """
-    logger.info(f"Starting LinkedIn scraping for user {user_id} at URL: {linkedin_url}")
-
-    linkedin_cookie = os.getenv("LINKEDIN_COOKIE")
-
-    if not linkedin_cookie:
-        logger.error("LINKEDIN_COOKIE environment variable is not set. Cannot scrape LinkedIn.")
-        return {"status": "failure", "reason": "LinkedIn cookie not configured."}
-
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--incognito")
-
-    driver = None
-    try:
-        # Let Selenium/Chromedriver manage the user data directory automatically
-        # by NOT specifying --user-data-dir.
-        driver = webdriver.Chrome(options=chrome_options)
-
-        logger.info(f"Logging into LinkedIn using session cookie...")
-        actions.login(driver, cookie=linkedin_cookie)
-        logger.info("LinkedIn login successful via cookie.")
-
-        person = Person(linkedin_url, driver=driver, scrape=True, close_on_complete=False)
-
-        if not person or not person.name:
-             logger.error(f"Failed to scrape data for LinkedIn URL: {linkedin_url}")
-             return {"status": "failure", "reason": "Scraping returned no data."}
-
-        logger.info(f"Successfully scraped profile for: {person.name}")
-
-        facts_to_remember = []
-        if person.name and person.name.strip():
-            facts_to_remember.append(f"The user's full name is {person.name}.")
-        if person.about and person.about.strip():
-            facts_to_remember.append(f"The user's LinkedIn 'About' section says: \"{person.about.strip()}\"")
-        if person.job_title and person.company and person.job_title.strip() and person.company.strip():
-             facts_to_remember.append(f"The user's current role is {person.job_title} at {person.company}.")
-
-        for exp in person.experiences:
-            pos_title = getattr(exp, 'position_title', 'a role')
-            inst_name = getattr(exp, 'institution_name', 'a company')
-            from_date = getattr(exp, 'from_date', 'an unknown start date')
-            to_date = getattr(exp, 'to_date', 'an unknown end date')
-            desc = getattr(exp, 'description', '')
-
-            exp_str = f"The user has experience as a {pos_title} at {inst_name} from {from_date} to {to_date}."
-            if desc and str(desc).strip():
-                clean_desc = ' '.join(str(desc).split())
-                exp_str += f" Description: {clean_desc[:250]}..."
-            facts_to_remember.append(exp_str)
-
-        for edu in person.educations:
-            inst_name = getattr(edu, 'institution_name', 'an institution')
-            degree = getattr(edu, 'degree', 'a degree')
-            from_date = getattr(edu, 'from_date', 'an unknown start date')
-            to_date = getattr(edu, 'to_date', 'an unknown end date')
-            edu_str = f"The user studied at {inst_name}, pursuing {degree} from {from_date} to {to_date}."
-            facts_to_remember.append(edu_str)
-
-        logger.info(f"Formatted {len(facts_to_remember)} facts from LinkedIn profile.")
-
-        for fact in facts_to_remember:
-            process_memory_item.delay(user_id, fact)
-
-        logger.info(f"Dispatched {len(facts_to_remember)} facts to Supermemory for user {user_id}.")
-        return {"status": "success", "facts_generated": len(facts_to_remember)}
-
-    except Exception as e:
-        logger.error(f"An error occurred during LinkedIn scraping for user {user_id}: {e}", exc_info=True)
-        return {"status": "failure", "reason": str(e)}
-    finally:
-        if driver:
-            driver.quit()
-            logger.info("WebDriver for LinkedIn scraping has been quit.")
 
 @celery_app.task(name="refine_task_details")
 def refine_task_details(task_id: str):

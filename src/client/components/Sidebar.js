@@ -8,11 +8,13 @@ import {
 	IconLogout,
 	IconPlugConnected,
 	IconUser,
-	IconMessage
+	IconMessage,
+	IconBell
 } from "@tabler/icons-react"
 import { cn } from "@utils/cn"
+import { motion } from "framer-motion"
 
-const Sidebar = () => {
+const Sidebar = ({ onNotificationsOpen, unreadCount }) => {
 	const pathname = usePathname()
 	const [userDetails, setUserDetails] = useState(null)
 	const isSelfHost = process.env.NEXT_PUBLIC_ENVIRONMENT === "selfhost"
@@ -68,6 +70,22 @@ const Sidebar = () => {
 								</Link>
 							)
 						})}
+						<button
+							onClick={onNotificationsOpen}
+							className="relative flex flex-col items-center gap-1.5 transition-colors duration-200 w-full py-3 text-neutral-400 hover:text-white hover:bg-neutral-800/50"
+						>
+							<IconBell size={28} />
+							<span className="text-xs font-medium">
+								Activity
+							</span>
+							{unreadCount > 0 && (
+								<motion.div
+									initial={{ scale: 0 }}
+									animate={{ scale: 1 }}
+									className="absolute top-2 right-5 h-2.5 w-2.5 bg-red-500 rounded-full border-2 border-black"
+								/>
+							)}
+						</button>
 					</nav>
 				</div>
 				<div className="flex flex-col items-center gap-4">
@@ -117,10 +135,23 @@ const Sidebar = () => {
 							</Link>
 						)
 					})}
+					<button
+						onClick={onNotificationsOpen}
+						className="relative flex flex-col items-center justify-center gap-1 w-full h-full transition-colors text-neutral-400 hover:text-white"
+					>
+						<IconBell size={24} />
+						<span className="text-xs font-medium">Activity</span>
+						{unreadCount > 0 && (
+							<motion.div
+								initial={{ scale: 0 }}
+								animate={{ scale: 1 }}
+								className="absolute top-2 right-1/2 translate-x-3 h-2.5 w-2.5 bg-red-500 rounded-full border-2 border-black"
+							/>
+						)}
+					</button>
 				</nav>
 			</div>
 		</>
 	)
 }
 export default Sidebar
-

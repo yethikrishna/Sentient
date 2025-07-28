@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useMemo } from "react"
 import {
 	IconX,
 	IconPencil,
@@ -14,6 +14,7 @@ import {
 	IconClipboardList
 } from "@tabler/icons-react"
 import TaskDetailsContent from "./TaskDetailsContent"
+import ConnectToolButton from "./ConnectToolButton"
 import { cn } from "@utils/cn"
 
 const TaskDetailsPanel = ({
@@ -33,12 +34,59 @@ const TaskDetailsPanel = ({
 	const [isEditing, setIsEditing] = useState(false)
 	const [editableTask, setEditableTask] = useState(task)
 
+	const missingTools = useMemo(() => {
+		if (!task || !integrations) {
+			return []
+		}
+
+		// The plan is in the latest run. Fallback to top-level for legacy tasks.
+		const plan =
+			task.runs && task.runs.length > 0
+				? task.runs[task.runs.length - 1].plan
+				: task.plan
+
+		if (!plan || plan.length === 0) {
+			return []
+		}
+
+		const requiredTools = new Set(plan.map((step) => step.tool))
+		const connectedTools = new Set(
+			integrations
+				.filter((i) => i.connected || i.auth_type === "builtin")
+				.map((i) => i.name)
+		)
+
+		const missing = []
+		for (const tool of requiredTools) {
+			if (!connectedTools.has(tool)) {
+				const toolDetails = integrations.find((i) => i.name === tool)
+				missing.push({
+					name: tool,
+					displayName: toolDetails?.display_name || tool
+				})
+			}
+		}
+		return missing
+	}, [task, integrations])
+
 	useEffect(() => {
 		setEditableTask(task)
 		if (!task) {
 			setIsEditing(false) // Reset editing state when task is closed/changed
 		}
 	}, [task])
+
+	const handleStartEditing = () => {
+		// When editing, we need to make sure we're editing the plan from the latest run.
+		const latestRun =
+			task.runs && task.runs.length > 0
+				? task.runs[task.runs.length - 1]
+				: {}
+		const planForEditing = latestRun.plan || task.plan || [] // Fallback for different structures
+
+		setEditableTask({ ...task, plan: planForEditing })
+		setIsEditing(true)
+	}
 
 	const handleFieldChange = (field, value) =>
 		setEditableTask((prev) => ({ ...prev, [field]: value }))
@@ -66,9 +114,16 @@ const TaskDetailsPanel = ({
 		setIsEditing(false)
 	}
 
-	const ActionButton = ({ onClick, icon, children, className = "" }) => (
+	const ActionButton = ({
+		onClick,
+		icon,
+		children,
+		className = "",
+		disabled = false
+	}) => (
 		<button
 			onClick={onClick}
+			disabled={disabled}
 			className={cn(
 				"flex items-center gap-2 text-sm px-3 py-2 rounded-lg transition-colors",
 				className
@@ -82,7 +137,7 @@ const TaskDetailsPanel = ({
 	return (
 		<aside
 			className={cn(
-				"w-full max-w-2xl bg-neutral-900/80 backdrop-blur-xl shadow-2xl md:border-l border-neutral-700/80 flex flex-col flex-shrink-0",
+				"w-full h-full bg-neutral-900/80 backdrop-blur-xl shadow-2xl md:border-l border-neutral-700/80 flex flex-col flex-shrink-0",
 				className
 			)}
 		>
@@ -174,7 +229,7 @@ const TaskDetailsPanel = ({
 							<>
 								<div className="flex items-center gap-2">
 									<ActionButton
-										onClick={() => setIsEditing(true)}
+										onClick={handleStartEditing}
 										icon={<IconPencil size={16} />}
 										className="text-neutral-400 hover:bg-neutral-700 hover:text-white"
 									/>
@@ -189,27 +244,52 @@ const TaskDetailsPanel = ({
 										className="text-neutral-400 hover:bg-neutral-700 hover:text-white"
 									/>
 								</div>
-								<div className="flex items-center gap-2">
-									{task.status === "approval_pending" && (
+								<div className="flex flex-col items-end gap-2">
+									{missingTools.length > 0 && (
+										<div className="text-xs text-red-400 flex flex-col items-end gap-1">
+											<span>
+												Connect required tools to
+												approve:
+											</span>
+											<div className="flex gap-2">
+												{missingTools.map((tool) => (
+													<ConnectToolButton
+														key={tool.name}
+														toolName={
+															tool.displayName
+														}
+													/>
+												))}
+											</div>
+										</div>
+									)}
+									<div className="flex items-center gap-2">
+										{task.status === "approval_pending" && (
+											<ActionButton
+												onClick={() =>
+													onApprove(task.task_id)
+												}
+												icon={
+													<IconPlayerPlay size={16} />
+												}
+												className="bg-green-600 text-white hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+												disabled={
+													missingTools.length > 0
+												}
+											>
+												Approve & Run
+											</ActionButton>
+										)}
 										<ActionButton
 											onClick={() =>
-												onApprove(task.task_id)
+												onArchiveTask(task.task_id)
 											}
-											icon={<IconPlayerPlay size={16} />}
-											className="bg-green-600 text-white hover:bg-green-500"
+											icon={<IconArchive size={16} />}
+											className="bg-neutral-700 text-neutral-200 hover:bg-neutral-600"
 										>
-											Approve & Run
+											Archive
 										</ActionButton>
-									)}
-									<ActionButton
-										onClick={() =>
-											onArchiveTask(task.task_id)
-										}
-										icon={<IconArchive size={16} />}
-										className="bg-neutral-700 text-neutral-200 hover:bg-neutral-600"
-									>
-										Archive
-									</ActionButton>
+									</div>
 								</div>
 							</>
 						)}

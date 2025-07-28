@@ -207,7 +207,7 @@ const NotificationsOverlay = ({ onClose }) => {
 			initial={{ opacity: 0 }}
 			animate={{ opacity: 1 }}
 			exit={{ opacity: 0 }}
-			className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40"
+			className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 flex items-center justify-center p-4"
 			onClick={onClose}
 		>
 			<motion.div
@@ -217,7 +217,7 @@ const NotificationsOverlay = ({ onClose }) => {
 				exit="exit"
 				transition={{ duration: 0.2, ease: "easeInOut" }}
 				onClick={(e) => e.stopPropagation()}
-				className="absolute bottom-[90px] right-6 bg-neutral-900/90 backdrop-blur-xl p-4 rounded-2xl shadow-2xl w-full max-w-md border border-neutral-700 max-h-[70vh] flex flex-col"
+				className="relative bg-neutral-900/90 backdrop-blur-xl p-4 rounded-2xl shadow-2xl w-full max-w-md border border-neutral-700 max-h-[70vh] flex flex-col"
 			>
 				<header className="flex justify-between items-center mb-4 flex-shrink-0">
 					<h2 className="text-lg font-semibold text-white flex items-center gap-2">

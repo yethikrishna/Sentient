@@ -115,7 +115,12 @@ export default function LayoutWrapper({ children }) {
 
 	return (
 		<>
-			{showNav && <Sidebar />}
+			{showNav && (
+				<Sidebar
+					onNotificationsOpen={handleNotificationsOpen}
+					unreadCount={unreadCount}
+				/>
+			)}
 			{showNav && (
 				<CommandPalette
 					open={isCommandPaletteOpen}
@@ -123,31 +128,13 @@ export default function LayoutWrapper({ children }) {
 				/>
 			)}
 			{children}
-			{showNav && !isMobile() && (
-				<>
-					<button
-						onClick={handleNotificationsOpen}
-						className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-neutral-800/80 backdrop-blur-md border border-neutral-700 shadow-lg hover:bg-neutral-700 transition-colors"
-						aria-label="Open notifications"
-					>
-						<IconBell className="h-7 w-7 text-neutral-200" />
-						{unreadCount > 0 && (
-							<motion.div
-								initial={{ scale: 0 }}
-								animate={{ scale: 1 }}
-								className="absolute top-1 right-1 h-3 w-3 bg-red-500 rounded-full border-2 border-neutral-800"
-							/>
-						)}
-					</button>
-					<AnimatePresence>
-						{isNotificationsOpen && (
-							<NotificationsOverlay
-								onClose={() => setNotificationsOpen(false)}
-							/>
-						)}
-					</AnimatePresence>
-				</>
-			)}
+			<AnimatePresence>
+				{isNotificationsOpen && (
+					<NotificationsOverlay
+						onClose={() => setNotificationsOpen(false)}
+					/>
+				)}
+			</AnimatePresence>
 		</>
 	)
 }

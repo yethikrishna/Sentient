@@ -5,14 +5,23 @@ import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@utils/cn"
 import { IconChevronDown } from "@tabler/icons-react"
 
-const CollapsibleSection = ({ title, count, children, isOpen, onToggle }) => {
+const CollapsibleSection = ({
+	title,
+	count,
+	children,
+	isOpen: defaultOpen = true
+}) => {
+	const [isOpen, setIsOpen] = useState(defaultOpen)
+
+	const onToggle = () => setIsOpen(!isOpen)
+
 	return (
-		<motion.div layout className="mb-6">
+		<motion.div layout className="mb-2">
 			<button
 				onClick={onToggle}
-				className="w-full flex justify-between items-center p-3 hover:bg-[var(--color-primary-surface)]/50 rounded-lg transition-colors"
+				className="w-full flex justify-between items-center p-2 hover:bg-neutral-800/50 rounded-lg transition-colors"
 			>
-				<h3 className="font-medium text-base text-[var(--color-text-primary)]">
+				<h3 className="font-semibold text-lg text-white">
 					{title}{" "}
 					<span className="text-sm text-neutral-400">({count})</span>
 				</h3>
@@ -24,7 +33,7 @@ const CollapsibleSection = ({ title, count, children, isOpen, onToggle }) => {
 					size={20}
 				/>
 			</button>
-			<AnimatePresence>
+			<AnimatePresence initial={false}>
 				{isOpen && (
 					<motion.div
 						initial={{ height: 0, opacity: 0 }}
@@ -33,7 +42,7 @@ const CollapsibleSection = ({ title, count, children, isOpen, onToggle }) => {
 						transition={{ duration: 0.3, ease: "easeInOut" }}
 						className="overflow-hidden"
 					>
-						<div className="pt-2 space-y-3">{children}</div>
+						<div className="pt-2">{children}</div>
 					</motion.div>
 				)}
 			</AnimatePresence>

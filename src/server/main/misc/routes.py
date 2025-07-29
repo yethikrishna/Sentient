@@ -14,7 +14,7 @@ from main.auth.utils import PermissionChecker, AuthHelper, aes_encrypt, aes_decr
 from main.config import AUTH0_AUDIENCE
 from main.dependencies import mongo_manager, auth_helper, websocket_manager as main_websocket_manager
 from pydantic import BaseModel
-from workers.tasks import process_memory_item
+from workers.tasks import cud_memory_task
 
 # Google API libraries for validation
 from google.oauth2 import service_account
@@ -22,7 +22,6 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 # For dispatching memory tasks
-from workers.tasks import process_memory_item
 
 class UpdatePrivacyFiltersRequest(BaseModel):
     service: str
@@ -42,9 +41,6 @@ async def save_onboarding_data_endpoint(
 ):
     logger.info(f"[{datetime.datetime.now()}] [ONBOARDING] User {user_id}, Data keys: {list(request_body.data.keys())}")
     try:
-        # Generate and add supermemory_user_id
-        supermemory_user_id = secrets.token_urlsafe(16)
-
         default_privacy_filters = {
             "gmail": {
                 "keywords": [
@@ -67,7 +63,6 @@ async def save_onboarding_data_endpoint(
         user_data_to_set: Dict[str, Any] = {
             "onboardingAnswers": onboarding_data,
             "onboardingComplete": True,
-            "supermemory_user_id": supermemory_user_id,
             "privacyFilters": default_privacy_filters,
             "preferences": {
             }
@@ -102,7 +97,7 @@ async def save_onboarding_data_endpoint(
         if not success:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to save onboarding data.")
 
-        # --- Dispatch facts to Supermemory ---
+        # --- Dispatch facts to memory ---
         try:
             fact_templates = {
                 "user-name": "The user's name is {}.",
@@ -131,7 +126,7 @@ async def save_onboarding_data_endpoint(
                     onboarding_facts.append(fact)
 
             for fact in onboarding_facts:
-                process_memory_item.delay(user_id, fact)
+                cud_memory_task.delay(user_id, fact, source="onboarding")
             
             logger.info(f"Dispatched {len(onboarding_facts)} onboarding facts to memory queue for user {user_id}")
         except Exception as celery_e:

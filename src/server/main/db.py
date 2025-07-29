@@ -6,6 +6,7 @@ import json
 import logging
 import motor.motor_asyncio
 from pymongo import ASCENDING, DESCENDING, IndexModel, ReturnDocument
+from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 from typing import Dict, List, Optional, Any, Tuple
 from workers.tasks import execute_task_plan

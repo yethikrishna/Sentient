@@ -72,15 +72,6 @@ async def setup_database():
                 );
             """)
 
-            await connection.execute("""
-                CREATE TABLE IF NOT EXISTS subtopics (
-                    id SERIAL PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
-                    UNIQUE(name, topic_id)
-                );
-            """)
-
             await connection.execute(f"""
                 CREATE TABLE IF NOT EXISTS facts (
                     id SERIAL PRIMARY KEY,
@@ -92,6 +83,11 @@ async def setup_database():
                     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                     expires_at TIMESTAMP WITH TIME ZONE DEFAULT NULL
                 );
+            """)
+
+            # This ensures the vector dimension is up-to-date with the model configuration.
+            await connection.execute(f"""
+                ALTER TABLE facts ALTER COLUMN embedding TYPE VECTOR({EMBEDDING_DIM});
             """)
 
             await connection.execute("""
@@ -113,18 +109,16 @@ async def setup_database():
             """)
 
             await connection.execute("""
-                CREATE TABLE IF NOT EXISTS fact_subtopics (
+                CREATE TABLE IF NOT EXISTS fact_topics (
                     fact_id INTEGER NOT NULL REFERENCES facts(id) ON DELETE CASCADE,
-                    subtopic_id INTEGER NOT NULL REFERENCES subtopics(id) ON DELETE CASCADE,
-                    PRIMARY KEY (fact_id, subtopic_id)
+                    topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+                    PRIMARY KEY (fact_id, topic_id)
                 );
             """)
 
             logger.info("Creating indexes...")
             await connection.execute("CREATE INDEX IF NOT EXISTS idx_facts_user_id ON facts (user_id);")
             await connection.execute("CREATE INDEX IF NOT EXISTS idx_facts_user_id_source ON facts (user_id, source);")
-            await connection.execute("CREATE INDEX IF NOT EXISTS idx_facts_user_id_source ON facts (user_id, source);")
-            await connection.execute("CREATE INDEX IF NOT EXISTS idx_subtopics_topic_id ON subtopics (topic_id);")
             await connection.execute(f"CREATE INDEX IF NOT EXISTS idx_facts_embedding_cos ON facts USING hnsw (embedding vector_cosine_ops);")
             await connection.execute("CREATE INDEX IF NOT EXISTS idx_facts_expires_at ON facts (expires_at) WHERE expires_at IS NOT NULL;")
 

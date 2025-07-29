@@ -10,7 +10,7 @@ llm_cfg = {
 }
 
 # Trello MCP Server Configuration
-mcp_server_url = "http://127.0.0.1:9020/sse"
+mcp_server_url = "http://127.0.0.1:9025/sse"
 
 # IMPORTANT: Replace with a valid User ID from your MongoDB that has Trello credentials
 USER_ID = "YOUR_USER_ID_HERE"

@@ -3,6 +3,7 @@ import logging
 import asyncio
 from typing import Dict, Any, List
 from contextlib import asynccontextmanager
+from workers.tasks import cud_memory_task
 
 from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
@@ -83,12 +84,14 @@ async def search_memory(ctx: Context, query: str) -> Dict[str, Any]:
 
 @mcp.tool()
 async def cud_memory(ctx: Context, information: str, source: str = None) -> Dict[str, Any]:
-    """
-    Adds, updates, or deletes a fact in the user's memory based on the provided information.
+    """Adds, updates, or deletes a fact in the user's memory based on the provided information.
     The system will determine if the information is new, an update, or a deletion.
     Use the optional 'source' parameter to track where the information came from (e.g., 'user_chat', 'document.txt').
+    This is an asynchronous operation.
     """
-    return await _execute_tool(ctx, utils.cud_memory, information=information, source=source)
+    user_id = auth.get_user_id_from_context(ctx)
+    cud_memory_task.delay(user_id=user_id, information=information, source=source)
+    return {"status": "success", "result": "Memory update has been queued for processing."}
 
 @mcp.tool()
 async def search_memory_by_source(ctx: Context, query: str, source_name: str) -> Dict[str, Any]:

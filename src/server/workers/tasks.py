@@ -11,20 +11,19 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Dict, Any, Optional, List, Tuple
 from bson import ObjectId
 from main.analytics import capture_event
-
-from workers.config import SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX, SUPPORTED_POLLING_SERVICES
 from json_extractor import JsonExtractor
 from workers.utils.api_client import notify_user, push_task_list_update
 from main.config import INTEGRATIONS_CONFIG
 from main.tasks.prompts import TASK_CREATION_PROMPT
 from main.llm import get_qwen_assistant
 from workers.celery_app import celery_app
-from workers.planner.llm import get_planner_agent, get_question_generator_agent
-from workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions
-from workers.supermemory_agent_utils import get_supermemory_qwen_agent, get_db_manager as get_memory_db_manager
+from workers.planner.llm import get_planner_agent, get_question_generator_agent # noqa: E501
+from workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions # noqa: E501
+from workers.memory_agent_utils import get_memory_qwen_agent, get_db_manager as get_memory_db_manager # noqa: E501
 from workers.executor.tasks import execute_task_plan
 from main.vector_db import get_conversation_summaries_collection
 from workers.planner.prompts import TOOL_SELECTOR_SYSTEM_PROMPT
+from mcp_hub.memory.utils import cud_memory
 
 # Imports for extractor logic
 from workers.extractor.llm import get_extractor_agent
@@ -120,62 +119,25 @@ def run_async(coro):
         asyncio.set_event_loop(loop)
     return loop.run_until_complete(coro)
 
-# --- Memory Processing Task (Modified for Supermemory) ---
-@celery_app.task(name="process_memory_item")
-def process_memory_item(user_id: str, fact_text: str, source_event_id: Optional[str] = None):
+@celery_app.task(name="cud_memory_task")
+def cud_memory_task(user_id: str, information: str, source: Optional[str] = None):
     """
-    Celery task to process a single memory item by calling the Supermemory MCP
-    via a dedicated Qwen agent.
+    Celery task wrapper for the CUD (Create, Update, Delete) memory operation.
+    This runs the core memory management logic asynchronously.
     """
-    log_prefix = f"Event {source_event_id}: " if source_event_id else ""
-    logger.info(f"{log_prefix}Celery worker received Supermemory task for user {user_id}: '{fact_text[:80]}...'")
+    logger.info(f"Celery worker received cud_memory_task for user_id: {user_id}")
+    run_async(cud_memory(user_id, information, source))
 
-    async def async_process_memory():
-        db_manager = get_memory_db_manager() # This is a PlannerMongoManager instance
-        try:
-            user_profile = await db_manager.user_profiles_collection.find_one({"user_id": user_id})
-            if not user_profile:
-                logger.error(f"User profile not found for {user_id}. Cannot process memory item.")
-                return {"status": "failure", "reason": "User profile not found"}
 
-            supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id")
-            if not supermemory_user_id:
-                logger.warning(f"User {user_id} has no Supermemory User ID. Skipping memory item: '{fact_text[:50]}...'")
-                return {"status": "skipped", "reason": "Supermemory MCP URL not configured"}
-
-            supermemory_mcp_url = f"{SUPERMEMORY_MCP_BASE_URL.rstrip('/')}/{supermemory_user_id}{SUPERMEMORY_MCP_ENDPOINT_SUFFIX}"
-
-            agent = get_supermemory_qwen_agent(supermemory_mcp_url)
-            messages = [{'role': 'user', 'content': f"Remember this fact: {fact_text}"}]
-
-            all_responses = list(agent.run(messages=messages))
-            final_history = all_responses[-1] if all_responses else None
-
-            if not final_history:
-                logger.error(f"Supermemory agent produced no output for user {user_id}.")
-                return {"status": "failure", "reason": "Agent produced no output"}
-
-            function_call_succeeded = False
-            tool_response_content = "No tool response received."
-
-            for message in reversed(final_history):
-                if message.get("role") == "function" and message.get("name") == "supermemory-addToSupermemory":
-                    tool_response_content = message.get("content", "")
-                    if isinstance(tool_response_content, str) and "success" in tool_response_content.lower():
-                        function_call_succeeded = True
-                    break
-
-            if function_call_succeeded:
-                logger.info(f"Successfully executed Supermemory store for user {user_id}. MCP Response: '{tool_response_content}'. Fact: '{fact_text[:50]}...'")
-                return {"status": "success", "fact": fact_text, "mcp_response": tool_response_content}
-            else:
-                logger.error(f"Supermemory agent tool call failed for user {user_id}. Response: {tool_response_content}")
-                return {"status": "failure", "reason": "Supermemory tool call did not succeed", "mcp_response": tool_response_content}
-        finally:
-            if 'db_manager' in locals() and db_manager:
-                await db_manager.close()
-
-    return run_async(async_process_memory())
+@celery_app.task(name="process_extracted_memory_item")
+def process_extracted_memory_item(user_id: str, fact_text: str, source: Optional[str] = None):
+    """
+    Processes a memory item extracted from a source like an email or document.
+    This task now dispatches to the main CUD memory task.
+    """
+    logger.info(f"Extractor dispatched memory item for user {user_id}: '{fact_text[:80]}...'. Queuing for CUD processing.")
+    # This becomes a lightweight dispatcher to the main CUD task.
+    cud_memory_task.delay(user_id, fact_text, source)
 
 @celery_app.task(name="refine_and_plan_ai_task")
 def refine_and_plan_ai_task(task_id: str):
@@ -387,11 +349,10 @@ def extract_from_context(user_id: str, source_text: str, source_type: str, event
 
                     # Dispatch directly to the planner/action item processor
                     process_action_item.delay(user_id, [item], topics, event_id, original_source_context)
-                    logger.info(f"Dispatched action item from {source_type} for processing: '{item}'")
 
             for fact in memory_items:
                 if isinstance(fact, str) and fact.strip():
-                    process_memory_item.delay(user_id, fact, event_id)
+                    cud_memory_task.delay(user_id, fact, source=source_type)
 
             await db_manager.log_extraction_result(event_id, user_id, len(memory_items), len(action_items))
 
@@ -418,10 +379,6 @@ async def get_clarifying_questions(user_id: str, task_description: str, topics: 
         return [f"Can you tell me more about '{topic}'?" for topic in topics]
 
     user_integrations = user_profile.get("userData", {}).get("integrations", {})
-    supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id")
-    
-    if not supermemory_user_id:
-        logger.warning(f"User {user_id} has no Supermemory ID. Cannot verify context with memory.")
 
     # 1. Get all available (connected + built-in) tools for the user
     connected_tools, _ = _get_tool_lists(user_integrations)
@@ -429,9 +386,9 @@ async def get_clarifying_questions(user_id: str, task_description: str, topics: 
     # 2. Select tools relevant to the task description
     relevant_tool_names = await _select_relevant_tools(task_description, connected_tools)
 
-    # 3. Always include supermemory for context verification
+    # 3. Always include memory for context verification
     final_tool_names = set(relevant_tool_names)
-    final_tool_names.add("supermemory")
+    final_tool_names.add("memory")
     
     logger.info("Selected tools for context verification: " + ", ".join(final_tool_names))
 
@@ -445,14 +402,9 @@ async def get_clarifying_questions(user_id: str, task_description: str, topics: 
 
         available_tools_for_prompt[tool_name] = config.get("description", "")
         
-        if tool_name == "supermemory":
-            if supermemory_user_id:
-                supermemory_mcp_url = f"{SUPERMEMORY_MCP_BASE_URL.rstrip('/')}/{supermemory_user_id}{SUPERMEMORY_MCP_ENDPOINT_SUFFIX}"
-                mcp_servers_for_agent["supermemory"] = {"url": supermemory_mcp_url, "transport": "sse"}
-        else:
-            mcp_config = config.get("mcp_server_config")
-            if mcp_config and mcp_config.get("url"):
-                 mcp_servers_for_agent[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
+        mcp_config = config.get("mcp_server_config")
+        if mcp_config and mcp_config.get("url"):
+             mcp_servers_for_agent[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
 
     if not mcp_servers_for_agent:
         logger.warning(f"No MCP servers could be configured for context search for user {user_id}. Cannot verify context.")
@@ -488,7 +440,7 @@ async def async_process_action_item(user_id: str, action_items: list, topics: li
     try:
         task_description = " ".join(map(str, action_items))
         # Per spec, create task with 'planning' status and immediately trigger planner.
-        task = await db_manager.create_initial_task(user_id, task_description, action_items, topics, original_context, source_event_id) # noqa: E501
+        task = await db_manager.create_initial_task(user_id, task_description, action_items, topics, original_context, source_event_id)
         task_id = task["task_id"]
         generate_plan_from_context.delay(task_id)
         logger.info(f"Task {task_id} created with status 'planning' and dispatched to planner worker.")
@@ -719,10 +671,12 @@ def schedule_all_polling():
     async def async_schedule():
         db_manager = GmailPollerDB()
         try:
+            # SUPPORTED_POLLING_SERVICES is no longer imported, hardcode for now or import from a new config
+            supported_polling_services = ["gmail", "gcalendar"] 
             await db_manager.reset_stale_polling_locks("gmail")
             await db_manager.reset_stale_polling_locks("gcalendar")
 
-            for service_name in SUPPORTED_POLLING_SERVICES:
+            for service_name in supported_polling_services:
                 due_tasks_states = await db_manager.get_due_polling_tasks_for_service(service_name)
                 logger.info(f"Found {len(due_tasks_states)} due tasks for {service_name}.")
 
@@ -805,7 +759,7 @@ async def async_run_due_tasks():
 
         if not due_tasks:
             logger.info("Scheduler: No user-defined tasks are due.")
-            return
+            return # noqa
 
         logger.info(f"Scheduler: Found {len(due_tasks)} due user-defined tasks.")
         for task in due_tasks:

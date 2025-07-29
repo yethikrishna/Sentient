@@ -11,8 +11,7 @@ from pgvector.asyncpg import register_vector
 
 from . import db, llm
 from .prompts import (
-    topic_classification_user_prompt_template,
-    subtopic_generation_user_prompt_template,
+    topic_classification_user_prompt_template,    
     fact_summarization_user_prompt_template,
     fact_extraction_user_prompt_template,
     edit_decision_user_prompt_template,
@@ -42,8 +41,7 @@ def initialize_agents():
     if not agents:
         logger.info("Initializing all memory agents...")
         agents = {
-            "topic_classification": llm.get_topic_classification_agent(),
-            "subtopic_generation": llm.get_subtopic_generation_agent(),
+            "topic_classification": llm.get_topic_classification_agent(),            
             "fact_summarization": llm.get_fact_summarization_agent(),
             "fact_extraction": llm.get_fact_extraction_agent(),
             "edit_decision": llm.get_edit_decision_agent(),
@@ -182,53 +180,17 @@ async def add_fact(user_id: str, content: str, source: Optional[str] = None) -> 
             )
             logger.info(f"Fact inserted with ID: {fact_id}.")
 
-            logger.info("Step 5/5: Generating and linking subtopics.")
+            logger.info("Step 5/5: Linking fact to topics.")
             for topic_name in topic_names:
-                logger.debug(f"Processing topic: '{topic_name}'")
                 topic_id = await conn.fetchval("SELECT id FROM topics WHERE name = $1", topic_name)
-                if not topic_id: continue
-
-                existing_subtopics = await conn.fetch("SELECT name FROM subtopics WHERE topic_id = $1", topic_id)
-                existing_subtopic_names = [r['name'] for r in existing_subtopics]
-                logger.debug(f"Found {len(existing_subtopic_names)} existing subtopics for '{topic_name}'.")
-
-                subtopic_prompt = subtopic_generation_user_prompt_template.format(
-                    topic=topic_name,
-                    fact_content=content,
-                    existing_subtopics=json.dumps(existing_subtopic_names)
-                )
-                subtopic_raw = llm.run_agent_with_prompt(agents["subtopic_generation"], subtopic_prompt)
-                cleaned_output = clean_llm_output(subtopic_raw)
-                subtopic_names = []
-                try:
-                    subtopic_data = json.loads(cleaned_output)
-                    if isinstance(subtopic_data, dict):
-                        subtopic_names = subtopic_data.get("subtopics", [])
-                except json.JSONDecodeError:
-                    logger.warning(f"Failed to parse subtopic generation JSON from LLM. Output: {cleaned_output}")
-
-                logger.info(f"Generated subtopics for topic '{topic_name}': {subtopic_names}")
-                for subtopic_name in subtopic_names:
-                    # Insert subtopic if it doesn't exist for this topic, then get its ID
-                    subtopic_id = await conn.fetchval("""
-                        WITH s AS (
-                            INSERT INTO subtopics (name, topic_id) VALUES ($1, $2)
-                            ON CONFLICT (name, topic_id) DO NOTHING
-                            RETURNING id
-                        )
-                        SELECT id FROM s
-                        UNION ALL (
-                            SELECT id FROM subtopics WHERE name = $1 AND topic_id = $2
-                        ) LIMIT 1;
-                    """,
-                        subtopic_name, topic_id
-                    )
-                    logger.debug(f"Linking fact {fact_id} to subtopic '{subtopic_name}' (ID: {subtopic_id}).")
-                    # Link fact to subtopic
+                if topic_id:
+                    logger.debug(f"Linking fact {fact_id} to topic '{topic_name}' (ID: {topic_id}).")
                     await conn.execute(
-                        "INSERT INTO fact_subtopics (fact_id, subtopic_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-                        fact_id, subtopic_id
+                        "INSERT INTO fact_topics (fact_id, topic_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                        fact_id, topic_id
                     )
+                else:
+                    logger.warning(f"Could not find topic ID for topic name: {topic_name}")
 
     logger.info(f"Successfully added fact {fact_id} for user '{user_id}'.")
     message = f"Fact added with ID {fact_id}."
@@ -263,9 +225,8 @@ async def search_memory(user_id: str, query: str) -> str:
             """
             SELECT DISTINCT f.id, f.content, 1 - (f.embedding <=> $3) AS similarity
             FROM facts f
-            JOIN fact_subtopics fs ON f.id = fs.fact_id
-            JOIN subtopics s ON fs.subtopic_id = s.id
-            JOIN topics t ON s.topic_id = t.id
+            JOIN fact_topics ft ON f.id = ft.fact_id
+            JOIN topics t ON ft.topic_id = t.id
             WHERE f.user_id = $1 AND t.name = ANY($2)
             ORDER BY similarity DESC
             LIMIT 5;
@@ -315,9 +276,8 @@ async def search_memory_by_source(user_id: str, query: str, source_name: str) ->
             """
             SELECT DISTINCT f.id, f.content, 1 - (f.embedding <=> $4) AS similarity
             FROM facts f
-            JOIN fact_subtopics fs ON f.id = fs.fact_id
-            JOIN subtopics s ON fs.subtopic_id = s.id
-            JOIN topics t ON s.topic_id = t.id
+            JOIN fact_topics ft ON f.id = ft.fact_id
+            JOIN topics t ON ft.topic_id = t.id
             WHERE f.user_id = $1 AND f.source = $2 AND t.name = ANY($3)
             ORDER BY similarity DESC
             LIMIT 5;
@@ -367,9 +327,8 @@ async def cud_memory(user_id: str, information: str, source: Optional[str] = Non
             """
             SELECT DISTINCT f.id, f.content, 1 - (f.embedding <=> $3) AS similarity
             FROM facts f
-            JOIN fact_subtopics fs ON f.id = fs.fact_id
-            JOIN subtopics s ON fs.subtopic_id = s.id
-            JOIN topics t ON s.topic_id = t.id
+            JOIN fact_topics ft ON f.id = ft.fact_id
+            JOIN topics t ON ft.topic_id = t.id
             WHERE f.user_id = $1 AND t.name = ANY($2)
             ORDER BY similarity DESC
             LIMIT 3;

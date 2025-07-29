@@ -6,7 +6,7 @@ from chromadb.utils import embedding_functions
 
 # --- Configuration ---
 CHROMA_HOST = os.getenv("CHROMA_HOST", "localhost")
-CHROMA_PORT = int(os.getenv("CHROMA_PORT", 8001))
+CHROMA_PORT = int(os.getenv("CHROMA_PORT", 8002))
 EMBEDDING_MODEL_REPO_ID = os.getenv("EMBEDDING_MODEL_REPO_ID", "BAAI/bge-small-en-v1.5")
 CONVERSATION_SUMMARIES_COLLECTION_NAME = "conversation_summaries"
 

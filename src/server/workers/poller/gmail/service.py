@@ -113,7 +113,7 @@ class GmailPollingService:
                     continue
 
                 if not await self.db_manager.is_item_processed(user_id, self.service_name, email_item_id):
-                    from workers.tasks import extract_from_context
+                    from workers.tasks import extract_from_context # noqa
                     extract_from_context.delay(user_id, self.service_name, email_item_id, email)
                     await self.db_manager.log_processed_item(user_id, self.service_name, email_item_id)
                     processed_count += 1

@@ -29,13 +29,6 @@ def get_topic_classification_agent() -> Assistant:
     llm_cfg = _get_base_llm_config()
     return Assistant(llm=llm_cfg, name="TopicClassificationAgent", system_message=system_prompt)
 
-def get_subtopic_generation_agent() -> Assistant:
-    """Initializes an agent for generating subtopics for a given fact."""
-    logger.debug("Initializing 'SubtopicGenerationAgent'.")
-    system_prompt = prompts.subtopic_generation_system_prompt_template
-    llm_cfg = _get_base_llm_config()
-    return Assistant(llm=llm_cfg, name="SubtopicGenerationAgent", system_message=system_prompt)
-
 def get_fact_summarization_agent() -> Assistant:
     """Initializes an agent for summarizing a list of facts into a paragraph."""
     logger.debug("Initializing 'FactSummarizationAgent'.")

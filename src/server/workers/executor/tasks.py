@@ -15,8 +15,7 @@ from workers.utils.api_client import notify_user, push_progress_update
 
 # Load environment variables for the worker from its own config
 from workers.executor.config import (MONGO_URI, MONGO_DB_NAME,
-                                     INTEGRATIONS_CONFIG, OPENAI_API_BASE_URL,
-                                     OPENAI_API_KEY, OPENAI_MODEL_NAME, SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX)
+                                     INTEGRATIONS_CONFIG, OPENAI_API_BASE_URL, OPENAI_API_KEY, OPENAI_MODEL_NAME)
 
 # Setup logger for this module
 logger = logging.getLogger(__name__)
@@ -206,17 +205,11 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     logger.info(f"Task {task_id}: Plan requires tools: {required_tools_from_plan}")
     
     user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
-    supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id") if user_profile else None
     
     active_mcp_servers = {}
     progress_updater_config = INTEGRATIONS_CONFIG.get("progress_updater", {}).get("mcp_server_config")
     if progress_updater_config:
         active_mcp_servers[progress_updater_config["name"]] = {"url": progress_updater_config["url"], "headers": {"X-User-ID": user_id}}
-    if supermemory_user_id:
-        active_mcp_servers["supermemory"] = {
-            "transport": "sse",
-            "url": f"{SUPERMEMORY_MCP_BASE_URL.rstrip('/')}/{supermemory_user_id}{SUPERMEMORY_MCP_ENDPOINT_SUFFIX}"
-        }
 
     for tool_name in required_tools_from_plan:
         if tool_name not in INTEGRATIONS_CONFIG:
@@ -224,7 +217,7 @@ async def async_execute_task_plan(task_id: str, user_id: str):
             continue
         config = INTEGRATIONS_CONFIG[tool_name]
         mcp_config = config.get("mcp_server_config")
-        if not mcp_config or tool_name in ["progress_updater", "supermemory"]:
+        if not mcp_config or tool_name in ["progress_updater"]:
             continue
         is_builtin = config.get("auth_type") == "builtin"
         is_connected_via_oauth = user_integrations.get(tool_name, {}).get("connected", False)
@@ -253,11 +246,11 @@ async def async_execute_task_plan(task_id: str, user_id: str):
         f"Your task ID is '{task_id}'. {block_id_prompt}\n\n"
         f"The original context that triggered this plan is:\n---BEGIN CONTEXT---\n{original_context_str}\n---END CONTEXT---\n\n"
         f"**Primary Objective:** '{plan_description}'\n\n"
-        f"**The Plan to Execute:**\n" + "\n".join([f"- Step {i+1}: Use the '{step['tool']}' tool to '{step['description']}'" for i, step in enumerate(latest_run.get("plan", []))]) + "\n\n"
+        f"**The Plan to Execute:**\n" + "\n".join([f"- Step {i+1}: Use the '{step['tool']}' tool to '{step['description']}'" for i, step in enumerate(latest_run.get("plan", []))]) + "\n\n" # noqa
         "**EXECUTION STRATEGY:**\n"
         "1.  **Map Plan to Tools:** The plan provides a high-level tool name (e.g., 'gmail', 'gdrive'). You must map this to the specific functions available to you (e.g., `gmail-send_email`, `gdrive-gdrive_search`).\n"
-        "2.  **Be Resourceful & Fill Gaps:** The plan is a guideline. If a step is missing information (e.g., an email address for a manager, a document name), your first action for that step MUST be to use the `supermemory-search` tool to find the missing information. Do not proceed with incomplete information.\n"
-        "3.  **Remember New Information:** If you discover a new, permanent fact about the user during your execution (e.g., you find their manager's email is 'boss@example.com'), you MUST use `supermemory-addToSupermemory` to save it.\n"
+        "2.  **Be Resourceful & Fill Gaps:** The plan is a guideline. If a step is missing information (e.g., an email address for a manager, a document name), your first action for that step MUST be to use the `memory_mcp-search_memory` tool to find the missing information. Do not proceed with incomplete information.\n"
+        "3.  **Remember New Information:** If you discover a new, permanent fact about the user during your execution (e.g., you find their manager's email is 'boss@example.com'), you MUST use `memory_mcp-cud_memory` to save it.\n"
         "4.  **Report Progress & Failures:** You MUST call the `progress_updater-update_progress` tool to report your status after each major step or when you encounter an error. If a tool fails, analyze the error, report it, and try an alternative approach to achieve the objective. Do not give up easily.\n"
         "5.  **Provide a Final, Detailed Answer:** Once all steps are completed, you MUST provide a final, comprehensive answer to the user. This is not a tool call. Your final response MUST be wrapped in `<answer>` tags. For example: `<answer>I have successfully scheduled the meeting and sent an invitation to John Doe.</answer>`.\n"
         "6.  **Contact Information:** To find contact details like phone numbers or emails, use the `gpeople` tool before attempting to send an email or make a call.\n"

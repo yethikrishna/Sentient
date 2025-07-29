@@ -14,8 +14,7 @@ from qwen_agent.tools.base import BaseTool, register_tool
 from main.chat.prompts import TOOL_SELECTOR_SYSTEM_PROMPT
 from main.db import MongoManager
 from main.llm import get_qwen_assistant
-from main.config import (INTEGRATIONS_CONFIG, SUPERMEMORY_MCP_BASE_URL,
-                         SUPERMEMORY_MCP_ENDPOINT_SUFFIX, ENVIRONMENT)
+from main.config import (INTEGRATIONS_CONFIG, ENVIRONMENT)
 from json_extractor import JsonExtractor
 
 logger = logging.getLogger(__name__)
@@ -134,7 +133,6 @@ async def generate_chat_llm_stream(
 
         user_profile = await db_manager.get_user_profile(user_id)
         user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
-        supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id") if user_profile else None
 
         # Get both connected and disconnected tools
         connected_tools, disconnected_tools = _get_tool_lists(user_integrations)
@@ -142,29 +140,23 @@ async def generate_chat_llm_stream(
         all_available_mcp_servers = {}
         tool_name_to_desc_map = connected_tools.copy() # Start with connected tools
 
-        if supermemory_user_id:
-            full_supermemory_mcp_url = f"{SUPERMEMORY_MCP_BASE_URL.rstrip('/')}/{supermemory_user_id}{SUPERMEMORY_MCP_ENDPOINT_SUFFIX}"
-            all_available_mcp_servers["supermemory"] = {"transport": "sse", "url": full_supermemory_mcp_url}
-            # Add built-in tools to the description map for the selector
-            tool_name_to_desc_map["supermemory"] = INTEGRATIONS_CONFIG.get("supermemory", {}).get("description")
-
         # Add other built-in tools
         for tool_name, config in INTEGRATIONS_CONFIG.items():
             if config.get("auth_type") == "builtin":
                  tool_name_to_desc_map[tool_name] = config.get("description")
 
-        # Now, populate MCP servers for all available (connected  built-in) tools
+        # Now, populate MCP servers for all available (connected + built-in) tools
         for tool_name in tool_name_to_desc_map.keys():
             config = INTEGRATIONS_CONFIG.get(tool_name, {})
             if config:
-                mcp_config = config.get("mcp_server_config")
-                if mcp_config and mcp_config.get("url"):
-                    all_available_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
+                mcp_config = config.get("mcp_server_config", {})
+                if mcp_config and mcp_config.get("url") and mcp_config.get("name"):
+                    all_available_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}, "transport": "sse"}
 
         last_user_query = messages[-1].get("content", "") if messages else ""
         relevant_tool_names = await _select_relevant_tools(last_user_query, tool_name_to_desc_map)
 
-        mandatory_tools = {"tasks", "supermemory", "history"}
+        mandatory_tools = {"memory", "history", "tasks"}
         final_tool_names = set(relevant_tool_names) | mandatory_tools
 
         filtered_mcp_servers = {}
@@ -198,15 +190,15 @@ async def generate_chat_llm_stream(
         f"**Accessing Your Memory:**\n"
         f"Your immediate context is limited to the last 30 messages of this conversation. To recall older information, you MUST use the following tools:\n"
         f"- `history_mcp-semantic_search`: Use this when the user asks about a topic or concept from the past (e.g., \"What did we decide about the marketing plan?\").\n"
-        f"- `history_mcp-time_based_search`: Use this when the user asks about a specific time period (e.g., \"Remind me what we talked about last Tuesday.\").\n"
-        f"- `supermemory-search`: Use this to recall specific facts, preferences, or details about the user that have been explicitly saved to your memory.\n"
+        f"- `history_mcp-time_based_search`: Use this when the user asks about a specific time period (e.g., \"Remind me what we talked about last Tuesday.\").\n" # noqa
+        f"- `memory_mcp-search_memory`: Use this to recall specific facts, preferences, or details about the user that have been explicitly saved to your memory.\n" # noqa
         f"Always check your memory and conversation history before asking the user a question you might already know the answer to.\n\n"
         f"**Critical Instructions:**\n"
-        f"1. **Validate Complex JSON:** Before calling any tool that requires a complex JSON string as a parameter (like Notion's `content_blocks_json`), you MUST first pass your generated JSON string to the `json_validator` tool to ensure it is syntactically correct. Use the cleaned output from `json_validator` in the subsequent tool call.\n"
+        f"1. **Validate Complex JSON:** Before calling any tool that requires a complex JSON string as a parameter (like Notion's `content_blocks_json`), you MUST first pass your generated JSON string to the `json_validator` tool to ensure it is syntactically correct. Use the cleaned output from `json_validator` in the subsequent tool call.\n" # noqa
         f"2. **Handle Disconnected Tools:** You have a list of tools the user has not connected yet. If the user's query clearly refers to a capability from this list (e.g., asking to 'send a slack message' when Slack is disconnected), you MUST stop and politely inform the user that they need to connect the tool in the Integrations page. Do not proceed with other tools.\n"
-        f"3. For any command to create, send, search, or read information (e.g., create a document, send an email, search for files), you MUST call the appropriate tool directly (e.g., `gdocs-createDocument`, `gmail-sendEmail`, `gdrive-gdrive_search`). Complete the task within the chat and provide the result to the user.\n"
-        f"4. **Saving New Information:** If you learn a new, permanent fact about the user (e.g., their manager's name, a new preference), you MUST use `supermemory-addToSupermemory` to save it for future reference.\n"
-        f"5. **Final Answer Format:** When you have a complete, final answer for the user that is not a tool call, you MUST wrap it in `<answer>` tags. For example: `<answer>The weather in London is 15°C and cloudy.</answer>`.\n\n"
+        f"3. For any command to create, send, search, or read information (e.g., create a document, send an email, search for files), you MUST call the appropriate tool directly. Complete the task within the chat and provide the result to the user.\n"
+        f"4. **Saving New Information:** If you learn a new, permanent fact about the user (e.g., their manager's name, a new preference), you MUST use `memory_mcp-cud_memory` to save it for future reference. This is an asynchronous operation, so inform the user that the memory \n" # noqa
+        f"5. **Final Answer Format:** When you have a complete, final answer for the user that is not a tool call, you MUST wrap it in `<answer>` tags. For example: `<answer>The weather in London is 15°C and cloudy.</answer>`.\n\n" # noqa
         f"{disconnected_tools_prompt_section}"
         f"**User Context (for your reference):**\n"
         f"-   **User's Name:** {username}\n"

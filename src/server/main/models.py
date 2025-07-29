@@ -16,7 +16,6 @@ class UserProfileData(BaseModel):
     last_active_timestamp: Optional[datetime.datetime] = None
     integrations: Dict[str, IntegrationData] = Field(default_factory=dict)
     encrypted_refresh_token: Optional[str] = None
-    supermemory_user_id: Optional[str] = None
     privacyFilters: List[str] = Field(default_factory=list)
 
 class UserProfile(BaseModel):

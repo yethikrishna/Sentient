@@ -22,23 +22,6 @@ JSON Schema:
 topic_classification_user_prompt_template = "{text}"
 
 
-# --- Subtopic Generation ---
-subtopic_generation_system_prompt_template = f"""
-You are an expert at identifying key concepts. Your task is to generate short, descriptive subtopics for a given fact, within the context of a specific topic.
-
-Instructions:
-1. Analyze the fact provided.
-2. If a list of existing subtopics is provided, check if any of them are a good semantic fit for the fact. Prioritize reusing existing subtopics.
-3. If no existing subtopic fits, create new, concise subtopics (1-3 words).
-4. Return a list of the most relevant subtopic names (either reused or new).
-5. Your response MUST be a single, valid JSON object that strictly adheres to the following schema. Do not include any other text or explanations.
-
-JSON Schema:
-{json.dumps(formats.subtopic_generation_required_format, indent=2)}
-"""
-subtopic_generation_user_prompt_template = "Topic: {topic}\nFact: \"{fact_content}\"\nExisting Subtopics for this Topic: {existing_subtopics}"
-
-
 # --- Memory Type Classification (Long-Term vs. Short-Term) ---
 memory_type_decision_system_prompt_template = f"""
 You are a memory classification system. Your task is to determine if a given piece of information should be stored as long-term or short-term memory.
@@ -98,14 +81,32 @@ fact_summarization_user_prompt_template = "Facts: {facts}"
 
 # --- Fact Extraction ---
 fact_extraction_system_prompt_template = f"""
-You are a system designed to convert an unstructured paragraph into a list of concise, single-sentence facts.
+You are an expert system for information decomposition. Your primary goal is to break down a user's statement into a list of "atomic" facts. An atomic fact is a single, indivisible piece of information.
 
 Key Instructions:
-1. If the input contains "I", "me", or "my", replace them with the provided USERNAME.
-2. Each distinct idea or relationship must be its own sentence in the output list.
-3. Your entire response MUST be a single, valid JSON array of strings that strictly adheres to the following schema. Do not include any other text or explanations.
+1. **Deconstruct Compound Sentences**: Vigorously split sentences containing conjunctions like 'and', 'but', or 'while' into separate, self-contained facts. Each fact must stand on its own.
+2. **Isolate Each Idea**: Ensure every item in the output list represents one distinct idea. A single sentence from the user might contain multiple facts.
+3. **Handle Pronouns and Possessives**: If the input contains "I", "me", or "my", correctly convert them to refer to the provided USERNAME. For example, "My sister" becomes "{{USERNAME}}'s sister".
+4. **Strict JSON Output**: Your entire response MUST be a single, valid JSON array of strings that strictly adheres to the following schema. Do not add any commentary before or after the JSON.
 
 JSON Schema:
 {json.dumps(formats.fact_extraction_required_format, indent=2)}
+
+---
+**Examples of Correct Decomposition:**
+---
+
+**Example 1:**
+Username: 'user123'
+Paragraph: "I work at Google and my sister works there as well."
+Correct Output:
+["user123 works at Google.", "user123's sister works at Google."]
+
+**Example 2:**
+Username: 'user456'
+Paragraph: "My favorite color is blue, but I also like green, and I live in New York."
+Correct Ouptut:
+["user456's favorite color is blue.", "user456 also likes green.", "user456 lives in New York."]
+
 """
 fact_extraction_user_prompt_template = "Username: '{username}'\n\nParagraph: {paragraph}"

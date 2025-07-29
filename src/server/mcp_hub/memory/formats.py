@@ -15,19 +15,6 @@ topic_classification_required_format = {
     "required": ["topics"],
 }
 
-# For generating concise subtopics for a fact.
-subtopic_generation_required_format = {
-    "type": "object",
-    "properties": {
-        "subtopics": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "A list of 1-3 word subtopics relevant to the fact. Be specific. Reuse from the provided list of existing subtopics if a good match exists."
-        }
-    },
-    "required": ["subtopics"]
-}
-
 # For deciding on an action (UPDATE/DELETE/ADD) based on user intent and search results.
 edit_decision_required_format = {
     "type": "object",

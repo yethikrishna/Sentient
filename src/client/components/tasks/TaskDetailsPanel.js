@@ -14,6 +14,7 @@ import {
 	IconClipboardList
 } from "@tabler/icons-react"
 import TaskDetailsContent from "./TaskDetailsContent"
+import RecurringTaskDetails from "./RecurringTaskDetails"
 import ConnectToolButton from "./ConnectToolButton"
 import { cn } from "@utils/cn"
 
@@ -33,6 +34,7 @@ const TaskDetailsPanel = ({
 }) => {
 	const [isEditing, setIsEditing] = useState(false)
 	const [editableTask, setEditableTask] = useState(task)
+	const isRecurring = task?.schedule?.type === "recurring"
 
 	const missingTools = useMemo(() => {
 		if (!task || !integrations) {
@@ -185,20 +187,24 @@ const TaskDetailsPanel = ({
 
 					{/* --- CONTENT --- */}
 					<main className="flex-1 overflow-y-auto custom-scrollbar p-6">
-						<TaskDetailsContent
-							task={task}
-							isEditing={isEditing}
-							editableTask={editableTask}
-							handleFieldChange={handleFieldChange}
-							handleScheduleChange={handleScheduleChange}
-							handleAddStep={handleAddStep}
-							handleRemoveStep={handleRemoveStep}
-							handleStepChange={handleStepChange}
-							allTools={allTools}
-							integrations={integrations}
-							onAnswerClarifications={onAnswerClarifications}
-							onSendChatMessage={onSendChatMessage}
-						/>
+						{isRecurring ? (
+							<RecurringTaskDetails task={task} />
+						) : (
+							<TaskDetailsContent
+								task={task}
+								isEditing={isEditing}
+								editableTask={editableTask}
+								handleFieldChange={handleFieldChange}
+								handleScheduleChange={handleScheduleChange}
+								handleAddStep={handleAddStep}
+								handleRemoveStep={handleRemoveStep}
+								handleStepChange={handleStepChange}
+								allTools={allTools}
+								integrations={integrations}
+								onAnswerClarifications={onAnswerClarifications}
+								onSendChatMessage={onSendChatMessage}
+							/>
+						)}
 					</main>
 
 					{/* --- FOOTER --- */}

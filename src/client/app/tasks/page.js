@@ -8,20 +8,13 @@ import React, {
 	useMemo
 } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import {
-	startOfDay,
-	format,
-	isSameDay,
-	eachDayOfInterval,
-	subMonths,
-	getDay,
-	parseISO
-} from "date-fns"
+import { startOfDay, format, isSameDay, getDay, parseISO } from "date-fns"
 import { IconLoader, IconX } from "@tabler/icons-react"
 import { AnimatePresence, motion } from "framer-motion"
 import toast from "react-hot-toast"
 import { cn } from "@utils/cn"
 import { Tooltip } from "react-tooltip"
+import { calculateNextRun } from "@utils/taskUtils"
 
 import TaskDetailsPanel from "@components/tasks/TaskDetailsPanel"
 import TaskViewSwitcher from "@components/tasks/TaskViewSwitcher"
@@ -88,40 +81,40 @@ function TasksPageContent() {
 			const recurring = []
 			const instances = []
 			const today = startOfDay(new Date())
-			const calendarStartDate = subMonths(today, 3) // Look back 3 months for calendar
-
-			const dayNames = [
-				"Sunday",
-				"Monday",
-				"Tuesday",
-				"Wednesday",
-				"Thursday",
-				"Friday",
-				"Saturday"
-			]
 
 			rawTasks.forEach((task) => {
 				if (task.schedule?.type === "recurring") {
 					recurring.push(task)
-					// Generate instances for calendar (past and today only)
-					const intervalDays = eachDayOfInterval({
-						start: calendarStartDate,
-						end: today
-					})
-					intervalDays.forEach((day) => {
-						const dayOfWeek = dayNames[getDay(day)]
-						let shouldRun =
-							task.schedule.frequency === "daily" ||
-							(task.schedule.frequency === "weekly" &&
-								task.schedule.days?.includes(dayOfWeek))
-						if (shouldRun) {
-							instances.push({
-								...task,
-								scheduled_date: day,
-								instance_id: `${task.task_id}-${day.toISOString()}`
-							})
-						}
-					})
+					// Process past runs from `runs` array
+					if (task.runs && Array.isArray(task.runs)) {
+						task.runs.forEach((run) => {
+							const runDate = run.execution_start_time
+								? parseISO(run.execution_start_time)
+								: null
+							if (runDate) {
+								instances.push({
+									...task,
+									status: run.status, // Use the run's specific status
+									scheduled_date: runDate,
+									instance_id: `${task.task_id}-${run.run_id}`
+								})
+							}
+						})
+					}
+					// Add next upcoming run
+					const nextRunDate = calculateNextRun(
+						task.schedule,
+						task.created_at,
+						task.runs
+					)
+					if (nextRunDate) {
+						instances.push({
+							...task,
+							status: "active", // Upcoming runs are part of an active workflow
+							scheduled_date: nextRunDate,
+							instance_id: `${task.task_id}-next`
+						})
+					}
 				} else {
 					// One-time tasks
 					const scheduledDate = task.schedule?.run_at

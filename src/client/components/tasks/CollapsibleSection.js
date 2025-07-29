@@ -7,7 +7,6 @@ import { IconChevronDown } from "@tabler/icons-react"
 
 const CollapsibleSection = ({
 	title,
-	count,
 	children,
 	isOpen: defaultOpen = true
 }) => {
@@ -21,10 +20,7 @@ const CollapsibleSection = ({
 				onClick={onToggle}
 				className="w-full flex justify-between items-center p-2 hover:bg-neutral-800/50 rounded-lg transition-colors"
 			>
-				<h3 className="font-semibold text-lg text-white">
-					{title}{" "}
-					<span className="text-sm text-neutral-400">({count})</span>
-				</h3>
+				<div className="w-full text-left">{title}</div>
 				<IconChevronDown
 					className={cn(
 						"transform transition-transform duration-300 text-neutral-400",

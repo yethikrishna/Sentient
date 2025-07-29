@@ -1,0 +1,6 @@
+fastmcp
+python-dotenv
+neo4j
+llama-index-embeddings-huggingface
+scikit-learn
+qwen-agent

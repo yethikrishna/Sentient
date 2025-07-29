@@ -11,8 +11,12 @@ from main.auth.utils import aes_encrypt
 from main.config import (
     INTEGRATIONS_CONFIG, 
     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
-    GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET,
-    SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, NOTION_CLIENT_ID, NOTION_CLIENT_SECRET
+    TODOIST_CLIENT_ID, TODOIST_CLIENT_SECRET,
+    DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET,
+    TRELLO_CLIENT_ID,
+    EVERNOTE_CLIENT_ID, EVERNOTE_CLIENT_SECRET,
+    GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SLACK_CLIENT_ID,
+    SLACK_CLIENT_SECRET, NOTION_CLIENT_ID, NOTION_CLIENT_SECRET
 )
 
 router = APIRouter(
@@ -44,6 +48,14 @@ async def get_integration_sources(user_id: str = Depends(auth_helper.get_current
                 source_info["client_id"] = SLACK_CLIENT_ID
             elif name == 'notion':
                 source_info["client_id"] = NOTION_CLIENT_ID
+            elif name == 'trello':
+                source_info["client_id"] = TRELLO_CLIENT_ID
+            elif name == 'discord':
+                source_info["client_id"] = DISCORD_CLIENT_ID
+            elif name == 'todoist':
+                source_info["client_id"] = TODOIST_CLIENT_ID
+            elif name == 'evernote':
+                source_info["client_id"] = EVERNOTE_CLIENT_ID
 
         all_sources.append(source_info)
 
@@ -130,6 +142,33 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
             "code": request.code,
             "redirect_uri": request.redirect_uri,
         }
+    elif service_name == 'todoist':
+        token_url = "https://todoist.com/oauth/access_token"
+        token_payload = {
+            "client_id": TODOIST_CLIENT_ID,
+            "client_secret": TODOIST_CLIENT_SECRET,
+            "code": request.code,
+            "redirect_uri": request.redirect_uri
+        }
+    elif service_name == 'discord':
+        token_url = "https://discord.com/api/oauth2/token"
+        token_payload = {
+            "client_id": DISCORD_CLIENT_ID,
+            "client_secret": DISCORD_CLIENT_SECRET,
+            "grant_type": "authorization_code",
+            "code": request.code,
+            "redirect_uri": request.redirect_uri
+        }
+    elif service_name == 'evernote':
+        # Using sandbox for safety in dev. Production would use www.evernote.com
+        token_url = "https://sandbox.evernote.com/oauth2/token"
+        token_payload = {
+            "grant_type": "authorization_code",
+            "code": request.code,
+            "redirect_uri": request.redirect_uri,
+            "client_id": EVERNOTE_CLIENT_ID,
+            "client_secret": EVERNOTE_CLIENT_SECRET,
+        }
     else:
         raise HTTPException(status_code=400, detail=f"OAuth flow not implemented for {service_name}")
 
@@ -167,6 +206,18 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
              if "access_token" not in token_data:
                 raise HTTPException(status_code=400, detail=f"Notion OAuth error: {token_data.get('error_description', 'No access token in response.')}")
              creds_to_save = token_data # Store the whole object (access_token, workspace_id, etc.)
+        elif service_name == 'todoist':
+            if "access_token" not in token_data:
+                raise HTTPException(status_code=400, detail=f"Todoist OAuth error: {token_data.get('error', 'No access token in response.')}")
+            creds_to_save = token_data
+        elif service_name == 'discord':
+            if "access_token" not in token_data:
+                raise HTTPException(status_code=400, detail=f"Discord OAuth error: {token_data.get('error_description', 'No access token.')}")
+            creds_to_save = token_data # This includes access_token, refresh_token, and the 'bot' object with bot token
+        elif service_name == 'evernote':
+            if "access_token" not in token_data:
+                raise HTTPException(status_code=400, detail=f"Evernote OAuth error: {token_data.get('error', 'No access token.')}")
+            creds_to_save = token_data # Stores access_token, expires, etc.
 
         encrypted_creds = aes_encrypt(json.dumps(creds_to_save))
 

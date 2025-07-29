@@ -793,7 +793,7 @@ def calculate_next_run(schedule: Dict[str, Any], last_run: Optional[datetime.dat
 
     try:
         frequency = schedule.get("frequency")
-        time_str = schedule.get("time", "00:00")
+        time_str = schedule.get("time", "09:00") # Default to 9 AM
         hour, minute = map(int, time_str.split(':'))
 
         # Create the start datetime in the user's timezone

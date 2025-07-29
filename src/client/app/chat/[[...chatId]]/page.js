@@ -695,7 +695,8 @@ export default function ChatPage({ params }) {
 									<div
 										className={cn(
 											"rounded-2xl shadow-2xl shadow-black/40",
-											!isFocused && "p-0.5 bg-gradient-to-tr from-blue-500 to-cyan-500"
+											!isFocused &&
+												"p-0.5 bg-gradient-to-tr from-blue-500 to-cyan-500"
 										)}
 									>
 										<div className="relative bg-neutral-900 rounded-[15px] flex items-end">
@@ -819,7 +820,8 @@ export default function ChatPage({ params }) {
 							<div
 								className={cn(
 									"rounded-2xl shadow-2xl shadow-black/40",
-									!isFocused && "p-0.5 bg-gradient-to-tr from-blue-500 to-cyan-500"
+									!isFocused &&
+										"p-0.5 bg-gradient-to-tr from-blue-500 to-cyan-500"
 								)}
 							>
 								<div className="relative bg-neutral-900 rounded-[15px] flex items-end">
@@ -851,7 +853,9 @@ export default function ChatPage({ params }) {
 												data-tooltip-id="home-tooltip"
 												data-tooltip-content="Stop Generation"
 											>
-												<IconPlayerStopFilled size={18} />
+												<IconPlayerStopFilled
+													size={18}
+												/>
 											</button>
 										) : (
 											<button

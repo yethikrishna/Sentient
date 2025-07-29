@@ -54,6 +54,13 @@ SLACK_CLIENT_ID = os.getenv("SLACK_CLIENT_ID")
 SLACK_CLIENT_SECRET = os.getenv("SLACK_CLIENT_SECRET")
 NOTION_CLIENT_ID = os.getenv("NOTION_CLIENT_ID")
 NOTION_CLIENT_SECRET = os.getenv("NOTION_CLIENT_SECRET")
+DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
+DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
+EVERNOTE_CLIENT_ID = os.getenv("EVERNOTE_CLIENT_ID")
+EVERNOTE_CLIENT_SECRET = os.getenv("EVERNOTE_CLIENT_SECRET")
+TODOIST_CLIENT_ID = os.getenv("TODOIST_CLIENT_ID")
+TODOIST_CLIENT_SECRET = os.getenv("TODOIST_CLIENT_SECRET")
+TRELLO_CLIENT_ID = os.getenv("TRELLO_CLIENT_ID")
 
 # News API Configuration
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
@@ -235,6 +242,46 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("NOTION_MCP_SERVER_URL", "http://localhost:9009/sse")
         }
     },
+    "trello": {
+        "display_name": "Trello",
+        "description": "Organize projects and tasks. The agent can list your boards, lists, and cards, as well as create new cards on your behalf.",
+        "auth_type": "oauth",
+        "icon": "IconBrandTrello",
+        "mcp_server_config": {
+            "name": "trello_server",
+            "url": os.getenv("TRELLO_MCP_SERVER_URL", "http://localhost:9020/sse")
+        }
+    },
+    "todoist": {
+        "display_name": "Todoist",
+        "description": "Manage your tasks and projects in Todoist. The agent can list projects, get tasks (e.g., today's tasks), and create new tasks.",
+        "auth_type": "oauth",
+        "icon": "IconBrandTodoist",
+        "mcp_server_config": {
+            "name": "todoist_server",
+            "url": os.getenv("TODOIST_MCP_SERVER_URL", "http://localhost:9021/sse")
+        }
+    },
+    "discord": {
+        "display_name": "Discord",
+        "description": "Connect to your Discord account to send messages to channels in servers your bot is in.",
+        "auth_type": "oauth",
+        "icon": "IconBrandDiscord",
+        "mcp_server_config": {
+            "name": "discord_server",
+            "url": os.getenv("DISCORD_MCP_SERVER_URL", "http://localhost:9022/sse")
+        }
+    },
+    "evernote": {
+        "display_name": "Evernote",
+        "description": "Create and manage notes in Evernote. The agent can create notes with titles and content, and list existing notebooks.",
+        "auth_type": "oauth",
+        "icon": "IconBrandEvernote",
+        "mcp_server_config": {
+            "name": "evernote_server",
+            "url": os.getenv("EVERNOTE_MCP_SERVER_URL", "http://localhost:9023/sse")
+        }
+    },
     "news": { # Built-in
         "display_name": "News",
         "description": "Fetches top headlines and news articles from around the world. The agent can get top headlines by country or category, or search for articles on any topic.",
@@ -300,6 +347,26 @@ INTEGRATIONS_CONFIG = {
             "name": "supermemory",
             # URL is constructed dynamically based on user's supermemory_user_id
             "url": None
+        }
+    },
+    "whatsapp": {
+        "display_name": "WhatsApp",
+        "description": "Connect a WhatsApp number to allow your agent to send messages to yourself. This can be different from your notification number.",
+        "auth_type": "manual",
+        "icon": "IconBrandWhatsapp",
+        "mcp_server_config": {
+            "name": "whatsapp_server",
+            "url": os.getenv("WHATSAPP_MCP_SERVER_URL", "http://localhost:9024/sse")
+        }
+    },
+    "tasks": {
+        "display_name": "Internal Task Manager",
+        "description": "Creates a new task in the system from a natural language prompt. Use this when the user explicitly asks to 'create a task', 'schedule something', or 'do this for me later'. This is for creating asynchronous, background tasks.",
+        "auth_type": "builtin",
+        "icon": "IconChecklist",
+        "mcp_server_config": {
+            "name": "tasks_server",
+            "url": os.getenv("TASKS_MCP_SERVER_URL", "http://localhost:9018/sse/")
         }
     }
 }

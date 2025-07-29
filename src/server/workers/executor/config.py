@@ -146,6 +146,16 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("NOTION_MCP_SERVER_URL", "http://localhost:9009/sse")
         }
     },
+    "trello": {
+        "display_name": "Trello",
+        "description": "Organize projects and tasks. The agent can list your boards, lists, and cards, as well as create new cards on your behalf.",
+        "auth_type": "oauth",
+        "icon": "IconBrandTrello",
+        "mcp_server_config": {
+            "name": "trello_server",
+            "url": os.getenv("TRELLO_MCP_SERVER_URL", "http://localhost:9020/sse")
+        }
+    },
     "news": { # Built-in
         "display_name": "News",
         "description": "Fetches top headlines and news articles from around the world. The agent can get top headlines by country or category, or search for articles on any topic.",
@@ -205,6 +215,16 @@ INTEGRATIONS_CONFIG = {
             "name": "supermemory",
             # URL is constructed dynamically based on user's supermemory_user_id
             "url": None
+        }
+    },
+    "whatsapp": {
+        "display_name": "WhatsApp",
+        "description": "Connect a WhatsApp number to allow your agent to send messages on your behalf as a tool. This is different from your notification number.",
+        "auth_type": "manual",
+        "icon": "IconBrandWhatsapp",
+        "mcp_server_config": {
+            "name": "whatsapp_server",
+            "url": os.getenv("WHATSAPP_MCP_SERVER_URL", "http://localhost:9024/sse")
         }
     }
 }

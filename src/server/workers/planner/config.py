@@ -230,6 +230,16 @@ INTEGRATIONS_CONFIG = {
             # URL is constructed dynamically based on user's supermemory_user_id
             "url": None
         }
+    },
+    "whatsapp": {
+        "display_name": "WhatsApp",
+        "description": "Connect a WhatsApp number to allow your agent to send messages on your behalf as a tool. This is different from your notification number.",
+        "auth_type": "manual",
+        "icon": "IconBrandWhatsapp",
+        "mcp_server_config": {
+            "name": "whatsapp_server",
+            "url": os.getenv("WHATSAPP_MCP_SERVER_URL", "http://localhost:9024/sse")
+        }
     }
 }
 

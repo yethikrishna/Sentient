@@ -46,10 +46,6 @@ const questionSections = {
 	context: {
 		title: "About You",
 		icon: <IconWorld />
-	},
-	personality: {
-		title: "AI Personality",
-		icon: <IconPalette />
 	}
 }
 
@@ -114,128 +110,152 @@ const questions = [
 			"e.g., I enjoy hiking on weekends, I'm learning to play the guitar...",
 		section: "context",
 		icon: <IconHeart />
-	},
+	}
 ]
 
 const WhatsAppSettings = () => {
-	const [whatsappNumber, setWhatsappNumber] = useState("")
-	const [isLoading, setIsLoading] = useState(true)
-	const [isSaving, setIsSaving] = useState(false)
+	// State for System Notifications
+	const [notificationNumber, setNotificationNumber] = useState("")
+	const [isNotifLoading, setIsNotifLoading] = useState(true)
+	const [isNotifSaving, setIsNotifSaving] = useState(false)
 
-	const fetchWhatsAppNumber = useCallback(async () => {
-		setIsLoading(true)
+	const fetchNotificationSettings = useCallback(async () => {
+		setIsNotifLoading(true)
 		try {
-			const response = await fetch("/api/settings/whatsapp")
+			const response = await fetch("/api/settings/whatsapp-notifications")
 			if (!response.ok)
-				throw new Error("Failed to fetch WhatsApp number.")
+				throw new Error(
+					"Failed to fetch WhatsApp notification settings."
+				)
 			const data = await response.json()
-			setWhatsappNumber(data.whatsapp_number || "")
+			setNotificationNumber(data.whatsapp_notifications_number || "")
 		} catch (error) {
 			toast.error(error.message)
 		} finally {
-			setIsLoading(false)
+			setIsNotifLoading(false)
 		}
 	}, [])
 
 	useEffect(() => {
-		fetchWhatsAppNumber()
-	}, [fetchWhatsAppNumber])
+		fetchNotificationSettings()
+	}, [fetchNotificationSettings])
 
-	const handleSave = async () => {
-		setIsSaving(true)
+	const handleSaveNotifNumber = async () => {
+		setIsNotifSaving(true)
 		try {
-			const response = await fetch("/api/settings/whatsapp", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ whatsapp_number: whatsappNumber })
-			})
+			const response = await fetch(
+				"/api/settings/whatsapp-notifications",
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						whatsapp_notifications_number: notificationNumber
+					})
+				}
+			)
 			const data = await response.json()
-			if (!response.ok) {
-				throw new Error(data.error || "Failed to save number.")
-			}
-			toast.success("WhatsApp number saved successfully!")
+			if (!response.ok)
+				throw new Error(data.detail || "Failed to save number.")
+			toast.success("Notifications enabled for this number!")
 		} catch (error) {
 			toast.error(error.message)
 		} finally {
-			setIsSaving(false)
+			setIsNotifSaving(false)
 		}
 	}
 
-	const handleRemove = async () => {
-		setIsSaving(true)
+	const handleRemoveNotifNumber = async () => {
+		setIsNotifSaving(true)
 		try {
-			const response = await fetch("/api/settings/whatsapp", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ whatsapp_number: "" }) // Send empty string to remove
-			})
+			const response = await fetch(
+				"/api/settings/whatsapp-notifications",
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ whatsapp_notifications_number: "" })
+				}
+			)
 			if (!response.ok) throw new Error("Failed to remove number.")
-			setWhatsappNumber("")
-			toast.success("WhatsApp notifications disabled.")
+			setNotificationNumber("")
+			toast.success("Notification number removed.")
 		} catch (error) {
 			toast.error(error.message)
 		} finally {
-			setIsSaving(false)
+			setIsNotifSaving(false)
 		}
 	}
+
+	const hasNotifNumber =
+		notificationNumber && notificationNumber.trim() !== ""
 
 	return (
-		<section>
-			<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2">
-				WhatsApp Notifications
-			</h2>
-			<div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)]">
-				<p className="text-gray-400 text-sm mb-4">
-					Receive important notifications directly to your WhatsApp.
-					Enter your number including the country code (e.g.,
-					14155552671).
-				</p>
-				{isLoading ? (
-					<div className="flex justify-center mt-4">
-						<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)]" />
-					</div>
-				) : (
-					<div className="flex flex-col sm:flex-row gap-2">
-						<div className="relative flex-grow">
-							<IconBrandWhatsapp
-								className="absolute left-3 top-1/2 -translate-y-1/2 text-green-500"
-								size={20}
-							/>
-							<input
-								type="tel"
-								value={whatsappNumber}
-								onChange={(e) =>
-									setWhatsappNumber(e.target.value)
-								}
-								placeholder="Enter WhatsApp Number"
-								className="w-full pl-10 pr-4 bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
-							/>
+		<section className="space-y-8">
+			{/* System Notifications */}
+			<div>
+				<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2">
+					WhatsApp Notifications
+				</h2>
+				<div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)]">
+					<p className="text-gray-400 text-sm mb-4">
+						Receive important system notifications (e.g., task
+						completions) on WhatsApp. Enter your number including
+						the country code (e.g., +14155552671).
+					</p>
+					{isNotifLoading ? (
+						<div className="flex justify-center mt-4">
+							<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)]" />
 						</div>
-						<div className="flex gap-2 justify-end">
-							<button
-								onClick={handleSave}
-								disabled={isSaving}
-								className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors"
-							>
-								{isSaving ? (
-									<IconLoader className="w-4 h-4 mr-2 animate-spin" />
-								) : (
-									<IconPlus className="w-4 h-4 mr-2" />
-								)}
-								Save
-							</button>
-							{whatsappNumber && (
-								<button
-									onClick={handleRemove}
-									disabled={isSaving}
-									className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-red)]/80 hover:bg-[var(--color-accent-red)] text-white font-medium transition-colors"
-								>
-									<IconX className="w-4 h-4 mr-2" /> Remove
-								</button>
-							)}
+					) : (
+						<div className="space-y-4">
+							<div className="flex flex-col sm:flex-row gap-2">
+								<div className="relative flex-grow">
+									<IconBrandWhatsapp
+										className="absolute left-3 top-1/2 -translate-y-1/2 text-green-500"
+										size={20}
+									/>
+									<input
+										type="tel"
+										value={notificationNumber}
+										onChange={(e) =>
+											setNotificationNumber(
+												e.target.value
+											)
+										}
+										placeholder="Enter number for notifications"
+										className="w-full pl-10 pr-4 bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+									/>
+								</div>
+								<div className="flex gap-2 justify-end">
+									<button
+										onClick={handleSaveNotifNumber}
+										disabled={
+											isNotifSaving ||
+											!notificationNumber.trim()
+										}
+										className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors"
+									>
+										{isNotifSaving ? (
+											<IconLoader className="w-4 h-4 mr-2 animate-spin" />
+										) : (
+											<IconPlus className="w-4 h-4 mr-2" />
+										)}{" "}
+										{hasNotifNumber ? "Update" : "Save"}
+									</button>
+									{hasNotifNumber && (
+										<button
+											onClick={handleRemoveNotifNumber}
+											disabled={isNotifSaving}
+											className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-red)]/80 hover:bg-[var(--color-accent-red)] text-white font-medium transition-colors"
+										>
+											<IconX className="w-4 h-4 mr-2" />{" "}
+											Remove
+										</button>
+									)}
+								</div>
+							</div>
 						</div>
-					</div>
-				)}
+					)}
+				</div>
 			</div>
 		</section>
 	)
@@ -1021,7 +1041,7 @@ const ProfilePage = () => {
 			/>
 			<div className="flex-1 flex flex-col overflow-hidden relative w-full md:pl-20 pb-16 md:pb-0">
 				<main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 custom-scrollbar">
-					<HelpTooltip content="Customize your experience here. Teach Sentient about yourself, change its personality, manage notifications, and connect your LinkedIn profile." />
+					<HelpTooltip content="Customize your experience here." />
 					<div className="w-full max-w-5xl mx-auto space-y-10">
 						<ProfileHeader />
 						<ProfileSettings

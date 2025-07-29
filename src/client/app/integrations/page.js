@@ -7,11 +7,13 @@ import {
 	IconSettingsCog,
 	IconBrandGoogleDrive,
 	IconBrandSlack,
+	IconBrandDiscord,
 	IconBrandNotion,
 	IconPlugConnected,
 	IconPlugOff,
 	IconPlus,
 	IconCloud,
+	IconBrandTrello,
 	IconChartPie,
 	IconBrain,
 	IconBrandGithub,
@@ -21,10 +23,9 @@ import {
 	IconTable,
 	IconMapPin,
 	IconShoppingCart,
-	IconChevronDown,
-	IconChevronUp,
 	IconX,
 	IconMail,
+	IconBrandWhatsapp,
 	IconUsers,
 	IconHelpCircle,
 	IconCalendarEvent,
@@ -44,6 +45,9 @@ import {
 	MorphingDialogContainer
 } from "@components/ui/morphing-dialog"
 import { Tooltip } from "react-tooltip"
+import ModalDialog from "@components/ModalDialog"
+
+import IconBrandTodoist from "@components/icons/IconBrandTodoist"
 
 const HelpTooltip = ({ content }) => (
 	<div className="fixed bottom-6 left-6 z-40">
@@ -74,8 +78,199 @@ const integrationIcons = {
 	quickchart: IconChartPie,
 	memory: IconBrain,
 	google_search: IconWorldSearch,
+	trello: IconBrandTrello,
 	github: IconBrandGithub,
-	news: IconNews
+	news: IconNews,
+	todoist: IconBrandTodoist,
+	discord: IconBrandDiscord,
+	evernote: IconFileText,
+	whatsapp: IconBrandWhatsapp
+}
+
+const MANUAL_INTEGRATION_CONFIGS = {} // Manual integrations removed for Slack and Notion
+
+const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {
+	const [credentials, setCredentials] = useState({})
+	const [isSubmitting, setIsSubmitting] = useState(false)
+	const posthog = usePostHog()
+
+	if (!integration) return null
+
+	const config = MANUAL_INTEGRATION_CONFIGS[integration?.name]
+	const instructions = config?.instructions || []
+	const fields = config?.fields || []
+
+	if (fields.length === 0) return null
+
+	const handleChange = (e) => {
+		setCredentials({
+			...credentials,
+			[e.target.name]: e.target.value
+		})
+	}
+
+	const handleSubmit = async () => {
+		for (const field of fields) {
+			if (!credentials[field.id]?.trim()) {
+				toast.error(`Please provide the ${field.label}.`)
+				return
+			}
+		}
+
+		setIsSubmitting(true)
+		try {
+			const response = await fetch(
+				"/api/settings/integrations/connect/manual",
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						service_name: integration.name,
+						credentials
+					})
+				}
+			)
+
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(
+					data.error ||
+						`Failed to connect ${integration.display_name}`
+				)
+			}
+
+			posthog?.capture("integration_connected", {
+				integration_name: integration.name,
+				auth_type: "manual"
+			})
+			toast.success(`${integration.display_name} connected successfully!`)
+			onSuccess()
+			onClose()
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsSubmitting(false)
+		}
+	}
+
+	const modalContent = (
+		<div className="text-left space-y-4 my-4">
+			<div>
+				<h4 className="font-semibold text-gray-300 mb-2">
+					Instructions:
+				</h4>
+				<ol className="list-decimal list-inside space-y-1 text-sm text-gray-400">
+					{instructions.map((step, index) => (
+						<li key={index}>{step}</li>
+					))}
+				</ol>
+			</div>
+			<div className="space-y-3">
+				{fields.map((field) => (
+					<div key={field.id}>
+						<label
+							htmlFor={field.id}
+							className="block text-sm font-medium text-gray-300 mb-1"
+						>
+							Enter {field.label}
+						</label>
+						<input
+							type={field.type}
+							name={field.id}
+							id={field.id}
+							onChange={handleChange}
+							value={credentials[field.id] || ""}
+							className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+							autoComplete="off"
+						/>
+					</div>
+				))}
+			</div>
+		</div>
+	)
+
+	return (
+		<ModalDialog
+			title={`Connect to ${integration.display_name}`}
+			description="Follow the instructions below and enter your credentials."
+			onConfirm={handleSubmit}
+			onCancel={onClose}
+			confirmButtonText={isSubmitting ? "Connecting..." : "Connect"}
+			isConfirmDisabled={isSubmitting}
+			extraContent={modalContent}
+		/>
+	)
+}
+
+const WhatsAppConnectModal = ({ integration, onClose, onSuccess }) => {
+	const [number, setNumber] = useState("")
+	const [isSubmitting, setIsSubmitting] = useState(false)
+	const posthog = usePostHog()
+
+	if (!integration) return null
+
+	const handleSubmit = async () => {
+		if (!number.trim()) {
+			toast.error("Please provide a valid WhatsApp number.")
+			return
+		}
+
+		setIsSubmitting(true)
+		try {
+			const response = await fetch("/api/settings/whatsapp-mcp", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ whatsapp_mcp_number: number })
+			})
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(
+					data.detail || "Failed to connect WhatsApp Agent"
+				)
+			}
+			posthog?.capture("integration_connected", {
+				integration_name: "whatsapp",
+				auth_type: "manual"
+			})
+			toast.success("WhatsApp Agent connected successfully!")
+			onSuccess()
+			onClose()
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsSubmitting(false)
+		}
+	}
+
+	const modalContent = (
+		<div className="text-left space-y-4 my-4">
+			<p className="text-sm text-gray-400">
+				Enter your WhatsApp number including the country code (e.g.,
+				+14155552671). This number will be used by the agent to send
+				messages on your behalf as a tool.
+			</p>
+			<input
+				type="tel"
+				value={number}
+				onChange={(e) => setNumber(e.target.value)}
+				placeholder="+14155552671"
+				className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+				autoComplete="off"
+			/>
+		</div>
+	)
+
+	return (
+		<ModalDialog
+			title={`Connect to ${integration.display_name}`}
+			description="Connect a number for the agent to use as a tool."
+			onConfirm={handleSubmit}
+			onCancel={onClose}
+			confirmButtonText={isSubmitting ? "Connecting..." : "Connect"}
+			isConfirmDisabled={isSubmitting}
+			extraContent={modalContent}
+		/>
+	)
 }
 
 const FilterInputSection = ({
@@ -262,6 +457,9 @@ const IntegrationsPage = () => {
 	const [processingIntegration, setProcessingIntegration] = useState(null)
 	const [searchQuery, setSearchQuery] = useState("")
 	const [activeCategory, setActiveCategory] = useState("All")
+	const [selectedIntegration, setSelectedIntegration] = useState(null)
+	const [activeManualIntegration, setActiveManualIntegration] = useState(null)
+	const [whatsAppToConnect, setWhatsAppToConnect] = useState(null)
 	const posthog = usePostHog()
 
 	const googleServices = [
@@ -313,7 +511,93 @@ const IntegrationsPage = () => {
 		}
 	}, [])
 
+	const handleTrelloConnect = (integration) => {
+		const trelloApiKey = integration.client_id
+		if (!trelloApiKey) {
+			toast.error(
+				"Trello API Key is not configured by the administrator."
+			)
+			return
+		}
+
+		const returnUrl = `${window.location.origin}/integrations`
+		const authUrl = `https://trello.com/1/authorize?expiration=never&name=Sentient&scope=read,write&response_type=token&key=${trelloApiKey}&return_url=${encodeURIComponent(returnUrl)}&callback_method=postMessage`
+
+		const authWindow = window.open(
+			authUrl,
+			"trelloAuth",
+			"width=600,height=700,noopener,noreferrer"
+		)
+
+		// --- ADDED FOR DEBUGGING ---
+		// This listener will log EVERY message event that comes into the window,
+		// helping us see what Trello is sending back, even if it fails the security checks.
+		const debugListener = (event) => {
+			console.log("DEBUG: Received a postMessage event:", event)
+			console.log("DEBUG: Event Origin:", event.origin)
+			console.log("DEBUG: Event Data:", event.data)
+		}
+		window.addEventListener("message", debugListener)
+		// --- END OF DEBUGGING CODE ---
+
+		const handleMessage = async (event) => {
+			// Basic security checks
+			if (
+				event.source !== authWindow ||
+				event.origin !== "https://trello.com" ||
+				!event.data
+			) {
+				return
+			}
+
+			const token = event.data
+			// Trello tokens are 64-char hex strings
+			if (token && /^[0-9a-f]{64}$/.test(token)) {
+				// --- ADDED FOR DEBUGGING ---
+				// Clean up both listeners once we have a valid token
+				window.removeEventListener("message", debugListener)
+				// --- END OF DEBUGGING CODE ---
+
+				window.removeEventListener("message", handleMessage)
+				authWindow.close()
+
+				setProcessingIntegration("trello")
+				try {
+					const response = await fetch(
+						"/api/settings/integrations/connect/manual",
+						{
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({
+								service_name: "trello",
+								credentials: { token: token }
+							})
+						}
+					)
+					if (!response.ok)
+						throw new Error(
+							(await response.json()).error ||
+								"Failed to save Trello token."
+						)
+					toast.success("Trello connected successfully!")
+					fetchIntegrations()
+				} catch (error) {
+					toast.error(error.message)
+				} finally {
+					setProcessingIntegration(null)
+				}
+			}
+		}
+
+		window.addEventListener("message", handleMessage, false)
+	}
+
 	const handleConnect = (integration) => {
+		if (integration.name === "whatsapp") {
+			setWhatsAppToConnect(integration)
+			return
+		}
+
 		if (integration.auth_type === "oauth") {
 			const { name: serviceName, client_id: clientId } = integration
 			if (!clientId) {
@@ -322,6 +606,12 @@ const IntegrationsPage = () => {
 				)
 				return
 			}
+
+			if (serviceName === "trello") {
+				handleTrelloConnect(integration)
+				return
+			}
+
 			const redirectUri = `${window.location.origin}/api/settings/integrations/connect/oauth/callback`
 			let authUrl = ""
 			const scopes = {
@@ -359,6 +649,22 @@ const IntegrationsPage = () => {
 				authUrl = `https://api.notion.com/v1/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
 					redirectUri
 				)}&response_type=code&owner=user&state=${serviceName}`
+			} else if (serviceName === "todoist") {
+				const scope = "data:read_write"
+				authUrl = `https://todoist.com/oauth/authorize?client_id=${clientId}&scope=${scope}&state=${serviceName}`
+			} else if (serviceName === "discord") {
+				// Scopes for Discord: identify (read user info), guilds (list servers), bot (add bot to servers), applications.commands (for slash commands)
+				const scope = "identify guilds bot applications.commands"
+				// Permissions for the bot to read/send messages
+				const permissions = "274877908992"
+				authUrl = `https://discord.com/api/oauth2/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
+					redirectUri
+				)}&response_type=code&scope=${encodeURIComponent(scope)}&permissions=${permissions}&state=${serviceName}`
+			} else if (serviceName === "evernote") {
+				const serviceHost = "sandbox.evernote.com" // Use sandbox for dev
+				authUrl = `https://${serviceHost}/oauth2/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(
+					redirectUri
+				)}&state=${serviceName}`
 			}
 			if (authUrl) window.location.href = authUrl
 			else
@@ -367,6 +673,7 @@ const IntegrationsPage = () => {
 				)
 		} else if (integration.auth_type === "manual") {
 			if (MANUAL_INTEGRATION_CONFIGS[integration.name]) {
+				setActiveManualIntegration(integration)
 			} else {
 				toast.error(`UI for ${integration.display_name} not found.`)
 			}
@@ -419,7 +726,7 @@ const IntegrationsPage = () => {
 				success.charAt(0).toUpperCase() + success.slice(1)
 			posthog?.capture("integration_connected", {
 				integration_name: success,
-				auth_type: "oauth"
+				auth_type: "oauth_redirect"
 			})
 			toast.success(`Successfully connected to ${capitalized}!`)
 			window.history.replaceState({}, document.title, "/integrations")
@@ -708,6 +1015,15 @@ const IntegrationsPage = () => {
 					</div>
 				</main>
 			</div>
+			<AnimatePresence>
+				{whatsAppToConnect && (
+					<WhatsAppConnectModal
+						integration={whatsAppToConnect}
+						onClose={() => setWhatsAppToConnect(null)}
+						onSuccess={fetchIntegrations}
+					/>
+				)}
+			</AnimatePresence>
 		</div>
 	)
 }

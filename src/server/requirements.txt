@@ -46,3 +46,8 @@ fastmcp
 matplotlib
 
 jsonextractor
+
+# --- Vector DB and Embeddings ---
+chromadb-client
+sentence-transformers
+torch

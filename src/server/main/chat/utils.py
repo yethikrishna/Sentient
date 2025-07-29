@@ -165,7 +165,7 @@ async def generate_chat_llm_stream(
         last_user_query = messages[-1].get("content", "") if messages else ""
         relevant_tool_names = await _select_relevant_tools(last_user_query, tool_name_to_desc_map)
 
-        mandatory_tools = {"tasks", "supermemory"}
+        mandatory_tools = {"tasks", "supermemory", "history"}
         final_tool_names = set(relevant_tool_names) | mandatory_tools
 
         filtered_mcp_servers = {}
@@ -196,24 +196,31 @@ async def generate_chat_llm_stream(
 
     system_prompt = (
         f"You are Sentient, a personalized AI assistant. Your goal is to be as helpful as possible by using your available tools to directly execute tasks and help the user track their schedule.\n\n"
+        f"**Accessing Your Memory:**\n"
+        f"Your immediate context is limited to the last 30 messages of this conversation. To recall older information, you MUST use the following tools:\n"
+        f"- `history_mcp-semantic_search`: Use this when the user asks about a topic or concept from the past (e.g., \"What did we decide about the marketing plan?\").\n"
+        f"- `history_mcp-time_based_search`: Use this when the user asks about a specific time period (e.g., \"Remind me what we talked about last Tuesday.\").\n"
+        f"- `supermemory-search`: Use this to recall specific facts, preferences, or details about the user that have been explicitly saved to your memory.\n"
+        f"Always check your memory and conversation history before asking the user a question you might already know the answer to.\n\n"
         f"**Critical Instructions:**\n"
         f"1. **Validate Complex JSON:** Before calling any tool that requires a complex JSON string as a parameter (like Notion's `content_blocks_json`), you MUST first pass your generated JSON string to the `json_validator` tool to ensure it is syntactically correct. Use the cleaned output from `json_validator` in the subsequent tool call.\n"
         f"2. **Handle Disconnected Tools:** You have a list of tools the user has not connected yet. If the user's query clearly refers to a capability from this list (e.g., asking to 'send a slack message' when Slack is disconnected), you MUST stop and politely inform the user that they need to connect the tool in the Integrations page. Do not proceed with other tools.\n"
         f"3. For any command to create, send, search, or read information (e.g., create a document, send an email, search for files), you MUST call the appropriate tool directly (e.g., `gdocs-createDocument`, `gmail-sendEmail`, `gdrive-gdrive_search`). Complete the task within the chat and provide the result to the user.\n"
-        f"4. **Memory Usage:** ALWAYS use `supermemory-search` first to check for existing context. If you learn a new, permanent fact about the user, use `supermemory-addToSupermemory` to save it.\n"
+        f"4. **Saving New Information:** If you learn a new, permanent fact about the user (e.g., their manager's name, a new preference), you MUST use `supermemory-addToSupermemory` to save it for future reference.\n"
         f"5. **Final Answer Format:** When you have a complete, final answer for the user that is not a tool call, you MUST wrap it in `<answer>` tags. For example: `<answer>The weather in London is 15°C and cloudy.</answer>`.\n\n"
         f"{disconnected_tools_prompt_section}"
         f"**User Context (for your reference):**\n"
         f"-   **User's Name:** {username}\n"
         f"-   **User's Location:** {location}\n"
         f"-   **Current Time:** {current_user_time}\n\n"
-        f"Your primary directive is to be as personalized and helpful as possible by actively using your memory and tools. Do not ask questions you should already know the answer to; search your memory instead."
+        f"Your primary directive is to be as personalized and helpful as possible by actively using your memory and tools."
     )
 
     def worker():
         try:
             qwen_assistant = get_qwen_assistant(system_message=system_prompt, function_list=tools)
-            qwen_formatted_history = [{"role": msg["role"], "content": msg["content"]} for msg in messages]
+            recent_messages = messages[-30:] # Limit context to the last 30 messages
+            qwen_formatted_history = [{"role": msg["role"], "content": msg["content"]} for msg in recent_messages]
             for new_history_step in qwen_assistant.run(messages=qwen_formatted_history):
                 loop.call_soon_threadsafe(queue.put_nowait, new_history_step)
         except Exception as e:

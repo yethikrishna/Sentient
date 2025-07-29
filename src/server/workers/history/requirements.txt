@@ -1,0 +1,4 @@
+# Create new file: src/server/mcp_hub/history/requirements.txt
+fastmcp
+python-dotenv
+motor

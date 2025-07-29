@@ -18,7 +18,8 @@ NOTIFICATIONS_COLLECTION = "notifications"
 POLLING_STATE_COLLECTION = "polling_state_store" 
 PROCESSED_ITEMS_COLLECTION = "processed_items_log" 
 TASK_COLLECTION = "tasks"
-CHATS_COLLECTION = "chats"
+MESSAGES_COLLECTION = "messages"
+CONVERSATION_SUMMARIES_COLLECTION = "conversation_summaries"
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,8 @@ class MongoManager:
         self.polling_state_collection = self.db[POLLING_STATE_COLLECTION]
         self.processed_items_collection = self.db[PROCESSED_ITEMS_COLLECTION]
         self.task_collection = self.db[TASK_COLLECTION]
-        self.chats_collection = self.db[CHATS_COLLECTION]
+        self.messages_collection = self.db[MESSAGES_COLLECTION]
+        self.conversation_summaries_collection = self.db[CONVERSATION_SUMMARIES_COLLECTION]
         
         print(f"[{datetime.datetime.now()}] [MainServer_MongoManager] Initialized. Database: {MONGO_DB_NAME}")
 
@@ -69,10 +71,14 @@ class MongoManager:
                 IndexModel([("status", ASCENDING), ("agent_id", ASCENDING)], name="task_status_agent_idx", sparse=True), 
                 IndexModel([("task_id", ASCENDING)], unique=True, name="task_id_unique_idx")
             ],
-            self.chats_collection: [
-                IndexModel([("user_id", ASCENDING), ("updated_at", DESCENDING)], name="chat_user_updated_idx"),
-                IndexModel([("chat_id", ASCENDING)], unique=True, name="chat_id_unique_idx"),
-                IndexModel([("user_id", ASCENDING)], name="chat_user_id_idx")
+            self.messages_collection: [
+                IndexModel([("message_id", ASCENDING)], unique=True, name="message_id_unique_idx"),
+                IndexModel([("user_id", ASCENDING), ("timestamp", DESCENDING)], name="message_user_timestamp_idx"),
+            ],
+            self.conversation_summaries_collection: [
+                IndexModel([("summary_id", ASCENDING)], unique=True, name="summary_id_unique_idx"),
+                IndexModel([("user_id", ASCENDING)], name="summary_user_id_idx"),
+                # A vector index would be added here in a later phase
             ],
         }
 
@@ -371,75 +377,52 @@ class MongoManager:
         new_task_doc["status"] = "planning"
         new_task_doc["created_at"] = now_utc
         new_task_doc["updated_at"] = now_utc
-        new_task_doc["progress_updates"] = []
-        new_task_doc["result"] = None
-        new_task_doc["error"] = None
         new_task_doc["last_execution_at"] = None
         new_task_doc["next_execution_at"] = None
 
         await self.task_collection.insert_one(new_task_doc)
         return new_task_id
 
-    # --- Chat Methods ---
-    async def get_user_chats(self, user_id: str) -> List[Dict]:
-        """Fetches all chat sessions for a user, sorted by last updated."""
-        cursor = self.chats_collection.find(
-            {"user_id": user_id},
-            {"chat_id": 1, "title": 1, "updated_at": 1, "_id": 0}
-        ).sort("updated_at", DESCENDING)
-        return await cursor.to_list(length=100) # Limit to 100 chats
-
-    async def get_chat(self, user_id: str, chat_id: str) -> Optional[Dict]:
-        """Fetches a single chat session with all messages."""
-        return await self.chats_collection.find_one(
-            {"user_id": user_id, "chat_id": chat_id}
-        )
-
-    async def create_chat(self, user_id: str, first_message: Dict) -> str:
-        """Creates a new chat session."""
-        chat_id = str(uuid.uuid4())
+    # --- Message Methods ---
+    async def add_message(self, user_id: str, role: str, content: str) -> Dict:
+        """Adds a single message to the messages collection."""
         now = datetime.datetime.now(datetime.timezone.utc)
-        chat_doc = {
-            "chat_id": chat_id,
+        message_doc = {
+            "message_id": str(uuid.uuid4()),
             "user_id": user_id,
-            "title": first_message.get("content", "New Chat")[:50], # Temporary title
-            "created_at": now,
-            "updated_at": now,
-            "messages": [first_message]
+            "role": role,
+            "content": content,
+            "timestamp": now,
+            "is_summarized": False,
+            "summary_id": None,
         }
-        await self.chats_collection.insert_one(chat_doc)
-        return chat_id
+        await self.messages_collection.insert_one(message_doc)
+        logger.info(f"Added message for user {user_id} with role {role}")
+        return message_doc
 
-    async def add_message_to_chat(self, user_id: str, chat_id: str, message: Dict) -> bool:
-        """Adds a message to an existing chat session."""
-        # Ensure message has a timestamp
-        if "timestamp" not in message:
-            message["timestamp"] = datetime.datetime.now(datetime.timezone.utc)
+    async def get_message_history(self, user_id: str, limit: int, before_timestamp_iso: Optional[str] = None) -> List[Dict]:
+        """Fetches a paginated history of messages for a user."""
+        query = {"user_id": user_id}
+        if before_timestamp_iso:
+            try:
+                # Ensure the timestamp is parsed correctly as UTC
+                before_timestamp = datetime.datetime.fromisoformat(before_timestamp_iso.replace("Z", "+00:00"))
+                query["timestamp"] = {"$lt": before_timestamp}
+            except (ValueError, TypeError):
+                logger.warning(f"Invalid before_timestamp format: {before_timestamp_iso}, ignoring.")
+                pass
 
-        result = await self.chats_collection.update_one(
-            {"user_id": user_id, "chat_id": chat_id},
-            {
-                "$push": {"messages": message},
-                "$set": {"updated_at": datetime.datetime.now(datetime.timezone.utc)}
-            }
-        )
-        return result.modified_count > 0
+        cursor = self.messages_collection.find(query).sort("timestamp", DESCENDING).limit(limit)
+        messages = await cursor.to_list(length=limit)
 
-    async def update_chat(self, user_id: str, chat_id: str, updates: Dict) -> bool:
-        """Updates fields of a chat document, like the title."""
-        updates["updated_at"] = datetime.datetime.now(datetime.timezone.utc)
-        result = await self.chats_collection.update_one(
-            {"user_id": user_id, "chat_id": chat_id},
-            {"$set": updates}
-        )
-        return result.modified_count > 0
+        # Serialize datetime and ObjectId objects for JSON response
+        for msg in messages:
+            if isinstance(msg.get("_id"), ObjectId):
+                msg["_id"] = str(msg["_id"])
+            if isinstance(msg.get("timestamp"), datetime.datetime):
+                msg["timestamp"] = msg["timestamp"].isoformat()
 
-    async def delete_chat(self, user_id: str, chat_id: str) -> bool:
-        """Deletes a chat session for a user."""
-        result = await self.chats_collection.delete_one(
-            {"user_id": user_id, "chat_id": chat_id}
-        )
-        return result.deleted_count > 0
+        return messages
 
     async def close(self):
         if self.client:

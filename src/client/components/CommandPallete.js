@@ -42,12 +42,6 @@ const CommandPalette = ({ open, setOpen }) => {
 
 				<Command.Group heading="Navigation">
 					<Command.Item
-						onSelect={() => runCommand(() => router.push("/chat"))}
-					>
-						<IconMessage className="mr-2 h-4 w-4" />
-						Go to Chat
-					</Command.Item>
-					<Command.Item
 						onSelect={() =>
 							runCommand(() => router.push("/integrations"))
 						}
@@ -76,6 +70,12 @@ const CommandPalette = ({ open, setOpen }) => {
 						onSelect={() => {
 							runCommand(() => router.push("/tasks?action=add"))
 						}}
+					>
+						<IconMessage className="mr-2 h-4 w-4" />
+						New Chat
+					</Command.Item>
+					<Command.Item
+						onSelect={() => runCommand(() => router.push("/chat"))}
 					>
 						<IconPlus className="mr-2 h-4 w-4" />
 						New Task

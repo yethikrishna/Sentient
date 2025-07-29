@@ -1,0 +1,8 @@
+fastmcp
+python-dotenv
+asyncpg
+pgvector
+qwen-agent
+llama-index-embeddings-huggingface
+numpy
+scikit-learn

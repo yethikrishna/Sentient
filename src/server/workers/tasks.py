@@ -9,6 +9,7 @@ import httpx
 from dateutil import rrule
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Dict, Any, Optional, List, Tuple
+from bson import ObjectId
 from main.analytics import capture_event
 
 from workers.config import SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX, SUPPORTED_POLLING_SERVICES
@@ -22,6 +23,7 @@ from workers.planner.llm import get_planner_agent, get_question_generator_agent
 from workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions
 from workers.supermemory_agent_utils import get_supermemory_qwen_agent, get_db_manager as get_memory_db_manager
 from workers.executor.tasks import execute_task_plan
+from main.vector_db import get_conversation_summaries_collection
 from workers.planner.prompts import TOOL_SELECTOR_SYSTEM_PROMPT
 
 # Imports for extractor logic
@@ -175,47 +177,6 @@ def process_memory_item(user_id: str, fact_text: str, source_event_id: Optional[
 
     return run_async(async_process_memory())
 
-@celery_app.task(name="generate_chat_title")
-def generate_chat_title(chat_id: str, user_id: str):
-    """
-    Generates a concise title for a chat session based on its first message.
-    """
-    logger.info(f"Generating title for chat_id: {chat_id}")
-    run_async(async_generate_chat_title(chat_id, user_id))
-
-async def async_generate_chat_title(chat_id: str, user_id: str):
-    db_manager = PlannerMongoManager()
-    try:
-        chat = await db_manager.chats_collection.find_one({"chat_id": chat_id, "user_id": user_id})
-        if not chat or not chat.get("messages"):
-            logger.warning(f"Cannot generate title: Chat {chat_id} not found or has no messages.")
-            return
-
-        first_user_message = chat["messages"][0].get("content", "")
-        if len(first_user_message) < 10:
-            # Title is already good enough, or message too short to summarize
-            return
-
-        system_prompt = "You are a title generator. Create a very short, concise title (5 words max) for the following user query. Do not use quotes or any extra text. Just provide the title."
-        agent = get_qwen_assistant(system_message=system_prompt)
-        messages = [{'role': 'user', 'content': first_user_message}]
-
-        final_content = ""
-        for chunk in agent.run(messages=messages):
-            if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
-                final_content = chunk[-1].get("content", "")
-
-        # Clean the final output from the LLM before using it
-        title = clean_llm_output(final_content).strip().strip('"')
-
-        if title:
-            await db_manager.update_chat(user_id, chat_id, {"title": title})
-            logger.info(f"Successfully generated and updated title for chat {chat_id}: '{title}'")
-    except Exception as e:
-        logger.error(f"Error generating title for chat {chat_id}: {e}", exc_info=True)
-    finally:
-        await db_manager.close()
-
 @celery_app.task(name="refine_and_plan_ai_task")
 def refine_and_plan_ai_task(task_id: str):
     """
@@ -333,18 +294,27 @@ async def async_process_change_request(task_id: str, user_id: str, user_message:
         await db_manager.close()
 # --- Extractor Task ---
 @celery_app.task(name="extract_from_context")
-def extract_from_context(user_id: str, service_name: str, event_id: str, event_data: Dict[str, Any], current_time_iso: Optional[str] = None):
+def extract_from_context(user_id: str, source_text: str, source_type: str, event_id: Optional[str] = None, event_data: Optional[Dict[str, Any]] = None, current_time_iso: Optional[str] = None):
     """
     Celery task to replace the Extractor worker. It takes context data,
     runs it through an LLM to extract memories and action items,
     and then dispatches further Celery tasks.
+
+    Args:
+        user_id (str): The ID of the user.
+        source_text (str): The raw text to be processed by the LLM.
+        source_type (str): The origin of the text (e.g., 'gmail', 'gcalendar', 'chat_summary').
+        event_id (Optional[str]): A unique ID for the event if it's from a poller.
+        event_data (Optional[Dict]): The original structured data of the event.
+        current_time_iso (Optional[str]): ISO timestamp for time-sensitive extractions.
     """
-    logger.info(f"Extractor task running for event_id: {event_id} (service: {service_name}) for user {user_id}")
+    log_id = event_id or "adhoc"
+    logger.info(f"Extractor task running for event_id: {log_id} (source: {source_type}) for user {user_id}")
 
     async def async_extract():
         db_manager = ExtractorMongoManager()
         try:
-            if await db_manager.is_event_processed(user_id, event_id):
+            if event_id and await db_manager.is_event_processed(user_id, event_id):
                 logger.info(f"Skipping event_id: {event_id} - already processed.")
                 return
 
@@ -362,17 +332,11 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
             current_time = datetime.datetime.fromisoformat(current_time_iso) if current_time_iso else datetime.datetime.now(datetime.timezone.utc)
             time_context_str = f"The current date and time is {current_time.strftime('%A, %Y-%m-%d %H:%M:%S %Z')}."
 
-            llm_input_content = ""
-            if service_name == "gmail":
-                llm_input_content = f"Source: Email\nSubject: {event_data.get('subject', '')}\n\nBody:\n{event_data.get('body', '')}"
-            elif service_name == "gcalendar":
-                llm_input_content = f"Source: Calendar Event\nSummary: {event_data.get('summary', '')}\n\nDescription:\n{event_data.get('description', '')}"
-
             # Add time context to the input for the LLM
-            full_llm_input = f"{time_context_str}\n\nPlease analyze the following content:\n\n{llm_input_content}"
+            full_llm_input = f"{time_context_str}\n\nPlease analyze the following content from source '{source_type}':\n\n{source_text}"
 
-            if not llm_input_content or not llm_input_content.strip():
-                logger.warning(f"Skipping event_id: {event_id} due to empty content.")
+            if not source_text or not source_text.strip():
+                logger.warning(f"Skipping event_id: {log_id} due to empty content.")
                 return
 
             agent = get_extractor_agent(user_name, user_location, user_timezone)
@@ -386,44 +350,44 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
                         final_content_str = last_message["content"]
 
             if not final_content_str.strip():
-                logger.error(f"Extractor LLM returned no response for event_id: {event_id}.")
+                logger.error(f"Extractor LLM returned no response for event_id: {log_id}.")
                 return
 
 
             cleaned_content = clean_llm_output(final_content_str)
-            logger.info(f"Extractor LLM response for event_id: {event_id} - {cleaned_content}.")
+            logger.info(f"Extractor LLM response for event_id: {log_id} - {cleaned_content}.")
             extracted_data = JsonExtractor.extract_valid_json(cleaned_content)
             if not extracted_data:
-                logger.error(f"Could not extract valid JSON from LLM response for event_id: {event_id}. Response: '{cleaned_content}'")
-                await db_manager.log_extraction_result(event_id, user_id, 0, 0)
+                logger.error(f"Could not extract valid JSON from LLM response for event_id: {log_id}. Response: '{cleaned_content}'")
+                if event_id: await db_manager.log_extraction_result(event_id, user_id, 0, 0)
                 return
 
             if isinstance(extracted_data, list):
                 extracted_data = extracted_data[0] if extracted_data and isinstance(extracted_data[0], dict) else {}
 
             if not isinstance(extracted_data, dict):
-                logger.error(f"Extracted JSON is not a dictionary for event_id: {event_id}. Extracted: '{extracted_data}'")
-                await db_manager.log_extraction_result(event_id, user_id, 0, 0)
+                logger.error(f"Extracted JSON is not a dictionary for event_id: {log_id}. Extracted: '{extracted_data}'")
+                if event_id: await db_manager.log_extraction_result(event_id, user_id, 0, 0)
                 return
 
             memory_items = extracted_data.get("memory_items", [])
             action_items = extracted_data.get("action_items", [])
             topics = extracted_data.get("topics", [])
 
-            if service_name in ["gmail", "gcalendar", "chat"]:
+            if source_type in ["gmail", "gcalendar", "chat", "chat_summary"]:
                 for item in action_items:
                     if not isinstance(item, str) or not item.strip():
                         continue
 
                     original_source_context = {
-                        "source": service_name,
+                        "source": source_type,
                         "event_id": event_id,
                         "content": event_data
                     }
 
                     # Dispatch directly to the planner/action item processor
                     process_action_item.delay(user_id, [item], topics, event_id, original_source_context)
-                    logger.info(f"Dispatched action item from {service_name} for processing: '{item}'")
+                    logger.info(f"Dispatched action item from {source_type} for processing: '{item}'")
 
             for fact in memory_items:
                 if isinstance(fact, str) and fact.strip():
@@ -432,7 +396,7 @@ def extract_from_context(user_id: str, service_name: str, event_id: str, event_d
             await db_manager.log_extraction_result(event_id, user_id, len(memory_items), len(action_items))
 
         except Exception as e:
-            logger.error(f"Error in extractor task for event_id: {event_id}: {e}", exc_info=True)
+            logger.error(f"Error in extractor task for event_id: {log_id}: {e}", exc_info=True)
         finally:
             await db_manager.close()
 
@@ -870,5 +834,107 @@ async def async_run_due_tasks():
 
     except Exception as e:
         logger.error(f"Scheduler: An error occurred checking user-defined tasks: {e}", exc_info=True)
+    finally:
+        await db_manager.close()
+
+
+# --- Chat History Summarization Task ---
+@celery_app.task(name="summarize_old_conversations")
+def summarize_old_conversations():
+    """
+    Celery Beat task to find old, unsummarized messages, group them into chunks,
+    summarize them, and store the summaries and embeddings in ChromaDB.
+    """
+    logger.info("Summarization Task: Starting to look for old conversations to summarize.")
+    run_async(async_summarize_conversations())
+
+async def async_summarize_conversations():
+    db_manager = PlannerMongoManager()  # Re-using for its mongo access
+    try:
+        # 1. Find users with recent, unsummarized messages
+        # We process one user at a time to keep the task manageable.
+        # This aggregation finds the first user with unsummarized messages older than 1 day.
+        one_day_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)
+        pipeline = [
+            {"$match": {"is_summarized": False, "timestamp": {"$lt": one_day_ago}}},
+            {"$group": {"_id": "$user_id"}},
+            {"$limit": 1} # Process one user per run
+        ]
+        user_to_process = await db_manager.messages_collection.aggregate(pipeline).to_list(length=1)
+
+        if not user_to_process:
+            logger.info("Summarization Task: No users with old, unsummarized messages found.")
+            return
+
+        user_id = user_to_process[0]['_id']
+        logger.info(f"Summarization Task: Found user {user_id} with messages to summarize.")
+
+        # 2. Fetch all unsummarized messages for this user
+        messages_cursor = db_manager.messages_collection.find({
+            "user_id": user_id,
+            "is_summarized": False
+        }).sort("timestamp", 1) # Get them in chronological order
+        
+        messages_to_process = await messages_cursor.to_list(length=None)
+        
+        if not messages_to_process:
+            logger.info(f"Summarization Task: No unsummarized messages to process for user {user_id}.")
+            return
+
+        # 3. Group messages into chunks (e.g., of 30 messages)
+        chunk_size = 30
+        message_chunks = [messages_to_process[i:i + chunk_size] for i in range(0, len(messages_to_process), chunk_size)]
+        
+        # 4. Process each chunk
+        system_prompt = "You are a summarization expert. Summarize the key points, decisions, facts, and topics from the following conversation chunk into a dense, third-person paragraph. Focus on information that would be useful for future context. Do not add any preamble or sign-off."
+        summarizer_agent = get_qwen_assistant(system_message=system_prompt)
+        
+        for chunk in message_chunks:
+            if len(chunk) < 5: # Don't summarize very small chunks
+                continue
+
+            conversation_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in chunk])
+            
+            # 4a. Summarize with LLM
+            messages = [{'role': 'user', 'content': conversation_text}]
+            summary_text = ""
+            for response_chunk in summarizer_agent.run(messages=messages):
+                 if isinstance(response_chunk, list) and response_chunk and response_chunk[-1].get("role") == "assistant":
+                    summary_text = response_chunk[-1].get("content", "")
+
+            summary_text = clean_llm_output(summary_text)
+            if not summary_text:
+                logger.warning(f"Summarization for user {user_id} produced an empty result. Skipping chunk.")
+                continue
+
+            # 4b. Store summary and embedding in ChromaDB
+            summary_id = str(uuid.uuid4())
+            message_ids = [msg['message_id'] for msg in chunk]
+            
+            collection = get_conversation_summaries_collection()
+            collection.add(
+                ids=[summary_id],
+                documents=[summary_text],
+                metadatas=[{
+                    "user_id": user_id,
+                    "start_timestamp": chunk[0]['timestamp'].isoformat(),
+                    "end_timestamp": chunk[-1]['timestamp'].isoformat(),
+                    "message_ids_json": json.dumps(message_ids)
+                }]
+            )
+            logger.info(f"Summarization Task: Stored summary {summary_id} in ChromaDB for user {user_id}.")
+            
+            # 4c. Update original messages in MongoDB
+            message_object_ids = [msg['_id'] for msg in chunk]
+            await db_manager.messages_collection.update_many(
+                {"_id": {"$in": message_object_ids}},
+                {"$set": {"is_summarized": True, "summary_id": summary_id}}
+            )
+
+            # 4d. Extract memories from the summary
+            extract_from_context.delay(user_id=user_id, source_text=summary_text, source_type="chat_summary")
+
+    except Exception as e:
+        logger.error(f"Error during conversation summarization: {e}", exc_info=True)
     finally:
         await db_manager.close()

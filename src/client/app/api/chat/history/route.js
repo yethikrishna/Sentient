@@ -9,7 +9,16 @@ const appServerUrl =
 
 export const GET = withAuth(async function GET(request, { authHeader }) {
 	try {
-		const response = await fetch(`${appServerUrl}/chat/history`, {
+		const { searchParams } = new URL(request.url)
+		const limit = searchParams.get("limit")
+		const before_timestamp = searchParams.get("before_timestamp")
+
+		const url = new URL(`${appServerUrl}/chat/history`)
+		if (limit) url.searchParams.append("limit", limit)
+		if (before_timestamp)
+			url.searchParams.append("before_timestamp", before_timestamp)
+
+		const response = await fetch(url.toString(), {
 			method: "GET",
 			headers: { "Content-Type": "application/json", ...authHeader }
 		})

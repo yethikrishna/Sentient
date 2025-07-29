@@ -268,6 +268,17 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("ACCUWEATHER_MCP_SERVER_URL", "http://localhost:9007/sse")
         }
     },
+    "history": {
+        "display_name": "Conversation History",
+        "description": "Searches the user's long-term conversation history. Use 'semantic_search' for topic-based queries (e.g., 'what did we decide about X?') and 'time_based_search' for date-based queries (e.g., 'what did we talk about last Tuesday?').",
+        "auth_type": "builtin",
+        "icon": "IconHistory", # Frontend will need to add this if it's ever displayed
+        "category": "Data & Search",
+        "mcp_server_config": {
+            "name": "history_mcp",
+            "url": os.getenv("HISTORY_MCP_SERVER_URL", "http://localhost:9020/sse")
+        }
+    },
     "quickchart": { # Built-in
         "display_name": "QuickChart",
         "description": "Generates charts and data visualizations on the fly. The agent can create bar charts, line charts, pie charts, and more, then provide a URL or download the image.",

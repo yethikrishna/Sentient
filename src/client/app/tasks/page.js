@@ -273,16 +273,16 @@ function TasksPageContent() {
 	}, [oneTimeTasks, recurringInstances, searchQuery])
 
 	return (
-		<div className="flex-1 flex h-screen bg-black text-white overflow-hidden md:pl-20">
+		<div className="flex-1 flex h-screen bg-brand-black text-white overflow-hidden md:pl-20">
 			<Tooltip
 				id="tasks-tooltip"
 				place="right"
 				style={{ zIndex: 9999 }}
 			/>
-			<div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+			<div className="flex-1 flex flex-col md:flex-row overflow-hidden bg-brand-black">
 				{/* Main Content Panel */}
 				<main className="flex-1 flex flex-col overflow-hidden relative">
-					<header className="p-6 border-b border-neutral-800 flex-shrink-0 flex items-center justify-between">
+					<header className="p-6 border-b border-neutral-800 flex-shrink-0 flex items-center justify-between bg-brand-black">
 						<h1 className="text-3xl font-bold text-white">Tasks</h1>
 						<div className="absolute top-6 left-1/2 -translate-x-1/2">
 							<TaskViewSwitcher view={view} setView={setView} />
@@ -337,7 +337,7 @@ function TasksPageContent() {
 				</main>
 
 				{/* Right Details Panel */}
-				<aside className="w-full md:w-[500px] lg:w-[550px] bg-neutral-900/50 border-l border-neutral-800 flex-shrink-0 flex flex-col">
+				<aside className="w-full md:w-[500px] lg:w-[550px] bg-brand-gray border-l border-neutral-800 flex-shrink-0 flex flex-col">
 					<AnimatePresence mode="wait">
 						{rightPanelContent.type === "task" &&
 						rightPanelContent.data ? (

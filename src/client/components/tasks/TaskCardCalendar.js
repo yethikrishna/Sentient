@@ -26,7 +26,7 @@ const TaskCardCalendar = ({ task, onSelectTask }) => {
 				<div
 					className={cn(
 						"w-2 h-2 rounded-full flex-shrink-0",
-						statusInfo.color.replace("text-", "bg-")
+						statusInfo.bgColor
 					)}
 				/>
 				<span className="truncate">{task.description}</span>

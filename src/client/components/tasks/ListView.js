@@ -1,7 +1,7 @@
 "use client"
 import React, { useMemo } from "react"
 import { AnimatePresence } from "framer-motion"
-import { IconSearch } from "@tabler/icons-react"
+import { IconSearch, IconChevronDown } from "@tabler/icons-react"
 import { groupTasksByDate } from "@utils/taskUtils"
 import TaskCardList from "./TaskCardList"
 import CollapsibleSection from "./CollapsibleSection"
@@ -62,44 +62,46 @@ const ListView = ({
 			</div>
 
 			<AnimatePresence>
-				{recurringTasks.length > 0 && (
-					<CollapsibleSection
-						key="recurring"
-						title="Active Workflows"
-						count={recurringTasks.length}
-					>
-						<div className="space-y-3">
-							{recurringTasks.map((task) => (
-								<TaskCardList
-									key={task.task_id}
-									task={task}
-									onSelectTask={onSelectTask}
-								/>
-							))}
-						</div>
-					</CollapsibleSection>
-				)}
+				<div className="divide-y divide-zinc-700">
+					{recurringTasks.length > 0 && (
+						<CollapsibleSection
+							key="recurring"
+							title={`Active Workflows (${recurringTasks.length})`}
+							defaultOpen={true}
+						>
+							<div className="space-y-3 pt-2">
+								{recurringTasks.map((task) => (
+									<TaskCardList
+										key={task.task_id}
+										task={task}
+										onSelectTask={onSelectTask}
+									/>
+								))}
+							</div>
+						</CollapsibleSection>
+					)}
 
-				{sections.map(
-					(section) =>
-						section.tasks.length > 0 && (
-							<CollapsibleSection
-								key={section.title}
-								title={section.title}
-								count={section.tasks.length}
-							>
-								<div className="space-y-3">
-									{section.tasks.map((task) => (
-										<TaskCardList
-											key={task.instance_id}
-											task={task}
-											onSelectTask={onSelectTask}
-										/>
-									))}
-								</div>
-							</CollapsibleSection>
-						)
-				)}
+					{sections.map(
+						(section) =>
+							section.tasks.length > 0 && (
+								<CollapsibleSection
+									key={section.title}
+									title={`${section.title} (${section.tasks.length})`}
+									defaultOpen={true}
+								>
+									<div className="space-y-3 pt-2">
+										{section.tasks.map((task) => (
+											<TaskCardList
+												key={task.instance_id}
+												task={task}
+												onSelectTask={onSelectTask}
+											/>
+										))}
+									</div>
+								</CollapsibleSection>
+							)
+					)}
+				</div>
 			</AnimatePresence>
 		</div>
 	)

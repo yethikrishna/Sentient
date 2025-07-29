@@ -30,10 +30,7 @@ module.exports = {
 				"brand-yellow": "#FFC947",
 				"brand-green": "#28A745",
 				"sentient-blue": "#4a9eff",
-				"sentient-blue-dark": "#3a8eff",
-				"dark-bg": "#111111",
-				"dark-surface": "#1a1a1a",
-				"dark-surface-elevated": "#2a2a2a"
+				"sentient-blue-dark": "#3a8eff"
 			},
 			keyframes: {
 				meteor: {

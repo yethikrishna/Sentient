@@ -33,7 +33,7 @@
 	}
 
 	body {
-		@apply bg-brand-black text-brand-white;
+		@apply bg-brand-black text-brand-white font-sans;
 	}
 
 	* {
@@ -100,4 +100,23 @@ button,
 }
 .pulse-glow-animation {
 	animation: pulse-glow 2.5s infinite ease-in-out;
+}
+
+@keyframes sparkle {
+	0%,
+	100% {
+		box-shadow:
+			0 0 5px #f1a21d,
+			0 0 10px #f1a21d;
+		opacity: 0;
+	}
+	50% {
+		box-shadow:
+			0 0 15px #ffc947,
+			0 0 25px #ffc947;
+		opacity: 1;
+	}
+}
+.sparkle-on-complete {
+	animation: sparkle 1.5s ease-in-out;
 }

@@ -1,6 +1,9 @@
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 
+class WhatsAppNumberRequest(BaseModel):
+    whatsapp_number: Optional[str] = ""
+
 class WhatsAppMcpRequest(BaseModel):
     whatsapp_mcp_number: Optional[str] = ""
 

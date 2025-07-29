@@ -246,12 +246,9 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     plan_description = task.get("description", "Unnamed plan")
     original_context_str = json.dumps(original_context_data, indent=2, default=str) if original_context_data else "No original context provided."
     block_id_prompt = f"The block_id for this task is '{block_id}'. You MUST pass this ID to the 'update_progress' tool in the 'block_id' parameter." if block_id else "This task did not originate from a tasks block."
-    agent_name = preferences.get('agentName', 'Sentient')
-    humor_level = preferences.get('humorLevel', 'Balanced')
-    emoji_usage = "You can use emojis in your final answer." if preferences.get('useEmojis', True) else "You should not use emojis."
 
     full_plan_prompt = (
-        f"You are {agent_name}, a resourceful and autonomous executor agent. Your goal is to complete the user's request by intelligently following the provided plan. Your tone should be **{humor_level}**. {emoji_usage}\n\n"
+        f"You are Sentient, a resourceful and autonomous executor agent. Your goal is to complete the user's request by intelligently following the provided plan.\n\n"
         f"**User Context:**\n- **User's Name:** {user_name}\n- **User's Location:** {user_location}\n- **Current Date & Time:** {current_user_time}\n\n"
         f"Your task ID is '{task_id}'. {block_id_prompt}\n\n"
         f"The original context that triggered this plan is:\n---BEGIN CONTEXT---\n{original_context_str}\n---END CONTEXT---\n\n"
@@ -275,6 +272,7 @@ async def async_execute_task_plan(task_id: str, user_id: str):
 
         previous_history = initial_messages
         final_answer_content = ""
+        updates = []
 
         for current_history in executor_agent.run(messages=initial_messages):
             # Find the new messages since the last step
@@ -300,19 +298,13 @@ async def async_execute_task_plan(task_id: str, user_id: str):
 
             previous_history = current_history
 
-
-        for update in updates:
-            await add_progress_update(db, task_id, run_id, user_id, update, block_id)
-
-        final_answer_update = next((u for u in reversed(updates) if u.get("type") == "final_answer"), None)
-        final_content = final_answer_update.get("content") if final_answer_update else "Task completed. Check the execution log for details."
-
-        logger.info(f"Task {task_id}: Final result: {final_answer_content}")
+        final_content = final_answer_content or "Task completed. Check the execution log for details."
+        logger.info(f"Task {task_id}: Final result: {final_content}")
         await add_progress_update(db, task_id, run_id, user_id, {"type": "info", "content": "Execution script finished."}, block_id=block_id)
         capture_event(user_id, "task_execution_succeeded", {"task_id": task_id})
-        await update_task_run_status(db, task_id, run_id, "completed", user_id, details={"result": final_answer_content}, block_id=block_id)
+        await update_task_run_status(db, task_id, run_id, "completed", user_id, details={"result": final_content}, block_id=block_id)
 
-        return {"status": "success", "result": final_answer_content}
+        return {"status": "success", "result": final_content}
 
     except Exception as e:
         error_message = f"Executor agent failed: {str(e)}"

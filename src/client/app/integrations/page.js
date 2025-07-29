@@ -45,6 +45,7 @@ import {
 	MorphingDialogContainer
 } from "@components/ui/morphing-dialog"
 import { Tooltip } from "react-tooltip"
+import ModalDialog from "@components/ModalDialog"
 
 import IconBrandTodoist from "@components/icons/IconBrandTodoist"
 
@@ -457,6 +458,7 @@ const IntegrationsPage = () => {
 	const [searchQuery, setSearchQuery] = useState("")
 	const [activeCategory, setActiveCategory] = useState("All")
 	const [selectedIntegration, setSelectedIntegration] = useState(null)
+	const [activeManualIntegration, setActiveManualIntegration] = useState(null)
 	const [whatsAppToConnect, setWhatsAppToConnect] = useState(null)
 	const posthog = usePostHog()
 
@@ -509,86 +511,86 @@ const IntegrationsPage = () => {
 		}
 	}, [])
 
-		const handleTrelloConnect = (integration) => {
-			const trelloApiKey = integration.client_id
-			if (!trelloApiKey) {
-				toast.error(
-					"Trello API Key is not configured by the administrator."
-				)
+	const handleTrelloConnect = (integration) => {
+		const trelloApiKey = integration.client_id
+		if (!trelloApiKey) {
+			toast.error(
+				"Trello API Key is not configured by the administrator."
+			)
+			return
+		}
+
+		const returnUrl = `${window.location.origin}/integrations`
+		const authUrl = `https://trello.com/1/authorize?expiration=never&name=Sentient&scope=read,write&response_type=token&key=${trelloApiKey}&return_url=${encodeURIComponent(returnUrl)}&callback_method=postMessage`
+
+		const authWindow = window.open(
+			authUrl,
+			"trelloAuth",
+			"width=600,height=700,noopener,noreferrer"
+		)
+
+		// --- ADDED FOR DEBUGGING ---
+		// This listener will log EVERY message event that comes into the window,
+		// helping us see what Trello is sending back, even if it fails the security checks.
+		const debugListener = (event) => {
+			console.log("DEBUG: Received a postMessage event:", event)
+			console.log("DEBUG: Event Origin:", event.origin)
+			console.log("DEBUG: Event Data:", event.data)
+		}
+		window.addEventListener("message", debugListener)
+		// --- END OF DEBUGGING CODE ---
+
+		const handleMessage = async (event) => {
+			// Basic security checks
+			if (
+				event.source !== authWindow ||
+				event.origin !== "https://trello.com" ||
+				!event.data
+			) {
 				return
 			}
 
-			const returnUrl = `${window.location.origin}/integrations`
-			const authUrl = `https://trello.com/1/authorize?expiration=never&name=Sentient&scope=read,write&response_type=token&key=${trelloApiKey}&return_url=${encodeURIComponent(returnUrl)}&callback_method=postMessage`
+			const token = event.data
+			// Trello tokens are 64-char hex strings
+			if (token && /^[0-9a-f]{64}$/.test(token)) {
+				// --- ADDED FOR DEBUGGING ---
+				// Clean up both listeners once we have a valid token
+				window.removeEventListener("message", debugListener)
+				// --- END OF DEBUGGING CODE ---
 
-			const authWindow = window.open(
-				authUrl,
-				"trelloAuth",
-				"width=600,height=700,noopener,noreferrer"
-			)
+				window.removeEventListener("message", handleMessage)
+				authWindow.close()
 
-			// --- ADDED FOR DEBUGGING ---
-			// This listener will log EVERY message event that comes into the window,
-			// helping us see what Trello is sending back, even if it fails the security checks.
-			const debugListener = (event) => {
-				console.log("DEBUG: Received a postMessage event:", event)
-				console.log("DEBUG: Event Origin:", event.origin)
-				console.log("DEBUG: Event Data:", event.data)
-			}
-			window.addEventListener("message", debugListener)
-			// --- END OF DEBUGGING CODE ---
-
-			const handleMessage = async (event) => {
-				// Basic security checks
-				if (
-					event.source !== authWindow ||
-					event.origin !== "https://trello.com" ||
-					!event.data
-				) {
-					return
-				}
-
-				const token = event.data
-				// Trello tokens are 64-char hex strings
-				if (token && /^[0-9a-f]{64}$/.test(token)) {
-					// --- ADDED FOR DEBUGGING ---
-					// Clean up both listeners once we have a valid token
-					window.removeEventListener("message", debugListener)
-					// --- END OF DEBUGGING CODE ---
-
-					window.removeEventListener("message", handleMessage)
-					authWindow.close()
-
-					setProcessingIntegration("trello")
-					try {
-						const response = await fetch(
-							"/api/settings/integrations/connect/manual",
-							{
-								method: "POST",
-								headers: { "Content-Type": "application/json" },
-								body: JSON.stringify({
-									service_name: "trello",
-									credentials: { token: token }
-								})
-							}
+				setProcessingIntegration("trello")
+				try {
+					const response = await fetch(
+						"/api/settings/integrations/connect/manual",
+						{
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({
+								service_name: "trello",
+								credentials: { token: token }
+							})
+						}
+					)
+					if (!response.ok)
+						throw new Error(
+							(await response.json()).error ||
+								"Failed to save Trello token."
 						)
-						if (!response.ok)
-							throw new Error(
-								(await response.json()).error ||
-									"Failed to save Trello token."
-							)
-						toast.success("Trello connected successfully!")
-						fetchIntegrations()
-					} catch (error) {
-						toast.error(error.message)
-					} finally {
-						setProcessingIntegration(null)
-					}
+					toast.success("Trello connected successfully!")
+					fetchIntegrations()
+				} catch (error) {
+					toast.error(error.message)
+				} finally {
+					setProcessingIntegration(null)
 				}
 			}
-
-			window.addEventListener("message", handleMessage, false)
 		}
+
+		window.addEventListener("message", handleMessage, false)
+	}
 
 	const handleConnect = (integration) => {
 		if (integration.name === "whatsapp") {
@@ -671,6 +673,7 @@ const IntegrationsPage = () => {
 				)
 		} else if (integration.auth_type === "manual") {
 			if (MANUAL_INTEGRATION_CONFIGS[integration.name]) {
+				setActiveManualIntegration(integration)
 			} else {
 				toast.error(`UI for ${integration.display_name} not found.`)
 			}
@@ -1013,29 +1016,11 @@ const IntegrationsPage = () => {
 				</main>
 			</div>
 			<AnimatePresence>
-				{activeManualIntegration && (
-					<ManualTokenEntryModal
-						integration={activeManualIntegration}
-						onClose={() => setActiveManualIntegration(null)}
-						onSuccess={fetchIntegrations}
-					/>
-				)}
 				{whatsAppToConnect && (
 					<WhatsAppConnectModal
 						integration={whatsAppToConnect}
 						onClose={() => setWhatsAppToConnect(null)}
 						onSuccess={fetchIntegrations}
-					/>
-				)}
-				{selectedIntegration && (
-					<IntegrationDetailsModal
-						integration={selectedIntegration}
-						onClose={() => setSelectedIntegration(null)}
-						onConnect={handleConnect}
-						onDisconnect={handleDisconnect}
-						isProcessing={
-							processingIntegration === selectedIntegration?.name
-						}
 					/>
 				)}
 			</AnimatePresence>

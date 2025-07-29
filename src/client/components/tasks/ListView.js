@@ -7,42 +7,14 @@ import TaskCardList from "./TaskCardList"
 import CollapsibleSection from "./CollapsibleSection"
 import { startOfDay, isBefore } from "date-fns"
 
-const ListView = ({ tasks, onSelectTask, searchQuery, onSearchChange }) => {
-	const limitedTasks = useMemo(() => {
-		const oneTimeTasks = tasks.filter(
-			(t) => t.schedule?.type !== "recurring"
-		)
-		const recurringInstances = tasks.filter(
-			(t) => t.schedule?.type === "recurring"
-		)
-
-		const recurringTasksGrouped = recurringInstances.reduce((acc, task) => {
-			const id = task.task_id
-			if (!acc[id]) {
-				acc[id] = []
-			}
-			acc[id].push(task)
-			return acc
-		}, {})
-
-		const limitedRecurringInstances = []
-		const today = startOfDay(new Date())
-
-		Object.values(recurringTasksGrouped).forEach((instances) => {
-			const futureInstances = instances
-				.filter((t) => !isBefore(t.scheduled_date, today))
-				.sort(
-					(a, b) =>
-						a.scheduled_date.getTime() - b.scheduled_date.getTime()
-				)
-
-			limitedRecurringInstances.push(...futureInstances.slice(0, 7))
-		})
-
-		return [...oneTimeTasks, ...limitedRecurringInstances]
-	}, [tasks])
-
-	const { today, tomorrow, future } = groupTasksByDate(limitedTasks)
+const ListView = ({
+	oneTimeTasks,
+	recurringTasks,
+	onSelectTask,
+	searchQuery,
+	onSearchChange
+}) => {
+	const { today, tomorrow, future } = groupTasksByDate(oneTimeTasks)
 
 	const sections = [
 		{ title: "Today", tasks: today },
@@ -50,10 +22,7 @@ const ListView = ({ tasks, onSelectTask, searchQuery, onSearchChange }) => {
 		{ title: "Future", tasks: future }
 	]
 
-	const totalTasks = sections.reduce(
-		(acc, section) => acc + section.tasks.length,
-		0
-	)
+	const totalTasks = oneTimeTasks.length + recurringTasks.length
 
 	if (totalTasks === 0 && !searchQuery) {
 		return (
@@ -69,8 +38,7 @@ const ListView = ({ tasks, onSelectTask, searchQuery, onSearchChange }) => {
 					</p>
 					<p className="text-sm">
 						Sentient will create a plan and may ask for your
-						approval or for more details if needed. Recurring tasks
-						will show their next 7 upcoming instances here.
+						approval or for more details if needed.
 					</p>
 				</div>
 			</div>
@@ -94,6 +62,24 @@ const ListView = ({ tasks, onSelectTask, searchQuery, onSearchChange }) => {
 			</div>
 
 			<AnimatePresence>
+				{recurringTasks.length > 0 && (
+					<CollapsibleSection
+						key="recurring"
+						title="Active Workflows"
+						count={recurringTasks.length}
+					>
+						<div className="space-y-3">
+							{recurringTasks.map((task) => (
+								<TaskCardList
+									key={task.task_id}
+									task={task}
+									onSelectTask={onSelectTask}
+								/>
+							))}
+						</div>
+					</CollapsibleSection>
+				)}
+
 				{sections.map(
 					(section) =>
 						section.tasks.length > 0 && (

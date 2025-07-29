@@ -50,13 +50,11 @@ async def chat_endpoint(
     user_profile = await mongo_manager.get_user_profile(user_id)
     user_data = user_profile.get("userData", {}) if user_profile else {}
     personal_info = user_data.get("personalInfo", {})
-    preferences = user_data.get("preferences", {})
 
     user_context = {
         "name": personal_info.get("name", "User"),
         "timezone": personal_info.get("timezone", "UTC"),
         "location": personal_info.get("location"),
-        "communication_style": preferences.get("communicationStyle", "friendly and professional")
     }
 
     async def event_stream_generator():
@@ -70,7 +68,6 @@ async def chat_endpoint(
                 user_id,
                 request_body.messages,
                 user_context,
-                preferences,
                 db_manager=mongo_manager
             ):
                 if not event:

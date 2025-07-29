@@ -247,6 +247,7 @@ INTEGRATIONS_CONFIG = {
         "description": "Organize projects and tasks. The agent can list your boards, lists, and cards, as well as create new cards on your behalf.",
         "auth_type": "oauth",
         "icon": "IconBrandTrello",
+        "category": "Productivity",
         "mcp_server_config": {
             "name": "trello_server",
             "url": os.getenv("TRELLO_MCP_SERVER_URL", "http://localhost:9020/sse")
@@ -257,6 +258,7 @@ INTEGRATIONS_CONFIG = {
         "description": "Manage your tasks and projects in Todoist. The agent can list projects, get tasks (e.g., today's tasks), and create new tasks.",
         "auth_type": "oauth",
         "icon": "IconBrandTodoist",
+        "category": "Productivity",
         "mcp_server_config": {
             "name": "todoist_server",
             "url": os.getenv("TODOIST_MCP_SERVER_URL", "http://localhost:9021/sse")
@@ -267,6 +269,7 @@ INTEGRATIONS_CONFIG = {
         "description": "Connect to your Discord account to send messages to channels in servers your bot is in.",
         "auth_type": "oauth",
         "icon": "IconBrandDiscord",
+        "category": "Communication",
         "mcp_server_config": {
             "name": "discord_server",
             "url": os.getenv("DISCORD_MCP_SERVER_URL", "http://localhost:9022/sse")
@@ -276,7 +279,8 @@ INTEGRATIONS_CONFIG = {
         "display_name": "Evernote",
         "description": "Create and manage notes in Evernote. The agent can create notes with titles and content, and list existing notebooks.",
         "auth_type": "oauth",
-        "icon": "IconBrandEvernote",
+        "icon": "IconFileText",
+        "category": "Productivity",
         "mcp_server_config": {
             "name": "evernote_server",
             "url": os.getenv("EVERNOTE_MCP_SERVER_URL", "http://localhost:9023/sse")
@@ -353,6 +357,7 @@ INTEGRATIONS_CONFIG = {
         "display_name": "WhatsApp",
         "description": "Connect a WhatsApp number to allow your agent to send messages to yourself. This can be different from your notification number.",
         "auth_type": "manual",
+        "category": "Communication",
         "icon": "IconBrandWhatsapp",
         "mcp_server_config": {
             "name": "whatsapp_server",

@@ -111,7 +111,6 @@ async def generate_chat_llm_stream(
     user_id: str,
     messages: List[Dict[str, Any]],
     user_context: Dict[str, Any], # Basic context like name, timezone
-    preferences: Dict[str, Any],  # Detailed AI personality preferences
     db_manager: MongoManager) -> AsyncGenerator[Dict[str, Any], None]:
     assistant_message_id = str(uuid.uuid4())
 

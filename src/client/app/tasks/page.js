@@ -8,7 +8,15 @@ import React, {
 	useMemo
 } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { addMonths, startOfDay, format, isSameDay } from "date-fns"
+import {
+	startOfDay,
+	format,
+	isSameDay,
+	eachDayOfInterval,
+	subMonths,
+	getDay,
+	parseISO
+} from "date-fns"
 import { IconLoader, IconX } from "@tabler/icons-react"
 import { AnimatePresence, motion } from "framer-motion"
 import toast from "react-hot-toast"
@@ -16,7 +24,6 @@ import { cn } from "@utils/cn"
 import { Tooltip } from "react-tooltip"
 
 import TaskDetailsPanel from "@components/tasks/TaskDetailsPanel"
-import { expandRecurringTasks } from "@utils/taskUtils"
 import TaskViewSwitcher from "@components/tasks/TaskViewSwitcher"
 import ListView from "@components/tasks/ListView"
 import CalendarView from "@components/tasks/CalendarView"
@@ -30,8 +37,10 @@ function TasksPageContent() {
 
 	// Raw tasks from API
 	const [allTasks, setAllTasks] = useState([])
-	// Expanded tasks with recurring instances
-	const [displayTasks, setDisplayTasks] = useState([])
+	// Processed tasks for different views
+	const [oneTimeTasks, setOneTimeTasks] = useState([])
+	const [recurringTasks, setRecurringTasks] = useState([])
+	const [recurringInstances, setRecurringInstances] = useState([])
 	const [integrations, setIntegrations] = useState([])
 	const [allTools, setAllTools] = useState([])
 	const [isLoading, setIsLoading] = useState(true)
@@ -74,12 +83,61 @@ function TasksPageContent() {
 				: []
 			setAllTasks(rawTasks)
 
-			// Expand recurring tasks for the next 3 months for display
-			const today = new Date()
-			const startDate = startOfDay(today)
-			const endDate = addMonths(today, 3)
-			const expanded = expandRecurringTasks(rawTasks, startDate, endDate)
-			setDisplayTasks(expanded)
+			// --- Process tasks for different views ---
+			const oneTime = []
+			const recurring = []
+			const instances = []
+			const today = startOfDay(new Date())
+			const calendarStartDate = subMonths(today, 3) // Look back 3 months for calendar
+
+			const dayNames = [
+				"Sunday",
+				"Monday",
+				"Tuesday",
+				"Wednesday",
+				"Thursday",
+				"Friday",
+				"Saturday"
+			]
+
+			rawTasks.forEach((task) => {
+				if (task.schedule?.type === "recurring") {
+					recurring.push(task)
+					// Generate instances for calendar (past and today only)
+					const intervalDays = eachDayOfInterval({
+						start: calendarStartDate,
+						end: today
+					})
+					intervalDays.forEach((day) => {
+						const dayOfWeek = dayNames[getDay(day)]
+						let shouldRun =
+							task.schedule.frequency === "daily" ||
+							(task.schedule.frequency === "weekly" &&
+								task.schedule.days?.includes(dayOfWeek))
+						if (shouldRun) {
+							instances.push({
+								...task,
+								scheduled_date: day,
+								instance_id: `${task.task_id}-${day.toISOString()}`
+							})
+						}
+					})
+				} else {
+					// One-time tasks
+					const scheduledDate = task.schedule?.run_at
+						? parseISO(task.schedule.run_at)
+						: today
+					oneTime.push({
+						...task,
+						scheduled_date: scheduledDate,
+						instance_id: task.task_id
+					})
+				}
+			})
+
+			setOneTimeTasks(oneTime)
+			setRecurringTasks(recurring)
+			setRecurringInstances(instances)
 
 			const integrationsRes = await fetch("/api/settings/integrations")
 			if (!integrationsRes.ok)
@@ -171,7 +229,7 @@ function TasksPageContent() {
 	}
 
 	const handleShowMoreClick = (date) => {
-		const tasksForDay = filteredDisplayTasks.filter((task) =>
+		const tasksForDay = filteredCalendarTasks.filter((task) =>
 			isSameDay(task.scheduled_date, date)
 		)
 		setRightPanelContent({
@@ -193,14 +251,33 @@ function TasksPageContent() {
 		setCreateTaskPrompt(`Create a task for ${formattedDate}: `)
 	}
 
-	const filteredDisplayTasks = useMemo(() => {
+	const filteredOneTimeTasks = useMemo(() => {
 		if (!searchQuery.trim()) {
-			return displayTasks
+			return oneTimeTasks
 		}
-		return displayTasks.filter((task) =>
+		return oneTimeTasks.filter((task) =>
 			task.description.toLowerCase().includes(searchQuery.toLowerCase())
 		)
-	}, [displayTasks, searchQuery])
+	}, [oneTimeTasks, searchQuery])
+
+	const filteredRecurringTasks = useMemo(() => {
+		if (!searchQuery.trim()) {
+			return recurringTasks
+		}
+		return recurringTasks.filter((task) =>
+			task.description.toLowerCase().includes(searchQuery.toLowerCase())
+		)
+	}, [recurringTasks, searchQuery])
+
+	const filteredCalendarTasks = useMemo(() => {
+		const allCalendarTasks = [...oneTimeTasks, ...recurringInstances]
+		if (!searchQuery.trim()) {
+			return allCalendarTasks
+		}
+		return allCalendarTasks.filter((task) =>
+			task.description.toLowerCase().includes(searchQuery.toLowerCase())
+		)
+	}, [oneTimeTasks, recurringInstances, searchQuery])
 
 	return (
 		<div className="flex-1 flex h-screen bg-black text-white overflow-hidden md:pl-20">
@@ -236,14 +313,17 @@ function TasksPageContent() {
 								>
 									{view === "list" ? (
 										<ListView
-											tasks={filteredDisplayTasks}
+											oneTimeTasks={filteredOneTimeTasks}
+											recurringTasks={
+												filteredRecurringTasks
+											}
 											onSelectTask={handleSelectTask}
 											searchQuery={searchQuery}
 											onSearchChange={setSearchQuery}
 										/>
 									) : (
 										<CalendarView
-											tasks={filteredDisplayTasks}
+											tasks={filteredCalendarTasks}
 											onSelectTask={handleSelectTask}
 											onDayClick={handleDayClick}
 											onShowMoreClick={

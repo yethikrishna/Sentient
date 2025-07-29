@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useRef, useCallback } from "react"
+import { usePostHog } from "posthog-js/react"
 import {
 	IconSend,
 	IconLoader,
@@ -13,18 +14,16 @@ import {
 import {
 	IconBrandGoogle,
 	IconBrandYoutube,
-	IconGoogleMail,
 	IconBrandInstagram
 } from "@tabler/icons-react"
-import { useChat } from "ai/react"
-import { SparklesCore } from "@components/Sparkles"
+
+import IconGoogleMail from "@components/icons/IconGoogleMail"
 import { Textarea } from "@components/ui/textarea"
 import { Button } from "@components/ui/button"
 import {
 	Card,
 	CardContent,
 	CardDescription,
-	CardFooter,
 	CardHeader,
 	CardTitle
 } from "@components/ui/card"
@@ -121,7 +120,7 @@ export default function ChatPage() {
 
 	const fetchUserDetails = useCallback(async () => {
 		try {
-			const res = await fetch("/api/user")
+			const res = await fetch("/api/user/profile")
 			if (res.ok) {
 				const data = await res.json()
 				setUserDetails(data)
@@ -241,7 +240,7 @@ export default function ChatPage() {
 				content: msg.content
 			}))
 
-			const response = await fetch("/api/chat", {
+			const response = await fetch("/api/chat/message", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
@@ -291,7 +290,7 @@ export default function ChatPage() {
 								if (msg.id === assistantMessageId) {
 									return {
 										...msg,
-										content: msg.content + parsed.content,
+										content: msg.content + (parsed.token || ""),
 										tools: parsed.tools || msg.tools
 									}
 								}
@@ -440,8 +439,6 @@ export default function ChatPage() {
 												role={msg.role}
 												content={msg.content}
 												tools={msg.tools || []}
-												toolIcons={toolIcons}
-												userDetails={userDetails}
 											/>
 										</div>
 									))}
@@ -454,17 +451,11 @@ export default function ChatPage() {
 										animate={{ opacity: 1, y: 0 }}
 										exit={{ opacity: 0, y: 20 }}
 										transition={{ duration: 0.2 }}
-										className="flex justify-start w-full max-w-4xl mx-auto"
+										className="flex justify-start"
 									>
-										<ChatBubble
-											role="assistant"
-											content={
-												<IconLoader className="animate-spin text-neutral-400" />
-											}
-											tools={[]}
-											toolIcons={toolIcons}
-											userDetails={userDetails}
-										/>
+										<div className="p-4 rounded-lg bg-transparent text-base text-white self-start mb-2 relative">
+											<IconLoader className="animate-spin text-neutral-400" />
+										</div>
 									</motion.div>
 								)}
 							</AnimatePresence>

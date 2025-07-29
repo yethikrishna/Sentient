@@ -3,6 +3,6 @@ python-dotenv
 asyncpg
 pgvector
 qwen-agent
-llama-index-embeddings-huggingface
+google-generativeai
 numpy
 scikit-learn

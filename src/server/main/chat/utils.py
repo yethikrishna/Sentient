@@ -233,6 +233,7 @@ async def generate_chat_llm_stream(
     thread.start()
 
     try:
+        first_chunk = True
         last_yielded_content_str = ""
         while True:
             current_history = await queue.get()
@@ -248,7 +249,11 @@ async def generate_chat_llm_stream(
             current_turn_str = "".join(msg_to_str(m) for m in assistant_messages)
             if len(current_turn_str) > len(last_yielded_content_str):
                 new_chunk = current_turn_str[len(last_yielded_content_str):]
-                yield {"type": "assistantStream", "token": new_chunk, "done": False, "messageId": assistant_message_id}
+                event_payload = {"type": "assistantStream", "token": new_chunk, "done": False, "messageId": assistant_message_id}
+                if first_chunk and new_chunk.strip():
+                    event_payload["tools"] = list(final_tool_names)
+                    first_chunk = False
+                yield event_payload
                 last_yielded_content_str = current_turn_str
     except asyncio.CancelledError:
         stream_interrupted = True

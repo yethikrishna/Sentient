@@ -166,21 +166,24 @@ const ToolResultBlock = ({ name, result, isExpanded, onToggle }) => {
 }
 
 // Main ChatBubble component
-const ChatBubble = ({
-	message,
-	isUser,
-	memoryUsed,
-	agentsUsed,
-	internetUsed
-}) => {
+const ChatBubble = ({ role, content, tools = [] }) => {
 	const [copied, setCopied] = useState(false)
 	const [expandedStates, setExpandedStates] = useState({})
 	const [renderedContent, setRenderedContent] = useState([])
+	const isUser = role === "user"
+	const message = content
+	const memoryUsed = (tools || []).some(
+		(t) => t.includes("memory") || t.includes("history")
+	)
+	const internetUsed = (tools || []).some(
+		(t) => t.includes("search") || t.includes("news")
+	)
+	const agentsUsed = (tools || []).length > 0
 
 	// Memoize the parsed content to avoid re-parsing on every render
 	React.useEffect(() => {
 		setRenderedContent(renderMessageContent())
-	}, [message, expandedStates]) // Rerun parsing if message or expansion state changes
+	}, [message, expandedStates, isUser]) // Rerun parsing if message or expansion state changes
 
 	// Function to copy message content to clipboard
 	const handleCopyToClipboard = () => {

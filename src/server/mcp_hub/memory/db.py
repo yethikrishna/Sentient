@@ -22,10 +22,9 @@ POSTGRES_PORT = os.getenv("POSTGRES_PORT")
 POSTGRES_DB = os.getenv("POSTGRES_DB")
 
 # Embedding dimensions based on the chosen model.
-# BAAI/bge-small-en-v1.5 has 384 dimensions.
-# Note: The plan mentions 1536, which is for models like OpenAI's text-embedding-ada-002.
-# Adjust EMBEDDING_DIM if you change the embedding model.
-EMBEDDING_DIM = 384
+# Google's gemini-embedding-001 can be truncated. We are using 768.
+# See: https://ai.google.dev/gemini-api/docs/embeddings#controlling_embedding_size
+EMBEDDING_DIM = 768
 
 _pool: asyncpg.Pool = None
 
@@ -43,6 +42,8 @@ async def get_db_pool() -> asyncpg.Pool:
             host=POSTGRES_HOST,
             port=POSTGRES_PORT,
         )
+    else:
+        logger.debug("Returning existing PostgreSQL connection pool.")
     return _pool
 
 async def close_db_pool():
@@ -57,6 +58,7 @@ async def setup_database():
     """Ensures all necessary tables, indexes, and static data are created in the database."""
     pool = await get_db_pool()
     async with pool.acquire() as connection:
+        logger.info("Acquired DB connection for database setup.")
         async with connection.transaction():
             logger.info("Setting up PostgreSQL database schema...")
 

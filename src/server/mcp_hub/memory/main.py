@@ -35,7 +35,9 @@ async def lifespan(app):
         while True:
             await asyncio.sleep(3600) # Sleep for 1 hour
             try:
+                logger.info("Starting background task: purge expired facts.")
                 await utils.purge_expired_facts()
+                logger.info("Background task 'purge_expired_facts' completed successfully.")
             except Exception as e:
                 logger.error(f"Error in background memory purge task: {e}", exc_info=True)
 
@@ -57,9 +59,14 @@ mcp = FastMCP(
 # --- Tool Helper ---
 async def _execute_tool(ctx: Context, func, **kwargs) -> Dict[str, Any]:
     """Helper to handle auth and execution for all tools."""
+    tool_name = func.__name__
+    # Sanitize large arguments for logging
+    log_kwargs = {k: v if not isinstance(v, list) else f"list with {len(v)} items" for k, v in kwargs.items()}
+    logger.info(f"Executing tool '{tool_name}' with args: {log_kwargs}")
     try:
         user_id = auth.get_user_id_from_context(ctx)
         result = await func(user_id=user_id, **kwargs)
+        logger.info(f"Tool '{tool_name}' executed successfully.")
         return {"status": "success", "result": result}
     except Exception as e:
         logger.error(f"Error executing tool '{func.__name__}': {e}", exc_info=True)

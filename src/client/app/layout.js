@@ -64,16 +64,16 @@ export default function RootLayout({ children }) {
 				/>
 				<link rel="manifest" href="/site.webmanifest" />
 			</head>
-			<Auth0Provider>
-				<body className="font-sans">
+			<body className="font-sans">
+				<Auth0Provider>
 					<PostHogProvider>
 						<Toaster position="bottom-right" />
 						<div className="flex h-screen w-full text-white overflow-hidden">
 							<LayoutWrapper>{children}</LayoutWrapper>
 						</div>
 					</PostHogProvider>
-				</body>
-			</Auth0Provider>
+				</Auth0Provider>
+			</body>
 		</html>
 	)
 }

@@ -1,10 +1,14 @@
 "use client"
 
 import { AnimatePresence, motion } from "framer-motion"
-import { IconList, IconCalendar } from "@tabler/icons-react"
+import { IconAlignBoxLeftMiddleFilled, IconCalendar } from "@tabler/icons-react"
 
 const tabs = [
-	{ title: "List", value: "list", icon: <IconList size={18} /> },
+	{
+		title: "List",
+		value: "list",
+		icon: <IconAlignBoxLeftMiddleFilled size={18} />
+	},
 	{ title: "Calendar", value: "calendar", icon: <IconCalendar size={18} /> }
 ]
 

@@ -1,11 +1,10 @@
 "use client"
 import React, { useMemo } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { IconSearch, IconChevronDown } from "@tabler/icons-react"
+import { IconSearch, IconAlignBoxLeftMiddleFilled } from "@tabler/icons-react"
 import { groupTasksByDate } from "@utils/taskUtils"
 import TaskCardList from "./TaskCardList"
 import CollapsibleSection from "./CollapsibleSection"
-import { startOfDay, isBefore } from "date-fns"
 
 const ListView = ({
 	oneTimeTasks,
@@ -36,19 +35,23 @@ const ListView = ({
 	if (upcomingTasksCount === 0 && !searchQuery) {
 		return (
 			<div className="flex flex-col items-center justify-center h-full text-center text-neutral-500 p-8">
-				<div className="max-w-md">
-					<h3 className="text-xl font-semibold text-neutral-300 mb-2">
+				<div className="max-w-lg">
+					<h3 className="text-3xl font-semibold text-neutral-300 mb-2">
 						Your Task List is Empty
 					</h3>
-					<p className="mb-4">
-						Use the input box below to add your first task. You can
-						add as many as you want—they'll all be executed in
-						parallel.
+					<p className="mb-4 text-lg">
+						Use the input box below to add a task or start with an
+						example workflow from the right. You can add as many as
+						you want, they'll all be executed in parallel.
 					</p>
-					<p className="text-sm">
+					<p className="text-lg">
 						Sentient will create a plan and may ask for your
 						approval or for more details if needed.
 					</p>
+					<IconAlignBoxLeftMiddleFilled
+						className="mx-auto mt-4 text-brand-white"
+						size={48}
+					/>
 				</div>
 			</div>
 		)

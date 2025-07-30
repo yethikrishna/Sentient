@@ -496,9 +496,23 @@ class MongoManager:
             {"$inc": {"score": increment_value}, "$set": {"last_updated": now_utc}, "$setOnInsert": {"score": increment_value}},
             upsert=True
         )
-    # --- Proactive Suggestion Template Methods ---
-    async def get_all_proactive_suggestion_templates(self) -> List[Dict]:
-        """Fetches all documents from the proactive_suggestion_templates collection."""
-        cursor = self.proactive_suggestion_templates_collection.find({}, {"_id": 0})
-        return await cursor.to_list(length=None)
-
+    
+    async def get_user_proactive_preferences(self, user_id: str) -> Dict[str, int]:
+        """
+        Fetches all proactive suggestion preferences for a user and returns them
+        as a dictionary of {suggestion_type: score}.
+        """
+        if not user_id:
+            return {}
+        
+        preferences = {}
+        cursor = self.user_proactive_preferences_collection.find(
+            {"user_id": user_id},
+            {"_id": 0, "suggestion_type": 1, "score": 1}
+        )
+        async for doc in cursor:
+            if "suggestion_type" in doc and "score" in doc:
+                preferences[doc["suggestion_type"]] = doc["score"]
+        
+        logger.info(f"Fetched {len(preferences)} proactive preferences for user {user_id}.")
+        return preferences

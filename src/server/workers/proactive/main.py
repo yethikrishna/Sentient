@@ -135,12 +135,26 @@ async def run_proactive_pipeline_logic(user_id: str, event_type: str, event_data
         logger.info("Event discarded by pre-filter. Pipeline stopped.")
         return
 
-    # 2. Formulate Dynamic Search Queries (Meta-Cognition Step)
+    # 2. Formulate Dynamic Search Queries
     situational_queries = await formulate_search_queries(user_id, event_type, event_data)
 
     # 3. Get Universal Context (Cognitive Scratchpad)
-    # This now runs multiple searches in parallel to build a rich context
     cognitive_scratchpad = await get_universal_context(user_id, situational_queries)
+
+    # --- NEW: Fetch User Preferences ---
+    db_manager = None
+    try:
+        db_manager = PlannerMongoManager()
+        preferences = await db_manager.get_user_proactive_preferences(user_id)
+        cognitive_scratchpad["user_preferences"] = preferences
+        logger.info(f"Added user preferences to cognitive scratchpad for user '{user_id}'.")
+    except Exception as e:
+        logger.error(f"Failed to fetch user preferences for {user_id}: {e}", exc_info=True)
+        cognitive_scratchpad["user_preferences"] = {} # Default to empty if error
+    finally:
+        if db_manager:
+            await db_manager.close()
+    # --- END NEW ---
 
     # 4. Add Trigger Event to Scratchpad
     cognitive_scratchpad["trigger_event"] = {
@@ -156,31 +170,53 @@ async def run_proactive_pipeline_logic(user_id: str, event_type: str, event_data
     if reasoner_result and reasoner_result.get("actionable"):
         logger.info(f"Proactive action identified for user '{user_id}'. Suggestion: {reasoner_result.get('suggestion_description')}")
         
-        # --- PHASE 2 LOGIC ---
-        # 6a. Standardize the suggestion type
         suggestion_type_desc = reasoner_result.get("suggestion_type_description")
         if not suggestion_type_desc:
-            logger.warning("Reasoner output is missing 'suggestion_type_description'. Cannot standardize.")
+            logger.warning("Reasoner output is missing 'suggestion_type_description'. Cannot proceed.")
             return
 
         standardized_type = await standardize_suggestion_type(suggestion_type_desc)
         
-        # 6b. Construct and send the notification
-        notification_payload = {
-            "suggestion_type": standardized_type,
-            "action_details": reasoner_result.get("suggestion_action_details"),
-            "gathered_context": cognitive_scratchpad
-        }
+        # --- NEW: Dynamic Thresholding Logic ---
+        base_threshold = 0.70  # The default confidence score needed to show a suggestion.
+        user_score = preferences.get(standardized_type, 0)
         
-        user_facing_message = f"AI Suggestion: {reasoner_result.get('suggestion_description')}"
+        # Adjust threshold based on score. Each point of score adjusts the threshold by 5%.
+        # Positive score lowers the threshold (easier to show), negative score raises it (harder to show).
+        threshold_adjustment = user_score * 0.05
+        dynamic_threshold = base_threshold - threshold_adjustment
+        
+        # Clamp the threshold to a reasonable range (e.g., 40% to 95%) to avoid extreme behavior.
+        dynamic_threshold = max(0.40, min(0.95, dynamic_threshold))
 
-        await notify_user(
-            user_id=user_id,
-            message=user_facing_message,
-            notification_type="proactive_suggestion",
-            payload=notification_payload
-        )
-        logger.info(f"Sent proactive suggestion notification to user '{user_id}'.")
+        llm_confidence = reasoner_result.get("confidence_score", 0.0)
+
+        logger.info(f"Evaluating suggestion '{standardized_type}' for user '{user_id}'. LLM Confidence: {llm_confidence:.2f}, User Score: {user_score}, Dynamic Threshold: {dynamic_threshold:.2f}")
+
+        if llm_confidence >= dynamic_threshold:
+            logger.info("Suggestion passed dynamic threshold. Notifying user.")
+            # --- END NEW ---
+
+            notification_payload = {
+                "suggestion_type": standardized_type,
+                "action_details": reasoner_result.get("suggestion_action_details"),
+                "gathered_context": cognitive_scratchpad
+            }
+            
+            user_facing_message = f"AI Suggestion: {reasoner_result.get('suggestion_description')}"
+
+            await notify_user(
+                user_id=user_id,
+                message=user_facing_message,
+                notification_type="proactive_suggestion",
+                payload=notification_payload
+            )
+            logger.info(f"Sent proactive suggestion notification to user '{user_id}'.")
+        
+        # --- NEW ---
+        else:
+            logger.info(f"Suggestion for user '{user_id}' was suppressed. LLM confidence ({llm_confidence:.2f}) did not meet the dynamic threshold ({dynamic_threshold:.2f}) based on user feedback.")
+        # --- END NEW ---
         
     else:
         logger.info(f"No proactive action deemed necessary for user '{user_id}'. Reasoner output: {reasoner_result}")

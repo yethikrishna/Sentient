@@ -47,7 +47,7 @@ const TaskCardList = ({ task, onSelectTask }) => {
 			animate={{ opacity: 1 }}
 			exit={{ opacity: 0 }}
 			onClick={() => onSelectTask(task)}
-			className="bg-brand-gray p-4 rounded-lg border border-zinc-700 hover:border-brand-orange transition-all cursor-pointer relative"
+			className="bg-brand-black p-4 rounded-lg border border-zinc-700 hover:border-brand-orange transition-all cursor-pointer relative"
 		>
 			<div className="flex justify-between items-start gap-4">
 				<p className="font-sans font-semibold text-brand-white flex-1 text-sm">

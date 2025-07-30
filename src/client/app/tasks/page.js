@@ -258,16 +258,17 @@ function TasksPageContent() {
 	}, [oneTimeTasks, recurringInstances, searchQuery])
 
 	return (
-		<div className="flex-1 flex h-screen bg-brand-black text-white overflow-hidden md:pl-20">
+		<div className="flex-1 flex h-screen text-white overflow-hidden md:pl-20">
 			<Tooltip
 				id="tasks-tooltip"
 				place="right"
 				style={{ zIndex: 9999 }}
 			/>
-			<div className="flex-1 flex flex-col md:flex-row ml-2 gap-x-2 overflow-hidden bg-brand-black">
+			<div className="flex-1 flex flex-col md:flex-row ml-2 gap-x-2 overflow-hidden">
 				{/* Main Content Panel */}
 				<main className="flex-1 flex flex-col overflow-hidden relative">
-					<header className="p-6 flex-shrink-0 flex items-center justify-between bg-brand-black">
+					<div className="absolute -top-[250px] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-brand-orange/10 rounded-full blur-3xl -z-10" />
+					<header className="p-6 flex-shrink-0 flex items-center justify-between bg-transparent">
 						<h1 className="text-3xl font-bold text-white">Tasks</h1>
 						<div className="absolute top-6 left-1/2 -translate-x-1/2">
 							<TaskViewSwitcher view={view} setView={setView} />

@@ -831,7 +831,7 @@ const IntegrationsPage = () => {
 															duration: 0.3
 														}}
 													>
-														<MorphingDialogTrigger className="bg-gradient-to-br from-neutral-900 to-neutral-800/60 p-5 rounded-xl shadow-lg transition-all duration-300 border border-neutral-800/70 hover:border-sentient-blue/30 hover:-translate-y-1 flex flex-col group text-left h-full">
+														<MorphingDialogTrigger className="bg-gradient-to-br from-neutral-900 to-neutral-800/60 p-5 rounded-xl shadow-lg transition-all duration-300 border border-neutral-800/70 hover:border-brand-orange/30 hover:-translate-y-1 flex flex-col group text-left h-full">
 															<div className="flex items-start justify-between mb-4">
 																{React.createElement(
 																	integration.icon,

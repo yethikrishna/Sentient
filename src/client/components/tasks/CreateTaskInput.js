@@ -1,7 +1,8 @@
 "use client"
 import React, { useState, useRef, useEffect } from "react"
-import { IconPlus, IconLoader, IconSend } from "@tabler/icons-react"
+import { IconLoader, IconSend } from "@tabler/icons-react"
 import { cn } from "@utils/cn"
+import { BorderTrail } from "@components/ui/border-trail"
 import { TextLoop } from "@components/ui/TextLoop"
 import toast from "react-hot-toast"
 
@@ -14,7 +15,7 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 		if (textarea) {
 			textarea.style.height = "auto"
 			const scrollHeight = textarea.scrollHeight
-			textarea.style.height = `${scrollHeight > 120 ? 120 : scrollHeight}px`
+			textarea.style.height = `${Math.min(Math.max(scrollHeight, 20), 100)}px`
 		}
 	}, [prompt])
 
@@ -44,50 +45,59 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 	}
 
 	return (
-		<div className="p-4 flex-shrink-0 bg-brand-black">
+		<div className="p-4 flex-shrink-0 bg-transparent">
 			<div
 				className={cn(
-					"relative flex items-end bg-brand-gray rounded-xl p-1 transition-all border border-transparent focus-within:border-brand-orange"
+					"relative flex items-end bg-brand-black rounded-full p-1 transition-all overflow-hidden"
 				)}
 			>
-				<textarea
-					ref={textareaRef}
-					value={prompt}
-					onChange={(e) => setPrompt(e.target.value)}
-					onKeyDown={(e) => {
-						if (e.key === "Enter" && !e.shiftKey) {
-							e.preventDefault()
-							handleAddTask()
-						}
-					}}
-					placeholder=" "
-					className="w-full bg-transparent text-white placeholder-transparent resize-none focus:ring-0 focus:outline-none p-2 custom-scrollbar text-sm"
-					rows={1}
-					style={{ maxHeight: "120px" }}
-				/>
-				{!prompt && (
-					<div className="absolute top-1/2 left-3 -translate-y-1/2 text-neutral-500 pointer-events-none">
-						<TextLoop className="text-sm">
-							<span>Create a task...</span>
-							<span>Summarize my unread emails from today</span>
-							<span>
-								Draft a follow-up to the project proposal
-							</span>
-							<span>Schedule a meeting with the design team</span>
-						</TextLoop>
-					</div>
-				)}
-				<button
-					onClick={handleAddTask}
-					disabled={isSaving || !prompt.trim()}
-					className="p-2.5 bg-brand-orange rounded-lg text-brand-black disabled:opacity-50 hover:bg-opacity-80 transition-colors"
-				>
-					{isSaving ? (
-						<IconLoader size={18} className="animate-spin" />
-					) : (
-						<IconSend size={18} />
+				<BorderTrail size={100} className="bg-brand-orange px-4" />
+				<div
+					className={cn(
+						"relative flex gap-2 items-end bg-transparent p-1 transition-all w-full"
 					)}
-				</button>
+				>
+					<textarea
+						ref={textareaRef}
+						value={prompt}
+						onChange={(e) => setPrompt(e.target.value)}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" && !e.shiftKey) {
+								e.preventDefault()
+								handleAddTask()
+							}
+						}}
+						placeholder=" "
+						className="w-full rounded-l-full bg-transparent text-white placeholder-transparent border-1 border-brand-orange focus:ring-0 focus:ring-brand-black text-sm z-10 overflow-y-auto"
+					/>
+					{!prompt && (
+						<div className="absolute top-1/2 left-4 -translate-y-1/2 text-neutral-500 pointer-events-none z-0">
+							<TextLoop className="text-sm px-2">
+								<span>Create a task...</span>
+								<span>
+									Summarize my unread emails from today
+								</span>
+								<span>
+									Draft a follow-up to the project proposal
+								</span>
+								<span>
+									Schedule a meeting with the design team
+								</span>
+							</TextLoop>
+						</div>
+					)}
+					<button
+						onClick={handleAddTask}
+						disabled={isSaving || !prompt.trim()}
+						className="p-3 bg-brand-orange rounded-r-full h-12 text-brand-black disabled:opacity-50 hover:bg-opacity-80 transition-colors z-10 flex-shrink-0"
+					>
+						{isSaving ? (
+							<IconLoader size={18} className="animate-spin" />
+						) : (
+							<IconSend size={18} />
+						)}
+					</button>
+				</div>
 			</div>
 		</div>
 	)

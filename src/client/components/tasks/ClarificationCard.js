@@ -39,7 +39,7 @@ const ClarificationCard = ({ task, onAnswerClarifications }) => {
 			initial={{ opacity: 0, y: 10 }}
 			animate={{ opacity: 1, y: 0 }}
 			exit={{ opacity: 0, x: -20 }}
-			className="bg-dark-surface/70 p-4 rounded-lg space-y-3 border border-dark-surface-elevated hover:border-sentient-blue/50 transition-colors"
+			className="bg-dark-surface/70 p-4 rounded-lg space-y-3 border border-dark-surface-elevated hover:border-brand-orange/50 transition-colors"
 		>
 			<p className="font-medium text-sm text-white">{task.description}</p>
 			<div className="space-y-2">

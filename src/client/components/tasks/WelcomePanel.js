@@ -72,11 +72,11 @@ const exampleWorkflows = [
 
 const WelcomePanel = ({ onExampleClick }) => {
 	return (
-		<div className="p-6 h-full flex flex-col">
+		<div className="p-6 h-full flex flex-col overflow-y-auto custom-scrollbar">
 			<div className="text-center mb-8">
 				<IconSparkles
 					size={40}
-					className="mx-auto text-sentient-blue mb-4"
+					className="mx-auto text-brand-orange mb-4"
 				/>
 				<h2 className="text-2xl font-bold text-white">
 					Welcome to Tasks
@@ -97,7 +97,7 @@ const WelcomePanel = ({ onExampleClick }) => {
 						animate={{ opacity: 1, y: 0 }}
 						transition={{ delay: index * 0.1 }}
 						onClick={() => onExampleClick(workflow.prompt)}
-						className="bg-neutral-800/50 p-4 rounded-lg border border-neutral-700 hover:border-sentient-blue cursor-pointer transition-colors flex flex-col justify-between"
+						className="bg-neutral-800/50 p-4 rounded-lg border border-neutral-700 hover:border-brand-orange cursor-pointer transition-colors flex flex-col justify-between"
 					>
 						<div>
 							<div className="flex items-center gap-3 mb-2">

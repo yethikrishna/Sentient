@@ -47,7 +47,7 @@ const ListView = ({
 	}
 
 	return (
-		<div className="p-6 space-y-4 overflow-y-auto custom-scrollbar h-full">
+		<div className="p-6 space-y-4 overflow-y-auto custom-scrollbar h-full bg-brand-black/50 backdrop-blur-sm rounded-xl border border-zinc-700/50">
 			<div className="relative">
 				<IconSearch
 					className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500"

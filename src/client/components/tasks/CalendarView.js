@@ -44,8 +44,9 @@ const CalendarDayCell = ({
 			className={cn(
 				"border-r border-b border-neutral-800 p-2 flex flex-col gap-1 overflow-hidden relative min-h-[120px] rounded-lg",
 				!isCurrentMonth && "bg-brand-black text-neutral-600",
-				"hover:bg-neutral-800/70",
-				isSelected && "bg-brand-orange text-brand-black font-bold"
+				isSelected
+					? "bg-brand-orange text-brand-black font-bold hover:bg-brand-orange"
+					: "hover:bg-neutral-800/70"
 			)}
 		>
 			<div className="flex justify-between items-center">
@@ -54,7 +55,7 @@ const CalendarDayCell = ({
 						"font-sans font-semibold text-sm w-6 h-6 flex items-center justify-center rounded-full",
 						isToday(day) ? "border border-brand-orange" : "",
 						isSelected
-							? "text-brand-black"
+							? "text-brand-gray"
 							: isCurrentMonth
 								? "text-neutral-300"
 								: "text-neutral-600"
@@ -72,7 +73,7 @@ const CalendarDayCell = ({
 								e.stopPropagation()
 								onDayClick(day)
 							}}
-							className="p-1 rounded-full hover:bg-neutral-700"
+							className="p-1 rounded-full hover:bg-brand-gray hover:text-brand-white"
 						>
 							<IconPlus size={16} />
 						</motion.button>
@@ -122,7 +123,7 @@ const CalendarView = ({ tasks, onSelectTask, onDayClick, onShowMoreClick }) => {
 	}
 
 	return (
-		<div className="p-4 h-full flex flex-col bg-brand-gray rounded-xl border border-zinc-700">
+		<div className="p-4 h-full flex flex-col bg-brand-black rounded-xl border border-zinc-700">
 			<header className="flex items-center justify-between mb-4">
 				<h2 className="text-lg font-sans font-semibold text-white">
 					{format(currentMonth, "MMMM yyyy")}

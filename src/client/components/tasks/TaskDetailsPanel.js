@@ -139,7 +139,7 @@ const TaskDetailsPanel = ({
 	return (
 		<aside
 			className={cn(
-				"w-full h-full bg-brand-gray backdrop-blur-xl shadow-2xl md:border-l border-neutral-700/80 flex flex-col flex-shrink-0",
+				"w-full h-full bg-brand-black backdrop-blur-xl shadow-2xl md:border-l border-neutral-700/80 flex flex-col flex-shrink-0",
 				className
 			)}
 		>

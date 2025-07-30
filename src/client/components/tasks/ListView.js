@@ -22,9 +22,10 @@ const ListView = ({
 		{ title: "Future", tasks: future }
 	]
 
-	const totalTasks = oneTimeTasks.length + recurringTasks.length
+	const upcomingTasksCount =
+		recurringTasks.length + today.length + tomorrow.length + future.length
 
-	if (totalTasks === 0 && !searchQuery) {
+	if (upcomingTasksCount === 0 && !searchQuery) {
 		return (
 			<div className="flex flex-col items-center justify-center h-full text-center text-neutral-500 p-8">
 				<div className="max-w-md">

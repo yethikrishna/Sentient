@@ -41,7 +41,7 @@ const DayDetailView = ({ date, tasks, onSelectTask, onClose }) => {
 		(getHours(currentTime) + getMinutes(currentTime) / 60) * 64
 
 	return (
-		<div className="h-full flex flex-col bg-neutral-900 text-white">
+		<div className="h-full flex flex-col bg-brand-black text-white">
 			<header className="p-4 border-b border-neutral-800 flex-shrink-0 flex justify-between items-center">
 				<h3 className="text-lg font-semibold">
 					{format(date, "eeee, MMMM d")}

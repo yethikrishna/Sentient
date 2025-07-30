@@ -57,13 +57,13 @@ function TasksPageContent() {
 				// Preserve instance-specific data like scheduled_date if it exists
 				setRightPanelContent({
 					type: "task",
-					data: { ...updatedSelectedTask, ...rightPanelContent.data }
+					data: { ...rightPanelContent.data, ...updatedSelectedTask }
 				})
 			} else {
 				setRightPanelContent({ type: "welcome", data: null })
 			}
 		}
-	}, [allTasks, rightPanelContent.type, rightPanelContent.data?.task_id])
+	}, [allTasks, rightPanelContent.type, rightPanelContent.data?.task_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
 	const fetchTasks = useCallback(async () => {
 		setIsLoading(true)
@@ -179,7 +179,7 @@ function TasksPageContent() {
 					throw new Error(errorData.error || "Action failed")
 				}
 				toast.success(successMessage, { id: toastId })
-				fetchTasks()
+				await fetchTasks()
 			} catch (error) {
 				toast.error(`Error: ${error.message}`, { id: toastId })
 			}
@@ -200,21 +200,6 @@ function TasksPageContent() {
 				}),
 			"Task updated!"
 		)
-		if (
-			rightPanelContent.type === "task" &&
-			rightPanelContent.data?.task_id === updatedTask.task_id
-		) {
-			const refreshedTasks = await fetch("/api/tasks").then((res) =>
-				res.json()
-			)
-			const newlyUpdatedTask = refreshedTasks.tasks.find(
-				(t) => t.task_id === updatedTask.task_id
-			)
-			setRightPanelContent({
-				type: "task",
-				data: newlyUpdatedTask || null
-			})
-		}
 	}
 
 	const handleSelectTask = (task) => {
@@ -279,10 +264,10 @@ function TasksPageContent() {
 				place="right"
 				style={{ zIndex: 9999 }}
 			/>
-			<div className="flex-1 flex flex-col md:flex-row overflow-hidden bg-brand-black">
+			<div className="flex-1 flex flex-col md:flex-row ml-2 gap-x-2 overflow-hidden bg-brand-black">
 				{/* Main Content Panel */}
 				<main className="flex-1 flex flex-col overflow-hidden relative">
-					<header className="p-6 border-b border-neutral-800 flex-shrink-0 flex items-center justify-between bg-brand-black">
+					<header className="p-6 flex-shrink-0 flex items-center justify-between bg-brand-black">
 						<h1 className="text-3xl font-bold text-white">Tasks</h1>
 						<div className="absolute top-6 left-1/2 -translate-x-1/2">
 							<TaskViewSwitcher view={view} setView={setView} />
@@ -337,7 +322,7 @@ function TasksPageContent() {
 				</main>
 
 				{/* Right Details Panel */}
-				<aside className="w-full md:w-[500px] lg:w-[550px] bg-brand-gray border-l border-neutral-800 flex-shrink-0 flex flex-col">
+				<aside className="w-full md:w-[450px] lg:w-[500px] bg-brand-black border-l border-brand-gray flex-shrink-0 flex flex-col">
 					<AnimatePresence mode="wait">
 						{rightPanelContent.type === "task" &&
 						rightPanelContent.data ? (

@@ -44,7 +44,7 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 	}
 
 	return (
-		<div className="p-4 border-t border-neutral-800 flex-shrink-0 bg-brand-black">
+		<div className="p-4 flex-shrink-0 bg-brand-black">
 			<div
 				className={cn(
 					"relative flex items-end bg-brand-gray rounded-xl p-1 transition-all border border-transparent focus-within:border-brand-orange"

@@ -1,4 +1,3 @@
-# src/server/workers/tasks.py
 import asyncio
 import logging
 import uuid
@@ -26,7 +25,7 @@ from workers.memory_agent_utils import get_memory_qwen_agent, get_db_manager as 
 from workers.executor.tasks import execute_task_plan
 from main.vector_db import get_conversation_summaries_collection
 from workers.planner.prompts import TOOL_SELECTOR_SYSTEM_PROMPT
-from mcp_hub.memory.utils import cud_memory
+from mcp_hub.memory.utils import cud_memory, initialize_embedding_model, initialize_agents
 
 # Imports for poller logic
 from workers.poller.gmail.service import GmailPollingService
@@ -133,6 +132,8 @@ def cud_memory_task(user_id: str, information: str, source: Optional[str] = None
     This runs the core memory management logic asynchronously.
     """
     logger.info(f"Celery worker received cud_memory_task for user_id: {user_id}")
+    initialize_embedding_model()
+    initialize_agents()
     run_async(cud_memory(user_id, information, source))
 
 @celery_app.task(name="create_task_from_suggestion")

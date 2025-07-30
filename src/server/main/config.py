@@ -386,6 +386,20 @@ INTEGRATIONS_CONFIG = {
     }
 }
 
+# --- Service Provider Configuration ---
+STT_PROVIDER = os.getenv("STT_PROVIDER", "FASTER_WHISPER")
+TTS_PROVIDER = os.getenv("TTS_PROVIDER", "ORPHEUS")
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+
+# For Orpheus (Dev TTS)
+ORPHEUS_MODEL_PATH = os.getenv("ORPHEUS_MODEL_PATH", os.path.join(os.path.dirname(__file__), "voice", "models", "orpheus-3b-0.1-ft-q4_k_m.gguf"))
+ORPHEUS_N_GPU_LAYERS = int(os.getenv("ORPHEUS_N_GPU_LAYERS", 30))
+
+# FasterWhisper STT (Dev STT)
+FASTER_WHISPER_MODEL_SIZE = os.getenv("FASTER_WHISPER_MODEL_SIZE", "base")
+FASTER_WHISPER_DEVICE = os.getenv("FASTER_WHISPER_DEVICE", "cpu")
+FASTER_WHISPER_COMPUTE_TYPE = os.getenv("FASTER_WHISPER_COMPUTE_TYPE", "int8")
+
 # LLM Endpoint Configuration
 # --- OpenAI API Standard Configuration ---
 # This can point to OpenAI, Ollama, Groq, or any other compatible service.

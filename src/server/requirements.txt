@@ -23,6 +23,13 @@ redis
 # --- AI & Machine Learning ---
 qwen-agent
 google-genai
+elevenlabs
+librosa
+faster-whisper
+snac
+torch
+fastrtc[vad, stt, tts]
+numpy
 
 # --- Background Task Queue ---
 celery
@@ -50,6 +57,5 @@ jsonextractor
 # --- Vector DB and Embeddings ---
 chromadb-client
 sentence-transformers
-torch
 google-generativeai
 rich

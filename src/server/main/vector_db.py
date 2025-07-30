@@ -1,13 +1,13 @@
-# Create new file: src/server/main/vector_db.py
 import os
 import chromadb
 import logging
-from chromadb.utils import embedding_functions
+from chromadb.utils.embedding_functions import GoogleGenerativeAiEmbeddingFunction
 
 # --- Configuration ---
 CHROMA_HOST = os.getenv("CHROMA_HOST", "localhost")
 CHROMA_PORT = int(os.getenv("CHROMA_PORT", 8002))
-EMBEDDING_MODEL_REPO_ID = os.getenv("EMBEDDING_MODEL_REPO_ID", "BAAI/bge-small-en-v1.5")
+EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "models/gemini-embedding-001")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 CONVERSATION_SUMMARIES_COLLECTION_NAME = "conversation_summaries"
 
 logger = logging.getLogger(__name__)
@@ -36,16 +36,26 @@ def get_chroma_client():
 
 def get_embedding_function():
     """
-    Initializes and returns a singleton sentence-transformer embedding function.
+    Initializes and returns a singleton Google Generative AI embedding function.
     """
     global _embedding_function
     if _embedding_function is None:
-        logger.info(f"Initializing SentenceTransformer embedding model: {EMBEDDING_MODEL_REPO_ID}")
-        # This will download the model on first use if not cached
-        _embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
-            model_name=EMBEDDING_MODEL_REPO_ID
-        )
-        logger.info("SentenceTransformer model loaded.")
+        if not GEMINI_API_KEY:
+            logger.error("GEMINI_API_KEY is not set. Cannot initialize Google embedding function.")
+            raise ValueError("GEMINI_API_KEY is not configured.")
+        
+        logger.info(f"Initializing Google Generative AI embedding model: {EMBEDDING_MODEL_NAME}")
+        try:
+            _embedding_function = GoogleGenerativeAiEmbeddingFunction(
+                api_key=GEMINI_API_KEY,
+                model_name=EMBEDDING_MODEL_NAME
+                # The default task_type is RETRIEVAL_DOCUMENT, which is appropriate for storing summaries.
+            )
+            logger.info("Google Generative AI embedding model loaded.")
+        except Exception as e:
+            logger.error(f"Failed to initialize GoogleGenerativeAiEmbeddingFunction: {e}", exc_info=True)
+            _embedding_function = None
+            raise
     return _embedding_function
 
 def get_conversation_summaries_collection():

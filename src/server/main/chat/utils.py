@@ -276,3 +276,70 @@ def msg_to_str(msg: Dict[str, Any]) -> str:
     elif msg.get('role') == 'assistant' and msg.get('content'):
         return msg.get('content', '')
     return ''
+
+async def process_voice_command(user_id: str, transcribed_text: str, username: str, db_manager: MongoManager) -> Tuple[str, str]:
+    """
+    Processes a transcribed voice command. It's a non-streaming version of the chat logic.
+    It fetches history, calls the LLM once, gets a complete response, and saves messages.
+    """
+    assistant_message_id = str(uuid.uuid4())
+    logger.info(f"Processing voice command for user {user_id}: '{transcribed_text}'")
+
+    try:
+        # Save user message
+        await db_manager.add_message(user_id=user_id, role="user", content=transcribed_text)
+        # Save a placeholder for the assistant's response
+        await db_manager.add_message(user_id=user_id, role="assistant", content="[Thinking...]", message_id=assistant_message_id)
+    except Exception as e:
+        logger.error(f"DB Error before voice command processing for {user_id}: {e}", exc_info=True)
+        return "I had trouble saving our conversation.", assistant_message_id
+
+    # Fetch history for context
+    history_from_db = await db_manager.get_message_history(user_id, limit=30)
+    qwen_formatted_history = [msg for msg in reversed(history_from_db) if msg.get("id") != assistant_message_id]
+    qwen_formatted_history.append({"role": "user", "content": transcribed_text})
+
+    final_text_response = "I'm sorry, I couldn't process that."
+    final_structured_history = []
+    try:
+        user_profile_for_tools = await db_manager.get_user_profile(user_id)
+        user_integrations = user_profile_for_tools.get("userData", {}).get("integrations", {}) if user_profile_for_tools else {}
+        
+        active_mcp_servers = {}
+        for service_name, config in INTEGRATIONS_CONFIG.items():
+            if "mcp_server_config" not in config: continue
+            if config.get("auth_type") == "builtin" or user_integrations.get(service_name, {}).get("connected"):
+                mcp_config = config["mcp_server_config"]
+                active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
+        tools = [{"mcpServers": active_mcp_servers}]
+
+        system_prompt = (
+            f"You are a helpful AI assistant named Sentient. The user's name is {username}. The current date is {datetime.datetime.now().strftime('%Y-%m-%d')}.\n\n"
+            "You have access to tools. For voice conversations, keep your responses concise and natural."
+        )
+        qwen_assistant = get_qwen_assistant(system_message=system_prompt, function_list=tools)
+        
+        final_run_response = None
+        for response in qwen_assistant.run(messages=qwen_formatted_history):
+            final_run_response = response
+
+        if final_run_response and isinstance(final_run_response, list):
+            start_index = next((i for i in range(len(final_run_response) - 1, -1, -1) if final_run_response[i].get('role') == 'user'), -1)
+            final_structured_history = final_run_response[start_index + 1:] if start_index != -1 else final_run_response
+            
+            final_agent_message = final_run_response[-1]
+            if final_agent_message.get('role') == 'assistant' and final_agent_message.get('content'):
+                final_text_response = final_agent_message.get('content', '')
+            elif final_agent_message.get('role') == 'function':
+                final_text_response = "I have completed the requested action."
+                
+    except Exception as e:
+        logger.error(f"Error in Qwen agent for voice command for {user_id}: {e}", exc_info=True)
+        final_text_response = "I encountered an error while thinking about your request."
+
+    await db_manager.messages_collection.update_one(
+        {"message_id": assistant_message_id},
+        {"$set": {"content": final_text_response, "structured_history": final_structured_history}}
+    )
+
+    return final_text_response, assistant_message_id

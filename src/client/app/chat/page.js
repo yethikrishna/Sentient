@@ -12,7 +12,11 @@ import {
 	IconFileText,
 	IconArrowBackUp,
 	IconX,
-	IconCopy
+	IconCopy,
+	IconPhone,
+	IconPhoneOff,
+	IconMicrophone,
+	IconMessageOff
 } from "@tabler/icons-react"
 import {
 	IconBrandSlack,
@@ -30,6 +34,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import ChatBubble from "@components/ChatBubble"
 import React from "react"
 import { usePostHog } from "posthog-js/react"
+import BackgroundCircleProvider from "@components/voice-visualization/background-circle-provider"
 
 const toolIcons = {
 	gmail: IconGoogleMail,
@@ -259,12 +264,22 @@ export default function ChatPage() {
 	const [isLoadingOlder, setIsLoadingOlder] = useState(false)
 	const [hasMoreMessages, setHasMoreMessages] = useState(true)
 
-	// State for UI enhancements from old page
+	// State for UI enhancements
 	const [userDetails, setUserDetails] = useState(null)
 	const posthog = usePostHog()
 	const [isFocused, setIsFocused] = useState(false)
 	const [activeDomain, setActiveDomain] = useState("Featured")
 	const [replyingTo, setReplyingTo] = useState(null)
+
+	// --- Voice Mode State ---
+	const [isVoiceMode, setIsVoiceMode] = useState(false)
+	const [connectionStatus, setConnectionStatus] = useState("disconnected")
+	const [audioInputDevices, setAudioInputDevices] = useState([])
+	const [selectedAudioInputDevice, setSelectedAudioInputDevice] = useState("")
+	const [voiceStatusText, setVoiceStatusText] = useState("Click to Start")
+	const backgroundCircleProviderRef = useRef(null)
+	const ringtoneAudioRef = useRef(null)
+	const connectedAudioRef = useRef(null)
 
 	const fetchInitialMessages = useCallback(async () => {
 		setIsLoading(true)
@@ -403,10 +418,9 @@ export default function ChatPage() {
 			role: "user",
 			content: input.trim(),
 			timestamp: new Date().toISOString(),
-			...(replyingTo && { replyToId: replyingTo.id }) // Add reply context
+			...(replyingTo && { replyToId: replyingTo.id })
 		}
 
-		// Optimistically update UI
 		const updatedMessages = [...displayedMessages, newUserMessage]
 		setDisplayedMessages(updatedMessages)
 
@@ -418,7 +432,6 @@ export default function ChatPage() {
 			const messagesToSend = updatedMessages.slice(-20).map((msg) => {
 				let content = msg.content
 				if (msg.replyToId) {
-					// Use updatedMessages to find the replied-to message
 					const originalMsg = updatedMessages.find(
 						(m) => m.id === msg.replyToId
 					)
@@ -507,7 +520,6 @@ export default function ChatPage() {
 			} else {
 				toast.error(`Error: ${error.message}`)
 				console.error("Fetch error:", error)
-				// If sending failed, remove the optimistic user message
 				setDisplayedMessages((prev) =>
 					prev.filter((m) => m.id !== newUserMessage.id)
 				)
@@ -544,7 +556,7 @@ export default function ChatPage() {
 		const regex =
 			/(<think>[\s\S]*?<\/think>|<tool_code[^>]*>[\s\S]*?<\/tool_code>|<tool_result[^>]*>[\s\S]*?<\/tool_result>|<answer>[\s\S]*?<\/answer>)/g
 		let lastIndex = 0
-		let inToolCallPhase = false // To ignore raw text between tool_code and tool_result
+		let inToolCallPhase = false
 
 		for (const match of content.matchAll(regex)) {
 			const precedingText = content.substring(lastIndex, match.index)
@@ -571,6 +583,174 @@ export default function ChatPage() {
 		if (plainText) return plainText
 		return content.replace(/<[^>]+>/g, "").trim()
 	}
+
+	// --- Voice Mode Handlers ---
+	const handleStatusChange = useCallback((status) => {
+		setConnectionStatus(status)
+		if (status !== "connecting" && ringtoneAudioRef.current) {
+			ringtoneAudioRef.current.pause()
+			ringtoneAudioRef.current.currentTime = 0
+		}
+		if (status === "connected" && connectedAudioRef.current) {
+			connectedAudioRef.current.volume = 0.4
+			connectedAudioRef.current
+				.play()
+				.catch((e) => console.error("Error playing sound:", e))
+			setVoiceStatusText("Listening...")
+		} else if (status === "disconnected") {
+			setVoiceStatusText("Click to Start")
+		} else if (status === "connecting") {
+			setVoiceStatusText("Connecting...")
+		}
+	}, [])
+
+	const handleVoiceEvent = useCallback((event) => {
+		if (event.type === "stt_result" && event.text) {
+			setDisplayedMessages((prev) => [
+				...prev,
+				{
+					id: `user_${Date.now()}`,
+					role: "user",
+					content: event.text,
+					timestamp: new Date().toISOString()
+				}
+			])
+		} else if (event.type === "llm_result" && event.text) {
+			setDisplayedMessages((prev) => [
+				...prev,
+				{
+					id: event.messageId || `assistant_${Date.now()}`,
+					role: "assistant",
+					content: event.text,
+					timestamp: new Date().toISOString()
+				}
+			])
+		} else if (event.type === "status") {
+			if (event.message === "thinking") setVoiceStatusText("Thinking...")
+			else if (event.message === "speaking")
+				setVoiceStatusText("Speaking...")
+			else if (event.message === "listening")
+				setVoiceStatusText("Listening...")
+			else if (event.message === "transcribing")
+				setVoiceStatusText("Transcribing...")
+		} else if (event.type === "error") {
+			toast.error(`Voice Error: ${event.message}`)
+			setVoiceStatusText("Error. Click to retry.")
+		}
+	}, [])
+
+	const handleStartVoice = async () => {
+		if (
+			connectionStatus !== "disconnected" ||
+			!backgroundCircleProviderRef.current
+		)
+			return
+		setConnectionStatus("connecting")
+		try {
+			// Step 1: Get the main auth token
+			const tokenResponse = await fetch("/api/auth/token")
+			if (!tokenResponse.ok) throw new Error("Could not get auth token.")
+			const { accessToken } = await tokenResponse.json()
+
+			// Step 2: Use the auth token to get a temporary RTC token
+			const serverUrl =
+				process.env.NEXT_PUBLIC_APP_SERVER_URL ||
+				"http://localhost:5000"
+			const rtcTokenResponse = await fetch(
+				`${serverUrl}/voice/initiate`,
+				{
+					method: "POST",
+					headers: {
+						Authorization: `Bearer ${accessToken}`
+					}
+				}
+			)
+			if (!rtcTokenResponse.ok)
+				throw new Error("Could not initiate voice session.")
+			const { rtc_token } = await rtcTokenResponse.json()
+
+			// Step 3: Play ringing and connect
+			if (ringtoneAudioRef.current) {
+				ringtoneAudioRef.current.volume = 0.3
+				ringtoneAudioRef.current.loop = true
+				ringtoneAudioRef.current
+					.play()
+					.catch((e) => console.error("Error playing ringtone:", e))
+			}
+			await backgroundCircleProviderRef.current?.connect(
+				selectedAudioInputDevice,
+				accessToken,
+				rtc_token
+			)
+		} catch (error) {
+			toast.error(
+				`Failed to connect: ${error.message || "Unknown error"}`
+			)
+			handleStatusChange("disconnected")
+		}
+	}
+
+	const handleStopVoice = () => {
+		if (
+			connectionStatus === "disconnected" ||
+			!backgroundCircleProviderRef.current
+		)
+			return
+		backgroundCircleProviderRef.current?.disconnect()
+	}
+
+	const toggleVoiceMode = () => {
+		if (isVoiceMode) {
+			handleStopVoice()
+		}
+		setIsVoiceMode(!isVoiceMode)
+	}
+
+	useEffect(() => {
+		const getDevices = async () => {
+			try {
+				if (
+					!navigator.mediaDevices ||
+					!navigator.mediaDevices.enumerateDevices
+				)
+					return
+				await navigator.mediaDevices.getUserMedia({
+					audio: true,
+					video: false
+				})
+				const devices = await navigator.mediaDevices.enumerateDevices()
+				const audioInputDevices = devices.filter(
+					(d) => d.kind === "audioinput"
+				)
+				if (audioInputDevices.length > 0) {
+					setAudioInputDevices(
+						audioInputDevices.map((d, i) => ({
+							deviceId: d.deviceId,
+							label: d.label || `Microphone ${i + 1}`
+						}))
+					)
+					if (!selectedAudioInputDevice)
+						setSelectedAudioInputDevice(
+							audioInputDevices[0].deviceId
+						)
+				}
+			} catch (error) {
+				toast.error(
+					"Could not get microphone list. Please grant permission."
+				)
+			}
+		}
+		getDevices()
+
+		return () => {
+			if (
+				backgroundCircleProviderRef.current &&
+				connectionStatus !== "disconnected"
+			) {
+				backgroundCircleProviderRef.current.disconnect()
+			}
+		}
+	}, [connectionStatus, selectedAudioInputDevice])
 
 	const renderReplyPreview = () => (
 		<AnimatePresence>
@@ -630,6 +810,14 @@ export default function ChatPage() {
 					style={{ maxHeight: "200px" }}
 				/>
 				<div className="absolute right-3 bottom-3 flex items-center gap-2">
+					<button
+						onClick={toggleVoiceMode}
+						className="p-2.5 rounded-full text-white bg-neutral-700 hover:bg-neutral-600 transition-colors"
+						data-tooltip-id="home-tooltip"
+						data-tooltip-content="Switch to Voice Mode"
+					>
+						<IconMicrophone size={18} />
+					</button>
 					{thinking ? (
 						<button
 							onClick={handleStopStreaming}
@@ -656,8 +844,19 @@ export default function ChatPage() {
 	return (
 		<div className="flex-1 flex bg-black text-white overflow-hidden md:pl-20">
 			<Tooltip id="home-tooltip" place="right" style={{ zIndex: 9999 }} />
+			<audio
+				ref={ringtoneAudioRef}
+				src="/audio/ringing.mp3"
+				preload="auto"
+				loop
+			></audio>
+			<audio
+				ref={connectedAudioRef}
+				src="/audio/connected.mp3"
+				preload="auto"
+			></audio>
 			<div className="flex flex-col flex-1 relative bg-black pb-16 md:pb-0">
-				{displayedMessages.length === 0 && (
+				{displayedMessages.length === 0 && !isVoiceMode && (
 					<div className="absolute inset-0 h-full w-full bg-gradient-to-br from-neutral-900 to-black bg-[linear-gradient(110deg,#09090b,45%,#1e293b,55%,#09090b)] bg-[length:200%_100%] animate-shimmer" />
 				)}
 
@@ -668,6 +867,59 @@ export default function ChatPage() {
 					{isLoading ? (
 						<div className="flex-1 flex justify-center items-center">
 							<IconLoader className="animate-spin text-neutral-500" />
+						</div>
+					) : isVoiceMode ? (
+						<div className="flex-1 flex flex-col justify-center items-center relative">
+							<BackgroundCircleProvider
+								ref={backgroundCircleProviderRef}
+								onStatusChange={handleStatusChange}
+								onEvent={handleVoiceEvent}
+								connectionStatusProp={connectionStatus}
+							/>
+							<div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-none">
+								<div className="pointer-events-auto flex flex-col items-center gap-4">
+									{connectionStatus === "disconnected" ? (
+										<button
+											onClick={handleStartVoice}
+											className="flex h-32 w-32 items-center justify-center rounded-full bg-green-600 text-white shadow-lg transition-colors duration-200 hover:bg-green-500"
+											title="Start Call"
+										>
+											<IconPhone size={48} />
+										</button>
+									) : connectionStatus === "connecting" ? (
+										<div className="flex h-32 w-32 items-center justify-center rounded-full bg-yellow-600 text-white shadow-lg">
+											<IconLoader
+												size={48}
+												className="animate-spin"
+											/>
+										</div>
+									) : (
+										<button
+											onClick={handleStopVoice}
+											className="flex h-32 w-32 items-center justify-center rounded-full bg-red-600 text-white shadow-lg transition-colors duration-200 hover:bg-red-500"
+											title="Hang Up"
+										>
+											<IconPhoneOff size={48} />
+										</button>
+									)}
+									<p className="mt-4 text-center text-lg font-medium text-gray-300">
+										{voiceStatusText}
+									</p>
+								</div>
+							</div>
+							<div className="absolute bottom-1/4 max-w-2xl text-center p-4">
+								{displayedMessages
+									.filter((m) => m.role === "user")
+									.slice(-1)
+									.map((msg) => (
+										<p
+											key={msg.id}
+											className="text-2xl font-semibold text-white"
+										>
+											{getFinalAnswer(msg.content)}
+										</p>
+									))}
+							</div>
 						</div>
 					) : displayedMessages.length === 0 && !thinking ? (
 						<div className="flex-1 flex flex-col justify-center items-center p-6 text-center">
@@ -715,7 +967,6 @@ export default function ChatPage() {
 											: "justify-start"
 									)}
 								>
-									{/* The ChatBubble itself will now have a max-width */}
 									<ChatBubble
 										role={msg.role}
 										content={msg.content}
@@ -744,12 +995,45 @@ export default function ChatPage() {
 						</div>
 					)}
 				</main>
-				{!isLoading && displayedMessages.length > 0 && (
+				{!isLoading && !isVoiceMode && displayedMessages.length > 0 && (
 					<div className="px-4 pt-2 pb-4 sm:px-6 sm:pb-6 bg-black border-t border-neutral-800/50">
 						<div className="w-full max-w-4xl mx-auto">
 							{renderReplyPreview()}
 							{renderInputArea()}
 						</div>
+					</div>
+				)}
+				{isVoiceMode && (
+					<div className="absolute bottom-6 right-6 z-30 flex items-center gap-2">
+						<button
+							onClick={toggleVoiceMode}
+							className="p-2.5 rounded-full bg-neutral-700/80 backdrop-blur-sm hover:bg-blue-500 text-white shadow-lg"
+							title="Switch to Text Mode"
+						>
+							<IconMessageOff size={18} />
+						</button>
+						<select
+							value={selectedAudioInputDevice}
+							onChange={(e) =>
+								setSelectedAudioInputDevice(e.target.value)
+							}
+							className="bg-neutral-700/80 backdrop-blur-sm border border-neutral-600 text-white text-xs rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 appearance-none max-w-[200px] truncate shadow-lg"
+							title="Select Microphone"
+							disabled={connectionStatus !== "disconnected"}
+						>
+							{audioInputDevices.length === 0 ? (
+								<option value="">No mics found</option>
+							) : (
+								audioInputDevices.map((device) => (
+									<option
+										key={device.deviceId}
+										value={device.deviceId}
+									>
+										{device.label}
+									</option>
+								))
+							)}
+						</select>
 					</div>
 				)}
 			</div>

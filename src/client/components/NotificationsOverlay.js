@@ -9,14 +9,17 @@ import {
 	IconBell,
 	IconAlertCircle,
 	IconX,
-	IconArrowRight
+	IconArrowRight,
+	IconCheck,
+	IconThumbDown
 } from "@tabler/icons-react"
 import { formatDistanceToNow, parseISO } from "date-fns"
 
 const NotificationItem = ({
 	notification,
 	onDelete,
-	onClick,
+	onAction,
+	onGeneralClick,
 	userTimezone
 }) => {
 	let formattedTimestamp = "..." // Default placeholder
@@ -46,33 +49,64 @@ const NotificationItem = ({
 			layout
 			initial={{ opacity: 0, y: 10 }}
 			animate={{ opacity: 1, y: 0 }}
-			exit={{ opacity: 0, x: -20 }}
-			onClick={() => onClick(notification)}
-			className="flex items-center gap-4 bg-neutral-800/50 p-3 rounded-lg border border-neutral-700/50 shadow-sm cursor-pointer hover:bg-neutral-700/70 transition-colors group"
+			exit={{ opacity: 0, scale: 0.95 }}
+			className="bg-neutral-800/50 p-3 rounded-lg border border-neutral-700/50 shadow-sm transition-colors group"
 		>
-			<div className="flex-shrink-0 pt-1 self-start">
-				<IconBell className="w-5 h-5 text-[var(--color-accent-blue)]" />
+			<div
+				onClick={() =>
+					notification.type !== "proactive_suggestion" &&
+					onGeneralClick(notification)
+				}
+				className="flex items-start gap-4 cursor-pointer hover:bg-neutral-700/70 -m-2 p-2 rounded-md"
+			>
+				<div className="flex-shrink-0 pt-1 self-start">
+					<IconBell className="w-5 h-5 text-[var(--color-accent-blue)]" />
+				</div>
+				<div className="flex-grow">
+					<p className="text-neutral-100 text-sm leading-relaxed mb-1">
+						{notification.message || "No message content."}
+					</p>
+					<p className="text-neutral-400 text-xs">
+						{formattedTimestamp}
+					</p>
+				</div>
+				<div className="flex items-center gap-1 flex-shrink-0 self-start">
+					<button
+						onClick={(e) => {
+							e.stopPropagation()
+							onDelete(notification.id)
+						}}
+						className="p-1.5 text-neutral-500 rounded-full opacity-0 group-hover:opacity-100 hover:bg-neutral-600 hover:text-red-400 transition-all"
+					>
+						<IconX size={14} />
+					</button>
+					{notification.task_id && (
+						<IconArrowRight className="w-5 h-5 text-neutral-500 transition-transform group-hover:translate-x-0.5" />
+					)}
+				</div>
 			</div>
-			<div className="flex-grow">
-				<p className="text-neutral-100 text-sm leading-relaxed mb-1">
-					{notification.message || "No message content."}
-				</p>
-				<p className="text-neutral-400 text-xs">{formattedTimestamp}</p>
-			</div>
-			<div className="flex items-center gap-1 flex-shrink-0 self-start">
-				<button
-					onClick={(e) => {
-						e.stopPropagation()
-						onDelete(notification.id)
-					}}
-					className="p-1.5 text-neutral-500 rounded-full opacity-0 group-hover:opacity-100 hover:bg-neutral-600 hover:text-red-400 transition-all"
-				>
-					<IconX size={14} />
-				</button>
-				{notification.task_id && (
-					<IconArrowRight className="w-5 h-5 text-neutral-500 transition-transform group-hover:translate-x-0.5" />
-				)}
-			</div>
+			{notification.type === "proactive_suggestion" && (
+				<div className="mt-3 pt-3 border-t border-neutral-700/50 flex justify-end gap-2">
+					<button
+						onClick={(e) => {
+							e.stopPropagation()
+							onAction(notification.id, "dismissed")
+						}}
+						className="flex items-center gap-1.5 text-xs font-semibold text-neutral-300 bg-neutral-700/80 hover:bg-neutral-700 px-3 py-1.5 rounded-md"
+					>
+						<IconThumbDown size={14} /> Dismiss
+					</button>
+					<button
+						onClick={(e) => {
+							e.stopPropagation()
+							onAction(notification.id, "approved")
+						}}
+						className="flex items-center gap-1.5 text-xs font-semibold text-white bg-green-600/80 hover:bg-green-600 px-3 py-1.5 rounded-md"
+					>
+						<IconCheck size={14} /> Approve
+					</button>
+				</div>
+			)}
 		</motion.div>
 	)
 }
@@ -154,6 +188,31 @@ const NotificationsOverlay = ({ onClose }) => {
 		} catch (err) {
 			toast.error(`Error dismissing notification: ${err.message}`)
 			setNotifications(originalNotifications)
+		}
+	}
+
+	const handleSuggestionAction = async (notificationId, action) => {
+		const originalNotifications = [...notifications]
+		// Optimistically remove the notification from the UI
+		setNotifications(notifications.filter((n) => n.id !== notificationId))
+
+		try {
+			const response = await fetch("/api/proactivity/action", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					notification_id: notificationId,
+					user_action: action
+				})
+			})
+			if (!response.ok) {
+				const errorData = await response.json()
+				throw new Error(errorData.error || "Failed to process action")
+			}
+			toast.success(`Suggestion ${action}.`)
+		} catch (err) {
+			toast.error(`Error: ${err.message}`)
+			setNotifications(originalNotifications) // Revert on failure
 		}
 	}
 
@@ -257,8 +316,9 @@ const NotificationsOverlay = ({ onClose }) => {
 									key={notif.id}
 									notification={notif}
 									userTimezone={userTimezone}
-									onDelete={(id) => handleDelete(null, id)}
-									onClick={(n) =>
+									onDelete={handleDelete}
+									onAction={handleSuggestionAction}
+									onGeneralClick={(n) =>
 										handleNotificationClick(null, n)
 									}
 								/>

@@ -21,6 +21,8 @@ PROCESSED_ITEMS_COLLECTION = "processed_items_log"
 TASK_COLLECTION = "tasks"
 MESSAGES_COLLECTION = "messages"
 CONVERSATION_SUMMARIES_COLLECTION = "conversation_summaries"
+USER_PROACTIVE_PREFERENCES_COLLECTION = "user_proactive_preferences"
+PROACTIVE_SUGGESTION_TEMPLATES_COLLECTION = "proactive_suggestion_templates"
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +38,8 @@ class MongoManager:
         self.task_collection = self.db[TASK_COLLECTION]
         self.messages_collection = self.db[MESSAGES_COLLECTION]
         self.conversation_summaries_collection = self.db[CONVERSATION_SUMMARIES_COLLECTION]
+        self.user_proactive_preferences_collection = self.db[USER_PROACTIVE_PREFERENCES_COLLECTION]
+        self.proactive_suggestion_templates_collection = self.db[PROACTIVE_SUGGESTION_TEMPLATES_COLLECTION]
         
         print(f"[{datetime.datetime.now()}] [MainServer_MongoManager] Initialized. Database: {MONGO_DB_NAME}")
 
@@ -70,7 +74,8 @@ class MongoManager:
                 IndexModel([("user_id", ASCENDING), ("created_at", DESCENDING)], name="task_user_created_idx"),
                 IndexModel([("user_id", ASCENDING), ("status", ASCENDING), ("priority", ASCENDING)], name="task_user_status_priority_idx"),
                 IndexModel([("status", ASCENDING), ("agent_id", ASCENDING)], name="task_status_agent_idx", sparse=True), 
-                IndexModel([("task_id", ASCENDING)], unique=True, name="task_id_unique_idx")
+                IndexModel([("task_id", ASCENDING)], unique=True, name="task_id_unique_idx"),
+                IndexModel([("description", "text")], name="task_description_text_idx"),
             ],
             self.messages_collection: [
                 IndexModel([("message_id", ASCENDING)], unique=True, name="message_id_unique_idx"),
@@ -81,6 +86,12 @@ class MongoManager:
                 IndexModel([("user_id", ASCENDING)], name="summary_user_id_idx"),
                 # A vector index would be added here in a later phase
             ],
+            self.user_proactive_preferences_collection: [
+                IndexModel([("user_id", ASCENDING), ("suggestion_type", ASCENDING)], unique=True, name="user_suggestion_preference_unique_idx")
+            ],
+            self.proactive_suggestion_templates_collection: [
+                IndexModel([("type_name", ASCENDING)], unique=True, name="suggestion_type_name_unique_idx")
+            ],
         }
 
         for collection, indexes in collections_with_indexes.items():
@@ -89,6 +100,19 @@ class MongoManager:
                 print(f"[{datetime.datetime.now()}] [MainServer_DB_INIT] Indexes ensured for: {collection.name}")
             except Exception as e:
                 print(f"[{datetime.datetime.now()}] [MainServer_DB_ERROR] Index creation for {collection.name}: {e}")
+
+        # Pre-populate suggestion templates if the collection is empty
+        if await self.proactive_suggestion_templates_collection.count_documents({}) == 0:
+            print(f"[{datetime.datetime.now()}] [MainServer_DB_INIT] Pre-populating proactive suggestion templates...")
+            initial_templates = [
+                {"type_name": "draft_meeting_confirmation_email", "description": "Drafts an email to confirm a meeting, check availability, or ask for an agenda."},
+                {"type_name": "schedule_calendar_event", "description": "Creates a new event on the user's calendar based on details from a message."},
+                {"type_name": "create_follow_up_task", "description": "Creates a new task in the user's task list to follow up on a specific item or conversation."},
+                {"type_name": "summarize_document_or_thread", "description": "Summarizes a long document, email thread, or message chain for the user."},
+            ]
+            await self.proactive_suggestion_templates_collection.insert_many(initial_templates)
+            print(f"[{datetime.datetime.now()}] [MainServer_DB_INIT] Inserted {len(initial_templates)} templates.")
+
 
     # --- User Profile Methods ---
     async def get_user_profile(self, user_id: str) -> Optional[Dict]:
@@ -192,6 +216,29 @@ class MongoManager:
             {"$pull": {"notifications": {"id": notification_id}}}
         )
         return result.modified_count > 0
+
+    async def find_and_action_suggestion_notification(self, user_id: str, notification_id: str) -> Optional[Dict]:
+        """
+        Atomically finds a proactive_suggestion notification, marks it as actioned, and returns it.
+        This prevents race conditions from multiple clicks.
+        """
+        if not user_id or not notification_id:
+            return None
+
+        # Find the document containing the notification
+        user_notif_doc = await self.notifications_collection.find_one(
+            {"user_id": user_id, "notifications.id": notification_id}
+        )
+        if not user_notif_doc:
+            return None
+
+        # Atomically update the specific notification inside the array
+        result = await self.notifications_collection.find_one_and_update(
+            {"user_id": user_id, "notifications.id": notification_id, "notifications.is_actioned": False},
+            {"$set": {"notifications.$.is_actioned": True}},
+        )
+
+        return user_notif_doc if result else None
 
     # --- Polling State Store Methods ---
     async def get_polling_state(self, user_id: str, service_name: str) -> Optional[Dict[str, Any]]:
@@ -385,11 +432,24 @@ class MongoManager:
         return new_task_id
 
     # --- Message Methods ---
-    async def add_message(self, user_id: str, role: str, content: str) -> Dict:
-        """Adds a single message to the messages collection."""
+    async def add_message(self, user_id: str, role: str, content: str, message_id: Optional[str] = None) -> Dict:
+        """
+        Adds a single message to the messages collection.
+        If a message_id is provided, it's used. Otherwise, a new one is generated.
+        For user messages with a provided ID, it prevents duplicate insertions.
+        """
         now = datetime.datetime.now(datetime.timezone.utc)
+        final_message_id = message_id if message_id else str(uuid.uuid4())
+
+        # Prevent duplicate user messages if client retries
+        if role == "user" and message_id:
+            existing = await self.messages_collection.find_one({"message_id": final_message_id, "user_id": user_id})
+            if existing:
+                logger.info(f"Message with ID {final_message_id} already exists for user {user_id}. Skipping.")
+                return existing
+
         message_doc = {
-            "message_id": str(uuid.uuid4()),
+            "message_id": final_message_id,
             "user_id": user_id,
             "role": role,
             "content": content,
@@ -429,3 +489,25 @@ class MongoManager:
         if self.client:
             self.client.close()
             print(f"[{datetime.datetime.now()}] [MainServer_MongoManager] MongoDB connection closed.")
+
+    # --- Proactive Suggestion Template Methods ---
+    async def get_all_proactive_suggestion_templates(self) -> List[Dict]:
+        """Fetches all documents from the proactive_suggestion_templates collection."""
+        cursor = self.proactive_suggestion_templates_collection.find({}, {"_id": 0})
+        return await cursor.to_list(length=None)
+
+    # --- Proactive Learning Methods ---
+    async def update_proactive_preference_score(self, user_id: str, suggestion_type: str, increment_value: int):
+        """Finds or creates a user preference document and increments/decrements the score."""
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        await self.user_proactive_preferences_collection.update_one(
+            {"user_id": user_id, "suggestion_type": suggestion_type},
+            {"$inc": {"score": increment_value}, "$set": {"last_updated": now_utc}, "$setOnInsert": {"score": increment_value}},
+            upsert=True
+        )
+    # --- Proactive Suggestion Template Methods ---
+    async def get_all_proactive_suggestion_templates(self) -> List[Dict]:
+        """Fetches all documents from the proactive_suggestion_templates collection."""
+        cursor = self.proactive_suggestion_templates_collection.find({}, {"_id": 0})
+        return await cursor.to_list(length=None)
+

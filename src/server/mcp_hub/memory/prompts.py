@@ -4,66 +4,45 @@ from .constants import TOPICS
 
 TOPIC_LIST_STR = ", ".join([topic["name"] for topic in TOPICS])
 
-# --- Topic Classification ---
-topic_classification_system_prompt_template = f"""
-You are a classification system. Your task is to categorize the user's input text into one or more relevant topics from the provided list.
+# --- Fact Analysis (Combined) ---
+fact_analysis_system_prompt_template = f"""
+You are an expert analysis system. Your task is to analyze a piece of text and extract a comprehensive set of metadata about it in a single pass.
 
 Topics: {TOPIC_LIST_STR}
 
 Instructions:
 1. Read the input text carefully.
-2. Select the most appropriate topic(s). It is possible to select more than one.
-3. If no topic is a good fit, select "Miscellaneous".
-4. Your response MUST be a single, valid JSON object that strictly adheres to the following schema. Do not include any other text or explanations.
+2. **Topic Classification**: Select one or more relevant topics. If none fit, use "Miscellaneous".
+3. **Memory Duration**: Decide if the information is 'long-term' (core facts, preferences) or 'short-term' (transient info, reminders).
+4. **Duration Estimation**: If 'short-term', estimate a reasonable expiration duration (e.g., '2 hours', '1 day'). If 'long-term', set duration to null.
+5. Your response MUST be a single, valid JSON object that strictly adheres to the following schema. Do not include any other text or explanations.
 
 JSON Schema:
-{json.dumps(formats.topic_classification_required_format, indent=2)}
+{json.dumps(formats.fact_analysis_required_format, indent=2)}
 """
-topic_classification_user_prompt_template = "{text}"
+fact_analysis_user_prompt_template = "Analyze the following text: \"{text}\""
 
 
-# --- Memory Type Classification (Long-Term vs. Short-Term) ---
-memory_type_decision_system_prompt_template = f"""
-You are a memory classification system. Your task is to determine if a given piece of information should be stored as long-term or short-term memory.
-
-- **Long-term memory** is for core facts, preferences, relationships, and important details that should be retained indefinitely.
-    Examples: "My best friend's name is Alex.", "I am allergic to peanuts.", "I work as a software engineer."
-- **Short-term memory** is for transient information, temporary context, or reminders that should expire after a certain period.
-    Examples: "Remind me to call the doctor in 2 hours.", "For the next day, my temporary password is 'abc-123'.", "I parked my car in section G3."
-
-Instructions:
-1. Analyze the user's input.
-2. Decide if it's 'long-term' or 'short-term'.
-3. If it is 'short-term', estimate a reasonable expiration duration (e.g., '2 hours', '1 day').
-4. Your response MUST be a single, valid JSON object that strictly adheres to the following schema. Do not include any other text or explanations.
-
-JSON Schema:
-{json.dumps(formats.memory_type_decision_required_format, indent=2)}
-"""
-memory_type_decision_user_prompt_template = "Fact: \"{fact_content}\""
-
-
-# --- Edit/Delete Decision ---
-edit_decision_system_prompt_template = f"""
-You are a reasoning engine for a memory system. Based on a user's request and a list of existing, similar facts, you must decide what action to take.
+# --- CUD Decision (Combined) ---
+cud_decision_system_prompt_template = f"""
+You are a master reasoning engine for a memory system. Your goal is to process a user's request, compare it to existing memories, and decide on the correct action (ADD, UPDATE, or DELETE). If the action involves adding or updating data, you must also perform a full analysis of the new content in the same step.
 
 Actions:
-- **ADD**: The user's request is entirely new information.
-- **UPDATE**: The user's request is a modification of an existing fact.
-- **DELETE**: The user's request is an explicit or implicit instruction to remove an existing fact.
+- **ADD**: The user's request is entirely new information. The `content` should be the new fact, and `analysis` must be completed. `fact_id` is null.
+- **UPDATE**: The user's request is a modification of an existing fact. The `content` should be the new, full, updated fact, and `analysis` must be completed for this new content. `fact_id` is the ID of the original fact.
+- **DELETE**: The user's request is an explicit or implicit instruction to remove an existing fact. The `fact_id` is the ID of the fact to remove. `content` and `analysis` must be null.
 
 Instructions:
-1. Compare the user's request with each of the provided facts.
-2. Decide if the request is an UPDATE of one of the facts, a DELETE instruction, or ADD if it's new.
-3. If the action is UPDATE, provide the `fact_id` of the original fact and the `new_content`.
-4. If the action is DELETE, provide the `fact_id` of the fact to be removed.
-5. If the action is ADD, provide the `new_content` and set `fact_id` to null.
-6. Your response MUST be a single, valid JSON object that strictly adheres to the following schema. Do not include any other text or explanations.
+1.  **Analyze the User's Request**: Understand the user's intent from their statement.
+2.  **Compare with Existing Facts**: Review the list of similar facts provided. Is the user's request about one of them?
+3.  **Decide the Action**: Choose ADD, UPDATE, or DELETE.
+4.  **Perform Full Analysis (for ADD/UPDATE)**: If the action is ADD or UPDATE, you MUST perform a complete analysis (topics, memory_type, duration) on the new `content`.
+5.  **Construct the Final JSON**: Your response MUST be a single, valid JSON object that strictly adheres to the following schema. Do not include any other text or explanations.
 
 JSON Schema:
-{json.dumps(formats.edit_decision_required_format, indent=2)}
+{json.dumps(formats.cud_decision_required_format, indent=2)}
 """
-edit_decision_user_prompt_template = "User request: '{information}'\n\nHere are the most similar facts already in memory:\n{similar_facts}\n\nDecide the correct action (ADD, UPDATE, or DELETE)."
+cud_decision_user_prompt_template = "User request: '{information}'\n\nHere are the most similar facts already in memory:\n{similar_facts}\n\nDecide the correct action and provide all required fields."
 
 
 # --- Fact Summarization ---

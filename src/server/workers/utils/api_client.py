@@ -27,19 +27,21 @@ async def get_user_preferences_from_db(user_id: str):
         if client:
             client.close()
 
-async def notify_user(user_id: str, message: str, task_id: Optional[str] = None, notification_type: str = "general"):
+async def notify_user(user_id: str, message: str, task_id: Optional[str] = None, notification_type: str = "general", payload: Optional[dict] = None):
     """
     Calls the main server to create a notification for the user, after checking preferences.
     """
     endpoint = f"{MAIN_SERVER_URL}/notifications/internal/create"
-    payload = {
+    request_payload = {
         "user_id": user_id,
         "message": message,
-        "task_id": task_id
+        "task_id": task_id,
+        "notification_type": notification_type,
+        "payload": payload
     }
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.post(endpoint, json=payload, timeout=10)
+            response = await client.post(endpoint, json=request_payload, timeout=10)
             response.raise_for_status()
             logger.info(f"Successfully sent notification for user {user_id}: {message}")
     except httpx.HTTPStatusError as e:

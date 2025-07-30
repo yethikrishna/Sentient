@@ -27,12 +27,12 @@ async def chat_endpoint(
     if not user_message:
         raise HTTPException(status_code=400, detail="No user message found in the request.")
 
-    # 2. Save the user message to the new 'messages' collection
-    await mongo_manager.add_message(
-        user_id=user_id,
-        role="user",
-        content=user_message.get("content", "")
-    )
+    # 2. Save all new user messages since the last assistant message
+    for msg in reversed(request_body.messages):
+        if msg.get("role") == "assistant":
+            break
+        if msg.get("role") == "user":
+            await mongo_manager.add_message(user_id=user_id, role="user", content=msg.get("content", ""), message_id=msg.get("id"))
 
     # Fetch comprehensive user context
     user_profile = await mongo_manager.get_user_profile(user_id)
@@ -75,9 +75,10 @@ async def chat_endpoint(
                 await mongo_manager.add_message(
                     user_id=user_id,
                     role="assistant",
-                    content=assistant_response_buffer.strip()
+                    content=assistant_response_buffer.strip(),
+                    message_id=assistant_message_id
                 )
-                logger.info(f"Saved assistant response for user {user_id}")
+                logger.info(f"Saved assistant response for user {user_id} with ID {assistant_message_id}")
 
     return StreamingResponse(
         event_stream_generator(),

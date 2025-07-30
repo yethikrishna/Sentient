@@ -9,7 +9,7 @@
     It launches each service in its own dedicated PowerShell terminal window with a clear title.
 
     The script handles:
-    - Starting databases like MongoDB (as admin).
+    - Starting databases like MongoDB (as admin) and Docker services (Waha, PGVector, Chroma).
     - Launching the Redis message broker within the Windows Subsystem for Linux (WSL).
     - Dynamically discovering and starting all MCP (Modular Companion Protocol) servers.
     - Activating the Python virtual environment for all backend scripts.
@@ -18,6 +18,7 @@
 
 .NOTES
     - Run this script from your project's root directory.
+    - Requires Docker Desktop to be installed and running.
     - You may need to adjust your PowerShell execution policy to run this script.
       Open PowerShell as an Administrator and run:
       Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
@@ -31,6 +32,11 @@ $wslDistroName = "Ubuntu"
 
 # --- Script Body ---
 try {
+    # Prerequisite check
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        throw "Docker command not found. Please install Docker Desktop and ensure it is running."
+    }
+
     # Get the directory where the script is located (your project root)
     $projectRoot = $PSScriptRoot
     if (-not $projectRoot) { $projectRoot = Get-Location }
@@ -97,6 +103,34 @@ try {
     $redisStartCommand = "wsl -d $wslDistroName -e redis-server --bind 0.0.0.0 --requirepass `"$redisPassword`""
     Start-NewTerminal -WindowTitle "SERVICE - Redis" -Command $redisStartCommand
     Start-Sleep -Seconds 2
+    
+    # Start Docker Containers (Waha, PGVector, Chroma)
+    Write-Host "🚀 Launching Docker services (Waha, PGVector, Chroma)..." -ForegroundColor Yellow
+    $dockerServices = @(
+        @{ Name = "WAHA"; File = "start_waha.yaml" },
+        @{ Name = "PGVector"; File = "start_pgvector.yaml" },
+        @{ Name = "ChromaDB"; File = "start_chroma.yaml" }
+    )
+
+    foreach ($service in $dockerServices) {
+        $composeFile = Join-Path -Path $projectRoot -ChildPath $service.File
+        if (Test-Path $composeFile) {
+            Write-Host "   - Starting $($service.Name) from '$($service.File)'..." -ForegroundColor Gray
+            docker compose -f $composeFile up -d
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "   - Command to start $($service.Name) failed. Check Docker's output above."
+            }
+            else {
+                Write-Host "   - $($service.Name) start command issued successfully." -ForegroundColor Green
+            }
+        }
+        else {
+            Write-Warning "   - Docker compose file not found: '$($service.File)'. Skipping."
+        }
+    }
+    Write-Host "Waiting a few seconds for Docker containers to initialize..."
+    Start-Sleep -Seconds 5
+
 
     # --- 2. Start MCP Servers ---
     Write-Host "`n--- 2. Starting All MCP Servers ---" -ForegroundColor Cyan

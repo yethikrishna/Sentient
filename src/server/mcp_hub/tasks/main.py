@@ -86,6 +86,40 @@ async def create_task_from_prompt(ctx: Context, prompt: str) -> Dict[str, Any]:
         logger.error(f"Error in create_task_from_prompt: {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
+@mcp.tool()
+async def search_tasks(ctx: Context, query: str) -> Dict[str, Any]:
+    """
+    Searches for tasks based on a keyword query.
+    Returns a list of tasks matching the query.
+    """
+    try:
+        user_id = auth.get_user_id_from_context(ctx)
+
+        search_query = {
+            "user_id": user_id,
+            "$text": {"$search": query}
+        }
+
+        projection = {
+            "task_id": 1,
+            "description": 1,
+            "status": 1,
+            "created_at": 1,
+            "_id": 0
+        }
+
+        cursor = mongo_manager.task_collection.find(search_query, projection).sort([("created_at", -1)]).limit(10)
+        tasks = await cursor.to_list(length=10)
+
+        for task in tasks:
+            if 'created_at' in task and isinstance(task['created_at'], datetime):
+                task['created_at'] = task['created_at'].isoformat()
+
+        return {"status": "success", "result": {"tasks": tasks}}
+    except Exception as e:
+        logger.error(f"Error in search_tasks: {e}", exc_info=True)
+        return {"status": "failure", "error": str(e)}
+
 if __name__ == "__main__":
     host = os.getenv("MCP_SERVER_HOST", "127.0.0.1")
     port = int(os.getenv("MCP_SERVER_PORT", 9018))

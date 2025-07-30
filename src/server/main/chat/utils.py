@@ -185,6 +185,11 @@ async def generate_chat_llm_stream(
         if disconnected_tools_list_str else ""
     )
 
+    # Prepare message history for the LLM, including IDs for user messages
+    history_for_llm = []
+    for msg in messages[-30:]: # Limit context to the last 30 messages
+        history_for_llm.append(f"<{msg['role']}" + (f" id='{msg['id']}'" if msg.get('id') and msg['role'] == 'user' else "") + f">{msg['content']}</{msg['role']}>")
+
     system_prompt = (
         f"You are Sentient, a personalized AI assistant. Your goal is to be as helpful as possible by using your available tools to directly execute tasks and help the user track their schedule.\n\n"
         f"**Accessing Your Memory:**\n"
@@ -194,11 +199,12 @@ async def generate_chat_llm_stream(
         f"- `memory_mcp-search_memory`: Use this to recall specific facts, preferences, or details about the user that have been explicitly saved to your memory.\n" # noqa
         f"Always check your memory and conversation history before asking the user a question you might already know the answer to.\n\n"
         f"**Critical Instructions:**\n"
-        f"1. **Validate Complex JSON:** Before calling any tool that requires a complex JSON string as a parameter (like Notion's `content_blocks_json`), you MUST first pass your generated JSON string to the `json_validator` tool to ensure it is syntactically correct. Use the cleaned output from `json_validator` in the subsequent tool call.\n" # noqa
-        f"2. **Handle Disconnected Tools:** You have a list of tools the user has not connected yet. If the user's query clearly refers to a capability from this list (e.g., asking to 'send a slack message' when Slack is disconnected), you MUST stop and politely inform the user that they need to connect the tool in the Integrations page. Do not proceed with other tools.\n"
-        f"3. For any command to create, send, search, or read information (e.g., create a document, send an email, search for files), you MUST call the appropriate tool directly. Complete the task within the chat and provide the result to the user.\n"
-        f"4. **Saving New Information:** If you learn a new, permanent fact about the user (e.g., their manager's name, a new preference), you MUST use `memory_mcp-cud_memory` to save it for future reference. This is an asynchronous operation, so inform the user that the memory \n" # noqa
-        f"5. **Final Answer Format:** When you have a complete, final answer for the user that is not a tool call, you MUST wrap it in `<answer>` tags. For example: `<answer>The weather in London is 15°C and cloudy.</answer>`.\n\n" # noqa
+        f"1. **Replying to a Specific Message:** The conversation history is provided with unique IDs for each user message (e.g., `<user id='user-162...'>`). If your response is a direct answer to a specific earlier message, you MUST wrap your final answer in a `<reply_to>` tag with that message's ID. Example: `<reply_to id='user-162...'>Your analysis is correct.</reply_to>`.\n"
+        f"2. **Validate Complex JSON:** Before calling any tool that requires a complex JSON string as a parameter (like Notion's `content_blocks_json`), you MUST first pass your generated JSON string to the `json_validator` tool to ensure it is syntactically correct. Use the cleaned output from `json_validator` in the subsequent tool call.\n" # noqa
+        f"3. **Handle Disconnected Tools:** You have a list of tools the user has not connected yet. If the user's query clearly refers to a capability from this list (e.g., asking to 'send a slack message' when Slack is disconnected), you MUST stop and politely inform the user that they need to connect the tool in the Integrations page. Do not proceed with other tools.\n"
+        f"4. For any command to create, send, search, or read information (e.g., create a document, send an email, search for files), you MUST call the appropriate tool directly. Complete the task within the chat and provide the result to the user.\n"
+        f"5. **Saving New Information:** If you learn a new, permanent fact about the user (e.g., their manager's name, a new preference), you MUST use `memory_mcp-cud_memory` to save it for future reference. This is an asynchronous operation, so inform the user that the memory \n" # noqa
+        f"6. **Final Answer Format:** When you have a complete, final answer for the user that is not a tool call, you MUST wrap it in `<answer>` tags. For example: `<answer>The weather in London is 15°C and cloudy.</answer>`.\n\n" # noqa
         f"{disconnected_tools_prompt_section}"
         f"**User Context (for your reference):**\n"
         f"-   **User's Name:** {username}\n"
@@ -210,8 +216,8 @@ async def generate_chat_llm_stream(
     def worker():
         try:
             qwen_assistant = get_qwen_assistant(system_message=system_prompt, function_list=tools)
-            recent_messages = messages[-30:] # Limit context to the last 30 messages
-            qwen_formatted_history = [{"role": msg["role"], "content": msg["content"]} for msg in recent_messages]
+            # Use the new formatted history with IDs
+            qwen_formatted_history = [{"role": "user", "content": "\n".join(history_for_llm)}]
             for new_history_step in qwen_assistant.run(messages=qwen_formatted_history):
                 loop.call_soon_threadsafe(queue.put_nowait, new_history_step)
         except Exception as e:
@@ -246,6 +252,17 @@ async def generate_chat_llm_stream(
                     first_chunk = False
                 yield event_payload
                 last_yielded_content_str = current_turn_str
+        
+        # Save the final assistant response to the database
+        if last_yielded_content_str.strip():
+            await db_manager.add_message(
+                user_id=user_id,
+                role="assistant",
+                content=last_yielded_content_str.strip(),
+                message_id=assistant_message_id
+            )
+            logger.info(f"Saved assistant response for user {user_id} with ID {assistant_message_id}")
+
     except asyncio.CancelledError:
         stream_interrupted = True
         raise

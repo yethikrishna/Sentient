@@ -11,11 +11,10 @@ from pgvector.asyncpg import register_vector
 
 from . import db, llm
 from .prompts import (
-    topic_classification_user_prompt_template,    
     fact_summarization_user_prompt_template,
     fact_extraction_user_prompt_template,
-    edit_decision_user_prompt_template,
-    memory_type_decision_user_prompt_template,
+    cud_decision_user_prompt_template,
+    fact_analysis_user_prompt_template,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,11 +40,10 @@ def initialize_agents():
     if not agents:
         logger.info("Initializing all memory agents...")
         agents = {
-            "topic_classification": llm.get_topic_classification_agent(),            
             "fact_summarization": llm.get_fact_summarization_agent(),
             "fact_extraction": llm.get_fact_extraction_agent(),
-            "edit_decision": llm.get_edit_decision_agent(),
-            "memory_type": llm.get_memory_type_agent(),
+            "fact_analysis": llm.get_fact_analysis_agent(),
+            "cud_decision": llm.get_cud_decision_agent(),
         }
 
 def parse_duration(duration_str: Optional[str]) -> Optional[datetime]:
@@ -126,111 +124,24 @@ def _get_normalized_embedding(text: str, task_type: str) -> np.ndarray:
     normalized_embedding = embedding_np / norm
     return normalized_embedding
 
-
-# --- Core Memory Operations ---
-async def add_fact(user_id: str, content: str, source: Optional[str] = None) -> str:
-    """Adds a single fact to the user's memory, determining if it's long or short-term."""
-    logger.info(f"Executing add_fact for user_id='{user_id}' with source='{source}'.")
-    logger.debug(f"Fact content: \"{content}\"")
-    pool = await db.get_db_pool()
-    async with pool.acquire() as conn:
-        await register_vector(conn)
-
-        logger.info("Step 1/5: Determining memory type (long/short-term).")
-        prompt = memory_type_decision_user_prompt_template.format(fact_content=content)
-        raw_output = llm.run_agent_with_prompt(agents["memory_type"], prompt)
-        cleaned_output = clean_llm_output(raw_output)
-        type_decision = {}
-        try:
-            type_decision = json.loads(cleaned_output)
-        except json.JSONDecodeError:
-            logger.warning(f"Failed to parse memory type JSON from LLM, defaulting to long-term. Output: {cleaned_output}")
-
-        expires_at = None
-        if type_decision.get("memory_type") == "short-term":
-            expires_at = parse_duration(type_decision.get("duration"))
-            logger.info(f"Fact identified as short-term. Expires at: {expires_at}")
-        else:
-            logger.info("Fact identified as long-term.")
-
-        async with conn.transaction():
-            logger.info("Step 2/5: Classifying fact into topics.")
-            prompt = topic_classification_user_prompt_template.format(text=content)
-            raw_output = llm.run_agent_with_prompt(agents["topic_classification"], prompt)
-            cleaned_output = clean_llm_output(raw_output)
-            topic_names = ["Miscellaneous"]
-            try:
-                classification = json.loads(cleaned_output)
-                if isinstance(classification, dict):
-                    topic_names = classification.get("topics", ["Miscellaneous"])
-            except json.JSONDecodeError:
-                logger.warning(f"Failed to parse topic classification JSON from LLM. Defaulting to 'Miscellaneous'. Output: {cleaned_output}")
-            logger.info(f"Fact classified into topics: {topic_names}")
-
-            logger.info("Step 3/5: Generating embedding for the fact.")
-            embedding = _get_normalized_embedding(content, task_type="RETRIEVAL_DOCUMENT")
-
-            logger.info("Step 4/5: Inserting fact into database.")
-            fact_id = await conn.fetchval(
-                """
-                INSERT INTO facts (user_id, content, embedding, source, expires_at)
-                VALUES ($1, $2, $3, $4, $5) RETURNING id
-                """,
-                user_id, content, embedding, source, expires_at
-            )
-            logger.info(f"Fact inserted with ID: {fact_id}.")
-
-            logger.info("Step 5/5: Linking fact to topics.")
-            for topic_name in topic_names:
-                topic_id = await conn.fetchval("SELECT id FROM topics WHERE name = $1", topic_name)
-                if topic_id:
-                    logger.debug(f"Linking fact {fact_id} to topic '{topic_name}' (ID: {topic_id}).")
-                    await conn.execute(
-                        "INSERT INTO fact_topics (fact_id, topic_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-                        fact_id, topic_id
-                    )
-                else:
-                    logger.warning(f"Could not find topic ID for topic name: {topic_name}")
-
-    logger.info(f"Successfully added fact {fact_id} for user '{user_id}'.")
-    message = f"Fact added with ID {fact_id}."
-    if expires_at:
-        message += f" This is a short-term memory and will be forgotten around {expires_at.strftime('%Y-%m-%d %H:%M %Z')}."
-    return message
-
 async def search_memory(user_id: str, query: str) -> str:
-    """Searches memory by performing a semantic search within inferred topics."""
+    """Searches memory by performing a direct semantic search and summarizing results."""
     logger.info(f"Executing search_memory for user_id='{user_id}' with query: '{query}'")
     pool = await db.get_db_pool()
     async with pool.acquire() as conn:
         await register_vector(conn)
         
-        logger.info("Step 1/3: Classifying query to find relevant topics.")
-        prompt = topic_classification_user_prompt_template.format(text=query)
-        raw_output = llm.run_agent_with_prompt(agents["topic_classification"], prompt)
-        cleaned_output = clean_llm_output(raw_output)
-        topic_names = ["Miscellaneous"]
-        try:
-            classification = json.loads(cleaned_output)
-            if isinstance(classification, dict):
-                topic_names = classification.get("topics", ["Miscellaneous"])
-        except json.JSONDecodeError:
-            logger.warning(f"Failed to parse topic classification JSON from LLM. Defaulting to 'Miscellaneous'. Output: {cleaned_output}")
-        logger.info(f"Query classified into topics: {topic_names}")
-
-        logger.info("Step 2/3: Performing semantic search in database.")
+        logger.info("Step 1/2: Performing direct semantic search in database.")
         query_embedding = _get_normalized_embedding(query, task_type="RETRIEVAL_QUERY")
         
         records = await conn.fetch(
             """
-            SELECT DISTINCT f.id, f.content, 1 - (f.embedding <=> $3) AS similarity
+            SELECT DISTINCT f.id, f.content, 1 - (f.embedding <=> $2) AS similarity
             FROM facts f
-            JOIN fact_topics ft ON f.id = ft.fact_id
-            JOIN topics t ON ft.topic_id = t.id
-            WHERE f.user_id = $1 AND t.name = ANY($2)
+            WHERE f.user_id = $1
             ORDER BY similarity DESC
             LIMIT 5;
-            """, user_id, topic_names, query_embedding
+            """, user_id, query_embedding
         )
         
         found_facts = {r['id']: r['content'] for r in records}
@@ -240,7 +151,7 @@ async def search_memory(user_id: str, query: str) -> str:
         logger.info("No relevant facts found. Returning message to user.")
         return "No relevant information found in your memory."
 
-    logger.info("Step 3/3: Summarizing search results into a coherent paragraph.")
+    logger.info("Step 2/2: Summarizing search results into a coherent paragraph.")
     facts_list = list(found_facts.values())
     prompt = fact_summarization_user_prompt_template.format(facts=json.dumps(facts_list))
     summary_raw = llm.run_agent_with_prompt(agents["fact_summarization"], prompt)
@@ -256,32 +167,17 @@ async def search_memory_by_source(user_id: str, query: str, source_name: str) ->
     async with pool.acquire() as conn:
         await register_vector(conn)
 
-        logger.info("Step 1/3: Classifying query to find relevant topics.")
-        prompt = topic_classification_user_prompt_template.format(text=query)
-        raw_output = llm.run_agent_with_prompt(agents["topic_classification"], prompt)
-        cleaned_output = clean_llm_output(raw_output)
-        topic_names = ["Miscellaneous"]
-        try:
-            classification = json.loads(cleaned_output)
-            if isinstance(classification, dict):
-                topic_names = classification.get("topics", ["Miscellaneous"])
-        except json.JSONDecodeError:
-            logger.warning(f"Failed to parse topic classification JSON from LLM. Defaulting to 'Miscellaneous'. Output: {cleaned_output}")
-        logger.info(f"Query classified into topics: {topic_names}")
-
-        logger.info(f"Step 2/3: Performing semantic search in database for source '{source_name}'.")
+        logger.info(f"Step 1/2: Performing semantic search in database for source '{source_name}'.")
         query_embedding = _get_normalized_embedding(query, task_type="RETRIEVAL_QUERY")
 
         records = await conn.fetch(
             """
-            SELECT DISTINCT f.id, f.content, 1 - (f.embedding <=> $4) AS similarity
+            SELECT DISTINCT f.id, f.content, 1 - (f.embedding <=> $3) AS similarity
             FROM facts f
-            JOIN fact_topics ft ON f.id = ft.fact_id
-            JOIN topics t ON ft.topic_id = t.id
-            WHERE f.user_id = $1 AND f.source = $2 AND t.name = ANY($3)
+            WHERE f.user_id = $1 AND f.source = $2
             ORDER BY similarity DESC
             LIMIT 5;
-            """, user_id, source_name, topic_names, query_embedding
+            """, user_id, source_name, query_embedding
         )
 
         found_facts = {r['id']: r['content'] for r in records}
@@ -291,7 +187,7 @@ async def search_memory_by_source(user_id: str, query: str, source_name: str) ->
         logger.info(f"No relevant facts found for source '{source_name}'. Returning message to user.")
         return f"No relevant information found for your query within the source '{source_name}'."
 
-    logger.info("Step 3/3: Summarizing search results into a coherent paragraph.")
+    logger.info("Step 2/2: Summarizing search results into a coherent paragraph.")
     facts_list = list(found_facts.values())
     prompt = fact_summarization_user_prompt_template.format(facts=json.dumps(facts_list))
     summary_raw = llm.run_agent_with_prompt(agents["fact_summarization"], prompt)
@@ -300,79 +196,90 @@ async def search_memory_by_source(user_id: str, query: str, source_name: str) ->
     logger.info("Search by source complete. Returning summary.")
     return summary if isinstance(summary, str) and summary else "Could not generate a summary from the retrieved information."
 
+async def _insert_fact_with_analysis(conn, user_id: str, content: str, source: Optional[str], analysis: dict) -> str:
+    """Internal function to insert a fact and its related metadata into the database."""
+    logger.info("Executing _insert_fact_with_analysis.")
+    
+    expires_at = None
+    if analysis.get("memory_type") == "short-term":
+        expires_at = parse_duration(analysis.get("duration"))
+
+    async with conn.transaction():
+        embedding = _get_normalized_embedding(content, task_type="RETRIEVAL_DOCUMENT")
+        
+        fact_id = await conn.fetchval(
+            """
+            INSERT INTO facts (user_id, content, embedding, source, expires_at)
+            VALUES ($1, $2, $3, $4, $5) RETURNING id
+            """,
+            user_id, content, embedding, source, expires_at
+        )
+        logger.info(f"Inserted new fact with ID: {fact_id}.")
+
+        # Link topics
+        topic_names = analysis.get("topics", ["Miscellaneous"])
+        for topic_name in topic_names:
+            topic_id = await conn.fetchval("SELECT id FROM topics WHERE name = $1", topic_name)
+            if topic_id:
+                await conn.execute("INSERT INTO fact_topics (fact_id, topic_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", fact_id, topic_id)
+
+    message = f"Fact added with ID {fact_id}."
+    if expires_at:
+        message += f" This is a short-term memory and will be forgotten around {expires_at.strftime('%Y-%m-%d %H:%M %Z')}."
+    return message
+
 async def cud_memory(user_id: str, information: str, source: Optional[str] = None) -> str:
-    """Adds, updates, or deletes a fact based on user input, scoped by topic. The optional 'source' is used when adding new facts."""
+    """Adds, updates, or deletes a fact based on user input using a streamlined process."""
     logger.info(f"Executing cud_memory for user_id='{user_id}' with source='{source}'.")
     logger.debug(f"CUD information: \"{information}\"")
     pool = await db.get_db_pool()
     async with pool.acquire() as conn:
         await register_vector(conn)
         
-        logger.info("Step 1/4: Classifying information to find relevant topics.")
-        prompt = topic_classification_user_prompt_template.format(text=information)
-        raw_output = llm.run_agent_with_prompt(agents["topic_classification"], prompt)
-        cleaned_output = clean_llm_output(raw_output)
-        topic_names = ["Miscellaneous"]
-        try:
-            classification = json.loads(cleaned_output)
-            if isinstance(classification, dict):
-                topic_names = classification.get("topics", ["Miscellaneous"])
-        except json.JSONDecodeError:
-            logger.warning(f"Failed to parse topic classification JSON from LLM. Defaulting to 'Miscellaneous'. Output: {cleaned_output}")
-        logger.info(f"Information classified into topics: {topic_names}")
-
-        logger.info("Step 2/4: Finding potentially related facts via semantic search.")
+        logger.info("Step 1/3: Finding potentially related facts via semantic search.")
         query_embedding = _get_normalized_embedding(information, task_type="RETRIEVAL_QUERY")
         similar_records = await conn.fetch(
             """
-            SELECT DISTINCT f.id, f.content, 1 - (f.embedding <=> $3) AS similarity
+            SELECT DISTINCT f.id, f.content, 1 - (f.embedding <=> $2) AS similarity
             FROM facts f
-            JOIN fact_topics ft ON f.id = ft.fact_id
-            JOIN topics t ON ft.topic_id = t.id
-            WHERE f.user_id = $1 AND t.name = ANY($2)
+            WHERE f.user_id = $1
             ORDER BY similarity DESC
             LIMIT 3;
-            """, user_id, topic_names, query_embedding
+            """, user_id, query_embedding
         )
         logger.info(f"Found {len(similar_records)} potentially related facts.")
 
-        logger.info("Step 3/4: Using LLM to decide on action (ADD/UPDATE/DELETE).")
-        prompt = edit_decision_user_prompt_template.format(
+        logger.info("Step 2/3: Using LLM to decide on action and perform analysis.")
+        prompt = cud_decision_user_prompt_template.format(
             information=information,
             similar_facts=json.dumps([dict(r) for r in similar_records])
         )
-        decision_raw = llm.run_agent_with_prompt(agents["edit_decision"], prompt)
+        decision_raw = llm.run_agent_with_prompt(agents["cud_decision"], prompt)
         cleaned_output = clean_llm_output(decision_raw)
         decision = {}
         try:
             decision = json.loads(cleaned_output)
         except json.JSONDecodeError:
-            logger.warning(f"Failed to parse edit decision JSON from LLM. Defaulting to ADD. Output: {cleaned_output}")
+            logger.warning(f"Failed to parse CUD decision JSON from LLM. Defaulting to ADD. Output: {cleaned_output}")
+            decision = {"action": "ADD", "content": information} # Fallback
 
-        if not isinstance(decision, dict) or "action" not in decision:
-            logger.warning("LLM decision was invalid or missing 'action', defaulting to ADD.")
-            return await add_fact(user_id, information, source=source)
-
+        logger.info(f"Step 3/3: Executing action '{decision.get('action')}'.")
         action = decision.get("action")
-        fact_id = decision.get("fact_id")
-        new_content = decision.get("new_content")
-        logger.info(f"LLM decided action: '{action}', Fact ID: {fact_id}, New Content: '{new_content is not None}'")
-
-        logger.info(f"Step 4/4: Executing action '{action}'.")
-        if action == "ADD":
-            logger.info("Action is ADD. Calling add_fact.")
-            return await add_fact(user_id, new_content or information, source=source)
         
-        elif action == "UPDATE" and fact_id and new_content:
-            logger.info(f"Action is UPDATE for fact_id {fact_id}. Re-creating fact with new content.")
-            # The most robust way to handle an update is to delete the old fact
-            # and add the new one, ensuring all classifications and links are fresh.
+        if action == "ADD" and decision.get("content") and decision.get("analysis"):
+            logger.info("Action is ADD. Inserting new fact with full analysis.")
+            return await _insert_fact_with_analysis(conn, user_id, decision["content"], source, decision["analysis"])
+
+        elif action == "UPDATE" and decision.get("fact_id") and decision.get("content") and decision.get("analysis"):
+            fact_id = decision["fact_id"]
+            logger.info(f"Action is UPDATE for fact_id {fact_id}. Replacing fact.")
             async with conn.transaction():
                 await conn.execute("DELETE FROM facts WHERE id = $1 AND user_id = $2", fact_id, user_id)
                 logger.info(f"Original fact {fact_id} deleted.")
-            return await add_fact(user_id, new_content, source=source)
+            return await _insert_fact_with_analysis(conn, user_id, decision["content"], source, decision["analysis"])
 
-        elif action == "DELETE" and fact_id:
+        elif action == "DELETE" and decision.get("fact_id"):
+            fact_id = decision["fact_id"]
             logger.info(f"Action is DELETE for fact_id {fact_id}.")
             result = await conn.execute("DELETE FROM facts WHERE id = $1 AND user_id = $2", fact_id, user_id)
             if result.endswith("1"):
@@ -381,10 +288,19 @@ async def cud_memory(user_id: str, information: str, source: Optional[str] = Non
             else:
                 logger.warning(f"Attempted to delete fact {fact_id}, but it was not found or not owned by the user.")
                 return f"Fact {fact_id} not found or not owned by user."
-            
+
         else:
-            logger.warning(f"LLM decision was ambiguous ('{action}'), defaulting to ADD.")
-            return await add_fact(user_id, information, source=source)
+            logger.warning(f"LLM decision was ambiguous or invalid, falling back to simple ADD. Decision: {decision}")
+            # Fallback to analyzing and adding the original information
+            prompt = fact_analysis_user_prompt_template.format(text=information)
+            analysis_raw = llm.run_agent_with_prompt(agents["fact_analysis"], prompt)
+            analysis_cleaned = clean_llm_output(analysis_raw)
+            try:
+                analysis = json.loads(analysis_cleaned)
+                return await _insert_fact_with_analysis(conn, user_id, information, source, analysis)
+            except json.JSONDecodeError:
+                logger.error(f"Fallback ADD failed due to analysis JSON error. Output: {analysis_cleaned}")
+                return "Failed to process memory due to an internal analysis error."
 
 async def build_initial_memory(user_id: str, documents: List[Dict[str, str]]) -> str:
     """Builds memory from documents, clearing existing memory first."""
@@ -392,7 +308,10 @@ async def build_initial_memory(user_id: str, documents: List[Dict[str, str]]) ->
     pool = await db.get_db_pool()
     async with pool.acquire() as conn:
         logger.info(f"Clearing all existing facts for user_id='{user_id}'.")
-        await conn.execute("DELETE FROM facts WHERE user_id = $1", user_id)
+        # Use a transaction to ensure atomicity
+        async with conn.transaction():
+            # Cascading delete on 'facts' will also clear 'fact_topics'
+            await conn.execute("DELETE FROM facts WHERE user_id = $1", user_id)
     
     total_facts_added = 0
     for doc in documents:
@@ -413,11 +332,14 @@ async def build_initial_memory(user_id: str, documents: List[Dict[str, str]]) ->
 
         logger.info(f"Extracted {len(facts)} facts from source '{source}'.")
         if isinstance(facts, list):
+            # Analyze all facts from the document in a batch-like manner
             for fact_content in facts:
-                if fact_content:
-                    logger.debug(f"Adding extracted fact: '{fact_content}'")
-                    await add_fact(user_id, fact_content, source=source)
-                    total_facts_added += 1
+                if not fact_content: continue
+                
+                logger.debug(f"Analyzing and adding extracted fact: '{fact_content}'")
+                # Use the streamlined CUD path with a direct ADD intent
+                await cud_memory(user_id, fact_content, source=source)
+                total_facts_added += 1
     
     logger.info(f"Finished building initial memory. Added {total_facts_added} total facts.")
     return f"Memory built successfully. Added {total_facts_added} facts."
@@ -435,6 +357,7 @@ async def delete_memory_by_source(user_id: str, source_name: str) -> str:
         deleted_count = 0
     logger.info(f"Deleted {deleted_count} facts from source: {source_name}")
     return f"Deleted {deleted_count} facts from source: {source_name}"
+
 async def purge_expired_facts():
     """Deletes facts from the database that have passed their expiration time."""
     logger.info("Purge job: Checking for expired short-term memories.")

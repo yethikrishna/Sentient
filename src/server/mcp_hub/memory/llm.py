@@ -22,13 +22,6 @@ def _get_base_llm_config() -> Dict[str, Any]:
     logger.debug(f"Using LLM config: model={config['model']}, server={config['model_server']}")
     return config
 
-def get_topic_classification_agent() -> Assistant:
-    """Initializes an agent for classifying text into one or more Topics."""
-    logger.debug("Initializing 'TopicClassificationAgent'.")
-    system_prompt = prompts.topic_classification_system_prompt_template
-    llm_cfg = _get_base_llm_config()
-    return Assistant(llm=llm_cfg, name="TopicClassificationAgent", system_message=system_prompt)
-
 def get_fact_summarization_agent() -> Assistant:
     """Initializes an agent for summarizing a list of facts into a paragraph."""
     logger.debug("Initializing 'FactSummarizationAgent'.")
@@ -43,19 +36,19 @@ def get_fact_extraction_agent() -> Assistant:
     llm_cfg = _get_base_llm_config()
     return Assistant(llm=llm_cfg, name="FactExtractionAgent", system_message=system_prompt)
 
-def get_edit_decision_agent() -> Assistant:
-    """Initializes an agent for deciding on CRUD operations for a fact."""
-    logger.debug("Initializing 'EditDecisionAgent'.")
-    system_prompt = prompts.edit_decision_system_prompt_template
+def get_fact_analysis_agent() -> Assistant:
+    """Initializes an agent for performing a full analysis of a fact."""
+    logger.debug("Initializing 'FactAnalysisAgent'.")
+    system_prompt = prompts.fact_analysis_system_prompt_template
     llm_cfg = _get_base_llm_config()
-    return Assistant(llm=llm_cfg, name="EditDecisionAgent", system_message=system_prompt)
+    return Assistant(llm=llm_cfg, name="FactAnalysisAgent", system_message=system_prompt)
 
-def get_memory_type_agent() -> Assistant:
-    """Initializes an agent for deciding if a fact is long or short-term."""
-    logger.debug("Initializing 'MemoryTypeAgent'.")
-    system_prompt = prompts.memory_type_decision_system_prompt_template
+def get_cud_decision_agent() -> Assistant:
+    """Initializes an agent for deciding on CUD operations and performing analysis."""
+    logger.debug("Initializing 'CudDecisionAgent'.")
+    system_prompt = prompts.cud_decision_system_prompt_template
     llm_cfg = _get_base_llm_config()
-    return Assistant(llm=llm_cfg, name="MemoryTypeAgent", system_message=system_prompt)
+    return Assistant(llm=llm_cfg, name="CudDecisionAgent", system_message=system_prompt)
 
 def run_agent_with_prompt(agent: Assistant, user_prompt: str) -> str:
     """Helper function to run an agent and extract the final content string."""

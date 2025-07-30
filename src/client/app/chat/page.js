@@ -9,7 +9,9 @@ import {
 	IconWorldSearch,
 	IconUsers,
 	IconMapPin,
-	IconFileText
+	IconFileText,
+	IconArrowBackUp,
+	IconX
 } from "@tabler/icons-react"
 import {
 	IconBrandSlack,
@@ -243,7 +245,7 @@ const UseCaseGrid = ({ useCases, onSelectPrompt }) => {
 }
 
 export default function ChatPage() {
-	const [messages, setMessages] = useState([])
+	const [displayedMessages, setDisplayedMessages] = useState([])
 	const [input, setInput] = useState("")
 	const [isLoading, setIsLoading] = useState(true)
 	const [thinking, setThinking] = useState(false)
@@ -251,6 +253,9 @@ export default function ChatPage() {
 	const chatEndRef = useRef(null)
 	const abortControllerRef = useRef(null)
 	const scrollContainerRef = useRef(null)
+	const debounceTimer = useRef(null)
+	const [isWaitingForUserInput, setIsWaitingForUserInput] = useState(false)
+	const pendingUserMessages = useRef([])
 
 	// State for infinite scroll
 	const [isLoadingOlder, setIsLoadingOlder] = useState(false)
@@ -261,6 +266,7 @@ export default function ChatPage() {
 	const posthog = usePostHog()
 	const [isFocused, setIsFocused] = useState(false)
 	const [activeDomain, setActiveDomain] = useState("Featured")
+	const [replyingTo, setReplyingTo] = useState(null)
 
 	const fetchInitialMessages = useCallback(async () => {
 		setIsLoading(true)
@@ -269,7 +275,7 @@ export default function ChatPage() {
 			if (!res.ok) throw new Error("Failed to fetch messages")
 			const data = await res.json()
 			const fetchedMessages = data.messages || []
-			setMessages(fetchedMessages)
+			setDisplayedMessages(fetchedMessages)
 			setHasMoreMessages(fetchedMessages.length === 50)
 		} catch (error) {
 			toast.error(error.message)
@@ -304,10 +310,15 @@ export default function ChatPage() {
 	}, [fetchInitialMessages, fetchUserDetails])
 
 	const fetchOlderMessages = useCallback(async () => {
-		if (isLoadingOlder || !hasMoreMessages || messages.length === 0) return
+		if (
+			isLoadingOlder ||
+			!hasMoreMessages ||
+			displayedMessages.length === 0
+		)
+			return
 
 		setIsLoadingOlder(true)
-		const oldestMessageTimestamp = messages[0].timestamp
+		const oldestMessageTimestamp = displayedMessages[0].timestamp
 
 		try {
 			const res = await fetch(
@@ -320,7 +331,7 @@ export default function ChatPage() {
 				const scrollContainer = scrollContainerRef.current
 				const oldScrollHeight = scrollContainer.scrollHeight
 
-				setMessages((prev) => [...data.messages, ...prev])
+				setDisplayedMessages((prev) => [...data.messages, ...prev])
 				setHasMoreMessages(data.messages.length === 50)
 
 				setTimeout(() => {
@@ -335,7 +346,7 @@ export default function ChatPage() {
 		} finally {
 			setIsLoadingOlder(false)
 		}
-	}, [isLoadingOlder, hasMoreMessages, messages])
+	}, [isLoadingOlder, hasMoreMessages, displayedMessages])
 
 	useEffect(() => {
 		const container = scrollContainerRef.current
@@ -374,39 +385,77 @@ export default function ChatPage() {
 		}
 	}
 
+	const handleReply = (message) => {
+		setReplyingTo(message)
+		textareaRef.current?.focus()
+	}
+
 	const sendMessage = async () => {
 		if (input.trim() === "") return
+
+		// Clear any existing debounce timer
+		if (debounceTimer.current) {
+			clearTimeout(debounceTimer.current)
+		}
+		setIsWaitingForUserInput(true)
+
 		posthog?.capture("chat_message_sent", {
 			message_length: input.length
 		})
 
+		let messageContent = input.trim()
+
 		const newUserMessage = {
 			id: `user-${Date.now()}`,
 			role: "user",
-			content: input.trim(),
-			timestamp: new Date().toISOString()
+			content: messageContent,
+			timestamp: new Date().toISOString(),
+			...(replyingTo && { replyToId: replyingTo.id }) // Add reply context
 		}
 
-		const updatedMessages = [...messages, newUserMessage]
-		setMessages(updatedMessages)
-		setInput("")
-		if (textareaRef.current) textareaRef.current.style.height = "auto"
-		setThinking(true)
+		// Add to display immediately and queue for sending
+		setDisplayedMessages((prev) => [...prev, newUserMessage])
+		pendingUserMessages.current.push(newUserMessage)
 
+		setInput("")
+		setReplyingTo(null)
+		if (textareaRef.current) textareaRef.current.style.height = "auto"
+
+		// Set a new timer
+		debounceTimer.current = setTimeout(() => {
+			sendBatchToServer()
+		}, 1500) // Wait 1.5 seconds for more input
+	}
+
+	const sendBatchToServer = async () => {
+		setIsWaitingForUserInput(false)
+		setThinking(true)
 		abortControllerRef.current = new AbortController()
 
 		const processStream = async () => {
 			try {
-				const apiMessages = updatedMessages.map((msg) => ({
-					role: msg.role,
-					content: msg.content
-				}))
+				const messagesToSend = displayedMessages
+					.slice(-20)
+					.map((msg) => {
+						// Construct the content for the LLM
+						let content = msg.content
+						if (msg.replyToId) {
+							const originalMsg = displayedMessages.find(
+								(m) => m.id === msg.replyToId
+							)
+							if (originalMsg) {
+								// This is the special format the backend/LLM will understand
+								content = `<reply_to id="${originalMsg.id}">${originalMsg.content}</reply_to>\n${msg.content}`
+							}
+						}
+						return { id: msg.id, role: msg.role, content: content }
+					})
 
 				const response = await fetch("/api/chat/message", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({
-						messages: apiMessages
+						messages: messagesToSend
 					}),
 					signal: abortControllerRef.current.signal
 				})
@@ -419,7 +468,7 @@ export default function ChatPage() {
 				const decoder = new TextDecoder()
 				let assistantMessageId = `assistant-${Date.now()}`
 
-				setMessages((prev) => [
+				setDisplayedMessages((prev) => [
 					...prev,
 					{
 						id: assistantMessageId,
@@ -448,7 +497,7 @@ export default function ChatPage() {
 								continue
 							}
 
-							setMessages((prev) =>
+							setDisplayedMessages((prev) =>
 								prev.map((msg) => {
 									if (msg.id === assistantMessageId) {
 										return {
@@ -463,7 +512,7 @@ export default function ChatPage() {
 								})
 							)
 						} catch (parseError) {
-							setMessages((prev) =>
+							setDisplayedMessages((prev) =>
 								prev.map((msg) => {
 									if (msg.id === assistantMessageId) {
 										return {
@@ -489,6 +538,7 @@ export default function ChatPage() {
 			}
 		}
 
+		pendingUserMessages.current = [] // Clear the pending queue
 		processStream()
 	}
 
@@ -503,7 +553,7 @@ export default function ChatPage() {
 		if (chatEndRef.current) {
 			chatEndRef.current.scrollIntoView({ behavior: "smooth" })
 		}
-	}, [messages, thinking])
+	}, [displayedMessages, thinking])
 
 	const getGreeting = () => {
 		const hour = new Date().getHours()
@@ -511,6 +561,37 @@ export default function ChatPage() {
 		if (hour < 18) return "Good Afternoon"
 		return "Good Evening"
 	}
+
+	const renderReplyPreview = () => (
+		<AnimatePresence>
+			{replyingTo && (
+				<motion.div
+					initial={{ opacity: 0, y: 10 }}
+					animate={{ opacity: 1, y: 0 }}
+					exit={{ opacity: 0, y: 10 }}
+					className="bg-neutral-800/60 p-3 rounded-t-lg border-b border-neutral-700/50 flex justify-between items-center"
+				>
+					<div>
+						<p className="text-xs text-neutral-400 flex items-center gap-1.5">
+							<IconArrowBackUp size={14} /> Replying to{" "}
+							{replyingTo.role === "user"
+								? "yourself"
+								: "the assistant"}
+						</p>
+						<p className="text-sm text-neutral-200 mt-1 truncate">
+							{replyingTo.content}
+						</p>
+					</div>
+					<button
+						onClick={() => setReplyingTo(null)}
+						className="p-1 rounded-full text-neutral-500 hover:bg-neutral-700 hover:text-white"
+					>
+						<IconX size={16} />
+					</button>
+				</motion.div>
+			)}
+		</AnimatePresence>
+	)
 
 	const renderInputArea = () => (
 		<div
@@ -520,7 +601,7 @@ export default function ChatPage() {
 					"p-0.5 bg-gradient-to-tr from-blue-500 to-cyan-500"
 			)}
 		>
-			<div className="relative bg-neutral-900 rounded-[15px] flex items-end">
+			<div className="relative bg-neutral-900 rounded-[15px] flex items-end ">
 				<textarea
 					ref={textareaRef}
 					value={input}
@@ -539,7 +620,7 @@ export default function ChatPage() {
 					style={{ maxHeight: "200px" }}
 				/>
 				<div className="absolute right-3 bottom-3 flex items-center gap-2">
-					{thinking ? (
+					{thinking || isWaitingForUserInput ? (
 						<button
 							onClick={handleStopStreaming}
 							className="p-2.5 rounded-full text-white bg-red-600 hover:bg-red-500 transition-colors"
@@ -566,7 +647,7 @@ export default function ChatPage() {
 		<div className="flex-1 flex bg-black text-white overflow-hidden md:pl-20">
 			<Tooltip id="home-tooltip" place="right" style={{ zIndex: 9999 }} />
 			<div className="flex flex-col flex-1 relative bg-black pb-16 md:pb-0">
-				{messages.length === 0 && (
+				{displayedMessages.length === 0 && (
 					<div className="absolute inset-0 h-full w-full bg-gradient-to-br from-neutral-900 to-black bg-[linear-gradient(110deg,#09090b,45%,#1e293b,55%,#09090b)] bg-[length:200%_100%] animate-shimmer" />
 				)}
 
@@ -578,7 +659,7 @@ export default function ChatPage() {
 						<div className="flex-1 flex justify-center items-center">
 							<IconLoader className="animate-spin text-neutral-500" />
 						</div>
-					) : messages.length === 0 && !thinking ? (
+					) : displayedMessages.length === 0 && !thinking ? (
 						<div className="flex-1 flex flex-col justify-center items-center p-6 text-center">
 							<div>
 								<h1 className="text-4xl sm:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-b from-neutral-100 to-neutral-400 py-4">
@@ -614,7 +695,7 @@ export default function ChatPage() {
 									<IconLoader className="animate-spin text-neutral-500" />
 								</div>
 							)}
-							{messages.map((msg, i) => (
+							{displayedMessages.map((msg, i) => (
 								<div
 									key={msg.id || i}
 									className={cn(
@@ -628,11 +709,14 @@ export default function ChatPage() {
 										role={msg.role}
 										content={msg.content}
 										tools={msg.tools || []}
+										onReply={handleReply}
+										message={msg}
+										allMessages={displayedMessages}
 									/>
 								</div>
 							))}
 							<AnimatePresence>
-								{thinking && (
+								{(thinking || isWaitingForUserInput) && (
 									<motion.div
 										initial={{ opacity: 0, y: 10 }}
 										animate={{ opacity: 1, y: 0 }}
@@ -649,9 +733,10 @@ export default function ChatPage() {
 						</div>
 					)}
 				</main>
-				{!isLoading && messages.length > 0 && (
+				{!isLoading && displayedMessages.length > 0 && (
 					<div className="px-4 pt-2 pb-4 sm:px-6 sm:pb-6 bg-black border-t border-neutral-800/50">
 						<div className="w-full max-w-4xl mx-auto">
+							{renderReplyPreview()}
 							{renderInputArea()}
 						</div>
 					</div>

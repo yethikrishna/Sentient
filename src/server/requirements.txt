@@ -51,3 +51,5 @@ jsonextractor
 chromadb-client
 sentence-transformers
 torch
+google-generativeai
+rich

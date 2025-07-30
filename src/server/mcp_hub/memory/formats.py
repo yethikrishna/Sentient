@@ -2,36 +2,15 @@ from .constants import TOPICS
 
 TOPIC_NAMES = [topic["name"] for topic in TOPICS]
 
-# For classifying text into one or more topics.
-topic_classification_required_format = {
+# This format defines the full analysis of a single piece of text.
+fact_analysis_required_format = {
     "type": "object",
     "properties": {
         "topics": {
             "type": "array",
             "items": {"type": "string", "enum": TOPIC_NAMES},
             "description": "A list of one or more relevant topics for the given text. If none fit, use ['Miscellaneous']."
-        }
-    },
-    "required": ["topics"],
-}
-
-# For deciding on an action (UPDATE/DELETE/ADD) based on user intent and search results.
-edit_decision_required_format = {
-    "type": "object",
-    "properties": {
-        "action": {"type": "string", "enum": ["UPDATE", "DELETE", "ADD"]},
-        "fact_id": {"type": ["integer", "null"], "description": "The ID of the fact to be updated or deleted. This should be null if the action is ADD."},
-        "new_content": {"type": "string", "description": "The new, full content of the fact if the action is ADD or UPDATE."}
-    },
-    "required": ["action"]
-}
-
-# Kept for its general utility in breaking down paragraphs into single-sentence facts.
-fact_extraction_required_format = {"type": "array", "items": {"type": "string"}}
-# For deciding if a memory is long-term or short-term.
-memory_type_decision_required_format = {
-    "type": "object",
-    "properties": {
+        },
         "memory_type": {
             "type": "string",
             "enum": ["long-term", "short-term"],
@@ -42,5 +21,24 @@ memory_type_decision_required_format = {
             "description": "If memory_type is 'short-term', provide a human-readable duration (e.g., '1 hour', '3 days'). Otherwise, this should be null."
         }
     },
-    "required": ["memory_type", "duration"]
+    "required": ["topics", "memory_type", "duration"]
 }
+
+# This format is for the CUD (Create, Update, Delete) decision process.
+cud_decision_required_format = {
+    "type": "object",
+    "properties": {
+        "action": {"type": "string", "enum": ["ADD", "UPDATE", "DELETE"]},
+        "fact_id": {"type": ["integer", "null"], "description": "The ID of the fact to be updated or deleted. This should be null if the action is ADD."},
+        "content": {"type": ["string", "null"], "description": "The new, full content of the fact if the action is ADD or UPDATE. Should be null for DELETE."},
+        "analysis": {
+            "type": ["object", "null"],
+            "properties": fact_analysis_required_format["properties"],
+            "description": "A full analysis of the new content. Required for ADD or UPDATE actions, null for DELETE."
+        }
+    },
+    "required": ["action", "fact_id", "content", "analysis"]
+}
+
+# Kept for its general utility in breaking down paragraphs into single-sentence facts.
+fact_extraction_required_format = {"type": "array", "items": {"type": "string"}}

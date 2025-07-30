@@ -16,8 +16,10 @@ from workers.utils.api_client import notify_user, push_task_list_update
 from main.config import INTEGRATIONS_CONFIG
 from main.tasks.prompts import TASK_CREATION_PROMPT
 from main.llm import get_qwen_assistant
+from main.dependencies import mongo_manager as main_mongo_manager # Import main mongo manager for task creation
 from workers.celery_app import celery_app
 from workers.planner.llm import get_planner_agent, get_question_generator_agent # noqa: E501
+from workers.proactive.main import run_proactive_pipeline_logic
 from workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions # noqa: E501
 from workers.memory_agent_utils import get_memory_qwen_agent, get_db_manager as get_memory_db_manager # noqa: E501
 from workers.executor.tasks import execute_task_plan
@@ -119,6 +121,18 @@ def run_async(coro):
         asyncio.set_event_loop(loop)
     return loop.run_until_complete(coro)
 
+@celery_app.task(name="proactive_reasoning_pipeline")
+def proactive_reasoning_pipeline(user_id: str, event_type: str, event_data: Dict[str, Any]):
+    """
+    Celery task entry point for the new proactive reasoning pipeline.
+    """
+    logger.info(f"Celery worker received task 'proactive_reasoning_pipeline' for user_id: {user_id}, event_type: {event_type}")
+    run_async(run_proactive_pipeline_logic(user_id, event_type, event_data))
+
+
+
+
+
 @celery_app.task(name="cud_memory_task")
 def cud_memory_task(user_id: str, information: str, source: Optional[str] = None):
     """
@@ -127,6 +141,38 @@ def cud_memory_task(user_id: str, information: str, source: Optional[str] = None
     """
     logger.info(f"Celery worker received cud_memory_task for user_id: {user_id}")
     run_async(cud_memory(user_id, information, source))
+
+@celery_app.task(name="create_task_from_suggestion")
+def create_task_from_suggestion(user_id: str, suggestion_payload: Dict[str, Any]):
+    """
+    Takes an approved suggestion payload and creates a new task.
+    """
+    logger.info(f"Creating task from approved suggestion for user '{user_id}'. Type: {suggestion_payload.get('suggestion_type')}")
+
+    action_details = suggestion_payload.get("action_details", {})
+    action_type = action_details.get("action_type")
+
+    # Construct a detailed natural language prompt from the action details
+    prompt = ""
+    if action_type == "draft_email":
+        prompt = (
+            f"Draft an email to {action_details.get('recipient', 'N/A')} "
+            f"with the subject '{action_details.get('subject', 'N/A')}'. "
+            f"The body of the email should be based on the following prompt: '{action_details.get('body_prompt', '')}'"
+        )
+    # Add more prompt constructors for other action_types here...
+    else:
+        # Generic fallback
+        prompt = f"Perform the action '{action_type}' with the following details: {json.dumps(action_details)}"
+
+    if not prompt:
+        logger.error(f"Could not construct prompt for suggestion. Payload: {suggestion_payload}")
+        return
+
+    # Use the same flow as the /add-task endpoint
+    task_id = run_async(main_mongo_manager.add_task(user_id, {"description": prompt}))
+    refine_and_plan_ai_task.delay(task_id)
+    logger.info(f"Successfully created and dispatched new task '{task_id}' from suggestion.")
 
 
 @celery_app.task(name="process_extracted_memory_item")
@@ -272,6 +318,9 @@ def extract_from_context(user_id: str, source_text: str, source_type: str, event
     """
     log_id = event_id or "adhoc"
     logger.info(f"Extractor task running for event_id: {log_id} (source: {source_type}) for user {user_id}")
+
+    # --- Trigger the new proactive pipeline ---
+    proactive_reasoning_pipeline.delay(user_id, source_type, event_data)
 
     async def async_extract():
         db_manager = ExtractorMongoManager()

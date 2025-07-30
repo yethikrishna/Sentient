@@ -36,12 +36,12 @@ async def update_task_run_status(db, task_id: str, run_id: str, status: str, use
     # Update the status of the specific run and the top-level task status
     update_doc = {
         "status": status, # Top-level status
-        "runs.$[run].status": status,
         "updated_at": datetime.datetime.now(datetime.timezone.utc)
     }
     task_description = ""
     
     if details:
+        update_doc["runs.$[run].status"] = status
         if "result" in details:
             update_doc["runs.$[run].result"] = details["result"]
         if "error" in details:
@@ -76,13 +76,14 @@ async def add_progress_update(db, task_id: str, run_id: str, user_id: str, messa
     # The 'message' is now the structured JSON object for the update
     progress_update = {"message": message, "timestamp": datetime.datetime.now(datetime.timezone.utc)}
     
-    # 1. Push to frontend via WebSocket in real-time
+    # 1. Push to frontend via WebSocket in real-time by calling the main server
     await push_progress_update(user_id, task_id, run_id, message)
 
-    # 2. Save to DB for persistence
+    # 2. Save to DB for persistence, targeting the correct run in the array
     await db.tasks.update_one(
-        {"task_id": task_id, "user_id": user_id, "runs.run_id": run_id},
-        {"$push": {"runs.$.progress_updates": progress_update}}
+        {"task_id": task_id, "user_id": user_id},
+        {"$push": {"runs.$[run].progress_updates": progress_update}},
+        array_filters=[{"run.run_id": run_id}]
     )
     if block_id:
         await db.tasks_blocks_collection.update_one(
@@ -105,7 +106,7 @@ def parse_agent_string_to_updates(content: str) -> List[Dict[str, Any]]:
     for match in regex.finditer(content):
         preceding_text = content[last_index:match.start()].strip()
         if preceding_text:
-            updates.append({"type": "thought", "content": preceding_text})
+            updates.append({"type": "info", "content": preceding_text})
 
         tag_content = match.group(1)
         
@@ -151,7 +152,7 @@ def parse_agent_string_to_updates(content: str) -> List[Dict[str, Any]]:
 
     trailing_text = content[last_index:].strip()
     if trailing_text:
-        updates.append({"type": "thought", "content": trailing_text})
+        updates.append({"type": "info", "content": trailing_text})
         
     return updates
 
@@ -243,53 +244,56 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     full_plan_prompt = (
         f"You are Sentient, a resourceful and autonomous executor agent. Your goal is to complete the user's request by intelligently following the provided plan.\n\n"
         f"**User Context:**\n- **User's Name:** {user_name}\n- **User's Location:** {user_location}\n- **Current Date & Time:** {current_user_time}\n\n"
-        f"Your task ID is '{task_id}'. {block_id_prompt}\n\n"
+        f"Your task ID is '{task_id}' and the current run ID is '{run_id}'.\n\n"
         f"The original context that triggered this plan is:\n---BEGIN CONTEXT---\n{original_context_str}\n---END CONTEXT---\n\n"
         f"**Primary Objective:** '{plan_description}'\n\n"
         f"**The Plan to Execute:**\n" + "\n".join([f"- Step {i+1}: Use the '{step['tool']}' tool to '{step['description']}'" for i, step in enumerate(latest_run.get("plan", []))]) + "\n\n" # noqa
         "**EXECUTION STRATEGY:**\n"
-        "1.  **Map Plan to Tools:** The plan provides a high-level tool name (e.g., 'gmail', 'gdrive'). You must map this to the specific functions available to you (e.g., `gmail-send_email`, `gdrive-gdrive_search`).\n"
-        "2.  **Be Resourceful & Fill Gaps:** The plan is a guideline. If a step is missing information (e.g., an email address for a manager, a document name), your first action for that step MUST be to use the `memory_mcp-search_memory` tool to find the missing information. Do not proceed with incomplete information.\n"
-        "3.  **Remember New Information:** If you discover a new, permanent fact about the user during your execution (e.g., you find their manager's email is 'boss@example.com'), you MUST use `memory_mcp-cud_memory` to save it.\n"
-        "4.  **Report Progress & Failures:** You MUST call the `progress_updater-update_progress` tool to report your status after each major step or when you encounter an error. If a tool fails, analyze the error, report it, and try an alternative approach to achieve the objective. Do not give up easily.\n"
-        "5.  **Provide a Final, Detailed Answer:** Once all steps are completed, you MUST provide a final, comprehensive answer to the user. This is not a tool call. Your final response MUST be wrapped in `<answer>` tags. For example: `<answer>I have successfully scheduled the meeting and sent an invitation to John Doe.</answer>`.\n"
-        "6.  **Contact Information:** To find contact details like phone numbers or emails, use the `gpeople` tool before attempting to send an email or make a call.\n"
-        "\nNow, begin your work. Think step-by-step and start executing the plan."
+        "1.  **Execution Flow:** You MUST start by executing the first step of the plan. Do not summarize the plan or provide a final answer until you have executed all steps. Follow the plan sequentially.\n"
+        "2.  **Map Plan to Tools:** The plan provides a high-level tool name (e.g., 'gmail', 'gdrive'). You must map this to the specific functions available to you (e.g., `gmail_server-sendEmail`, `gdrive_server-gdrive_search`).\n"
+        "3.  **Be Resourceful & Fill Gaps:** The plan is a guideline. If a step is missing information (e.g., an email address for a manager, a document name), your first action for that step MUST be to use the `supermemory-search` tool to find the missing information. Do not proceed with incomplete information.\n"
+        "4.  **Remember New Information:** If you discover a new, permanent fact about the user during your execution (e.g., you find their manager's email is 'boss@example.com'), you MUST use `supermemory-addToSupermemory` to save it.\n"
+        "5.  **Report Progress & Failures:** You MUST call the `progress_updater_server-update_progress` tool to report your status. You MUST provide the `task_id`, the `run_id`, and a descriptive `update_message` string. If a tool fails, analyze the error, report it, and try an alternative approach. Do not give up easily.\n"
+        "6.  **Provide a Final, Detailed Answer:** ONLY after all steps are successfully completed, you MUST provide a final, comprehensive answer to the user. This is not a tool call. Your final response MUST be wrapped in `<answer>` tags. For example: `<answer>I have successfully scheduled the meeting and sent an invitation to John Doe.</answer>`.\n"
+        "7.  **Contact Information:** To find contact details like phone numbers or emails, use the `gpeople` tool before attempting to send an email or make a call.\n"
+        "\nNow, begin your work. Think step-by-step and start executing the plan, beginning with Step 1."
     )
     
     try:
-        executor_agent = Assistant(llm=llm_cfg, function_list=tools_config, system_message="You are an autonomous executor agent...")
-        initial_messages = [{'role': 'user', 'content': full_plan_prompt}]
+        executor_agent = Assistant(llm=llm_cfg, function_list=tools_config, system_message=full_plan_prompt)
+        initial_messages = [{'role': 'user', 'content': "Begin executing the plan. Follow your instructions meticulously."}]
         
         logger.info(f"Task {task_id}: Starting agent run.")
 
-        previous_history = initial_messages
+        last_processed_history_len = len(initial_messages)
         final_answer_content = ""
-        updates = []
 
         for current_history in executor_agent.run(messages=initial_messages):
-            # Find the new messages since the last step
-            new_messages = current_history[len(previous_history):]
+            # Process only the new messages that have been added since the last iteration
+            new_messages_to_process = current_history[last_processed_history_len:]
 
-            # Process and log only the new part of the stream
-            if new_messages:
-                new_content_str = ""
-                for msg in new_messages:
-                    if msg.get('role') == 'assistant' and msg.get('function_call'):
-                        new_content_str += f'<tool_code name="{msg["function_call"].get("name")}">{msg["function_call"].get("arguments", "{}")}</tool_code>\n'
-                    elif msg.get('role') == 'function':
-                        new_content_str += f'<tool_result tool_name="{msg.get("name")}">{msg.get("content", "")}</tool_result>\n'
-                    elif msg.get('role') == 'assistant' and isinstance(msg.get('content'), str):
-                        new_content_str += msg.get('content', '')
+            for msg in new_messages_to_process:
+                update_to_push = None
+                if msg.get('role') == 'assistant' and isinstance(msg.get('content'), str) and msg.get('content').strip():
+                    # This is a thought process or final answer text
+                    parsed_updates = parse_agent_string_to_updates(msg['content'])
+                    for update in parsed_updates:
+                        await add_progress_update(db, task_id, run_id, user_id, update, block_id)
+                        if update.get("type") == "final_answer":
+                            final_answer_content = update.get("content")
+                elif msg.get('role') == 'assistant' and msg.get('function_call'):
+                    # This is a tool call
+                    update_to_push = {"type": "tool_call", "tool_name": msg['function_call']['name'], "parameters": json.loads(msg['function_call']['arguments'])}
+                elif msg.get('role') == 'function':
+                    # This is a tool result
+                    result_content = json.loads(msg.get('content', '{}'))
+                    is_error = result_content.get("status") == "failure"
+                    update_to_push = {"type": "tool_result", "tool_name": msg.get('name'), "result": result_content.get("result", result_content.get("error")), "is_error": is_error}
 
-                updates = parse_agent_string_to_updates(new_content_str)
-                for update in updates:
-                    await add_progress_update(db, task_id, run_id, user_id, update, block_id)
-                    # Capture the final answer if it appears
-                    if update.get("type") == "final_answer":
-                        final_answer_content = update.get("content")
+                if update_to_push:
+                    await add_progress_update(db, task_id, run_id, user_id, update_to_push, block_id)
 
-            previous_history = current_history
+            last_processed_history_len = len(current_history)
 
         final_content = final_answer_content or "Task completed. Check the execution log for details."
         logger.info(f"Task {task_id}: Final result: {final_content}")

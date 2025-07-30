@@ -106,7 +106,7 @@ const ExecutionUpdate = ({ update }) => {
 						colorClass="border-yellow-500/50"
 					>
 						<div className="p-3 bg-neutral-800/50 rounded-md">
-							<ReactMarkdown className="prose prose-sm prose-invert text-neutral-300 whitespace-pre-wrap">
+							<ReactMarkdown className="prose prose-sm prose-invert text-neutral-300 whitespace-pre-wrap break-words">
 								{content}
 							</ReactMarkdown>
 						</div>
@@ -120,7 +120,7 @@ const ExecutionUpdate = ({ update }) => {
 						colorClass="border-blue-500/50"
 					>
 						<div className="p-3 bg-neutral-800/50 rounded-md">
-							<pre className="text-xs text-neutral-300 whitespace-pre-wrap font-mono">
+							<pre className="text-xs text-neutral-300 whitespace-pre-wrap font-mono break-all">
 								{JSON.stringify(parameters, null, 2)}
 							</pre>
 						</div>
@@ -145,7 +145,7 @@ const ExecutionUpdate = ({ update }) => {
 						}
 					>
 						<div className="p-3 bg-neutral-800/50 rounded-md">
-							<pre className="text-xs text-neutral-300 whitespace-pre-wrap font-mono">
+							<pre className="text-xs text-neutral-300 whitespace-pre-wrap font-mono break-all">
 								{typeof result === "object"
 									? JSON.stringify(result, null, 2)
 									: String(result)}

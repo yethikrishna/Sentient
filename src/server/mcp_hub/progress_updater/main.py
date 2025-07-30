@@ -1,7 +1,7 @@
 import os
 import motor.motor_asyncio
 import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 
 from dotenv import load_dotenv
@@ -28,27 +28,21 @@ mcp = FastMCP(
 )
 
 @mcp.tool
-async def update_progress(ctx: Context, task_id: str, update_message: str) -> Dict[str, Any]:
+async def update_progress(ctx: Context, task_id: str, run_id: str, update_message: Any) -> Dict[str, Any]:
     """
-    Updates the progress of a specific task. To be called by an executor agent.
+    Updates the progress of a specific task run. To be called by an executor agent.
+    The `update_message` can be a string for simple info, or a structured dictionary for tool calls/results.
     """
     try:
         user_id = auth.get_user_id_from_context(ctx)
-        
-        progress_update = {
-            "message": update_message,
-            "timestamp": datetime.datetime.now(datetime.timezone.utc)
-        }
-        
-        task_result = await tasks_collection.update_one(
-            {"task_id": task_id, "user_id": user_id},
-            {"$push": {"progress_updates": progress_update}}
-        )
-        
-        if task_result.matched_count == 0:
-            return {"status": "failure", "error": "Task not found or user mismatch."}
-            
-        return {"status": "success", "result": "Progress updated successfully."}
+
+        # This MCP's job is to forward the update to the main server's WebSocket endpoint.
+        # The main server will handle the DB update and the push to the client.
+        # This avoids race conditions and keeps DB logic centralized.
+        from workers.utils.api_client import push_progress_update
+        await push_progress_update(user_id, task_id, run_id, update_message)
+
+        return {"status": "success", "result": "Progress update pushed to main server."}
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 

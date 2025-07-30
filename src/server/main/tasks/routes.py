@@ -136,6 +136,35 @@ async def update_task(
             generate_plan_from_context.delay(request.taskId)
             logger.info(f"Task {request.taskId} reassigned to AI. Triggering planning.")
 
+    # *** NEW LOGIC: Handle plan updates within the 'runs' array ***
+    if 'plan' in update_data:
+        # The update is for the plan, so we need to target the latest run.
+        # We use dot notation with an array filter to update the nested document.
+
+        # We create a separate payload for the nested update.
+        nested_update_payload = {
+            "runs.$[run].plan": update_data['plan'],
+            "updated_at": datetime.now(timezone.utc)
+        }
+
+        # Remove the top-level 'plan' from the main update_data to avoid conflicts
+        # and to stop updating the old, now-deprecated top-level field.
+        del update_data['plan']
+
+        # Add any other top-level updates to the nested payload if needed
+        for key, value in update_data.items():
+            nested_update_payload[key] = value
+
+        result = await mongo_manager.task_collection.update_one(
+            {"task_id": request.taskId},
+            {"$set": nested_update_payload},
+            array_filters=[{"run.run_id": task["runs"][-1]["run_id"]}]
+        )
+        if result.modified_count == 0:
+             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found or no updates applied to the latest run.")
+        return {"message": "Task plan updated successfully."}
+    # *** END NEW LOGIC ***
+
     success = await mongo_manager.update_task(request.taskId, update_data)
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found or no updates applied.")

@@ -22,11 +22,15 @@ module.exports = {
 				"meteor-effect": "meteor 5s linear infinite"
 			},
 			colors: {
+				"brand-black": "#000000",
+				"brand-gray": "#26262B",
+				"brand-orange": "#F1A21D",
+				"brand-white": "#DFDEDC",
+				"brand-red": "#D63447",
+				"brand-yellow": "#FFC947",
+				"brand-green": "#28A745",
 				"sentient-blue": "#4a9eff",
-				"sentient-blue-dark": "#3a8eff",
-				"dark-bg": "#111111",
-				"dark-surface": "#1a1a1a",
-				"dark-surface-elevated": "#2a2a2a"
+				"sentient-blue-dark": "#3a8eff"
 			},
 			keyframes: {
 				meteor: {
@@ -92,10 +96,12 @@ module.exports = {
 				}
 			},
 			fontFamily: {
+				sans: ["Poppins", "sans-serif"],
 				Poppins: ["Poppins", "sans-serif"],
 				Montserrat: ["Montserrat", "sans-serif"],
 				Quicksand: ["Quicksand", "sans-serif"],
-				Inter: ["Inter", "sans-serif"]
+				Inter: ["Inter", "sans-serif"],
+				mono: ["Roboto Mono", "monospace"]
 			},
 			screens: {
 				xs: "128px",

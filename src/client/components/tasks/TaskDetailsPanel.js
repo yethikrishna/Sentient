@@ -14,12 +14,13 @@ import {
 	IconClipboardList
 } from "@tabler/icons-react"
 import TaskDetailsContent from "./TaskDetailsContent"
+import RecurringTaskDetails from "./RecurringTaskDetails"
 import ConnectToolButton from "./ConnectToolButton"
 import { cn } from "@utils/cn"
 
 const TaskDetailsPanel = ({
 	task,
-	allTools,
+	allTools = [],
 	integrations,
 	onClose,
 	onSave,
@@ -33,6 +34,7 @@ const TaskDetailsPanel = ({
 }) => {
 	const [isEditing, setIsEditing] = useState(false)
 	const [editableTask, setEditableTask] = useState(task)
+	const isRecurring = task?.schedule?.type === "recurring"
 
 	const missingTools = useMemo(() => {
 		if (!task || !integrations) {
@@ -137,7 +139,7 @@ const TaskDetailsPanel = ({
 	return (
 		<aside
 			className={cn(
-				"w-full h-full bg-neutral-900/80 backdrop-blur-xl shadow-2xl md:border-l border-neutral-700/80 flex flex-col flex-shrink-0",
+				"w-full h-full bg-brand-gray backdrop-blur-xl shadow-2xl md:border-l border-neutral-700/80 flex flex-col flex-shrink-0",
 				className
 			)}
 		>
@@ -156,7 +158,7 @@ const TaskDetailsPanel = ({
 				<>
 					{/* --- HEADER --- */}
 					<header className="flex items-start justify-between p-6 border-b border-neutral-700/50 flex-shrink-0">
-						<div className="flex-1">
+						<div className="flex-1 pr-4">
 							{isEditing ? (
 								<input
 									type="text"
@@ -170,7 +172,7 @@ const TaskDetailsPanel = ({
 									className="w-full bg-transparent text-2xl font-bold text-white focus:ring-0 focus:border-blue-500 border-b-2 border-transparent"
 								/>
 							) : (
-								<h2 className="text-2xl font-bold text-white leading-snug">
+								<h2 className="text-xl font-bold text-white leading-snug">
 									{task.description}
 								</h2>
 							)}
@@ -185,24 +187,28 @@ const TaskDetailsPanel = ({
 
 					{/* --- CONTENT --- */}
 					<main className="flex-1 overflow-y-auto custom-scrollbar p-6">
-						<TaskDetailsContent
-							task={task}
-							isEditing={isEditing}
-							editableTask={editableTask}
-							handleFieldChange={handleFieldChange}
-							handleScheduleChange={handleScheduleChange}
-							handleAddStep={handleAddStep}
-							handleRemoveStep={handleRemoveStep}
-							handleStepChange={handleStepChange}
-							allTools={allTools}
-							integrations={integrations}
-							onAnswerClarifications={onAnswerClarifications}
-							onSendChatMessage={onSendChatMessage}
-						/>
+						{isRecurring ? (
+							<RecurringTaskDetails task={task} />
+						) : (
+							<TaskDetailsContent
+								task={task}
+								isEditing={isEditing}
+								editableTask={editableTask}
+								handleFieldChange={handleFieldChange}
+								handleScheduleChange={handleScheduleChange}
+								handleAddStep={handleAddStep}
+								handleRemoveStep={handleRemoveStep}
+								handleStepChange={handleStepChange}
+								allTools={allTools}
+								integrations={integrations}
+								onAnswerClarifications={onAnswerClarifications}
+								onSendChatMessage={onSendChatMessage}
+							/>
+						)}
 					</main>
 
 					{/* --- FOOTER --- */}
-					<footer className="flex items-center justify-between p-4 border-t border-neutral-700/50 flex-shrink-0 bg-neutral-900/50">
+					<footer className="flex items-center justify-between p-4 border-t border-neutral-700/50 flex-shrink-0 bg-brand-gray/50">
 						{isEditing ? (
 							<>
 								<div className="flex items-center gap-2">

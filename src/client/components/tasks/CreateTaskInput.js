@@ -1,6 +1,7 @@
 "use client"
 import React, { useState, useRef, useEffect } from "react"
-import { IconPlus, IconLoader } from "@tabler/icons-react"
+import { IconPlus, IconLoader, IconSend } from "@tabler/icons-react"
+import { cn } from "@utils/cn"
 import { TextLoop } from "@components/ui/TextLoop"
 import toast from "react-hot-toast"
 
@@ -43,8 +44,12 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 	}
 
 	return (
-		<div className="p-4 border-t border-neutral-800 flex-shrink-0">
-			<div className="relative flex items-end bg-neutral-900 border border-neutral-700 rounded-lg p-1">
+		<div className="p-4 border-t border-neutral-800 flex-shrink-0 bg-brand-black">
+			<div
+				className={cn(
+					"relative flex items-end bg-brand-gray rounded-xl p-1 transition-all border border-transparent focus-within:border-brand-orange"
+				)}
+			>
 				<textarea
 					ref={textareaRef}
 					value={prompt}
@@ -56,13 +61,13 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 						}
 					}}
 					placeholder=" "
-					className="w-full bg-transparent text-white placeholder-transparent resize-none focus:ring-0 focus:outline-none p-2 custom-scrollbar"
+					className="w-full bg-transparent text-white placeholder-transparent resize-none focus:ring-0 focus:outline-none p-2 custom-scrollbar text-sm"
 					rows={1}
 					style={{ maxHeight: "120px" }}
 				/>
 				{!prompt && (
 					<div className="absolute top-1/2 left-3 -translate-y-1/2 text-neutral-500 pointer-events-none">
-						<TextLoop className="text-sm font-mono">
+						<TextLoop className="text-sm">
 							<span>Create a task...</span>
 							<span>Summarize my unread emails from today</span>
 							<span>
@@ -75,12 +80,12 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 				<button
 					onClick={handleAddTask}
 					disabled={isSaving || !prompt.trim()}
-					className="p-2.5 bg-sentient-blue rounded-md text-white disabled:opacity-50 hover:bg-sentient-blue-dark transition-colors"
+					className="p-2.5 bg-brand-orange rounded-lg text-brand-black disabled:opacity-50 hover:bg-opacity-80 transition-colors"
 				>
 					{isSaving ? (
 						<IconLoader size={18} className="animate-spin" />
 					) : (
-						<IconPlus size={18} />
+						<IconSend size={18} />
 					)}
 				</button>
 			</div>

@@ -16,6 +16,8 @@ import {
 import ScheduleEditor from "@components/tasks/ScheduleEditor"
 import ExecutionUpdate from "./ExecutionUpdate"
 import ChatBubble from "@components/ChatBubble"
+import { TextShimmer } from "@components/ui/text-shimmer"
+import { IconInfoCircle } from "@tabler/icons-react"
 
 const TaskChatSection = ({ task, onSendChatMessage }) => {
 	const [message, setMessage] = useState("")
@@ -399,12 +401,53 @@ const TaskDetailsContent = ({
 									</h4>
 									<div className="bg-neutral-800/50 p-4 rounded-lg border border-neutral-700/50 space-y-4">
 										{run.progress_updates.map(
-											(update, index) => (
-												<ExecutionUpdate
-													key={index}
-													update={update}
-												/>
-											)
+											(update, index) => {
+												const isLastUpdate =
+													index ===
+													run.progress_updates
+														.length -
+														1
+												const isExecuting = [
+													"processing",
+													"planning"
+												].includes(run.status)
+												const messageContent =
+													update.message?.content ||
+													update.message
+												const formattedTimestamp =
+													new Date(
+														update.timestamp
+													).toLocaleTimeString([], {
+														hour: "2-digit",
+														minute: "2-digit",
+														second: "2-digit"
+													})
+
+												if (
+													isLastUpdate &&
+													isExecuting &&
+													update.message?.type ===
+														"info" &&
+													typeof messageContent ===
+														"string"
+												) {
+													return (
+														<TextShimmer
+															key={index}
+															className="font-mono text-sm text-brand-white"
+															duration={2}
+														>
+															{messageContent}
+														</TextShimmer>
+													)
+												}
+												return (
+													<ExecutionUpdate
+														key={index}
+														update={update}
+													/>
+												)
+											}
 										)}
 									</div>
 								</div>

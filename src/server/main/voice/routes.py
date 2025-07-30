@@ -46,6 +46,7 @@ def voice_chat(audio, ctx):
     Main callback for FastRTC. Handles STT, LLM, and TTS streaming.
     This function is a generator, yielding audio chunks back to the client.
     """
+    logger.info("Starting voice chat session with ctx: %s", ctx)
     from main.app import stt_model_instance, tts_model_instance
 
     # Authenticate the stream using the webrtc_id as a temporary token

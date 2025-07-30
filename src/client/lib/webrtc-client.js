@@ -13,6 +13,12 @@ export class WebRTCClient {
 	}
 
 	async connect(deviceId, authToken, rtcToken) {
+
+		console.log("Connecting WebRTC client with deviceId:", deviceId)
+
+		console.log("Using authToken:", authToken)
+		console.log("Using rtcToken:", rtcToken)
+
 		if (!authToken) {
 			throw new Error("Authentication token is required to connect.")
 		}
@@ -20,8 +26,53 @@ export class WebRTCClient {
 			throw new Error("RTC token is required to connect.")
 		}
 
+		console.log("Using server URL:", this.serverUrl)
+
 		try {
 			this.peerConnection = new RTCPeerConnection()
+
+			console.log("Created RTCPeerConnection:", this.peerConnection)
+
+			this.peerConnection.onicecandidate = (event) => {
+				if (event.candidate) {
+					console.log("ICE Candidate Found:", event.candidate)
+				} else {
+					console.log("All ICE candidates have been gathered.")
+				}
+			}
+
+			this.peerConnection.oniceconnectionstatechange = (event) => {
+				const state = this.peerConnection.iceConnectionState
+				console.log(
+					`%cICE Connection State Change: ${state}`,
+					"font-weight: bold; color: blue;"
+				)
+				if (state === "failed") {
+					console.error(
+						"ICE connection failed. This often indicates a network or firewall issue."
+					)
+				}
+			}
+
+			this.peerConnection.onconnectionstatechange = (event) => {
+				const state = this.peerConnection.connectionState
+				console.log(
+					`%cPeer Connection State Change: ${state}`,
+					"font-weight: bold; color: green;"
+				)
+				if (state === "failed") {
+					console.error(
+						"Peer connection failed. The connection could not be established or has been lost."
+					)
+				}
+			}
+
+			this.peerConnection.ondatachannel = (event) => {
+				console.log(
+					"Data Channel established by remote peer:",
+					event.channel
+				)
+			}
 
 			const audioConstraints = deviceId
 				? { deviceId: { exact: deviceId } }
@@ -32,7 +83,10 @@ export class WebRTCClient {
 
 			this.setupAudioAnalysis()
 
+			console.log("Acquired media stream:", this.mediaStream)
+
 			this.mediaStream.getTracks().forEach((track) => {
+				console.log("Adding track to peer connection:", track)
 				// FIX: Add a null check before calling addTrack.
 				// This prevents a crash if a previous connection was closed.
 				if (this.peerConnection) {
@@ -41,6 +95,7 @@ export class WebRTCClient {
 			})
 
 			this.peerConnection.addEventListener("track", (event) => {
+				console.log("Received track event:", event)
 				this.options.onAudioStream?.(event.streams[0])
 			})
 
@@ -62,7 +117,9 @@ export class WebRTCClient {
 				{
 					method: "POST",
 					headers: {
-						"Content-Type": "application/json"
+						"Content-Type": "application/json",
+						// Add this line to authenticate the request
+						Authorization: `Bearer ${authToken}`
 					},
 					body: JSON.stringify({
 						sdp: offer.sdp,
@@ -80,9 +137,14 @@ export class WebRTCClient {
 			}
 
 			const serverResponse = await response.json()
+			console.log("Received server response:", serverResponse)
 			await this.peerConnection.setRemoteDescription(serverResponse)
 
+			console.log("WebRTC connection established successfully.")
+
 			this.options.onConnected?.()
+
+			console.log("Setting up audio analysis.")
 		} catch (error) {
 			console.error("Error connecting WebRTC:", error)
 			this.disconnect()
@@ -91,6 +153,7 @@ export class WebRTCClient {
 	}
 
 	setupAudioAnalysis() {
+		console.log("Setting up audio analysis with mediaStream:", this.mediaStream)
 		if (!this.mediaStream || !this.options.onAudioLevel) return
 		try {
 			this.audioContext = new (window.AudioContext ||

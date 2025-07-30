@@ -1,3 +1,4 @@
+# src/server/workers/tasks.py
 import asyncio
 import logging
 import uuid
@@ -26,10 +27,6 @@ from workers.executor.tasks import execute_task_plan
 from main.vector_db import get_conversation_summaries_collection
 from workers.planner.prompts import TOOL_SELECTOR_SYSTEM_PROMPT
 from mcp_hub.memory.utils import cud_memory
-
-# Imports for extractor logic
-from workers.extractor.llm import get_extractor_agent
-from workers.extractor.db import ExtractorMongoManager
 
 # Imports for poller logic
 from workers.poller.gmail.service import GmailPollingService
@@ -129,10 +126,6 @@ def proactive_reasoning_pipeline(user_id: str, event_type: str, event_data: Dict
     logger.info(f"Celery worker received task 'proactive_reasoning_pipeline' for user_id: {user_id}, event_type: {event_type}")
     run_async(run_proactive_pipeline_logic(user_id, event_type, event_data))
 
-
-
-
-
 @celery_app.task(name="cud_memory_task")
 def cud_memory_task(user_id: str, information: str, source: Optional[str] = None):
     """
@@ -143,12 +136,12 @@ def cud_memory_task(user_id: str, information: str, source: Optional[str] = None
     run_async(cud_memory(user_id, information, source))
 
 @celery_app.task(name="create_task_from_suggestion")
-def create_task_from_suggestion(user_id: str, suggestion_payload: Dict[str, Any]):
+def create_task_from_suggestion(user_id: str, suggestion_payload: Dict[str, Any], context: Optional[Dict[str, Any]] = None):
     """
     Takes an approved suggestion payload and creates a new task.
     """
     logger.info(f"Creating task from approved suggestion for user '{user_id}'. Type: {suggestion_payload.get('suggestion_type')}")
-
+    
     action_details = suggestion_payload.get("action_details", {})
     action_type = action_details.get("action_type")
 
@@ -164,6 +157,22 @@ def create_task_from_suggestion(user_id: str, suggestion_payload: Dict[str, Any]
     else:
         # Generic fallback
         prompt = f"Perform the action '{action_type}' with the following details: {json.dumps(action_details)}"
+    
+    if context:
+        context_string = "Here is some context I already know to help with this task:\n"
+        for source, result in context.items():
+            if not result:
+                continue
+            
+            try:
+                # Attempt to pretty-print JSON for readability, falling back to string conversion
+                summary = json.dumps(result, indent=2, default=str)
+            except TypeError:
+                summary = str(result)
+            
+            context_string += f"- From {source}:\n```json\n{summary[:500]}\n```\n"
+        
+        prompt = f"{context_string}\n---\nTASK:\n{prompt}"
 
     if not prompt:
         logger.error(f"Could not construct prompt for suggestion. Payload: {suggestion_payload}")
@@ -173,17 +182,6 @@ def create_task_from_suggestion(user_id: str, suggestion_payload: Dict[str, Any]
     task_id = run_async(main_mongo_manager.add_task(user_id, {"description": prompt}))
     refine_and_plan_ai_task.delay(task_id)
     logger.info(f"Successfully created and dispatched new task '{task_id}' from suggestion.")
-
-
-@celery_app.task(name="process_extracted_memory_item")
-def process_extracted_memory_item(user_id: str, fact_text: str, source: Optional[str] = None):
-    """
-    Processes a memory item extracted from a source like an email or document.
-    This task now dispatches to the main CUD memory task.
-    """
-    logger.info(f"Extractor dispatched memory item for user {user_id}: '{fact_text[:80]}...'. Queuing for CUD processing.")
-    # This becomes a lightweight dispatcher to the main CUD task.
-    cud_memory_task.delay(user_id, fact_text, source)
 
 @celery_app.task(name="refine_and_plan_ai_task")
 def refine_and_plan_ai_task(task_id: str):
@@ -300,117 +298,6 @@ async def async_process_change_request(task_id: str, user_id: str, user_message:
         logger.error(f"Error in async_process_change_request for task {task_id}: {e}", exc_info=True)
     finally:
         await db_manager.close()
-# --- Extractor Task ---
-@celery_app.task(name="extract_from_context")
-def extract_from_context(user_id: str, source_text: str, source_type: str, event_id: Optional[str] = None, event_data: Optional[Dict[str, Any]] = None, current_time_iso: Optional[str] = None):
-    """
-    Celery task to replace the Extractor worker. It takes context data,
-    runs it through an LLM to extract memories and action items,
-    and then dispatches further Celery tasks.
-
-    Args:
-        user_id (str): The ID of the user.
-        source_text (str): The raw text to be processed by the LLM.
-        source_type (str): The origin of the text (e.g., 'gmail', 'gcalendar', 'chat_summary').
-        event_id (Optional[str]): A unique ID for the event if it's from a poller.
-        event_data (Optional[Dict]): The original structured data of the event.
-        current_time_iso (Optional[str]): ISO timestamp for time-sensitive extractions.
-    """
-    log_id = event_id or "adhoc"
-    logger.info(f"Extractor task running for event_id: {log_id} (source: {source_type}) for user {user_id}")
-
-    # --- Trigger the new proactive pipeline ---
-    proactive_reasoning_pipeline.delay(user_id, source_type, event_data)
-
-    async def async_extract():
-        db_manager = ExtractorMongoManager()
-        try:
-            if event_id and await db_manager.is_event_processed(user_id, event_id):
-                logger.info(f"Skipping event_id: {event_id} - already processed.")
-                return
-
-            # Fetch user context to provide to the extractor agent
-            user_profile = await db_manager.get_user_profile(user_id)
-            personal_info = user_profile.get("userData", {}).get("personalInfo", {}) if user_profile else {}
-            user_name = personal_info.get("name", "User")
-            user_location_raw = personal_info.get("location", "Not specified")
-            user_timezone = personal_info.get("timezone", "UTC")
-            if isinstance(user_location_raw, dict) and 'latitude' in user_location_raw:
-                user_location = f"latitude: {user_location_raw.get('latitude')}, longitude: {user_location_raw.get('longitude')}"
-            else:
-                user_location = user_location_raw
-
-            current_time = datetime.datetime.fromisoformat(current_time_iso) if current_time_iso else datetime.datetime.now(datetime.timezone.utc)
-            time_context_str = f"The current date and time is {current_time.strftime('%A, %Y-%m-%d %H:%M:%S %Z')}."
-
-            # Add time context to the input for the LLM
-            full_llm_input = f"{time_context_str}\n\nPlease analyze the following content from source '{source_type}':\n\n{source_text}"
-
-            if not source_text or not source_text.strip():
-                logger.warning(f"Skipping event_id: {log_id} due to empty content.")
-                return
-
-            agent = get_extractor_agent(user_name, user_location, user_timezone)
-            messages = [{'role': 'user', 'content': full_llm_input}]
-
-            final_content_str = ""
-            for chunk in agent.run(messages=messages):
-                if isinstance(chunk, list) and chunk:
-                    last_message = chunk[-1]
-                    if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
-                        final_content_str = last_message["content"]
-
-            if not final_content_str.strip():
-                logger.error(f"Extractor LLM returned no response for event_id: {log_id}.")
-                return
-
-
-            cleaned_content = clean_llm_output(final_content_str)
-            logger.info(f"Extractor LLM response for event_id: {log_id} - {cleaned_content}.")
-            extracted_data = JsonExtractor.extract_valid_json(cleaned_content)
-            if not extracted_data:
-                logger.error(f"Could not extract valid JSON from LLM response for event_id: {log_id}. Response: '{cleaned_content}'")
-                if event_id: await db_manager.log_extraction_result(event_id, user_id, 0, 0)
-                return
-
-            if isinstance(extracted_data, list):
-                extracted_data = extracted_data[0] if extracted_data and isinstance(extracted_data[0], dict) else {}
-
-            if not isinstance(extracted_data, dict):
-                logger.error(f"Extracted JSON is not a dictionary for event_id: {log_id}. Extracted: '{extracted_data}'")
-                if event_id: await db_manager.log_extraction_result(event_id, user_id, 0, 0)
-                return
-
-            memory_items = extracted_data.get("memory_items", [])
-            action_items = extracted_data.get("action_items", [])
-            topics = extracted_data.get("topics", [])
-
-            if source_type in ["gmail", "gcalendar", "chat", "chat_summary"]:
-                for item in action_items:
-                    if not isinstance(item, str) or not item.strip():
-                        continue
-
-                    original_source_context = {
-                        "source": source_type,
-                        "event_id": event_id,
-                        "content": event_data
-                    }
-
-                    # Dispatch directly to the planner/action item processor
-                    process_action_item.delay(user_id, [item], topics, event_id, original_source_context)
-
-            for fact in memory_items:
-                if isinstance(fact, str) and fact.strip():
-                    cud_memory_task.delay(user_id, fact, source=source_type)
-
-            await db_manager.log_extraction_result(event_id, user_id, len(memory_items), len(action_items))
-
-        except Exception as e:
-            logger.error(f"Error in extractor task for event_id: {log_id}: {e}", exc_info=True)
-        finally:
-            await db_manager.close()
-
-    run_async(async_extract())
 
 @celery_app.task(name="process_action_item")
 def process_action_item(user_id: str, action_items: list, topics: list, source_event_id: str, original_context: dict):
@@ -732,6 +619,10 @@ def schedule_all_polling():
                 for task_state in due_tasks_states:
                     user_id = task_state["user_id"]
                     locked_task_state = await db_manager.set_polling_status_and_get(user_id, service_name)
+                    # Sanitize for Celery/JSON serialization
+                    if locked_task_state and '_id' in locked_task_state and isinstance(locked_task_state['_id'], ObjectId):
+                        locked_task_state['_id'] = str(locked_task_state['_id'])
+
                     if locked_task_state:
                         if service_name == "gmail":
                             poll_gmail_for_user.delay(user_id, locked_task_state)
@@ -933,9 +824,6 @@ async def async_summarize_conversations():
                 {"_id": {"$in": message_object_ids}},
                 {"$set": {"is_summarized": True, "summary_id": summary_id}}
             )
-
-            # 4d. Extract memories from the summary
-            extract_from_context.delay(user_id=user_id, source_text=summary_text, source_type="chat_summary")
 
     except Exception as e:
         logger.error(f"Error during conversation summarization: {e}", exc_info=True)

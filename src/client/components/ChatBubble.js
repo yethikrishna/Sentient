@@ -1,17 +1,14 @@
 import React from "react"
 import { useState } from "react"
+import { cn } from "@utils/cn"
 import {
 	IconClipboard,
 	IconCheck,
 	IconBrain,
-	IconSettings,
-	IconGlobe,
 	IconLink,
 	IconMail,
-	IconCode,
 	IconChevronDown,
 	IconChevronUp,
-	IconTerminal2,
 	IconArrowBackUp
 } from "@tabler/icons-react"
 import { Tooltip } from "react-tooltip"
@@ -182,13 +179,6 @@ const ChatBubble = ({
 		repliedTo: null
 	})
 	const isUser = role === "user"
-	const memoryUsed = (tools || []).some(
-		(t) => t.includes("memory") || t.includes("history")
-	)
-	const internetUsed = (tools || []).some(
-		(t) => t.includes("search") || t.includes("news")
-	)
-	const agentsUsed = (tools || []).length > 0
 
 	React.useEffect(() => {
 		const replyRegex = /<reply_to id="([^"]+)">[\s\S]*?<\/reply_to>\n*/
@@ -367,12 +357,43 @@ const ChatBubble = ({
 
 	// Function to copy message content to clipboard
 	const handleCopyToClipboard = () => {
-		// Build the text to copy from the parsed parts, ensuring we only copy the final answer
-		const plainText = renderedContent
-			.filter((part) => part.type === "answer")
-			.map((part) => part.props.children)
-			.join("")
-			.trim()
+		// Parse the raw content to extract only the user-facing parts for copying.
+		const contentToParse = processedContent.content
+		if (!contentToParse || typeof contentToParse !== "string") {
+			toast.error("Nothing to copy.")
+			return
+		}
+
+		const answerParts = []
+		const regex =
+			/(<think>[\s\S]*?<\/think>|<tool_code[^>]*>[\s\S]*?<\/tool_code>|<tool_result[^>]*>[\s\S]*?<\/tool_result>|<answer>[\s\S]*?<\/answer>)/g
+		let lastIndex = 0
+		let inToolCallPhase = false // To ignore raw text between tool_code and tool_result
+
+		for (const match of contentToParse.matchAll(regex)) {
+			const precedingText = contentToParse.substring(
+				lastIndex,
+				match.index
+			)
+			if (precedingText.trim() && !inToolCallPhase) {
+				answerParts.push(precedingText.trim())
+			}
+
+			const tag = match[0]
+			if (tag.startsWith("<tool_code")) inToolCallPhase = true
+			else if (tag.startsWith("<tool_result")) inToolCallPhase = false
+			else if (tag.startsWith("<answer>")) {
+				const answerContent =
+					tag.match(/<answer>([\s\S]*?)<\/answer>/)?.[1] || ""
+				if (answerContent) answerParts.push(answerContent.trim())
+			}
+			lastIndex = match.index + tag.length
+		}
+		const remainingText = contentToParse.substring(lastIndex)
+		if (remainingText.trim() && !inToolCallPhase) {
+			answerParts.push(remainingText.trim())
+		}
+		const plainText = answerParts.join("\n\n")
 
 		navigator.clipboard
 			.writeText(plainText)
@@ -385,9 +406,13 @@ const ChatBubble = ({
 
 	return (
 		<div
-			className={`p-4 rounded-lg ${
-				isUser ? "bg-[var(--color-accent-blue)]" : "bg-transparent"
-			} text-white text-base self-start w-full group relative mb-2`}
+			className={cn(
+				"max-w-[80%] px-4 py-3 rounded-2xl relative group text-white",
+				{
+					"bg-blue-600 rounded-br-none": isUser,
+					"bg-neutral-800 rounded-bl-none": !isUser
+				}
+			)}
 			style={{ wordBreak: "break-word" }}
 		>
 			{processedContent.repliedTo && (
@@ -404,7 +429,12 @@ const ChatBubble = ({
 				</div>
 			)}
 			{renderedContent}
-			<div className="absolute left-0 top-1/2 -translate-x-full -translate-y-1/2 flex items-center opacity-0 group-hover:opacity-100 transition-opacity pr-2">
+			<div
+				className={cn(
+					"absolute top-1/2 -translate-y-1/2 flex items-center opacity-0 group-hover:opacity-100 transition-opacity",
+					isUser ? "right-full pr-2" : "left-full pl-2"
+				)}
+			>
 				<button
 					onClick={() => onReply(message)}
 					className="p-1.5 rounded-full bg-neutral-700 text-neutral-300 hover:bg-neutral-600 hover:text-white"
@@ -415,51 +445,24 @@ const ChatBubble = ({
 				</button>
 			</div>
 			{!isUser && (
-				<div className="flex justify-start items-center space-x-4 mt-6">
+				<div className="flex justify-start items-center mt-4">
 					<Tooltip
 						place="right-start"
 						id="chat-bubble-tooltip"
 						style={{ zIndex: 9999 }}
 					/>
-					{memoryUsed && (
-						<span
-							data-tooltip-id="chat-bubble-tooltip"
-							data-tooltip-content="Memory was used to generate this response"
-							className="flex items-center text-[var(--color-accent-blue)]"
-						>
-							<IconBrain size={18} />
-						</span>
-					)}
-					{agentsUsed && (
-						<span
-							data-tooltip-id="chat-bubble-tooltip"
-							data-tooltip-content="Agents were used to process this response"
-							className="flex items-center text-[var(--color-text-secondary)]"
-						>
-							<IconSettings size={18} />
-						</span>
-					)}
-					{internetUsed && (
-						<span
-							data-tooltip-id="chat-bubble-tooltip"
-							data-tooltip-content="Internet was used to gather information for this response"
-							className="flex items-center text-[var(--color-text-secondary)]"
-						>
-							<IconGlobe size={18} />
-						</span>
-					)}
 					<button
 						onClick={handleCopyToClipboard}
-						className="flex items-center text-[var(--color-text-secondary)] hover:text-[var(--color-accent-green)] transition-colors"
+						className="flex items-center text-neutral-400 hover:text-white transition-colors"
 						data-tooltip-id="chat-bubble-tooltip"
 						data-tooltip-content={
 							copied ? "Copied!" : "Copy response"
 						}
 					>
 						{copied ? (
-							<IconCheck size={18} />
+							<IconCheck size={16} />
 						) : (
-							<IconClipboard size={18} />
+							<IconClipboard size={16} />
 						)}
 					</button>
 				</div>

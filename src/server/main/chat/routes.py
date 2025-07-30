@@ -22,9 +22,8 @@ async def chat_endpoint(
     request_body: ChatMessageInput, 
     user_id: str = Depends(PermissionChecker(required_permissions=["read:chat", "write:chat"]))
 ):
-    # 1. Get the last user message from the payload
-    user_message = next((msg for msg in reversed(request_body.messages) if msg.get("role") == "user"), None)
-    if not user_message:
+    # 1. Check if there are any user messages
+    if not any(msg.get("role") == "user" for msg in request_body.messages):
         raise HTTPException(status_code=400, detail="No user message found in the request.")
 
     # 2. Save all new user messages since the last assistant message
@@ -47,6 +46,7 @@ async def chat_endpoint(
 
     async def event_stream_generator():
         assistant_response_buffer = ""
+        assistant_message_id = None
         try:
             async for event in generate_chat_llm_stream(
                 user_id,
@@ -58,6 +58,8 @@ async def chat_endpoint(
                     continue
                 if event.get("type") == "assistantStream":
                     assistant_response_buffer += event.get("token", "")
+                    if not assistant_message_id and event.get("messageId"):
+                        assistant_message_id = event["messageId"]
 
                 yield json.dumps(event) + "\n"
         except asyncio.CancelledError:
@@ -71,7 +73,7 @@ async def chat_endpoint(
             yield (json.dumps(error_response) + "\n").encode("utf-8")
         finally:
             # Save the complete assistant response at the end of the stream
-            if assistant_response_buffer.strip():
+            if assistant_response_buffer.strip() and assistant_message_id:
                 await mongo_manager.add_message(
                     user_id=user_id,
                     role="assistant",

@@ -1,12 +1,17 @@
 # src/server/workers/proactive/main.py
 import logging
 import json
+import datetime
 from typing import Dict, Any
 
 from main.llm import get_qwen_assistant
 from json_extractor import JsonExtractor
 from workers.utils.api_client import notify_user
-from workers.proactive.prompts import PROACTIVE_REASONER_SYSTEM_PROMPT, SUGGESTION_TYPE_STANDARDIZER_SYSTEM_PROMPT
+from workers.proactive.prompts import (
+    PROACTIVE_REASONER_SYSTEM_PROMPT,
+    SUGGESTION_TYPE_STANDARDIZER_SYSTEM_PROMPT,
+    QUERY_FORMULATION_SYSTEM_PROMPT
+)
 from workers.proactive.utils import (
     event_pre_filter,
     extract_query_text,
@@ -16,6 +21,32 @@ from workers.proactive.utils import (
 from workers.planner.db import PlannerMongoManager
 
 logger = logging.getLogger(__name__)
+
+async def formulate_search_queries(user_id: str, event_type: str, event_data: Dict[str, Any]) -> Dict[str, str]:
+    """
+    Uses a dedicated LLM agent to decide what questions to ask universal search.
+    """
+    logger.info(f"Formulating dynamic search queries for user '{user_id}'.")
+    agent = get_qwen_assistant(system_message=QUERY_FORMULATION_SYSTEM_PROMPT)
+
+    prompt = json.dumps({"event_type": event_type, "event_data": event_data}, indent=2)
+    messages = [{'role': 'user', 'content': prompt}]
+
+    response_str = ""
+    for chunk in agent.run(messages=messages):
+        if isinstance(chunk, list) and chunk:
+            last_message = chunk[-1]
+            if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
+                response_str = last_message["content"]
+
+    queries = JsonExtractor.extract_valid_json(response_str)
+    if not isinstance(queries, dict) or not queries:
+        logger.warning(f"Query Formulation Agent failed to return a valid dictionary of queries. Response: {response_str}")
+        # Fallback to a single, simple query
+        return {"event_context": extract_query_text(event_data, event_type)}
+
+    logger.info(f"Dynamically formulated queries: {queries}")
+    return queries
 
 async def standardize_suggestion_type(suggestion_type_description: str) -> str:
     """
@@ -104,22 +135,19 @@ async def run_proactive_pipeline_logic(user_id: str, event_type: str, event_data
         logger.info("Event discarded by pre-filter. Pipeline stopped.")
         return
 
-    # 2. Extract Query Text
-    query_text = extract_query_text(event_data, event_type)
-    if not query_text:
-        logger.warning("Could not extract query text from event. Pipeline stopped.")
-        return
-
-    logger.info(f"Extracted query text: '{query_text[:100]}...'")
+    # 2. Formulate Dynamic Search Queries (Meta-Cognition Step)
+    situational_queries = await formulate_search_queries(user_id, event_type, event_data)
 
     # 3. Get Universal Context (Cognitive Scratchpad)
-    cognitive_scratchpad = await get_universal_context(user_id, query_text)
+    # This now runs multiple searches in parallel to build a rich context
+    cognitive_scratchpad = await get_universal_context(user_id, situational_queries)
 
     # 4. Add Trigger Event to Scratchpad
     cognitive_scratchpad["trigger_event"] = {
         "event_type": event_type,
         "event_data": event_data
     }
+    cognitive_scratchpad["current_time_utc"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
     # 5. Pass to Proactive Reasoner
     reasoner_result = await run_proactive_reasoner(cognitive_scratchpad)
@@ -140,7 +168,8 @@ async def run_proactive_pipeline_logic(user_id: str, event_type: str, event_data
         # 6b. Construct and send the notification
         notification_payload = {
             "suggestion_type": standardized_type,
-            "action_details": reasoner_result.get("suggestion_action_details")
+            "action_details": reasoner_result.get("suggestion_action_details"),
+            "gathered_context": cognitive_scratchpad
         }
         
         user_facing_message = f"AI Suggestion: {reasoner_result.get('suggestion_description')}"

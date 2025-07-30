@@ -22,7 +22,8 @@ async def create_and_push_notification(user_id: str, message: str, task_id: Opti
             "is_actioned": False,
             "suggestion_payload": {
                 "suggestion_type": payload.get("suggestion_type"),
-                "action_details": payload.get("action_details")
+                "action_details": payload.get("action_details"),
+                "gathered_context": payload.get("gathered_context")
             }
         }
     else: # Default, general notification

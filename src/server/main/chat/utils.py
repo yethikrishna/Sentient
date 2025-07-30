@@ -156,7 +156,7 @@ async def generate_chat_llm_stream(
         last_user_query = messages[-1].get("content", "") if messages else ""
         relevant_tool_names = await _select_relevant_tools(last_user_query, tool_name_to_desc_map)
 
-        mandatory_tools = {"memory", "history", "tasks"}
+        mandatory_tools = {"memory"}
         final_tool_names = set(relevant_tool_names) | mandatory_tools
 
         filtered_mcp_servers = {}
@@ -252,16 +252,6 @@ async def generate_chat_llm_stream(
                     first_chunk = False
                 yield event_payload
                 last_yielded_content_str = current_turn_str
-        
-        # Save the final assistant response to the database
-        if last_yielded_content_str.strip():
-            await db_manager.add_message(
-                user_id=user_id,
-                role="assistant",
-                content=last_yielded_content_str.strip(),
-                message_id=assistant_message_id
-            )
-            logger.info(f"Saved assistant response for user {user_id} with ID {assistant_message_id}")
 
     except asyncio.CancelledError:
         stream_interrupted = True

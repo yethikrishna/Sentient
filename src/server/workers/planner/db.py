@@ -50,6 +50,7 @@ class PlannerMongoManager: # noqa: E501
         self.user_profiles_collection = self.db["user_profiles"]
         self.tasks_collection = self.db["tasks"]
         self.messages_collection = self.db["messages"]
+        self.proactive_suggestion_templates_collection = self.db["proactive_suggestion_templates"]
         logger.info("PlannerMongoManager initialized.")
 
     async def create_initial_task(self, user_id: str, description: str, action_items: list, topics: list, original_context: dict, source_event_id: str) -> Dict:
@@ -182,6 +183,11 @@ class PlannerMongoManager: # noqa: E501
             {"$set": updates}
         )
         return result.modified_count > 0
+
+    async def get_all_proactive_suggestion_templates(self) -> List[Dict]:
+        """Fetches all documents from the proactive_suggestion_templates collection."""
+        cursor = self.proactive_suggestion_templates_collection.find({}, {"_id": 0})
+        return await cursor.to_list(length=None)
 
 
     async def close(self):

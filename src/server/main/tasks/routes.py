@@ -208,11 +208,15 @@ async def task_action(
             raise HTTPException(status_code=400, detail="Failed to decline task.")
         return JSONResponse(content={"message": message})
     elif request.action == "execute":
-        # This implies immediate execution, potentially bypassing approval if allowed
-        message = await mongo_manager.execute_task_immediately(request.taskId, user_id)
-        if not message:
+        # This implies immediate execution
+        task = await mongo_manager.get_task(request.taskId, user_id)
+        if not task:
             raise HTTPException(status_code=400, detail="Failed to execute task immediately.")
-        return JSONResponse(content={"message": message})
+
+        # Trigger the Celery task
+        execute_task_plan.delay(request.taskId, user_id)
+
+        return JSONResponse(content={"message": "Task execution has been initiated."})
     else:
         raise HTTPException(status_code=400, detail="Invalid task action.")
 

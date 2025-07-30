@@ -70,6 +70,7 @@ class GCalendarPollingService:
             all_privacy_filters = user_profile.get("userData", {}).get("privacyFilters", {})
             calendar_filters = all_privacy_filters.get("gcalendar", {})
             keyword_filters = calendar_filters.get("keywords", [])
+            email_filters = [email.lower() for email in calendar_filters.get("emails", [])]
             
             creds = await get_gcalendar_credentials(user_id, self.db_manager)
             if not creds:
@@ -92,10 +93,30 @@ class GCalendarPollingService:
                     # Log as processed to avoid re-checking
                     continue
 
+                if email_filters:
+                    attendees = event.get("attendees", [])
+                    if attendees:
+                        attendee_emails = {attendee.get("email", "").lower() for attendee in attendees if attendee.get("email")}
+                        if any(blocked_email in attendee_emails for blocked_email in email_filters):
+                            logger.info(f"Skipping event {event_id} for user {user_id} due to attendee filter match.")
+                    continue
+
                 if not await self.db_manager.is_item_processed(user_id, self.service_name, event_id):
-                    # Dispatch a Celery task for each new event
-                    from workers.tasks import extract_from_context
-                    extract_from_context.delay(user_id, self.service_name, event_id, event)
+                    from workers.tasks import cud_memory_task, proactive_reasoning_pipeline # noqa
+                    # Construct a representative text string from the event data
+                    source_text = f"Event: {event.get('summary', '')}\nDescription: {event.get('description', '')}"
+                    # 1. Send to memory
+                    cud_memory_task.delay(
+                        user_id=user_id,
+                        information=source_text,
+                        source=self.service_name
+                    )
+                    # 2. Send to proactive reasoning
+                    proactive_reasoning_pipeline.delay(
+                        user_id=user_id,
+                        event_type=self.service_name,
+                        event_data=event
+                    )
                     await self.db_manager.log_processed_item(user_id, self.service_name, event_id)
                     processed_count += 1
 

@@ -113,8 +113,21 @@ class GmailPollingService:
                     continue
 
                 if not await self.db_manager.is_item_processed(user_id, self.service_name, email_item_id):
-                    from workers.tasks import extract_from_context # noqa
-                    extract_from_context.delay(user_id, self.service_name, email_item_id, email)
+                    from workers.tasks import cud_memory_task, proactive_reasoning_pipeline # noqa
+                    # Construct a representative text string from the email data
+                    source_text = f"Subject: {email.get('subject', '')}\n\n{email.get('body', '')}"
+                    # 1. Send to memory
+                    cud_memory_task.delay(
+                        user_id=user_id,
+                        information=source_text,
+                        source=self.service_name
+                    )
+                    # 2. Send to proactive reasoning
+                    proactive_reasoning_pipeline.delay(
+                        user_id=user_id,
+                        event_type=self.service_name,
+                        event_data=email
+                    )
                     await self.db_manager.log_processed_item(user_id, self.service_name, email_item_id)
                     processed_count += 1
 

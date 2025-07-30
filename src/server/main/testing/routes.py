@@ -1,5 +1,6 @@
 import logging
 import uuid
+import json
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -8,7 +9,7 @@ from main.config import ENVIRONMENT
 from main.dependencies import auth_helper
 from main.notifications.whatsapp_client import (check_phone_number_exists,
                                                  send_whatsapp_message)
-from workers.tasks import extract_from_context, run_due_tasks
+from workers.tasks import cud_memory_task, proactive_reasoning_pipeline, run_due_tasks
 
 from .models import ContextInjectionRequest, WhatsAppTestRequest
 
@@ -47,7 +48,18 @@ async def inject_context_event(
     event_id = f"manual_injection_{uuid.uuid4()}"
 
     try:
-        extract_from_context.delay(user_id, service_name, event_id, event_data)
+        # 1. Send to memory
+        cud_memory_task.delay(
+            user_id=user_id,
+            information=json.dumps(event_data),
+            source=service_name
+        )
+        # 2. Send to proactive reasoning
+        proactive_reasoning_pipeline.delay(
+            user_id=user_id,
+            event_type=service_name,
+            event_data=event_data
+        )
         logger.info(f"Manually injected event '{event_id}' for user '{user_id}' into the context extraction pipeline.")
         return {"message": "Context event injected successfully.", "event_id": event_id}
     except Exception as e:

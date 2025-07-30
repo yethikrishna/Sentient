@@ -11,7 +11,8 @@ import {
 	IconMapPin,
 	IconFileText,
 	IconArrowBackUp,
-	IconX
+	IconX,
+	IconCopy
 } from "@tabler/icons-react"
 import {
 	IconBrandSlack,
@@ -253,9 +254,6 @@ export default function ChatPage() {
 	const chatEndRef = useRef(null)
 	const abortControllerRef = useRef(null)
 	const scrollContainerRef = useRef(null)
-	const debounceTimer = useRef(null)
-	const [isWaitingForUserInput, setIsWaitingForUserInput] = useState(false)
-	const pendingUserMessages = useRef([])
 
 	// State for infinite scroll
 	const [isLoadingOlder, setIsLoadingOlder] = useState(false)
@@ -391,155 +389,132 @@ export default function ChatPage() {
 	}
 
 	const sendMessage = async () => {
-		if (input.trim() === "") return
+		if (input.trim() === "" || thinking) return
 
-		// Clear any existing debounce timer
-		if (debounceTimer.current) {
-			clearTimeout(debounceTimer.current)
-		}
-		setIsWaitingForUserInput(true)
+		setThinking(true)
+		abortControllerRef.current = new AbortController()
 
 		posthog?.capture("chat_message_sent", {
 			message_length: input.length
 		})
 
-		let messageContent = input.trim()
-
 		const newUserMessage = {
 			id: `user-${Date.now()}`,
 			role: "user",
-			content: messageContent,
+			content: input.trim(),
 			timestamp: new Date().toISOString(),
 			...(replyingTo && { replyToId: replyingTo.id }) // Add reply context
 		}
 
-		// Add to display immediately and queue for sending
-		setDisplayedMessages((prev) => [...prev, newUserMessage])
-		pendingUserMessages.current.push(newUserMessage)
+		// Optimistically update UI
+		const updatedMessages = [...displayedMessages, newUserMessage]
+		setDisplayedMessages(updatedMessages)
 
 		setInput("")
 		setReplyingTo(null)
 		if (textareaRef.current) textareaRef.current.style.height = "auto"
 
-		// Set a new timer
-		debounceTimer.current = setTimeout(() => {
-			sendBatchToServer()
-		}, 1500) // Wait 1.5 seconds for more input
-	}
-
-	const sendBatchToServer = async () => {
-		setIsWaitingForUserInput(false)
-		setThinking(true)
-		abortControllerRef.current = new AbortController()
-
-		const processStream = async () => {
-			try {
-				const messagesToSend = displayedMessages
-					.slice(-20)
-					.map((msg) => {
-						// Construct the content for the LLM
-						let content = msg.content
-						if (msg.replyToId) {
-							const originalMsg = displayedMessages.find(
-								(m) => m.id === msg.replyToId
-							)
-							if (originalMsg) {
-								// This is the special format the backend/LLM will understand
-								content = `<reply_to id="${originalMsg.id}">${originalMsg.content}</reply_to>\n${msg.content}`
-							}
-						}
-						return { id: msg.id, role: msg.role, content: content }
-					})
-
-				const response = await fetch("/api/chat/message", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						messages: messagesToSend
-					}),
-					signal: abortControllerRef.current.signal
-				})
-
-				if (!response.ok) {
-					throw new Error(`HTTP error! status: ${response.status}`)
-				}
-
-				const reader = response.body.getReader()
-				const decoder = new TextDecoder()
-				let assistantMessageId = `assistant-${Date.now()}`
-
-				setDisplayedMessages((prev) => [
-					...prev,
-					{
-						id: assistantMessageId,
-						role: "assistant",
-						content: "",
-						timestamp: new Date().toISOString(),
-						tools: []
-					}
-				])
-
-				while (true) {
-					const { done, value } = await reader.read()
-					if (done) break
-
-					const chunk = decoder.decode(value)
-					for (const line of chunk.split("\n")) {
-						if (!line.trim()) continue
-
-						try {
-							const parsed = JSON.parse(line)
-
-							if (parsed.type === "error") {
-								toast.error(
-									`An error occurred: ${parsed.message}`
-								)
-								continue
-							}
-
-							setDisplayedMessages((prev) =>
-								prev.map((msg) => {
-									if (msg.id === assistantMessageId) {
-										return {
-											...msg,
-											content:
-												msg.content +
-												(parsed.token || ""),
-											tools: parsed.tools || msg.tools
-										}
-									}
-									return msg
-								})
-							)
-						} catch (parseError) {
-							setDisplayedMessages((prev) =>
-								prev.map((msg) => {
-									if (msg.id === assistantMessageId) {
-										return {
-											...msg,
-											content: msg.content + line
-										}
-									}
-									return msg
-								})
-							)
-						}
+		try {
+			const messagesToSend = updatedMessages.slice(-20).map((msg) => {
+				let content = msg.content
+				if (msg.replyToId) {
+					// Use updatedMessages to find the replied-to message
+					const originalMsg = updatedMessages.find(
+						(m) => m.id === msg.replyToId
+					)
+					if (originalMsg) {
+						content = `<reply_to id="${originalMsg.id}">${originalMsg.content}</reply_to>\n${msg.content}`
 					}
 				}
-			} catch (error) {
-				if (error.name === "AbortError") {
-					toast.info("Message generation stopped.")
-				} else {
-					toast.error(`Error: ${error.message}`)
-					console.error("Fetch error:", error)
-				}
-			} finally {
-				setThinking(false)
+				return { id: msg.id, role: msg.role, content: content }
+			})
+
+			const response = await fetch("/api/chat/message", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					messages: messagesToSend
+				}),
+				signal: abortControllerRef.current.signal
+			})
+
+			if (!response.ok) {
+				throw new Error(`HTTP error! status: ${response.status}`)
 			}
-		}
 
-		pendingUserMessages.current = [] // Clear the pending queue
-		processStream()
+			const reader = response.body.getReader()
+			const decoder = new TextDecoder()
+			let assistantMessageId = `assistant-${Date.now()}`
+
+			setDisplayedMessages((prev) => [
+				...prev,
+				{
+					id: assistantMessageId,
+					role: "assistant",
+					content: "",
+					timestamp: new Date().toISOString(),
+					tools: []
+				}
+			])
+
+			while (true) {
+				const { done, value } = await reader.read()
+				if (done) break
+
+				const chunk = decoder.decode(value)
+				for (const line of chunk.split("\n")) {
+					if (!line.trim()) continue
+
+					try {
+						const parsed = JSON.parse(line)
+
+						if (parsed.type === "error") {
+							toast.error(`An error occurred: ${parsed.message}`)
+							continue
+						}
+
+						setDisplayedMessages((prev) =>
+							prev.map((msg) => {
+								if (msg.id === assistantMessageId) {
+									return {
+										...msg,
+										content:
+											msg.content + (parsed.token || ""),
+										tools: parsed.tools || msg.tools
+									}
+								}
+								return msg
+							})
+						)
+					} catch (parseError) {
+						setDisplayedMessages((prev) =>
+							prev.map((msg) => {
+								if (msg.id === assistantMessageId) {
+									return {
+										...msg,
+										content: msg.content + line
+									}
+								}
+								return msg
+							})
+						)
+					}
+				}
+			}
+		} catch (error) {
+			if (error.name === "AbortError") {
+				toast.info("Message generation stopped.")
+			} else {
+				toast.error(`Error: ${error.message}`)
+				console.error("Fetch error:", error)
+				// If sending failed, remove the optimistic user message
+				setDisplayedMessages((prev) =>
+					prev.filter((m) => m.id !== newUserMessage.id)
+				)
+			}
+		} finally {
+			setThinking(false)
+		}
 	}
 
 	const handleStopStreaming = () => {
@@ -562,6 +537,41 @@ export default function ChatPage() {
 		return "Good Evening"
 	}
 
+	const getFinalAnswer = (content) => {
+		if (!content || typeof content !== "string") return ""
+
+		const answerParts = []
+		const regex =
+			/(<think>[\s\S]*?<\/think>|<tool_code[^>]*>[\s\S]*?<\/tool_code>|<tool_result[^>]*>[\s\S]*?<\/tool_result>|<answer>[\s\S]*?<\/answer>)/g
+		let lastIndex = 0
+		let inToolCallPhase = false // To ignore raw text between tool_code and tool_result
+
+		for (const match of content.matchAll(regex)) {
+			const precedingText = content.substring(lastIndex, match.index)
+			if (precedingText.trim() && !inToolCallPhase) {
+				answerParts.push(precedingText.trim())
+			}
+
+			const tag = match[0]
+			if (tag.startsWith("<tool_code")) inToolCallPhase = true
+			else if (tag.startsWith("<tool_result")) inToolCallPhase = false
+			else if (tag.startsWith("<answer>")) {
+				const answerContent =
+					tag.match(/<answer>([\s\S]*?)<\/answer>/)?.[1] || ""
+				if (answerContent) answerParts.push(answerContent.trim())
+			}
+			lastIndex = match.index + tag.length
+		}
+		const remainingText = content.substring(lastIndex)
+		if (remainingText.trim() && !inToolCallPhase) {
+			answerParts.push(remainingText.trim())
+		}
+
+		const plainText = answerParts.join("\n\n")
+		if (plainText) return plainText
+		return content.replace(/<[^>]+>/g, "").trim()
+	}
+
 	const renderReplyPreview = () => (
 		<AnimatePresence>
 			{replyingTo && (
@@ -579,12 +589,12 @@ export default function ChatPage() {
 								: "the assistant"}
 						</p>
 						<p className="text-sm text-neutral-200 mt-1 truncate">
-							{replyingTo.content}
+							{getFinalAnswer(replyingTo.content)}
 						</p>
 					</div>
 					<button
 						onClick={() => setReplyingTo(null)}
-						className="p-1 rounded-full text-neutral-500 hover:bg-neutral-700 hover:text-white"
+						className="p-1.5 rounded-full text-neutral-400 hover:bg-neutral-700 hover:text-white"
 					>
 						<IconX size={16} />
 					</button>
@@ -620,7 +630,7 @@ export default function ChatPage() {
 					style={{ maxHeight: "200px" }}
 				/>
 				<div className="absolute right-3 bottom-3 flex items-center gap-2">
-					{thinking || isWaitingForUserInput ? (
+					{thinking ? (
 						<button
 							onClick={handleStopStreaming}
 							className="p-2.5 rounded-full text-white bg-red-600 hover:bg-red-500 transition-colors"
@@ -632,7 +642,7 @@ export default function ChatPage() {
 					) : (
 						<button
 							onClick={sendMessage}
-							disabled={!input.trim()}
+							disabled={!input.trim() || thinking}
 							className="p-2.5 bg-gradient-to-tr from-blue-500 to-cyan-500 rounded-full text-white disabled:opacity-50 hover:from-blue-400 hover:to-cyan-400 transition-all shadow-md"
 						>
 							<IconSend size={18} />
@@ -699,12 +709,13 @@ export default function ChatPage() {
 								<div
 									key={msg.id || i}
 									className={cn(
-										"flex",
+										"flex w-full",
 										msg.role === "user"
 											? "justify-end"
 											: "justify-start"
 									)}
 								>
+									{/* The ChatBubble itself will now have a max-width */}
 									<ChatBubble
 										role={msg.role}
 										content={msg.content}
@@ -716,12 +727,12 @@ export default function ChatPage() {
 								</div>
 							))}
 							<AnimatePresence>
-								{(thinking || isWaitingForUserInput) && (
+								{thinking && (
 									<motion.div
 										initial={{ opacity: 0, y: 10 }}
 										animate={{ opacity: 1, y: 0 }}
 										exit={{ opacity: 0 }}
-										className="flex items-center gap-2 p-3 bg-neutral-800 rounded-lg self-start"
+										className="flex items-center gap-2 p-3 bg-neutral-800 rounded-2xl self-start"
 									>
 										<div className="bg-neutral-500 rounded-full h-2 w-2 animate-pulse delay-75"></div>
 										<div className="bg-neutral-500 rounded-full h-2 w-2 animate-pulse delay-150"></div>

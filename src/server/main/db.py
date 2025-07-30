@@ -9,7 +9,6 @@ from pymongo import ASCENDING, DESCENDING, IndexModel, ReturnDocument
 from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 from typing import Dict, List, Optional, Any, Tuple
-from workers.tasks import execute_task_plan
 
 # Import config from the current 'main' directory
 from main.config import MONGO_URI, MONGO_DB_NAME
@@ -377,14 +376,6 @@ class MongoManager:
         """Declines a task by setting its status to 'declined'."""
         success = await self.update_task(task_id, {"status": "declined"})
         return "Task declined." if success else None
-
-    async def execute_task_immediately(self, task_id: str, user_id: str) -> str:
-        """Triggers the immediate execution of a task."""
-        task = await self.get_task(task_id, user_id)
-        if not task:
-            return None
-        execute_task_plan.delay(task_id, user_id)
-        return "Task execution has been initiated."
 
     async def cancel_latest_run(self, task_id: str) -> bool:
         """Pops the last run from the array and reverts the task status to completed."""

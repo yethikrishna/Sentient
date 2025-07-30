@@ -45,8 +45,16 @@ async def handle_suggestion_action(
     if request.user_action == "approved":
         logger.info(f"User '{user_id}' approved suggestion '{request.notification_id}' of type '{suggestion_type}'.")
 
+        # Re-extract with default for robustness, as suggested by diff
+        suggestion_payload = notification.get("suggestion_payload", {})
+        gathered_context = suggestion_payload.get("gathered_context")
+
         # 3a. Trigger Celery task to create the actual task
-        create_task_from_suggestion.delay(user_id, suggestion_payload)
+        create_task_from_suggestion.delay( # noqa
+            user_id=user_id,
+            suggestion_payload=suggestion_payload,
+            context=gathered_context
+        )
 
         # 3b. Record positive feedback
         await record_user_feedback(user_id, suggestion_type, "positive")

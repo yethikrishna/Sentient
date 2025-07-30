@@ -952,7 +952,7 @@ const IntegrationsPage = () => {
 			<SparkleEffect trigger={sparkleTrigger} />
 			<div
 				className={cn(
-					"flex-1 flex flex-col overflow-hidden relative w-full md:pl-20 pb-16 md:pb-0"
+					"flex-1 flex flex-col overflow-hidden relative w-full pb-16 md:pb-0"
 				)}
 			>
 				<div className="absolute inset-0 z-[-1] network-grid-background">

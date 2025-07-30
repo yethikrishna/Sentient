@@ -137,7 +137,7 @@ const CalendarView = ({ tasks, onSelectTask, onDayClick, onShowMoreClick }) => {
 	}
 
 	return (
-		<div className="p-4 h-full flex flex-col bg-brand-black/50 backdrop-blur-sm rounded-xl border border-zinc-700/50">
+		<div className="p-4 h-full flex flex-col bg-transparent rounded-xl backdrop-blur-sm">
 			<header className="flex items-center justify-between mb-4">
 				<h2 className="text-lg font-sans font-semibold text-white">
 					{format(currentMonth, "MMMM yyyy")}

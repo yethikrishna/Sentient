@@ -634,7 +634,7 @@ export default function ChatPage({ params }) {
 	}
 
 	return (
-		<div className="flex-1 flex bg-black text-white overflow-hidden md:pl-20">
+		<div className="flex-1 flex bg-black text-white overflow-hidden">
 			<Tooltip id="home-tooltip" place="right" style={{ zIndex: 9999 }} />
 			<ChatHistorySidebar
 				chatList={chatList}

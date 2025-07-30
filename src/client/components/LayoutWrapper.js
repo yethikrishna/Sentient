@@ -5,12 +5,14 @@ import { AnimatePresence, motion } from "framer-motion"
 import NotificationsOverlay from "@components/NotificationsOverlay"
 import { IconBell } from "@tabler/icons-react"
 import Sidebar from "@components/Sidebar"
-import CommandPalette from "./CommandPallete"
+import CommandPalette from "./CommandPallete" // Corrected import path
 import { useGlobalShortcuts } from "@hooks/useGlobalShortcuts"
+import { cn } from "@utils/cn"
 
 export default function LayoutWrapper({ children }) {
 	const [isNotificationsOpen, setNotificationsOpen] = useState(false)
 	const [isCommandPaletteOpen, setCommandPaletteOpen] = useState(false)
+	const [isSidebarCollapsed, setSidebarCollapsed] = useState(true)
 	const [unreadCount, setUnreadCount] = useState(0)
 	const [userDetails, setUserDetails] = useState(null)
 	const wsRef = useRef(null)
@@ -117,6 +119,8 @@ export default function LayoutWrapper({ children }) {
 		<>
 			{showNav && (
 				<Sidebar
+					isCollapsed={isSidebarCollapsed}
+					onToggle={() => setSidebarCollapsed(!isSidebarCollapsed)}
 					onNotificationsOpen={handleNotificationsOpen}
 					unreadCount={unreadCount}
 				/>
@@ -127,7 +131,15 @@ export default function LayoutWrapper({ children }) {
 					setOpen={setCommandPaletteOpen}
 				/>
 			)}
-			{children}
+			<div
+				className={cn(
+					"flex-1 transition-all duration-300 ease-in-out",
+					showNav &&
+						(isSidebarCollapsed ? "md:pl-20" : "md:pl-[256px]")
+				)}
+			>
+				{children}
+			</div>
 			<AnimatePresence>
 				{isNotificationsOpen && (
 					<NotificationsOverlay
@@ -137,10 +149,4 @@ export default function LayoutWrapper({ children }) {
 			</AnimatePresence>
 		</>
 	)
-}
-const isMobile = () => {
-	if (typeof window !== "undefined") {
-		return window.innerWidth < 768
-	}
-	return false
 }

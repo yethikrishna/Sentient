@@ -259,7 +259,7 @@ function TasksPageContent() {
 	}, [oneTimeTasks, recurringInstances, searchQuery])
 
 	return (
-		<div className="flex-1 flex h-screen text-white overflow-hidden md:pl-20">
+		<div className="flex-1 flex h-screen text-white overflow-hidden">
 			<Tooltip
 				id="tasks-tooltip"
 				place="right"

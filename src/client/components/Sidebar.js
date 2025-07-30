@@ -9,12 +9,20 @@ import {
 	IconPlugConnected,
 	IconUser,
 	IconMessage,
-	IconBell
+	IconBell,
+	IconLayoutSidebarLeftCollapse,
+	IconLayoutSidebarLeftExpand
 } from "@tabler/icons-react"
 import { cn } from "@utils/cn"
-import { motion } from "framer-motion"
+import { motion, AnimatePresence } from "framer-motion"
+import SidebarAnimation from "./SidebarAnimation"
 
-const Sidebar = ({ onNotificationsOpen, unreadCount }) => {
+const Sidebar = ({
+	isCollapsed,
+	onToggle,
+	onNotificationsOpen,
+	unreadCount
+}) => {
 	const pathname = usePathname()
 	const [userDetails, setUserDetails] = useState(null)
 	const isSelfHost = process.env.NEXT_PUBLIC_ENVIRONMENT === "selfhost"
@@ -40,8 +48,24 @@ const Sidebar = ({ onNotificationsOpen, unreadCount }) => {
 	return (
 		<>
 			{/* Desktop Sidebar */}
-			<div className="hidden md:flex fixed top-0 left-0 h-screen w-20 bg-black border-r border-neutral-800/50 flex-col items-center justify-between py-5 z-40">
-				<div className="flex flex-col items-center gap-8 w-full">
+			<motion.div
+				animate={{ width: isCollapsed ? 80 : 256 }}
+				transition={{ type: "spring", stiffness: 300, damping: 30 }}
+				className="hidden md:flex fixed top-0 left-0 h-screen bg-brand-black border-r border-neutral-800/50 flex-col justify-between py-5 z-40"
+			>
+				<AnimatePresence>
+					{!isCollapsed && (
+						<motion.div
+							initial={{ opacity: 0 }}
+							animate={{ opacity: 1, transition: { delay: 0.2 } }}
+							exit={{ opacity: 0 }}
+							className="absolute inset-0 z-0"
+						>
+							<SidebarAnimation />
+						</motion.div>
+					)}
+				</AnimatePresence>
+				<div className="flex flex-col items-center gap-8 w-full relative z-10">
 					<Link href="/chat">
 						<img
 							src="/images/half-logo-dark.svg"
@@ -49,7 +73,7 @@ const Sidebar = ({ onNotificationsOpen, unreadCount }) => {
 							className="w-8 h-8"
 						/>
 					</Link>
-					<nav className="flex flex-col items-center gap-2 w-full">
+					<nav className="flex flex-col gap-2 w-full px-3">
 						{navLinks.map((link) => {
 							const isActive = pathname.startsWith(link.href)
 							return (
@@ -57,44 +81,72 @@ const Sidebar = ({ onNotificationsOpen, unreadCount }) => {
 									href={link.href}
 									key={link.title}
 									className={cn(
-										"flex flex-col items-center gap-1.5 transition-colors duration-200 w-full py-3",
+										"flex items-center gap-4 rounded-lg p-3 transition-colors duration-200",
 										isActive
-											? "text-white bg-neutral-800 border-r-2 border-white"
-											: "text-neutral-400 hover:text-white hover:bg-neutral-800/50"
+											? "bg-brand-orange text-brand-black"
+											: "text-neutral-400 hover:text-white hover:bg-neutral-800/50",
+										isCollapsed && "justify-center"
 									)}
 								>
 									{link.icon}
-									<span className="text-xs font-medium">
-										{link.title}
-									</span>
+									{!isCollapsed && (
+										<span className="font-semibold">
+											{link.title}
+										</span>
+									)}
 								</Link>
 							)
 						})}
 						<button
 							onClick={onNotificationsOpen}
-							className="relative flex flex-col items-center gap-1.5 transition-colors duration-200 w-full py-3 text-neutral-400 hover:text-white hover:bg-neutral-800/50"
+							className={cn(
+								"relative flex items-center gap-4 w-full p-3 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800/50",
+								isCollapsed && "justify-center"
+							)}
 						>
 							<IconBell size={28} />
-							<span className="text-xs font-medium">
-								Activity
-							</span>
+							{!isCollapsed && (
+								<span className="font-semibold">Activity</span>
+							)}
 							{unreadCount > 0 && (
 								<motion.div
 									initial={{ scale: 0 }}
 									animate={{ scale: 1 }}
-									className="absolute top-2 right-5 h-2.5 w-2.5 bg-red-500 rounded-full border-2 border-black"
+									className="absolute top-2 right-3 h-2.5 w-2.5 bg-red-500 rounded-full border-2 border-black"
 								/>
 							)}
 						</button>
 					</nav>
 				</div>
-				<div className="flex flex-col items-center gap-4">
+				<div className="flex flex-col items-center gap-4 w-full px-3 relative z-10">
+					<button
+						onClick={onToggle}
+						className={cn(
+							"flex items-center gap-4 w-full p-3 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800/50",
+							isCollapsed && "justify-center"
+						)}
+					>
+						{isCollapsed ? (
+							<IconLayoutSidebarLeftExpand size={28} />
+						) : (
+							<IconLayoutSidebarLeftCollapse size={28} />
+						)}
+						{!isCollapsed && (
+							<span className="font-semibold">Collapse</span>
+						)}
+					</button>
 					{!isSelfHost && (
 						<Link
 							href="/api/auth/logout"
-							className="flex flex-col items-center gap-1.5 text-neutral-400 hover:text-white transition-colors"
+							className={cn(
+								"flex items-center gap-4 w-full p-3 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800/50",
+								isCollapsed && "justify-center"
+							)}
 						>
 							<IconLogout size={24} />
+							{!isCollapsed && (
+								<span className="font-semibold">Logout</span>
+							)}
 						</Link>
 					)}
 					<Link href="/settings">
@@ -111,9 +163,9 @@ const Sidebar = ({ onNotificationsOpen, unreadCount }) => {
 						)}
 					</Link>
 				</div>
-			</div>
+			</motion.div>
 			{/* Mobile Bottom Navigation */}
-			<div className="md:hidden fixed bottom-0 left-0 w-full bg-black border-t border-neutral-800/50 z-40">
+			<div className="md:hidden fixed bottom-0 left-0 w-full bg-brand-black border-t border-neutral-800/50 z-40">
 				<nav className="flex items-center justify-around w-full h-16">
 					{navLinks.map((link) => {
 						const isActive = pathname.startsWith(link.href)
@@ -124,8 +176,8 @@ const Sidebar = ({ onNotificationsOpen, unreadCount }) => {
 								className={cn(
 									"flex flex-col items-center justify-center gap-1 w-full h-full transition-colors",
 									isActive
-										? "text-white"
-										: "text-neutral-400 hover:text-white"
+										? "text-brand-orange"
+										: "text-neutral-400"
 								)}
 							>
 								{cloneElement(link.icon, { size: 24 })}
@@ -137,7 +189,7 @@ const Sidebar = ({ onNotificationsOpen, unreadCount }) => {
 					})}
 					<button
 						onClick={onNotificationsOpen}
-						className="relative flex flex-col items-center justify-center gap-1 w-full h-full transition-colors text-neutral-400 hover:text-white"
+						className="relative flex flex-col items-center justify-center gap-1 w-full h-full transition-colors text-neutral-400"
 					>
 						<IconBell size={24} />
 						<span className="text-xs font-medium">Activity</span>

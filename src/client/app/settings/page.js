@@ -1039,7 +1039,7 @@ const ProfilePage = () => {
 				place="right-start"
 				style={{ zIndex: 9999 }}
 			/>
-			<div className="flex-1 flex flex-col overflow-hidden relative w-full md:pl-20 pb-16 md:pb-0">
+			<div className="flex-1 flex flex-col overflow-hidden relative w-full pb-16 md:pb-0">
 				<main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 custom-scrollbar">
 					<HelpTooltip content="Customize your experience here." />
 					<div className="w-full max-w-5xl mx-auto space-y-10">

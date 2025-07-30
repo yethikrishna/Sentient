@@ -19,7 +19,7 @@ const TaskCardCalendar = ({ task, onSelectTask }) => {
 			}}
 			className={cn(
 				"w-full p-2 rounded-md text-xs font-medium text-white cursor-pointer truncate",
-				"bg-neutral-700 hover:bg-neutral-600"
+				"bg-brand-gray/20 hover:bg-brand-gray/80"
 			)}
 		>
 			<div className="flex items-center gap-2">

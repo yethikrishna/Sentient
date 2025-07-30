@@ -14,8 +14,7 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 		const textarea = textareaRef.current
 		if (textarea) {
 			textarea.style.height = "auto"
-			const scrollHeight = textarea.scrollHeight
-			textarea.style.height = `${Math.min(Math.max(scrollHeight, 20), 100)}px`
+			textarea.style.height = `${Math.min(textarea.scrollHeight, 100)}px`
 		}
 	}, [prompt])
 
@@ -48,13 +47,13 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 		<div className="p-4 flex-shrink-0 bg-transparent">
 			<div
 				className={cn(
-					"relative flex items-end bg-brand-black rounded-full p-1 transition-all overflow-hidden"
+					"relative flex bg-brand-black rounded-full p-1 transition-all overflow-hidden min-h-[50px]"
 				)}
 			>
 				<BorderTrail size={100} className="bg-brand-orange px-4" />
 				<div
 					className={cn(
-						"relative flex gap-2 items-end bg-transparent p-1 transition-all w-full"
+						"relative flex gap-2 items-stretch bg-transparent p-1 transition-all w-full"
 					)}
 				>
 					<textarea
@@ -68,7 +67,7 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 							}
 						}}
 						placeholder=" "
-						className="w-full rounded-l-full bg-transparent text-white placeholder-transparent border-1 border-brand-orange focus:ring-0 focus:ring-brand-black text-sm z-10 overflow-y-auto"
+						className="w-full rounded-l-full bg-transparent text-white placeholder-transparent border-1 border-brand-orange focus:ring-0 focus:ring-brand-black text-sm z-10 overflow-y-auto self-stretch py-2"
 					/>
 					{!prompt && (
 						<div className="absolute top-1/2 left-4 -translate-y-1/2 text-neutral-500 pointer-events-none z-0">
@@ -89,7 +88,7 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 					<button
 						onClick={handleAddTask}
 						disabled={isSaving || !prompt.trim()}
-						className="p-3 bg-brand-orange rounded-r-full h-12 text-brand-black disabled:opacity-50 hover:bg-opacity-80 transition-colors z-10 flex-shrink-0"
+						className="p-3 bg-brand-orange rounded-r-full h-full text-brand-black disabled:opacity-50 hover:bg-opacity-80 transition-colors z-10 flex-shrink-0"
 					>
 						{isSaving ? (
 							<IconLoader size={18} className="animate-spin" />

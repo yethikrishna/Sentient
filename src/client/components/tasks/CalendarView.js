@@ -23,6 +23,11 @@ import {
 import { cn } from "@utils/cn"
 import TaskCardCalendar from "./TaskCardCalendar"
 
+const cellVariants = {
+	hidden: { opacity: 0, y: -20, scale: 0.95 },
+	visible: { opacity: 1, y: 0, scale: 1 }
+}
+
 const CalendarDayCell = ({
 	day,
 	tasks,
@@ -37,15 +42,16 @@ const CalendarDayCell = ({
 	const hasMoreTasks = tasks.length > 1
 
 	return (
-		<div
+		<motion.div
 			onMouseEnter={() => setIsHovered(true)}
 			onMouseLeave={() => setIsHovered(false)}
 			onClick={() => onDayClick(day)}
+			variants={cellVariants}
 			className={cn(
 				"border-r border-b border-neutral-800 p-2 flex flex-col gap-1 overflow-hidden relative min-h-[120px] rounded-lg",
 				!isCurrentMonth && "bg-brand-black text-neutral-600",
 				isSelected
-					? "bg-brand-orange text-brand-black font-bold hover:bg-brand-orange"
+					? "bg-brand-orange/90 text-brand-black font-bold hover:bg-brand-orange"
 					: "hover:bg-neutral-800/70"
 			)}
 		>
@@ -99,7 +105,7 @@ const CalendarDayCell = ({
 					</div>
 				)}
 			</div>
-		</div>
+		</motion.div>
 	)
 }
 
@@ -120,6 +126,14 @@ const CalendarView = ({ tasks, onSelectTask, onDayClick, onShowMoreClick }) => {
 	const handleDayClickInternal = (day) => {
 		setSelectedDate(day)
 		onDayClick(day)
+	}
+
+	const containerVariants = {
+		hidden: { opacity: 1 },
+		visible: {
+			opacity: 1,
+			transition: { staggerChildren: 0.02, delayChildren: 0.1 }
+		}
 	}
 
 	return (
@@ -150,7 +164,12 @@ const CalendarView = ({ tasks, onSelectTask, onDayClick, onShowMoreClick }) => {
 					)
 				)}
 			</div>
-			<div className="grid grid-cols-7 grid-rows-5 flex-1">
+			<motion.div
+				className="grid grid-cols-7 grid-rows-5 flex-1"
+				variants={containerVariants}
+				initial="hidden"
+				animate="visible"
+			>
 				{daysInGrid.map((day) => {
 					const tasksForDay = tasks.filter((task) =>
 						isSameDay(task.scheduled_date, day)
@@ -168,7 +187,7 @@ const CalendarView = ({ tasks, onSelectTask, onDayClick, onShowMoreClick }) => {
 						/>
 					)
 				})}
-			</div>
+			</motion.div>
 		</div>
 	)
 }

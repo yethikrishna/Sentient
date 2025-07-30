@@ -40,12 +40,16 @@ const TaskCardList = ({ task, onSelectTask }) => {
 		"clarification_answered"
 	].includes(task.status)
 
+	const cardVariants = {
+		hidden: { opacity: 0, y: -20, scale: 0.95 },
+		visible: { opacity: 1, y: 0, scale: 1 }
+	}
+
 	const cardContent = (
 		<motion.div
 			layout
-			initial={{ opacity: 0 }}
-			animate={{ opacity: 1 }}
-			exit={{ opacity: 0 }}
+			variants={cardVariants}
+			exit={{ opacity: 0, transition: { duration: 0.1 } }}
 			onClick={() => onSelectTask(task)}
 			className="bg-brand-black p-4 rounded-lg border border-zinc-700 hover:border-brand-orange transition-all cursor-pointer relative"
 		>

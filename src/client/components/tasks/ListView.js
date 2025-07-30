@@ -1,6 +1,6 @@
 "use client"
 import React, { useMemo } from "react"
-import { AnimatePresence } from "framer-motion"
+import { AnimatePresence, motion } from "framer-motion"
 import { IconSearch, IconChevronDown } from "@tabler/icons-react"
 import { groupTasksByDate } from "@utils/taskUtils"
 import TaskCardList from "./TaskCardList"
@@ -15,6 +15,14 @@ const ListView = ({
 	onSearchChange
 }) => {
 	const { today, tomorrow, future } = groupTasksByDate(oneTimeTasks)
+
+	const containerVariants = {
+		hidden: { opacity: 1 }, // Let the parent control opacity
+		visible: {
+			opacity: 1,
+			transition: { staggerChildren: 0.07 }
+		}
+	}
 
 	const sections = [
 		{ title: "Today", tasks: today },
@@ -70,7 +78,12 @@ const ListView = ({
 							title={`Active Workflows (${recurringTasks.length})`}
 							defaultOpen={true}
 						>
-							<div className="space-y-3 pt-2">
+							<motion.div
+								className="space-y-3 pt-2"
+								variants={containerVariants}
+								initial="hidden"
+								animate="visible"
+							>
 								{recurringTasks.map((task) => (
 									<TaskCardList
 										key={task.task_id}
@@ -78,7 +91,7 @@ const ListView = ({
 										onSelectTask={onSelectTask}
 									/>
 								))}
-							</div>
+							</motion.div>
 						</CollapsibleSection>
 					)}
 
@@ -90,7 +103,12 @@ const ListView = ({
 									title={`${section.title} (${section.tasks.length})`}
 									defaultOpen={true}
 								>
-									<div className="space-y-3 pt-2">
+									<motion.div
+										className="space-y-3 pt-2"
+										variants={containerVariants}
+										initial="hidden"
+										animate="visible"
+									>
 										{section.tasks.map((task) => (
 											<TaskCardList
 												key={task.instance_id}
@@ -98,7 +116,7 @@ const ListView = ({
 												onSelectTask={onSelectTask}
 											/>
 										))}
-									</div>
+									</motion.div>
 								</CollapsibleSection>
 							)
 					)}

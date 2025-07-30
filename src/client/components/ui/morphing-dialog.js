@@ -190,7 +190,7 @@ function MorphingDialogContainer({ children }) {
 						animate={{ opacity: 1 }}
 						exit={{ opacity: 0 }}
 					/>
-					<div className="fixed inset-0 z-50 flex items-center justify-center">
+					<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
 						{children}
 					</div>
 				</>

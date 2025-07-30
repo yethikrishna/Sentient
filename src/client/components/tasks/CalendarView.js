@@ -49,7 +49,7 @@ const CalendarDayCell = ({
 			variants={cellVariants}
 			className={cn(
 				"border-r border-b border-neutral-800 p-2 flex flex-col gap-1 overflow-hidden relative min-h-[120px] rounded-lg",
-				!isCurrentMonth && "bg-brand-black text-neutral-600",
+				!isCurrentMonth && "bg-neutral-900/50 text-neutral-600",
 				isSelected
 					? "bg-brand-orange/90 text-brand-black font-bold hover:bg-brand-orange"
 					: "hover:bg-neutral-800/70"

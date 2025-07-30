@@ -22,6 +22,7 @@ import ListView from "@components/tasks/ListView"
 import CalendarView from "@components/tasks/CalendarView"
 import WelcomePanel from "@components/tasks/WelcomePanel"
 import CreateTaskInput from "@components/tasks/CreateTaskInput"
+import InteractiveNetworkBackground from "@components/ui/InteractiveNetworkBackground"
 import DayDetailView from "@components/tasks/DayDetailView"
 
 function TasksPageContent() {
@@ -264,7 +265,10 @@ function TasksPageContent() {
 				place="right"
 				style={{ zIndex: 9999 }}
 			/>
-			<div className="flex-1 flex flex-col md:flex-row ml-2 gap-x-2 overflow-hidden">
+			<div className="flex-1 flex flex-col md:flex-row ml-2 gap-x-2 overflow-hidden relative">
+				<div className="absolute inset-0 z-[-1] network-grid-background">
+					<InteractiveNetworkBackground />
+				</div>
 				{/* Main Content Panel */}
 				<main className="flex-1 flex flex-col overflow-hidden relative">
 					<div className="absolute -top-[250px] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-brand-orange/10 rounded-full blur-3xl -z-10" />
@@ -323,7 +327,7 @@ function TasksPageContent() {
 				</main>
 
 				{/* Right Details Panel */}
-				<aside className="w-full md:w-[450px] lg:w-[500px] bg-brand-black border-l border-brand-gray flex-shrink-0 flex flex-col">
+				<aside className="w-full md:w-[450px] lg:w-[500px] bg-brand-black/50 backdrop-blur-sm border-l border-brand-gray flex-shrink-0 flex flex-col">
 					<AnimatePresence mode="wait">
 						{rightPanelContent.type === "task" &&
 						rightPanelContent.data ? (

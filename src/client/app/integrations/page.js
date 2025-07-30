@@ -38,6 +38,7 @@ import {
 } from "@tabler/icons-react"
 import { cn } from "@utils/cn"
 import { usePostHog } from "posthog-js/react"
+import InteractiveNetworkBackground from "@components/ui/InteractiveNetworkBackground"
 import { motion, AnimatePresence } from "framer-motion"
 import {
 	MorphingDialog,
@@ -581,7 +582,7 @@ const IntegrationCard = ({ integration, icon: Icon }) => {
 		integration.connected || integration.auth_type === "builtin"
 
 	return (
-		<div className="bg-neutral-900/50 p-5 rounded-xl transition-all duration-300 border border-neutral-800/70 hover:border-brand-orange hover:-translate-y-1 flex flex-col text-left h-full">
+		<div className="bg-neutral-900/50 p-4 sm:p-5 rounded-xl transition-all duration-300 border border-neutral-800/70 hover:border-brand-orange hover:-translate-y-1 flex flex-col text-left h-full">
 			{/* Top Section */}
 			<div className="flex items-start justify-between mb-4">
 				<div className="flex items-center gap-3">
@@ -589,7 +590,7 @@ const IntegrationCard = ({ integration, icon: Icon }) => {
 						<Icon className="w-full h-full" />
 					</div>
 					<div>
-						<h3 className="font-semibold text-white text-lg">
+						<h3 className="font-semibold text-white text-base sm:text-lg">
 							{integration.display_name}
 						</h3>
 						<span
@@ -942,16 +943,23 @@ const IntegrationsPage = () => {
 	}, [allIntegrations, searchQuery, activeCategory])
 
 	return (
-		<div className="flex-1 flex h-screen bg-dark-surface text-white overflow-x-hidden">
+		<div className="flex-1 flex h-screen text-white overflow-x-hidden">
 			<Tooltip
 				id="page-help-tooltip"
 				place="right-start"
 				style={{ zIndex: 9999 }}
 			/>
 			<SparkleEffect trigger={sparkleTrigger} />
-			<div className="flex-1 flex flex-col overflow-hidden relative bg-dark-surface md:pl-20 pb-16 md:pb-0">
+			<div
+				className={cn(
+					"flex-1 flex flex-col overflow-hidden relative w-full md:pl-20 pb-16 md:pb-0"
+				)}
+			>
+				<div className="absolute inset-0 z-[-1] network-grid-background">
+					<InteractiveNetworkBackground />
+				</div>
 				<div className="absolute -top-[250px] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-brand-orange/10 rounded-full blur-3xl -z-10" />
-				<header className="flex items-center justify-between p-4 sm:p-6 md:px-8 md:py-6 bg-dark-surface border-b border-[var(--color-primary-surface)] shrink-0">
+				<header className="flex items-center justify-between p-4 sm:p-6 md:px-8 md:py-6 bg-transparent border-b border-[var(--color-primary-surface)] shrink-0">
 					<HelpTooltip content="Connect your apps here. This allows Sentient to access information and perform actions on your behalf." />
 					<div>
 						<h1 className="text-3xl lg:text-4xl font-bold text-white">
@@ -1054,13 +1062,13 @@ const IntegrationsPage = () => {
 																		<MorphingDialogContainer>
 																			<MorphingDialogContent className="pointer-events-auto relative flex h-auto w-full flex-col overflow-hidden border border-neutral-700 bg-neutral-900 sm:w-[600px] rounded-2xl">
 																				<BorderTrail className="bg-brand-orange" />
-																				<div className="p-6 overflow-y-auto custom-scrollbar">
+																				<div className="p-4 sm:p-6 overflow-y-auto custom-scrollbar">
 																					<div className="flex items-center gap-4 mb-4">
 																						<div className="w-10 h-10 flex items-center justify-center rounded-lg bg-brand-gray p-1.5 text-brand-orange">
 																							<Icon className="w-full h-full" />
 																						</div>
 																						<div>
-																							<MorphingDialogTitle className="text-2xl font-bold text-white">
+																							<MorphingDialogTitle className="text-xl sm:text-2xl font-bold text-white">
 																								{
 																									integration.display_name
 																								}
@@ -1073,7 +1081,7 @@ const IntegrationsPage = () => {
 																						</div>
 																					</div>
 																					<MorphingDialogDescription>
-																						<p className="text-neutral-300 mb-6">
+																						<p className="text-sm sm:text-base text-neutral-300 mb-6">
 																							{
 																								integration.description
 																							}

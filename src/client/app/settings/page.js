@@ -2,10 +2,10 @@
 
 import toast from "react-hot-toast"
 import {
+	// ICONS
 	IconLoader,
 	IconDeviceLaptop,
 	IconWorld,
-	IconPalette,
 	IconUser,
 	IconClock,
 	IconHeart,
@@ -13,7 +13,6 @@ import {
 	IconMoodHappy,
 	IconListCheck,
 	IconMapPin,
-	IconChevronDown,
 	IconX,
 	IconFlask,
 	IconPlus,
@@ -25,13 +24,15 @@ import {
 import { useState, useEffect, useCallback } from "react"
 import { Tooltip } from "react-tooltip"
 import { cn } from "@utils/cn"
+import InteractiveNetworkBackground from "@components/ui/InteractiveNetworkBackground"
+import CollapsibleSection from "@components/tasks/CollapsibleSection"
 
 const HelpTooltip = ({ content }) => (
 	<div className="fixed bottom-6 left-6 z-40">
 		<button
 			data-tooltip-id="page-help-tooltip"
 			data-tooltip-content={content}
-			className="p-1.5 rounded-full text-neutral-500 hover:text-white hover:bg-[var(--color-primary-surface)] pulse-glow-animation"
+			className="p-1.5 rounded-full text-neutral-500 hover:text-white hover:bg-neutral-800/50 pulse-glow-animation"
 		>
 			<IconHelpCircle size={22} />
 		</button>
@@ -45,7 +46,7 @@ const questionSections = {
 	},
 	context: {
 		title: "About You",
-		icon: <IconWorld />
+		icon: <IconUser />
 	}
 }
 
@@ -117,12 +118,12 @@ const WhatsAppSettings = () => {
 	// State for System Notifications
 	const [notificationNumber, setNotificationNumber] = useState("")
 	const [isNotifLoading, setIsNotifLoading] = useState(true)
-	const [isNotifSaving, setIsNotifSaving] = useState(false)
+	const [isSaving, setIsSaving] = useState(false)
 
 	const fetchNotificationSettings = useCallback(async () => {
 		setIsNotifLoading(true)
 		try {
-			const response = await fetch("/api/settings/whatsapp-notifications")
+			const response = await fetch("/api/settings/whatsapp-notifications") // prettier-ignore
 			if (!response.ok)
 				throw new Error(
 					"Failed to fetch WhatsApp notification settings."
@@ -141,7 +142,7 @@ const WhatsAppSettings = () => {
 	}, [fetchNotificationSettings])
 
 	const handleSaveNotifNumber = async () => {
-		setIsNotifSaving(true)
+		setIsSaving(true)
 		try {
 			const response = await fetch(
 				"/api/settings/whatsapp-notifications",
@@ -160,12 +161,12 @@ const WhatsAppSettings = () => {
 		} catch (error) {
 			toast.error(error.message)
 		} finally {
-			setIsNotifSaving(false)
+			setIsSaving(false)
 		}
 	}
 
 	const handleRemoveNotifNumber = async () => {
-		setIsNotifSaving(true)
+		setIsSaving(true)
 		try {
 			const response = await fetch(
 				"/api/settings/whatsapp-notifications",
@@ -181,7 +182,7 @@ const WhatsAppSettings = () => {
 		} catch (error) {
 			toast.error(error.message)
 		} finally {
-			setIsNotifSaving(false)
+			setIsSaving(false)
 		}
 	}
 
@@ -189,21 +190,24 @@ const WhatsAppSettings = () => {
 		notificationNumber && notificationNumber.trim() !== ""
 
 	return (
-		<section className="space-y-8">
-			{/* System Notifications */}
-			<div>
-				<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2">
-					WhatsApp Notifications
-				</h2>
-				<div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)]">
-					<p className="text-gray-400 text-sm mb-4">
+		<section>
+			<h2 className="text-2xl font-bold mb-2 text-white flex items-center gap-3">
+				<IconBrandWhatsapp />
+				WhatsApp Notifications
+			</h2>
+			<p className="text-neutral-400 mb-6">
+				Receive important system notifications on WhatsApp.
+			</p>
+			<div className="bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800">
+				<div className="space-y-4">
+					<p className="text-neutral-400 text-sm">
 						Receive important system notifications (e.g., task
 						completions) on WhatsApp. Enter your number including
 						the country code (e.g., +14155552671).
 					</p>
 					{isNotifLoading ? (
 						<div className="flex justify-center mt-4">
-							<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)]" />
+							<IconLoader className="w-6 h-6 animate-spin text-brand-orange" />
 						</div>
 					) : (
 						<div className="space-y-4">
@@ -221,20 +225,20 @@ const WhatsAppSettings = () => {
 												e.target.value
 											)
 										}
-										placeholder="Enter number for notifications"
-										className="w-full pl-10 pr-4 bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+										placeholder="+14155552671"
+										className="w-full pl-10 pr-4 bg-neutral-800/50 border font-mono border-neutral-700 rounded-lg py-2 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-brand-orange"
 									/>
 								</div>
 								<div className="flex gap-2 justify-end">
 									<button
 										onClick={handleSaveNotifNumber}
 										disabled={
-											isNotifSaving ||
+											isSaving ||
 											!notificationNumber.trim()
 										}
-										className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors"
+										className="flex items-center py-2 px-4 rounded-lg bg-brand-orange hover:bg-brand-orange/70 text-white font-medium transition-colors disabled:opacity-50"
 									>
-										{isNotifSaving ? (
+										{isSaving ? (
 											<IconLoader className="w-4 h-4 mr-2 animate-spin" />
 										) : (
 											<IconPlus className="w-4 h-4 mr-2" />
@@ -244,8 +248,8 @@ const WhatsAppSettings = () => {
 									{hasNotifNumber && (
 										<button
 											onClick={handleRemoveNotifNumber}
-											disabled={isNotifSaving}
-											className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-red)]/80 hover:bg-[var(--color-accent-red)] text-white font-medium transition-colors"
+											disabled={isSaving}
+											className="flex items-center py-2 px-4 rounded-lg bg-red-600/80 hover:bg-red-600 text-white font-medium transition-colors"
 										>
 											<IconX className="w-4 h-4 mr-2" />{" "}
 											Remove
@@ -280,15 +284,16 @@ const ShortcutsSettings = () => {
 
 	return (
 		<section>
-			<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2 flex items-center gap-2">
+			<h2 className="text-2xl font-bold mb-6 text-white flex items-center gap-3">
 				<IconKeyboard />
 				Keyboard Shortcuts
 			</h2>
-			<div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)]">
+
+			<div className="bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800">
 				<div className="grid grid-cols-1 md:grid-cols-2 gap-8">
 					{Object.entries(shortcuts).map(([category, list]) => (
 						<div key={category}>
-							<h3 className="text-lg font-semibold text-[var(--color-accent-blue)] mb-4">
+							<h3 className="text-lg font-semibold text-brand-orange mb-4">
 								{category}
 							</h3>
 							<div className="space-y-3">
@@ -304,7 +309,7 @@ const ShortcutsSettings = () => {
 											{shortcut.keys.map((key) => (
 												<kbd
 													key={key}
-													className="px-2 py-1.5 text-xs font-semibold text-gray-300 bg-neutral-700 border border-neutral-600 rounded-md"
+													className="px-2 py-1.5 text-xs font-semibold text-neutral-300 bg-neutral-700 border border-neutral-600 rounded-md"
 												>
 													{key}
 												</kbd>
@@ -471,11 +476,12 @@ const TestingTools = () => {
 
 	return (
 		<section>
-			<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2 flex items-center gap-2">
+			<h2 className="text-2xl font-bold mb-6 text-white flex items-center gap-3">
 				<IconFlask />
 				Developer Tools
 			</h2>
-			<div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)]">
+
+			<div className="bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800">
 				<h3 className="font-semibold text-lg text-white mb-2">
 					Inject Context Event
 				</h3>
@@ -496,7 +502,7 @@ const TestingTools = () => {
 							id="serviceName"
 							value={serviceName}
 							onChange={handleServiceChange}
-							className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+							className="w-full bg-neutral-800/50 border font-mono border-neutral-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
 						>
 							<option value="gmail">Gmail</option>
 							<option value="gcalendar">Google Calendar</option>
@@ -514,7 +520,7 @@ const TestingTools = () => {
 							value={eventData}
 							onChange={(e) => setEventData(e.target.value)}
 							rows={8}
-							className="w-full font-mono text-xs bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+							className="w-full font-mono text-xs bg-neutral-800/50 border border-neutral-700 rounded-lg px-3 py-2 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-brand-orange"
 							placeholder='e.g., { "subject": "Hello", "body": "World" }'
 						/>
 					</div>
@@ -522,7 +528,7 @@ const TestingTools = () => {
 						<button
 							type="submit"
 							disabled={isSubmitting}
-							className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors disabled:opacity-50"
+							className="flex items-center py-2 px-4 rounded-lg bg-brand-orange hover:bg-brand-orange/70 text-white font-medium transition-colors disabled:opacity-50"
 						>
 							{isSubmitting ? (
 								<IconLoader className="w-5 h-5 animate-spin" />
@@ -534,7 +540,7 @@ const TestingTools = () => {
 				</form>
 			</div>
 			{/* WhatsApp Test Tools */}
-			<div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)] mt-6">
+			<div className="bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800 mt-6">
 				<h3 className="font-semibold text-lg text-white mb-2">
 					Test WhatsApp Integration
 				</h3>
@@ -560,7 +566,7 @@ const TestingTools = () => {
 								}) // Reset on change
 							}}
 							placeholder="Enter WhatsApp Number with country code"
-							className="w-full pl-10 pr-4 bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+							className="w-full pl-10 pr-4 bg-neutral-800/50 border font-mono border-neutral-700 rounded-lg py-2 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-brand-orange"
 						/>
 					</div>
 					<div className="flex gap-2 justify-end">
@@ -578,7 +584,7 @@ const TestingTools = () => {
 						<button
 							onClick={handleSendTestWhatsApp}
 							disabled={isSending || isVerifying}
-							className="flex items-center justify-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors disabled:opacity-50"
+							className="flex items-center justify-center py-2 px-4 rounded-lg bg-brand-orange hover:bg-brand-orange/70 text-white font-medium transition-colors disabled:opacity-50"
 						>
 							{isSending ? (
 								<IconLoader className="w-5 h-5 animate-spin" />
@@ -602,7 +608,7 @@ const TestingTools = () => {
 				)}
 			</div>
 			{/* Scheduler Test Tool */}
-			<div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)] mt-6">
+			<div className="bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800 mt-6">
 				<h3 className="font-semibold text-lg text-white mb-2">
 					Trigger Task Scheduler
 				</h3>
@@ -632,11 +638,6 @@ const TestingTools = () => {
 
 const ProfileSettings = ({ initialData, onSave, isSaving }) => {
 	const [formData, setFormData] = useState(initialData || {})
-	const [openSections, setOpenSections] = useState({
-		essentials: true,
-		context: true,
-		personality: true
-	})
 
 	useEffect(() => {
 		setFormData(initialData || {})
@@ -646,27 +647,23 @@ const ProfileSettings = ({ initialData, onSave, isSaving }) => {
 		setFormData((prev) => ({ ...prev, [questionId]: answer }))
 	}
 
-	const handleMultiChoice = (questionId, option) => {
-		const currentAnswers = formData[questionId] || []
-		const limit = questions.find((q) => q.id === questionId)?.limit || 1
-		const newAnswers = currentAnswers.includes(option)
-			? currentAnswers.filter((item) => item !== option)
-			: currentAnswers.length < limit
-				? [...currentAnswers, option]
-				: currentAnswers
-		setFormData((prev) => ({ ...prev, [questionId]: newAnswers }))
-	}
-
 	return (
 		<section>
-			<div className="flex justify-between items-center">
-				<h2 className="text-xl font-semibold text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2 flex-grow">
-					About You
-				</h2>
+			<div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
+				<div>
+					<h2 className="text-2xl font-bold text-white flex items-center gap-3">
+						<IconUser />
+						Your Profile
+					</h2>
+					<p className="text-neutral-400 mt-1">
+						This information helps me personalize my responses and
+						actions for you.
+					</p>
+				</div>
 				<button
 					onClick={() => onSave(formData)}
 					disabled={isSaving}
-					className="ml-4 py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors flex items-center"
+					className="mt-4 sm:mt-0 py-2 px-5 rounded-lg bg-brand-orange hover:bg-brand-orange/70 text-white font-medium transition-colors flex items-center gap-2 disabled:opacity-50"
 				>
 					{isSaving ? (
 						<IconLoader className="w-5 h-5 animate-spin" />
@@ -675,247 +672,163 @@ const ProfileSettings = ({ initialData, onSave, isSaving }) => {
 					)}
 				</button>
 			</div>
-			<p className="text-gray-400 text-sm mt-2 mb-6">
-				This information helps me personalize my responses and actions
-				for you.
-			</p>
 
-			<div className="space-y-8">
+			<div className="space-y-10 bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800">
 				{Object.entries(questionSections).map(
 					([key, { title, icon }]) => (
-						<div key={key}>
-							<button
-								onClick={() =>
-									setOpenSections((p) => ({
-										...p,
-										[key]: !p[key]
-									}))
-								}
-								className="w-full flex justify-between items-center py-2 text-left"
-							>
-								<h3 className="text-lg font-semibold text-gray-300 flex items-center gap-3">
-									{icon}
-									{title}
+						<CollapsibleSection
+							key={key}
+							title={
+								<h3 className="text-lg font-semibold text-neutral-200 flex items-center gap-3">
+									{icon} {title}
 								</h3>
-								<IconChevronDown
-									className={cn(
-										"transition-transform duration-200",
-										openSections[key] && "rotate-180"
-									)}
-								/>
-							</button>
-							{openSections[key] && (
-								<div className="space-y-6 mt-4 pl-4 md:pl-8 border-l-2 border-[var(--color-primary-surface-elevated)]">
-									{questions
-										.filter((q) => q.section === key)
-										.map((q) => (
-											<div
-												key={q.id}
-												className="min-h-[68px]"
-											>
-												<label className="block text-sm font-medium text-gray-200 mb-2">
-													{q.question}
-												</label>
-												{(() => {
-													switch (q.type) {
-														case "text-input":
+							}
+							defaultOpen={true}
+						>
+							<div className="space-y-6 mt-4 pl-4 md:pl-8 border-l-2 border-neutral-800">
+								{questions
+									.filter((q) => q.section === key)
+									.map((q) => (
+										<div
+											key={q.id}
+											className="min-h-[68px]"
+										>
+											<label className="block text-sm font-medium text-neutral-300 mb-2 font-sans">
+												{q.question}
+											</label>
+											{(() => {
+												switch (q.type) {
+													case "text-input":
+														return (
+															// eslint-disable-line
+															<input
+																type="text"
+																value={
+																	formData[
+																		q.id
+																	] || ""
+																}
+																onChange={(e) =>
+																	handleAnswer(
+																		q.id,
+																		e.target
+																			.value
+																	)
+																}
+																className="w-full bg-neutral-800/50 border font-mono border-neutral-700 rounded-lg px-3 py-2 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-brand-orange"
+																placeholder={
+																	q.placeholder
+																}
+															/>
+														)
+													case "textarea":
+														return (
+															// eslint-disable-line
+															<textarea
+																value={
+																	formData[
+																		q.id
+																	] || ""
+																}
+																onChange={(e) =>
+																	handleAnswer(
+																		q.id,
+																		e.target
+																			.value
+																	)
+																}
+																rows={4}
+																className="w-full bg-neutral-800/50 border font-mono border-neutral-700 rounded-lg px-3 py-2 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-brand-orange"
+																placeholder={
+																	q.placeholder
+																}
+															/>
+														)
+													case "select":
+														return (
+															// eslint-disable-line
+															<select
+																value={
+																	formData[
+																		q.id
+																	] || ""
+																}
+																onChange={(e) =>
+																	handleAnswer(
+																		q.id,
+																		e.target
+																			.value
+																	)
+																}
+																className="w-full bg-neutral-800/50 border font-mono border-neutral-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-brand-orange appearance-none"
+															>
+																{q.options.map(
+																	(opt) => (
+																		<option
+																			key={
+																				opt.value
+																			}
+																			value={
+																				opt.value
+																			}
+																		>
+																			{
+																				opt.label
+																			}
+																		</option>
+																	)
+																)}
+															</select>
+														)
+													case "location": // Simplified for now
+														const locationValue =
+															formData[q.id]
+														const isGpsLocation =
+															typeof locationValue ===
+																"object" &&
+															locationValue !==
+																null &&
+															locationValue.latitude
+
+														if (isGpsLocation) {
 															return (
-																// eslint-disable-line
-																<input
-																	type="text"
-																	value={
-																		formData[
-																			q.id
-																		] || ""
-																	}
-																	onChange={(
-																		e
-																	) =>
-																		handleAnswer(
-																			q.id,
-																			e
-																				.target
-																				.value
-																		)
-																	}
-																	className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
-																	placeholder={
-																		q.placeholder
-																	}
-																/>
-															)
-														case "textarea":
-															return (
-																// eslint-disable-line
-																<textarea
-																	value={
-																		formData[
-																			q.id
-																		] || ""
-																	}
-																	onChange={(
-																		e
-																	) =>
-																		handleAnswer(
-																			q.id,
-																			e
-																				.target
-																				.value
-																		)
-																	}
-																	rows={3}
-																	className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
-																	placeholder={
-																		q.placeholder
-																	}
-																/>
-															)
-														case "select":
-															return (
-																// eslint-disable-line
-																<select
-																	value={
-																		formData[
-																			q.id
-																		] || ""
-																	}
-																	onChange={(
-																		e
-																	) =>
-																		handleAnswer(
-																			q.id,
-																			e
-																				.target
-																				.value
-																		)
-																	}
-																	className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
-																>
-																	{q.options.map(
-																		(
-																			opt
-																		) => (
-																			<option
-																				key={
-																					opt.value
-																				}
-																				value={
-																					opt.value
-																				}
-																			>
-																				{
-																					opt.label
-																				}
-																			</option>
-																		)
-																	)}
-																</select>
-															)
-														case "single-choice":
-														case "multi-choice":
-															return (
-																<div className="flex flex-wrap gap-2">
-																	{q.options.map(
-																		(
-																			opt
-																		) => (
-																			<button
-																				key={
-																					opt
-																				}
-																				onClick={() =>
-																					q.type ===
-																					"single-choice"
-																						? handleAnswer(
-																								q.id,
-																								opt
-																							)
-																						: handleMultiChoice(
-																								q.id,
-																								opt
-																							)
-																				}
-																				className={cn(
-																					"px-3 py-1.5 rounded-full text-sm font-medium border-2 transition-colors",
-																					(
-																						Array.isArray(
-																							formData[
-																								q
-																									.id
-																							]
-																						)
-																							? formData[
-																									q
-																										.id
-																								].includes(
-																									opt
-																								)
-																							: formData[
-																									q
-																										.id
-																								] ===
-																								opt
-																					)
-																						? "bg-[var(--color-accent-blue)] border-[var(--color-accent-blue)] text-white"
-																						: "bg-transparent border-[var(--color-primary-surface-elevated)] text-gray-300 hover:border-[var(--color-accent-blue)]"
-																				)}
-																			>
-																				{
-																					opt
-																				}
-																			</button>
-																		)
-																	)}
+																<div className="flex items-center gap-2 font-mono">
+																	<p className="w-full bg-neutral-800/50 border border-neutral-700 rounded-lg px-3 py-2 text-neutral-300">
+																		{`Lat: ${locationValue.latitude?.toFixed(
+																			4
+																		)}, Lon: ${locationValue.longitude?.toFixed(
+																			4
+																		)} (Detected)`}
+																	</p>
+																	<button
+																		onClick={() =>
+																			handleAnswer(
+																				q.id,
+																				""
+																			)
+																		}
+																		className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-700 rounded-md"
+																		title="Clear and enter manually"
+																	>
+																		<IconX
+																			size={
+																				18
+																			}
+																		/>
+																	</button>
 																</div>
 															)
-														case "location": // Simplified for now
-															const locationValue =
-																formData[q.id]
-															const isGpsLocation =
-																typeof locationValue ===
-																	"object" &&
-																locationValue !==
-																	null &&
-																locationValue.latitude
-
-															if (isGpsLocation) {
-																return (
-																	<div className="flex items-center gap-2">
-																		<p className="w-full bg-[var(--color-primary-surface)] border border-neutral-700 rounded-md px-3 py-2 text-gray-300">
-																			{`Lat: ${locationValue.latitude?.toFixed(
-																				4
-																			)}, Lon: ${locationValue.longitude?.toFixed(
-																				4
-																			)} (Detected)`}
-																		</p>
-																		<button
-																			onClick={() =>
-																				handleAnswer(
-																					q.id,
-																					""
-																				)
-																			}
-																			className="p-2 text-gray-400 hover:text-white hover:bg-neutral-600 rounded-md"
-																			title="Clear and enter manually"
-																		>
-																			<IconX
-																				size={
-																					18
-																				}
-																			/>
-																		</button>
-																	</div>
-																)
-															}
-															return (
-																<input
-																	type="text"
-																	value={
-																		formData[
-																			q.id
-																		] || ""
-																	}
-																	onChange={(
+														}
+														return (
+															<input
+																type="text"
+																value={
+																	formData[
+																		q.id
+																	] || ""
+																}
+																onChange={
+																	(
 																		e
 																	) =>
 																		handleAnswer(
@@ -923,21 +836,20 @@ const ProfileSettings = ({ initialData, onSave, isSaving }) => {
 																			e
 																				.target
 																				.value
-																		)
-																	}
-																	className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
-																	placeholder="City, Country"
-																/>
-															)
-														default:
-															return null
-													}
-												})()}
-											</div>
-										))}
-								</div>
-							)}
-						</div>
+																		) // prettier-ignore
+																}
+																className="w-full bg-neutral-800/50 border font-mono border-neutral-700 rounded-lg px-3 py-2 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-brand-orange"
+																placeholder="City, Country"
+															/>
+														)
+													default:
+														return null
+												}
+											})()}
+										</div>
+									))}
+							</div>
+						</CollapsibleSection>
 					)
 				)}
 			</div>
@@ -945,7 +857,7 @@ const ProfileSettings = ({ initialData, onSave, isSaving }) => {
 	)
 }
 
-const ProfilePage = () => {
+export default function SettingsPage() {
 	const [profileData, setProfileData] = useState(null)
 	const [isSavingProfile, setIsSavingProfile] = useState(false)
 
@@ -1009,41 +921,34 @@ const ProfilePage = () => {
 		fetchData()
 	}, [fetchData])
 
-	const ProfileHeader = () => (
-		<div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 mb-10">
-			<img
-				src={profileData?.picture || "/images/half-logo-dark.svg"}
-				alt="Profile"
-				className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-4 border-[var(--color-primary-surface-elevated)] shadow-lg"
-			/>
-			<div>
-				<h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)]">
-					{profileData?.personalInfo?.name || "Your Profile"}
-				</h1>
-				<p className="text-[var(--color-text-secondary)] mt-1">
-					Manage your settings and how Sentient interacts with you.
-				</p>
-			</div>
-		</div>
-	)
-
 	return (
-		<div className="flex-1 flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden">
-			<Tooltip
-				id="settings-tooltip"
-				place="right-start"
-				style={{ zIndex: 9999 }}
-			/>
+		<div className="flex-1 flex h-screen text-white overflow-x-hidden">
 			<Tooltip
 				id="page-help-tooltip"
 				place="right-start"
 				style={{ zIndex: 9999 }}
 			/>
 			<div className="flex-1 flex flex-col overflow-hidden relative w-full pb-16 md:pb-0">
-				<main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 custom-scrollbar">
+				<div className="absolute inset-0 z-[-1] network-grid-background">
+					<InteractiveNetworkBackground />
+				</div>
+				<div className="absolute -top-[250px] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-brand-orange/10 rounded-full blur-3xl -z-10" />
+
+				<header className="flex items-center justify-between p-4 sm:p-6 md:px-8 md:py-6 bg-transparent border-b border-neutral-800 shrink-0">
+					<div>
+						<h1 className="text-3xl lg:text-4xl font-bold text-white">
+							Settings
+						</h1>
+						<p className="text-neutral-400 mt-1">
+							Manage your profile, notifications, and developer
+							tools.
+						</p>
+					</div>
+				</header>
+
+				<main className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-10 pb-4 sm:pb-6 md:pb-10 custom-scrollbar">
 					<HelpTooltip content="Customize your experience here." />
-					<div className="w-full max-w-5xl mx-auto space-y-10">
-						<ProfileHeader />
+					<div className="w-full max-w-4xl mx-auto space-y-12 pt-8">
 						<ProfileSettings
 							initialData={profileData?.onboardingAnswers}
 							onSave={handleSaveProfile}
@@ -1051,15 +956,12 @@ const ProfilePage = () => {
 						/>
 						<WhatsAppSettings />
 						<ShortcutsSettings />
-						{process.env.NEXT_PUBLIC_ENVIRONMENT !== "prod" &&
-							process.env.NEXT_PUBLIC_ENVIRONMENT !== "stag" && (
-								<TestingTools />
-							)}
+						{process.env.NEXT_PUBLIC_ENVIRONMENT !== "prod" && (
+							<TestingTools />
+						)}
 					</div>
 				</main>
 			</div>
 		</div>
 	)
 }
-
-export default ProfilePage

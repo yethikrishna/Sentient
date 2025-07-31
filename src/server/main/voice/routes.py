@@ -1,13 +1,10 @@
-# src/server/main/voice/routes.py
-
 import asyncio
 import json
 import logging
 import uuid
 import time
-from typing import AsyncGenerator, Dict
+from typing import AsyncGenerator, Dict, Any
 import re
-
 import numpy as np
 from fastapi import APIRouter, Depends
 from fastrtc import AlgoOptions, ReplyOnPause, SileroVadOptions, Stream
@@ -16,6 +13,7 @@ from fastrtc.utils import audio_to_float32, get_current_context
 from main.auth.utils import PermissionChecker
 from main.dependencies import mongo_manager
 from main.llm import get_qwen_assistant
+from main.chat.utils import process_voice_command
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/voice", tags=["Voice"])
@@ -112,62 +110,32 @@ class MyVoiceChatHandler(ReplyOnPause):
             logger.info(f"STT result for user {user_id}: {transcription}")
             await self.send_message(json.dumps({"type": "stt_result", "text": transcription}))
 
-            # 2. Save user message to DB
-            user_message_id = str(uuid.uuid4())
-            await mongo_manager.add_message(
-                user_id=user_id, role="user", content=transcription, message_id=user_message_id
+            # 2. FULL AGENTIC LLM PROCESSING
+            async def send_status_update(status_dict: Dict[str, Any]):
+                await self.send_message(json.dumps(status_dict))
+
+            full_response_buffer, assistant_message_id = await process_voice_command(
+                user_id=user_id,
+                transcribed_text=transcription,
+                send_status_update=send_status_update,
+                db_manager=mongo_manager
             )
-
-            # 3. Language Model (LLM) - Get full response
-            await self.send_message(json.dumps({"type": "status", "message": "thinking"}))
             
-            # --- CORRECTED LOGIC ---
-            # Fetch past history, reverse it to chronological order, then add the new user message.
-            history = await mongo_manager.get_message_history(user_id, limit=20)
-            messages_for_llm = list(reversed(history))
-            messages_for_llm.append({"role": "user", "content": transcription})
-            
-            logger.info(f"LLM processing messages for user {user_id}: {messages_for_llm}")
-            # --- END CORRECTION ---
+            await self.send_message(json.dumps({"type": "llm_result", "text": full_response_buffer, "messageId": assistant_message_id}))
 
-            qwen_assistant = get_qwen_assistant(
-                system_message="You are a helpful voice assistant. Keep your responses concise and conversational."
-            )
-
-            # Get the full final response from the LLM by iterating through its generator
-            full_response_buffer = ""
-            for history_chunk in qwen_assistant.run(messages=messages_for_llm):
-                if isinstance(history_chunk, list) and history_chunk:
-                    last_message = history_chunk[-1]
-                    if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
-                        full_response_buffer = last_message["content"]
-            
-            # Clean the response from any agent tags that shouldn't be spoken
-            full_response_buffer = re.sub(r'<(think|tool_code|tool_result|answer)>.*?</\1>', '', full_response_buffer, flags=re.DOTALL).strip()
-
+            # 3. Text-to-Speech (TTS) per sentence
+            if not tts_model_instance:
+                raise Exception("TTS model is not initialized.")
             if not full_response_buffer:
                 logger.warning(f"LLM returned an empty response for user {user_id}.")
                 await self.send_message(json.dumps({"type": "status", "message": "listening"}))
                 return
 
-            # Save the full response to DB
-            assistant_message_id = str(uuid.uuid4())
-            await self.send_message(json.dumps({"type": "llm_result", "text": full_response_buffer, "messageId": assistant_message_id}))
-            await mongo_manager.add_message(
-                user_id=user_id, role="assistant", content=full_response_buffer, message_id=assistant_message_id
-            )
-
-            # 4. Split response into sentences
-            # This regex splits by sentence-ending punctuation while keeping the punctuation with the sentence.
+            await self.send_message(json.dumps({"type": "status", "message": "speaking"}))
+            
             sentences = re.split(r'(?<=[.?!])\s+', full_response_buffer)
             sentences = [s.strip() for s in sentences if s.strip()]
             
-            # 5. Text-to-Speech (TTS) per sentence
-            if not tts_model_instance:
-                raise Exception("TTS model is not initialized.")
-            await self.send_message(json.dumps({"type": "status", "message": "speaking"}))
-
-            # 6. Stream audio for each sentence
             for sentence in sentences:
                 if not sentence: continue
                 logger.info(f"Generating TTS for sentence: '{sentence}'")

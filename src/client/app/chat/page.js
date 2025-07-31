@@ -633,6 +633,19 @@ export default function ChatPage() {
 				setVoiceStatusText("Listening...")
 			else if (event.message === "transcribing")
 				setVoiceStatusText("Transcribing...")
+			else if (event.message === "choosing_tools")
+				setVoiceStatusText("Choosing tools...")
+			else if (event.message && event.message.startsWith("using_tool_")) {
+				const toolName = event.message
+					.replace("using_tool_", "")
+					.replace("_server", "")
+					.replace("_mcp", "")
+				setVoiceStatusText(
+					`Using ${
+						toolName.charAt(0).toUpperCase() + toolName.slice(1)
+					}...`
+				)
+			}
 		} else if (event.type === "error") {
 			toast.error(`Voice Error: ${event.message}`)
 			setVoiceStatusText("Error. Click to retry.")

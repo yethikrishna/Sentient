@@ -392,14 +392,29 @@ async def process_voice_command(
         
         qwen_assistant = get_qwen_assistant(system_message=system_prompt, function_list=tools)
         
-        final_run_response = None
-        for response in qwen_assistant.run(messages=qwen_formatted_history_for_agent):
-            final_run_response = response
-            if isinstance(response, list) and response:
-                last_step = response[-1]
-                if last_step.get("role") == "assistant" and last_step.get("function_call"):
-                    tool_name = last_step["function_call"]["name"]
-                    await send_status_update({"type": "status", "message": f"using_tool_{tool_name}"})
+        # --- MODIFICATION: Run blocking agent code in a separate thread ---
+        loop = asyncio.get_running_loop()
+        def agent_worker():
+            final_run_response = None
+            try:
+                for response in qwen_assistant.run(messages=qwen_formatted_history_for_agent):
+                    final_run_response = response
+                    if isinstance(response, list) and response:
+                        last_step = response[-1]
+                        if last_step.get("role") == "assistant" and last_step.get("function_call"):
+                            tool_name = last_step["function_call"]["name"]
+                            # Schedule the async status update on the main event loop
+                            asyncio.run_coroutine_threadsafe(
+                                send_status_update({"type": "status", "message": f"using_tool_{tool_name}"}),
+                                loop
+                            )
+                return final_run_response
+            except Exception as e:
+                logger.error(f"Error inside agent_worker thread for voice command: {e}", exc_info=True)
+                return None
+
+        final_run_response = await asyncio.to_thread(agent_worker)
+        # --- END MODIFICATION ---
         
         final_text_response = "I'm sorry, I couldn't process that."
         if final_run_response and isinstance(final_run_response, list):

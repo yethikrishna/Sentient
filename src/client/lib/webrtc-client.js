@@ -265,7 +265,10 @@ export class WebRTCClient {
 	}
 
 	disconnect() {
-		// --- MODIFICATION: Clear the timer on any disconnect call ---
+		// --- NEW: Add a log here for clarity on manual disconnects ---
+		console.log("Disconnect called. Cleaning up WebRTC resources.")
+		// --- END NEW ---
+
 		if (this.disconnectTimer) {
 			clearTimeout(this.disconnectTimer)
 			this.disconnectTimer = null

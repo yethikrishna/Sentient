@@ -659,6 +659,7 @@ export default function ChatPage() {
 		)
 			return
 		setConnectionStatus("connecting")
+		setVoiceStatusText("Connecting...")
 		try {
 			// Step 1: Get the main auth token
 			const tokenResponse = await fetch("/api/auth/token")
@@ -707,9 +708,26 @@ export default function ChatPage() {
 		if (
 			connectionStatus === "disconnected" ||
 			!backgroundCircleProviderRef.current
-		)
+		) {
 			return
+		}
+
+		// 1. Tell the WebRTC client to disconnect in the background.
 		backgroundCircleProviderRef.current?.disconnect()
+
+		// 2. Immediately stop any playing audio.
+		if (ringtoneAudioRef.current) {
+			ringtoneAudioRef.current.pause()
+			ringtoneAudioRef.current.currentTime = 0
+		}
+		if (connectedAudioRef.current) {
+			connectedAudioRef.current.pause()
+			connectedAudioRef.current.currentTime = 0
+		}
+
+		// 3. Force the UI state back to disconnected immediately.
+		setConnectionStatus("disconnected")
+		setVoiceStatusText("Click to Start")
 	}
 
 	const toggleVoiceMode = () => {

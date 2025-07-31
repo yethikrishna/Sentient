@@ -53,7 +53,7 @@ class MyVoiceChatHandler(ReplyOnPause):
         super().__init__(
             fn=self.process_audio_chunk,
             model_options=SileroVadOptions(
-                threshold=0.65,
+                threshold=0.9,  # Higher threshold for more aggressive VAD
                 min_speech_duration_ms=250,
                 min_silence_duration_ms=3000,   # wait 3s of silence
                 speech_pad_ms=800,              # give extra buffer before and after speech
@@ -61,10 +61,10 @@ class MyVoiceChatHandler(ReplyOnPause):
             ),
             algo_options=AlgoOptions(
                 audio_chunk_duration=0.5,
-                started_talking_threshold=0.1,
+                started_talking_threshold=0.2,
                 speech_threshold=0.05,          # consider only more solid chunks as pause
             ),
-            can_interrupt=True, # Set to False to prevent user interruption while bot is speaking
+            can_interrupt=False, # Set to False to prevent user interruption while bot is speaking
         )
 
     def copy(self):

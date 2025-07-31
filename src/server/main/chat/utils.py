@@ -116,6 +116,19 @@ async def _get_stage1_response(messages: List[Dict[str, Any]], connected_tools_m
     logger.info("Stage 1 is providing a direct response.")
     return final_content_str # Return the full string with tags for the stream generator to parse.
 
+def _extract_answer_from_llm_response(llm_output: str) -> str:
+    """
+    Extracts content from the first <answer> tag in the LLM's output.
+    This ensures only the user-facing response is used for TTS.
+    """
+    if not llm_output:
+        return ""
+    match = re.search(r'<answer>([\s\S]*?)</answer>', llm_output, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+
+    # Fallback: if no answer tag, strip all other tags and return what's left.
+    return re.sub(r'<(think|tool_code|tool_result)>.*?</\1>', '', llm_output, flags=re.DOTALL).strip()
 
 def _get_tool_lists(user_integrations: Dict) -> Tuple[Dict, Dict]:
     """Separates tools into connected and disconnected lists."""
@@ -376,7 +389,7 @@ async def process_voice_command(
         if isinstance(stage1_output, str):
             # Stage 1 provided a direct response
             logger.info(f"Stage 1 provided a direct response for voice command for user {user_id}.")
-            final_text_response = stage1_output.strip()
+            final_text_response = _extract_answer_from_llm_response(stage1_output)
         else:
             # Stage 1 selected tools, proceed to Stage 2
             relevant_tool_names = stage1_output
@@ -445,9 +458,8 @@ async def process_voice_command(
                     if msg.get('role') == 'assistant' and msg.get('content')
                 ]
                 full_response_str = "".join(assistant_content_parts)
+                final_text_response = _extract_answer_from_llm_response(full_response_str)
 
-                final_text_response = re.sub(r'<(think|tool_code|tool_result|answer)>.*?</\1>', '', full_response_str, flags=re.DOTALL).strip()
-                
                 if not final_text_response:
                     last_message = final_run_response[-1]
                     if last_message.get('role') == 'function':

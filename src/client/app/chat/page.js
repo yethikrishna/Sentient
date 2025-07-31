@@ -291,6 +291,7 @@ export default function ChatPage() {
 	const webrtcClientRef = useRef(null)
 	const ringtoneAudioRef = useRef(null)
 	const connectedAudioRef = useRef(null)
+	const remoteAudioRef = useRef(null)
 
 	const fetchInitialMessages = useCallback(async () => {
 		setIsLoading(true)
@@ -773,7 +774,17 @@ export default function ChatPage() {
 				onConnected: () => handleStatusChange("connected"),
 				onDisconnected: () => handleStatusChange("disconnected"),
 				onAudioStream: (stream) => {
-					/* Can play remote audio if needed */
+					if (remoteAudioRef.current) {
+						console.log(
+							"Received remote audio stream, attaching to audio element."
+						)
+						remoteAudioRef.current.srcObject = stream
+						remoteAudioRef.current
+							.play()
+							.catch((e) =>
+								console.error("Error playing remote audio:", e)
+							)
+					}
 				},
 				onAudioLevel: handleAudioLevel,
 				onEvent: handleVoiceEvent
@@ -948,7 +959,7 @@ export default function ChatPage() {
 						<button
 							onClick={sendMessage}
 							disabled={!input.trim() || thinking}
-							className="p-2.5 bg-gradient-to-tr from-blue-500 to-cyan-500 rounded-full text-white disabled:opacity-50 hover:from-blue-400 hover:to-cyan-400 transition-all shadow-md"
+							className="p-2.5 bg-brand-orange rounded-full text-white disabled:opacity-50 hover:bg-brand-orange/90 transition-all shadow-md"
 						>
 							<IconSend size={18} />
 						</button>
@@ -1016,6 +1027,7 @@ export default function ChatPage() {
 				src="/audio/connected.mp3"
 				preload="auto"
 			></audio>
+			<audio ref={remoteAudioRef} autoPlay playsInline />
 			{displayedMessages.length > 0 &&
 				!isVoiceMode &&
 				renderOptionsMenu()}

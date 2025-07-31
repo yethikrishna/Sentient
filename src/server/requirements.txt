@@ -24,6 +24,7 @@ qwen-agent
 google-genai
 elevenlabs
 librosa
+llama-cpp-python
 faster-whisper
 snac
 torch

@@ -6,8 +6,7 @@ import asyncio
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel
-from main.chat.models import ChatMessageInput
+from main.chat.models import ChatMessageInput, DeleteMessageRequest
 from main.chat.utils import generate_chat_llm_stream
 from main.auth.utils import PermissionChecker
 from main.dependencies import mongo_manager
@@ -104,3 +103,26 @@ async def get_chat_history(
     # The frontend expects messages in chronological order, but we fetch them in reverse chronological.
     # So we must reverse them before sending.
     return JSONResponse(content={"messages": messages[::-1]})
+@router.post("/delete", summary="Delete a message or clear chat history")
+async def delete_message(
+    request: DeleteMessageRequest,
+    user_id: str = Depends(PermissionChecker(required_permissions=["write:chat"]))
+):
+    if request.clear_all:
+        deleted_count = await mongo_manager.delete_all_messages(user_id)
+        return JSONResponse(content={"message": f"Successfully deleted {deleted_count} messages."})
+
+    if request.message_id:
+        success = await mongo_manager.delete_message(user_id, request.message_id)
+        if success:
+            return JSONResponse(content={"message": "Message deleted successfully."})
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Message not found or you do not have permission to delete it."
+            )
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="You must provide either a 'message_id' or 'clear_all: true'."
+    )

@@ -476,6 +476,21 @@ class MongoManager:
 
         return messages
 
+    async def delete_message(self, user_id: str, message_id: str) -> bool:
+        """Deletes a single message by its ID for a specific user."""
+        if not user_id or not message_id:
+            return False
+        result = await self.messages_collection.delete_one({"user_id": user_id, "message_id": message_id})
+        return result.deleted_count > 0
+
+    async def delete_all_messages(self, user_id: str) -> int:
+        """Deletes all messages for a specific user."""
+        if not user_id:
+            return 0
+        result = await self.messages_collection.delete_many({"user_id": user_id})
+        logger.info(f"Deleted {result.deleted_count} messages for user {user_id}.")
+        return result.deleted_count
+
     async def close(self):
         if self.client:
             self.client.close()

@@ -7,6 +7,7 @@ import {
 	IconBrain,
 	IconLink,
 	IconMail,
+	IconTrash,
 	IconChevronDown,
 	IconChevronUp,
 	IconArrowBackUp
@@ -169,6 +170,7 @@ const ChatBubble = ({
 	content,
 	tools = [],
 	onReply,
+	onDelete,
 	message,
 	allMessages = []
 }) => {
@@ -226,7 +228,7 @@ const ChatBubble = ({
 
 		const contentParts = []
 		const regex =
-			/(<think>[\s\S]*?<\/think>|<tool_code[^>]*>[\s\S]*?<\/tool_code>|<tool_result[^>]*>[\s\S]*?<\/tool_result>|<answer>[\s\S]*?<\/answer>)/g
+			/(<think>[\s\S]*?<\/think>|<tool_(?:code|call)[^>]*>[\s\S]*?<\/tool_code>|<tool_result[^>]*>[\s\S]*?<\/tool_result>|<answer>[\s\S]*?<\/answer>)/g
 		let lastIndex = 0
 		let inToolCallPhase = false
 
@@ -252,7 +254,7 @@ const ChatBubble = ({
 				}
 			} else if (
 				(subMatch = tag.match(
-					/<tool_code name="([^"]+)">[\s\S]*?<\/tool_code>/
+					/<tool_(?:code|call) name="([^"]+)">[\s\S]*?<\/tool_code>/
 				))
 			) {
 				// When we find a tool_code, we enter the "ignore" phase and do not render the code itself.
@@ -407,11 +409,10 @@ const ChatBubble = ({
 	return (
 		<div
 			className={cn(
-				"max-w-[80%] px-4 py-3 rounded-2xl relative group text-white",
-				{
-					"bg-blue-600 rounded-br-none": isUser,
-					"bg-neutral-800 rounded-bl-none": !isUser
-				}
+				"max-w-[80%] px-4 py-3 rounded-2xl relative group text-white backdrop-blur-sm",
+				isUser
+					? "bg-blue-600/30 border border-blue-500/50 rounded-br-none"
+					: "bg-neutral-800/30 border border-neutral-700/50 rounded-bl-none"
 			)}
 			style={{ wordBreak: "break-word" }}
 		>
@@ -435,6 +436,14 @@ const ChatBubble = ({
 					isUser ? "right-full pr-2" : "left-full pl-2"
 				)}
 			>
+				<button
+					onClick={() => onDelete(message.id)}
+					className="p-1.5 rounded-full bg-neutral-700 text-neutral-300 hover:bg-red-500/20 hover:text-red-400"
+					data-tooltip-id="chat-bubble-tooltip"
+					data-tooltip-content="Delete"
+				>
+					<IconTrash size={16} />
+				</button>
 				<button
 					onClick={() => onReply(message)}
 					className="p-1.5 rounded-full bg-neutral-700 text-neutral-300 hover:bg-neutral-600 hover:text-white"

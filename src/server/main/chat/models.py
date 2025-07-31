@@ -6,3 +6,6 @@ class ChatMessageInput(BaseModel):
     pricing: Optional[str] = "free"
     credits: Optional[int] = 0
 
+class DeleteMessageRequest(BaseModel):
+    message_id: Optional[str] = None
+    clear_all: Optional[bool] = False

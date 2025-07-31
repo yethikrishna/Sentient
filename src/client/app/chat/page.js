@@ -13,9 +13,10 @@ import {
 	IconArrowBackUp,
 	IconX,
 	IconCopy,
+	IconMenu2,
 	IconPhone,
 	IconPhoneOff,
-	IconMicrophone,
+	IconWaveSine,
 	IconMessageOff
 } from "@tabler/icons-react"
 import {
@@ -32,9 +33,13 @@ import { cn } from "@utils/cn"
 import { Tooltip } from "react-tooltip"
 import { motion, AnimatePresence } from "framer-motion"
 import ChatBubble from "@components/ChatBubble"
+import { BorderTrail } from "@components/ui/border-trail"
+import InteractiveNetworkBackground from "@components/ui/InteractiveNetworkBackground"
+import { TextShimmer } from "@components/ui/text-shimmer"
 import React from "react"
 import { usePostHog } from "posthog-js/react"
-import BackgroundCircleProvider from "@components/voice-visualization/background-circle-provider"
+import SiriSpheres from "@components/voice-visualization/SiriSpheres"
+import { WebRTCClient } from "@lib/webrtc-client"
 
 const toolIcons = {
 	gmail: IconGoogleMail,
@@ -239,7 +244,7 @@ const UseCaseGrid = ({ useCases, onSelectPrompt }) => {
 							>
 								{useCase.action}{" "}
 								<span className="transition-transform group-hover:translate-x-1">
-									→
+									���
 								</span>
 							</button>
 						</motion.div>
@@ -270,14 +275,20 @@ export default function ChatPage() {
 	const [isFocused, setIsFocused] = useState(false)
 	const [activeDomain, setActiveDomain] = useState("Featured")
 	const [replyingTo, setReplyingTo] = useState(null)
+	const [isOptionsOpen, setIsOptionsOpen] = useState(false)
+	const [confirmClear, setConfirmClear] = useState(false)
 
 	// --- Voice Mode State ---
 	const [isVoiceMode, setIsVoiceMode] = useState(false)
 	const [connectionStatus, setConnectionStatus] = useState("disconnected")
 	const [audioInputDevices, setAudioInputDevices] = useState([])
 	const [selectedAudioInputDevice, setSelectedAudioInputDevice] = useState("")
-	const [voiceStatusText, setVoiceStatusText] = useState("Click to Start")
-	const backgroundCircleProviderRef = useRef(null)
+	const [voiceStatusText, setVoiceStatusText] = useState(
+		"Click to start call"
+	)
+	const [statusText, setStatusText] = useState("")
+	const [audioLevel, setAudioLevel] = useState(0)
+	const webrtcClientRef = useRef(null)
 	const ringtoneAudioRef = useRef(null)
 	const connectedAudioRef = useRef(null)
 
@@ -421,6 +432,7 @@ export default function ChatPage() {
 			...(replyingTo && { replyToId: replyingTo.id })
 		}
 
+		setStatusText("Getting ready...")
 		const updatedMessages = [...displayedMessages, newUserMessage]
 		setDisplayedMessages(updatedMessages)
 
@@ -486,6 +498,33 @@ export default function ChatPage() {
 							continue
 						}
 
+						// This is the fix: Update the temporary ID to the real one from the backend
+						if (
+							parsed.messageId &&
+							assistantMessageId.startsWith("assistant-")
+						) {
+							const tempId = assistantMessageId
+							assistantMessageId = parsed.messageId // Update the reference to the real ID
+							setDisplayedMessages((prev) =>
+								prev.map((m) =>
+									m.id === tempId
+										? { ...m, id: parsed.messageId }
+										: m
+								)
+							)
+						}
+
+						// Handle status updates from the backend
+						if (parsed.type === "status") {
+							setStatusText(parsed.message)
+							continue
+						}
+
+						// Clear status text when the actual response starts streaming
+						if (parsed.type === "assistantStream" && parsed.token) {
+							setStatusText("")
+						}
+
 						setDisplayedMessages((prev) =>
 							prev.map((msg) => {
 								if (msg.id === assistantMessageId) {
@@ -526,6 +565,46 @@ export default function ChatPage() {
 			}
 		} finally {
 			setThinking(false)
+			setStatusText("")
+		}
+	}
+
+	const handleDeleteMessage = async (messageId) => {
+		const originalMessages = [...displayedMessages]
+		setDisplayedMessages((prev) => prev.filter((m) => m.id !== messageId))
+
+		try {
+			const res = await fetch("/api/chat/delete", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ message_id: messageId })
+			})
+			if (!res.ok) {
+				const errorData = await res.json()
+				throw new Error(errorData.error || "Failed to delete message")
+			}
+			toast.success("Message deleted.")
+		} catch (error) {
+			toast.error(error.message)
+			setDisplayedMessages(originalMessages) // Revert on error
+		}
+	}
+
+	const handleClearAllMessages = async () => {
+		setDisplayedMessages([])
+		setIsOptionsOpen(false)
+		setConfirmClear(false)
+		try {
+			const res = await fetch("/api/chat/delete", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ clear_all: true })
+			})
+			if (!res.ok) throw new Error("Failed to clear chat history")
+			toast.success("Chat history cleared.")
+		} catch (error) {
+			toast.error(error.message)
+			fetchInitialMessages() // Refetch to restore state on error
 		}
 	}
 
@@ -591,14 +670,16 @@ export default function ChatPage() {
 			ringtoneAudioRef.current.pause()
 			ringtoneAudioRef.current.currentTime = 0
 		}
-		if (status === "connected" && connectedAudioRef.current) {
-			connectedAudioRef.current.volume = 0.4
-			connectedAudioRef.current
-				.play()
-				.catch((e) => console.error("Error playing sound:", e))
+		if (status === "connected") {
+			if (connectedAudioRef.current) {
+				connectedAudioRef.current.volume = 0.4
+				connectedAudioRef.current
+					.play()
+					.catch((e) => console.error("Error playing sound:", e))
+			}
 			setVoiceStatusText("Listening...")
 		} else if (status === "disconnected") {
-			setVoiceStatusText("Click to Start")
+			setVoiceStatusText("Click to start call")
 		} else if (status === "connecting") {
 			setVoiceStatusText("Connecting...")
 		}
@@ -652,12 +733,13 @@ export default function ChatPage() {
 		}
 	}, [])
 
+	const handleAudioLevel = useCallback((level) => {
+		setAudioLevel((prev) => prev * 0.7 + level * 0.3)
+	}, [])
+
 	const handleStartVoice = async () => {
-		if (
-			connectionStatus !== "disconnected" ||
-			!backgroundCircleProviderRef.current
-		)
-			return
+		if (connectionStatus !== "disconnected") return
+
 		setConnectionStatus("connecting")
 		setVoiceStatusText("Connecting...")
 		try {
@@ -683,6 +765,21 @@ export default function ChatPage() {
 				throw new Error("Could not initiate voice session.")
 			const { rtc_token } = await rtcTokenResponse.json()
 
+			// Step 3: Create and connect WebRTCClient directly
+			if (webrtcClientRef.current) {
+				webrtcClientRef.current.disconnect()
+			}
+			const client = new WebRTCClient({
+				onConnected: () => handleStatusChange("connected"),
+				onDisconnected: () => handleStatusChange("disconnected"),
+				onAudioStream: (stream) => {
+					/* Can play remote audio if needed */
+				},
+				onAudioLevel: handleAudioLevel,
+				onEvent: handleVoiceEvent
+			})
+			webrtcClientRef.current = client
+
 			// Step 3: Play ringing and connect
 			if (ringtoneAudioRef.current) {
 				ringtoneAudioRef.current.volume = 0.3
@@ -691,7 +788,7 @@ export default function ChatPage() {
 					.play()
 					.catch((e) => console.error("Error playing ringtone:", e))
 			}
-			await backgroundCircleProviderRef.current?.connect(
+			await webrtcClientRef.current.connect(
 				selectedAudioInputDevice,
 				accessToken,
 				rtc_token
@@ -705,15 +802,11 @@ export default function ChatPage() {
 	}
 
 	const handleStopVoice = () => {
-		if (
-			connectionStatus === "disconnected" ||
-			!backgroundCircleProviderRef.current
-		) {
+		if (connectionStatus === "disconnected" || !webrtcClientRef.current) {
 			return
 		}
 
-		// 1. Tell the WebRTC client to disconnect in the background.
-		backgroundCircleProviderRef.current?.disconnect()
+		webrtcClientRef.current?.disconnect()
 
 		// 2. Immediately stop any playing audio.
 		if (ringtoneAudioRef.current) {
@@ -727,7 +820,7 @@ export default function ChatPage() {
 
 		// 3. Force the UI state back to disconnected immediately.
 		setConnectionStatus("disconnected")
-		setVoiceStatusText("Click to Start")
+		setVoiceStatusText("Click to start call")
 	}
 
 	const toggleVoiceMode = () => {
@@ -775,8 +868,8 @@ export default function ChatPage() {
 
 		return () => {
 			// This cleanup now only runs when the ChatPage component unmounts
-			if (backgroundCircleProviderRef.current) {
-				backgroundCircleProviderRef.current.disconnect()
+			if (webrtcClientRef.current) {
+				webrtcClientRef.current.disconnect()
 			}
 		}
 	}, [selectedAudioInputDevice])
@@ -813,14 +906,9 @@ export default function ChatPage() {
 	)
 
 	const renderInputArea = () => (
-		<div
-			className={cn(
-				"rounded-2xl shadow-2xl shadow-black/40",
-				!isFocused &&
-					"p-0.5 bg-gradient-to-tr from-blue-500 to-cyan-500"
-			)}
-		>
-			<div className="relative bg-neutral-900 rounded-[15px] flex items-end ">
+		<div className="relative bg-neutral-900 rounded-2xl p-px">
+			<BorderTrail className="bg-brand-orange" />
+			<div className="relative bg-neutral-900 rounded-[calc(1rem-1px)] flex items-end ">
 				<textarea
 					ref={textareaRef}
 					value={input}
@@ -833,7 +921,7 @@ export default function ChatPage() {
 							sendMessage()
 						}
 					}}
-					placeholder="Ask me anything..."
+					placeholder="Type a message"
 					className="w-full p-4 pr-24 bg-transparent text-base text-white placeholder-neutral-500 resize-none focus:ring-0 focus:outline-none overflow-y-auto custom-scrollbar"
 					rows={1}
 					style={{ maxHeight: "200px" }}
@@ -845,7 +933,7 @@ export default function ChatPage() {
 						data-tooltip-id="home-tooltip"
 						data-tooltip-content="Switch to Voice Mode"
 					>
-						<IconMicrophone size={18} />
+						<IconWaveSine size={18} />
 					</button>
 					{thinking ? (
 						<button
@@ -870,8 +958,52 @@ export default function ChatPage() {
 		</div>
 	)
 
+	const renderOptionsMenu = () => (
+		<div className="absolute top-6 right-6 z-30">
+			<div className="relative">
+				<button
+					onClick={() => {
+						setIsOptionsOpen(!isOptionsOpen)
+						setConfirmClear(false) // Reset confirmation on toggle
+					}}
+					className="p-2 rounded-full bg-neutral-800/50 hover:bg-neutral-700/80 text-white"
+				>
+					<IconMenu2 size={20} />
+				</button>
+				<AnimatePresence>
+					{isOptionsOpen && (
+						<motion.div
+							initial={{ opacity: 0, y: 10, scale: 0.95 }}
+							animate={{ opacity: 1, y: 0, scale: 1 }}
+							exit={{ opacity: 0, y: 10, scale: 0.95 }}
+							className="absolute top-full right-0 mt-2 w-48 bg-neutral-900/80 backdrop-blur-md border border-neutral-700 rounded-lg shadow-lg p-1"
+						>
+							<button
+								onClick={() => {
+									if (confirmClear) {
+										handleClearAllMessages()
+									} else {
+										setConfirmClear(true)
+									}
+								}}
+								className={cn(
+									"w-full text-left px-3 py-2 text-sm rounded-md transition-colors",
+									confirmClear
+										? "bg-red-600/80 text-white hover:bg-red-500"
+										: "text-neutral-300 hover:bg-neutral-700/50"
+								)}
+							>
+								{confirmClear ? "Confirm Clear?" : "Clear Chat"}
+							</button>
+						</motion.div>
+					)}
+				</AnimatePresence>
+			</div>
+		</div>
+	)
+
 	return (
-		<div className="flex-1 flex bg-black text-white overflow-hidden md:pl-20">
+		<div className="flex-1 flex h-screen text-white overflow-hidden">
 			<Tooltip id="home-tooltip" place="right" style={{ zIndex: 9999 }} />
 			<audio
 				ref={ringtoneAudioRef}
@@ -884,14 +1016,18 @@ export default function ChatPage() {
 				src="/audio/connected.mp3"
 				preload="auto"
 			></audio>
-			<div className="flex flex-col flex-1 relative bg-black pb-16 md:pb-0">
-				{displayedMessages.length === 0 && !isVoiceMode && (
-					<div className="absolute inset-0 h-full w-full bg-gradient-to-br from-neutral-900 to-black bg-[linear-gradient(110deg,#09090b,45%,#1e293b,55%,#09090b)] bg-[length:200%_100%] animate-shimmer" />
-				)}
+			{displayedMessages.length > 0 &&
+				!isVoiceMode &&
+				renderOptionsMenu()}
+			<div className="flex-1 flex flex-col overflow-hidden relative w-full pb-16 md:pb-0">
+				<div className="absolute inset-0 z-[-1] network-grid-background">
+					<InteractiveNetworkBackground />
+				</div>
+				<div className="absolute -top-[250px] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-brand-orange/10 rounded-full blur-3xl -z-10" />
 
 				<main
 					ref={scrollContainerRef}
-					className="flex-1 overflow-y-auto p-6 flex flex-col custom-scrollbar z-10"
+					className="flex-1 overflow-y-auto p-6 flex flex-col custom-scrollbar"
 				>
 					{isLoading ? (
 						<div className="flex-1 flex justify-center items-center">
@@ -899,12 +1035,11 @@ export default function ChatPage() {
 						</div>
 					) : isVoiceMode ? (
 						<div className="flex-1 flex flex-col justify-center items-center relative">
-							<BackgroundCircleProvider
-								ref={backgroundCircleProviderRef}
-								onStatusChange={handleStatusChange}
-								onEvent={handleVoiceEvent}
-								connectionStatusProp={connectionStatus}
+							<SiriSpheres
+								status={connectionStatus}
+								audioLevel={audioLevel}
 							/>
+
 							<div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-none">
 								<div className="pointer-events-auto flex flex-col items-center gap-4">
 									{connectionStatus === "disconnected" ? (
@@ -931,9 +1066,13 @@ export default function ChatPage() {
 											<IconPhoneOff size={48} />
 										</button>
 									)}
-									<p className="mt-4 text-center text-lg font-medium text-gray-300">
-										{voiceStatusText}
-									</p>
+									<div className="mt-4 text-center text-lg font-medium text-gray-300 h-6">
+										{voiceStatusText && (
+											<TextShimmer className="font-mono text-sm">
+												{voiceStatusText}
+											</TextShimmer>
+										)}
+									</div>
 								</div>
 							</div>
 							<div className="absolute bottom-1/4 max-w-2xl text-center p-4">
@@ -1003,29 +1142,35 @@ export default function ChatPage() {
 										onReply={handleReply}
 										message={msg}
 										allMessages={displayedMessages}
+										onDelete={handleDeleteMessage}
 									/>
 								</div>
 							))}
-							<AnimatePresence>
-								{thinking && (
-									<motion.div
-										initial={{ opacity: 0, y: 10 }}
-										animate={{ opacity: 1, y: 0 }}
-										exit={{ opacity: 0 }}
-										className="flex items-center gap-2 p-3 bg-neutral-800 rounded-2xl self-start"
-									>
-										<div className="bg-neutral-500 rounded-full h-2 w-2 animate-pulse delay-75"></div>
-										<div className="bg-neutral-500 rounded-full h-2 w-2 animate-pulse delay-150"></div>
-										<div className="bg-neutral-500 rounded-full h-2 w-2 animate-pulse delay-300"></div>
-									</motion.div>
-								)}
-							</AnimatePresence>
+							<div className="flex w-full justify-start">
+								<AnimatePresence>
+									{thinking && (
+										<motion.div
+											initial={{ opacity: 0, y: 10 }}
+											animate={{ opacity: 1, y: 0 }}
+											exit={{ opacity: 0, y: 10 }}
+											className="flex items-center gap-2 p-3 bg-neutral-800/50 backdrop-blur-sm rounded-2xl self-start"
+										>
+											<TextShimmer
+												className="font-mono text-sm"
+												duration={1.5}
+											>
+												{statusText || "Thinking..."}
+											</TextShimmer>
+										</motion.div>
+									)}
+								</AnimatePresence>
+							</div>
 							<div ref={chatEndRef} />
 						</div>
 					)}
 				</main>
 				{!isLoading && !isVoiceMode && displayedMessages.length > 0 && (
-					<div className="px-4 pt-2 pb-4 sm:px-6 sm:pb-6 bg-black border-t border-neutral-800/50">
+					<div className="px-4 pt-2 pb-4 sm:px-6 sm:pb-6 bg-transparent">
 						<div className="w-full max-w-4xl mx-auto">
 							{renderReplyPreview()}
 							{renderInputArea()}

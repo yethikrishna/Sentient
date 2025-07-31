@@ -115,6 +115,8 @@ async def generate_chat_llm_stream(
     assistant_message_id = str(uuid.uuid4())
 
     try:
+        yield {"type": "status", "message": "Analyzing context..."}
+
         username = user_context.get("name", "User")
         timezone_str = user_context.get("timezone", "UTC")
         location_raw = user_context.get("location")
@@ -155,7 +157,13 @@ async def generate_chat_llm_stream(
                     all_available_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}, "transport": "sse"}
 
         last_user_query = messages[-1].get("content", "") if messages else ""
+
+        yield {"type": "status", "message": "Choosing tools..."}
         relevant_tool_names = await _select_relevant_tools(last_user_query, tool_name_to_desc_map)
+
+        tool_display_names = [INTEGRATIONS_CONFIG.get(t, {}).get('display_name', t) for t in relevant_tool_names if t != 'memory']
+        if tool_display_names:
+            yield {"type": "status", "message": f"Using: {', '.join(tool_display_names)}"}
 
         mandatory_tools = {"memory"}
         final_tool_names = set(relevant_tool_names) | mandatory_tools

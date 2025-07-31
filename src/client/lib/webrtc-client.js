@@ -80,7 +80,7 @@ export class WebRTCClient {
 				// When disconnected, it might be temporary. Start a timer to see if it recovers.
 				if (state === "disconnected") {
 					console.warn(
-						"WebRTC connection is temporarily disconnected. Starting a 20-second timer to see if it recovers..."
+						"WebRTC connection is temporarily disconnected. Starting a 300-second timer to see if it recovers..."
 					)
 					if (!this.disconnectTimer) {
 						this.disconnectTimer = setTimeout(() => {
@@ -88,7 +88,7 @@ export class WebRTCClient {
 								"WebRTC connection did not recover from 'disconnected' state within the time limit. Forcibly disconnecting."
 							)
 							this.disconnect()
-						}, 20000) // 20-second grace period for recovery, should be enough for TTS
+						}, 300000) // 300-second grace period for recovery, should be enough for TTS
 					}
 				}
 

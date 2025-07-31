@@ -1,9 +1,10 @@
 import logging
-import httpx
 import wave
 import io
+import asyncio
 from .base import BaseSTT
 from main.config import ELEVENLABS_API_KEY
+from elevenlabs.client import ElevenLabs
 
 logger = logging.getLogger(__name__)
 
@@ -22,31 +23,38 @@ class ElevenLabsSTT(BaseSTT):
             logger.error("ELEVENLABS_API_KEY not set. ElevenLabsSTT cannot be initialized.")
             raise ValueError("ELEVENLABS_API_KEY is required for ElevenLabsSTT.")
         
-        self.client = httpx.AsyncClient()
-        self.stt_api_url = "https://api.elevenlabs.io/v1/speech-to-text"
-        logger.info(f"ElevenLabsSTT initialized (targetting endpoint: {self.stt_api_url}).")
+        # Use the official ElevenLabs client, as shown in the working demo
+        self.client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
+        logger.info("ElevenLabsSTT initialized using the official client.")
 
+    def _transcribe_sync(self, audio_bytes: bytes) -> str:
+        """Synchronous helper to run the blocking API call."""
+        try:
+            # Use the .speech_to_text.convert method from the library
+            response = self.client.speech_to_text.convert(
+                file=audio_bytes,
+                model_id="scribe_v1" # A recommended model for speed
+            )
+            transcription = response.text
+            logger.debug(f"ElevenLabs STT Transcription: '{transcription}'")
+            return transcription
+        except Exception as e:
+            logger.error(f"Error during ElevenLabs STT library call: {e}", exc_info=True)
+            if hasattr(e, 'response') and hasattr(e.response, 'text'):
+                return f"ElevenLabs STT Error: {e.response.text}"
+            return "Error in STT processing."
 
     async def transcribe(self, audio_bytes: bytes, sample_rate: int) -> str:
         try:
+            # The API works best with a standard audio format like WAV
             wav_data = pcm_to_wav(audio_bytes, sample_rate)
-            files = {'audio': ('audio.wav', wav_data, 'audio/wav')}
-            headers = {"xi-api-key": ELEVENLABS_API_KEY}
             
-            response = await self.client.post(
-                self.stt_api_url,
-                files=files,
-                headers=headers,
-                timeout=30.0 
+            # Run the synchronous library call in a separate thread to avoid blocking
+            loop = asyncio.get_running_loop()
+            transcription = await loop.run_in_executor(
+                None, self._transcribe_sync, wav_data
             )
-            response.raise_for_status()
-            result = response.json()
-            transcription = result.get("transcription", result.get("text","")) 
-            logger.debug(f"ElevenLabs STT Transcription: '{transcription}'")
             return transcription
-        except httpx.HTTPStatusError as e:
-            logger.error(f"ElevenLabs STT API error: {e.response.status_code} - {e.response.text}")
-            return f"ElevenLabs STT Error: {e.response.status_code}"
         except Exception as e:
-            logger.error(f"Error during ElevenLabs STT transcription: {e}", exc_info=True)
-            return "Error in STT processing."
+            logger.error(f"Error preparing audio for ElevenLabs STT: {e}", exc_info=True)
+            return "Error preparing audio for STT."

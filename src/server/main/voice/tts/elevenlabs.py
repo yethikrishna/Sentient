@@ -16,8 +16,8 @@ class ElevenLabsTTS(BaseTTS):
             raise ValueError("ELEVENLABS_API_KEY environment variable not set for ElevenLabsTTS.")
         
         self.client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
-        # Default voice "Rachel" ID: JBFqnCBsd6RMkjVDRZzb
-        self.voice_id = voice_id or "JBFqnCBsd6RMkjVDRZzb" 
+        # Default voice "Rachel" ID: 21m00Tcm4TlvDq8ikWAM
+        self.voice_id = voice_id or "21m00Tcm4TlvDq8ikWAM" 
         self.model_id = model_id or "eleven_multilingual_v2" 
         logger.info(f"ElevenLabs TTS initialized with voice_id: {self.voice_id}, model_id: {self.model_id}")
 
@@ -44,16 +44,17 @@ class ElevenLabsTTS(BaseTTS):
         logger.debug(f"ElevenLabs streaming TTS for text: '{text[:50]}...' using voice {voice_id_to_use}, model {model_id_to_use}")
         
         try:
-            audio_stream = self.client.generate(
+            # CORRECTED: Use the client.text_to_speech.stream() method for newer library versions
+            audio_stream = self.client.text_to_speech.stream(
                 text=text,
-                voice=Voice(voice_id=voice_id_to_use, settings=effective_settings),
-                model=model_id_to_use,
-                stream=True,
+                voice_id=voice_id_to_use,
+                voice_settings=effective_settings,
+                model_id=model_id_to_use,
                 output_format="pcm_16000", 
             )
 
             if not hasattr(audio_stream, '__iter__') and not hasattr(audio_stream, '__aiter__'):
-                logger.error("ElevenLabs client.generate did not return a streamable object.")
+                logger.error("ElevenLabs client.text_to_speech.stream did not return a streamable object.")
                 return
 
             for chunk in audio_stream: # type: ignore

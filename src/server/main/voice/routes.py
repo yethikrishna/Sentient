@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/voice", tags=["Voice"])
 
 rtc_token_cache: Dict[str, Dict] = {}
-TOKEN_EXPIRATION_SECONDS = 30
+TOKEN_EXPIRATION_SECONDS = 600
 
 @router.post("/initiate", summary="Initiate a voice chat session")
 async def initiate_voice_session(
@@ -45,43 +45,6 @@ async def initiate_voice_session(
     return {"rtc_token": rtc_token}
 
 
-async def text_chunk_aggregator(llm_text_generator: AsyncGenerator[str, None]) -> AsyncGenerator[str, None]:
-    """
-    Consumes a stream of text chunks from an LLM, filters out non-spoken agent tags,
-    and yields complete sentences or clauses for a natural speech flow.
-    """
-    buffer = ""
-    # Split on common sentence and clause delimiters for more natural pauses.
-    delimiters = re.compile(r'([.?!,\n])')
-
-    async for text_chunk in llm_text_generator:
-        buffer += text_chunk
-        
-        # **FIX:** Remove non-spoken agent tags like <think>...</think> before processing.
-        buffer = re.sub(r'<think>.*?</think>', '', buffer, flags=re.DOTALL)
-        # Also remove other potential non-spoken tags for robustness
-        buffer = re.sub(r'<(tool_code|tool_result|answer)>.*?</\1>', '', buffer, flags=re.DOTALL)
-
-
-        # Split the buffer by delimiters, keeping the delimiters
-        parts = delimiters.split(buffer)
-        
-        # The last part is an incomplete fragment, so we keep it in the buffer.
-        # All other parts are complete clauses/sentences.
-        if len(parts) > 1:
-            # Re-join pairs of (text, delimiter)
-            complete_chunks = ["".join(parts[i:i+2]) for i in range(0, len(parts) - 1, 2)]
-            buffer = parts[-1]  # The last part is the new buffer
-            
-            for chunk in complete_chunks:
-                if chunk.strip():
-                    yield chunk.strip()
-
-    # After the LLM stream is finished, yield any remaining text in the buffer
-    if buffer.strip():
-        yield buffer.strip()
-
-
 class MyVoiceChatHandler(ReplyOnPause):
     """
     A custom FastRTC handler for managing a real-time voice chat session.
@@ -91,19 +54,19 @@ class MyVoiceChatHandler(ReplyOnPause):
         # Initialize the parent ReplyOnPause class with VAD settings
         super().__init__(
             fn=self.process_audio_chunk,
+            model_options=SileroVadOptions(
+                threshold=0.65,
+                min_speech_duration_ms=250,
+                min_silence_duration_ms=3000,   # wait 3s of silence
+                speech_pad_ms=800,              # give extra buffer before and after speech
+                max_speech_duration_s=15,
+            ),
             algo_options=AlgoOptions(
                 audio_chunk_duration=0.5,
                 started_talking_threshold=0.1,
-                speech_threshold=0.03,
+                speech_threshold=0.05,          # consider only more solid chunks as pause
             ),
-            model_options=SileroVadOptions(
-                threshold=0.75,
-                min_speech_duration_ms=250,
-                min_silence_duration_ms=1500,
-                speech_pad_ms=400,
-                max_speech_duration_s=15,
-            ),
-            can_interrupt=False, # Set to False to prevent user interruption while bot is speaking
+            can_interrupt=True, # Set to False to prevent user interruption while bot is speaking
         )
 
     def copy(self):
@@ -122,7 +85,7 @@ class MyVoiceChatHandler(ReplyOnPause):
 
         # Authenticate the stream using the webrtc_id as the RTC token
         rtc_token = webrtc_id
-        token_info = rtc_token_cache.pop(rtc_token, None)
+        token_info = rtc_token_cache.get(rtc_token, None)
 
         if not token_info or time.time() > token_info["expires_at"]:
             logger.error(f"Invalid or expired RTC token received: {rtc_token}. Terminating stream.")
@@ -155,60 +118,75 @@ class MyVoiceChatHandler(ReplyOnPause):
                 user_id=user_id, role="user", content=transcription, message_id=user_message_id
             )
 
-            # 3. Language Model (LLM)
+            # 3. Language Model (LLM) - Get full response
             await self.send_message(json.dumps({"type": "status", "message": "thinking"}))
+            
+            # --- CORRECTED LOGIC ---
+            # Fetch past history, reverse it to chronological order, then add the new user message.
             history = await mongo_manager.get_message_history(user_id, limit=20)
-            messages_for_llm = [msg for msg in reversed(history)]
+            messages_for_llm = list(reversed(history))
+            messages_for_llm.append({"role": "user", "content": transcription})
+            
+            logger.info(f"LLM processing messages for user {user_id}: {messages_for_llm}")
+            # --- END CORRECTION ---
+
             qwen_assistant = get_qwen_assistant(
                 system_message="You are a helpful voice assistant. Keep your responses concise and conversational."
             )
 
-            # 4. Define an async generator for the LLM text stream
-            async def llm_text_generator():
-                full_response_buffer = ""
-                for history_chunk in qwen_assistant.run(messages=messages_for_llm):
-                    if isinstance(history_chunk, list) and history_chunk:
-                        last_message = history_chunk[-1]
-                        if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
-                            new_content = last_message["content"][len(full_response_buffer):]
-                            if new_content:
-                                yield new_content
-                                full_response_buffer += new_content
-                
-                if full_response_buffer.strip():
-                    assistant_message_id = str(uuid.uuid4())
-                    await self.send_message(json.dumps({"type": "llm_result", "text": full_response_buffer, "messageId": assistant_message_id}))
-                    await mongo_manager.add_message(
-                        user_id=user_id, role="assistant", content=full_response_buffer, message_id=assistant_message_id
-                    )
+            # Get the full final response from the LLM by iterating through its generator
+            full_response_buffer = ""
+            for history_chunk in qwen_assistant.run(messages=messages_for_llm):
+                if isinstance(history_chunk, list) and history_chunk:
+                    last_message = history_chunk[-1]
+                    if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
+                        full_response_buffer = last_message["content"]
+            
+            # Clean the response from any agent tags that shouldn't be spoken
+            full_response_buffer = re.sub(r'<(think|tool_code|tool_result|answer)>.*?</\1>', '', full_response_buffer, flags=re.DOTALL).strip()
 
-            # 5. Text-to-Speech (TTS)
+            if not full_response_buffer:
+                logger.warning(f"LLM returned an empty response for user {user_id}.")
+                await self.send_message(json.dumps({"type": "status", "message": "listening"}))
+                return
+
+            # Save the full response to DB
+            assistant_message_id = str(uuid.uuid4())
+            await self.send_message(json.dumps({"type": "llm_result", "text": full_response_buffer, "messageId": assistant_message_id}))
+            await mongo_manager.add_message(
+                user_id=user_id, role="assistant", content=full_response_buffer, message_id=assistant_message_id
+            )
+
+            # 4. Split response into sentences
+            # This regex splits by sentence-ending punctuation while keeping the punctuation with the sentence.
+            sentences = re.split(r'(?<=[.?!])\s+', full_response_buffer)
+            sentences = [s.strip() for s in sentences if s.strip()]
+            
+            # 5. Text-to-Speech (TTS) per sentence
             if not tts_model_instance:
                 raise Exception("TTS model is not initialized.")
             await self.send_message(json.dumps({"type": "status", "message": "speaking"}))
 
-            # 6. Create the sentence aggregator and stream audio back to the client
-            sentence_generator = text_chunk_aggregator(llm_text_generator())
-            async for sentence in sentence_generator:
+            # 6. Stream audio for each sentence
+            for sentence in sentences:
+                if not sentence: continue
                 logger.info(f"Generating TTS for sentence: '{sentence}'")
                 audio_stream = tts_model_instance.stream_tts(sentence)
                 
-                # Buffer all audio chunks for the current sentence
-                sentence_audio_chunks = []
-                sample_rate = None
                 async for audio_chunk in audio_stream:
-                    logger.info(f"Received TTS audio chunk {audio_chunk}")
                     if isinstance(audio_chunk, tuple) and isinstance(audio_chunk[1], np.ndarray):
-                        if sample_rate is None:
-                            sample_rate = audio_chunk[0]
-                        sentence_audio_chunks.append(audio_chunk[1])
-                
-                # If we have audio chunks, concatenate and yield them as a single block
-                if sentence_audio_chunks and sample_rate is not None:
-                    full_sentence_audio = np.concatenate(sentence_audio_chunks)
-                    audio_float32 = audio_to_float32(full_sentence_audio)
-                    logger.info(f"Yielding full sentence audio of length {len(audio_float32)} samples.")
-                    yield (sample_rate, audio_float32)
+                        # This is from Orpheus TTS: (sample_rate, np.ndarray)
+                        sample_rate, audio_array = audio_chunk
+                        audio_float32 = audio_to_float32(audio_array)
+                        yield (sample_rate, audio_float32)
+                    elif isinstance(audio_chunk, bytes):
+                        # This is from ElevenLabs TTS (PCM bytes)
+                        # We need to convert it to the format fastrtc expects: (sample_rate, np.ndarray)
+                        # Assuming 16kHz, 16-bit PCM from ElevenLabs
+                        sample_rate = 16000 
+                        audio_array = np.frombuffer(audio_chunk, dtype=np.int16)
+                        audio_float32 = audio_to_float32(audio_array)
+                        yield (sample_rate, audio_float32)
 
         except Exception as e:
             logger.error(f"Error in voice_chat for user {user_id}: {e}", exc_info=True)
@@ -227,3 +205,10 @@ stream = Stream(
     modality="audio",
     mode="send-receive",
 )
+
+@router.post("/end", summary="End voice chat session")
+async def end_voice_session(rtc_token: str):
+    if rtc_token in rtc_token_cache:
+        del rtc_token_cache[rtc_token]
+        return {"status": "terminated"}
+    return {"status": "not_found"}

@@ -19,6 +19,7 @@ from workers.proactive.utils import (
 )
 # Use PlannerMongoManager to get a DB connection in the worker
 from workers.planner.db import PlannerMongoManager
+from workers.utils.text_utils import clean_llm_output
 
 logger = logging.getLogger(__name__)
 
@@ -50,16 +51,14 @@ async def formulate_search_queries(user_id: str, event_type: str, event_data: Di
 
 async def standardize_suggestion_type(suggestion_type_description: str) -> str:
     """
-    Uses an LLM call to map a free-form description to a canonical type.
+    Uses an LLM call to map a free-form description to a canonical type from the DB,
+    or generates a new snake_case type if no suitable match is found.
     """
     logger.info(f"Standardizing suggestion type for description: '{suggestion_type_description}'")
     db_manager = PlannerMongoManager()
     try:
         templates = await db_manager.get_all_proactive_suggestion_templates()
-        if not templates:
-            logger.warning("No proactive suggestion templates found in DB. Defaulting to custom type.")
-            return "custom_proactive_action"
-
+        
         prompt = (
             f"Action Description:\n\"{suggestion_type_description}\"\n\n"
             f"Available Canonical Types:\n{json.dumps(templates, indent=2)}"
@@ -73,20 +72,24 @@ async def standardize_suggestion_type(suggestion_type_description: str) -> str:
             if isinstance(chunk, list) and chunk:
                 last_message = chunk[-1]
                 if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
-                    response_str = last_message["content"]
+                    response_str = clean_llm_output(last_message["content"])
 
-        response_str = response_str.strip()
-        logger.info(f"Standardizer LLM returned: '{response_str}'")
+        # The LLM should return a single snake_case string.
+        standardized_type = response_str.strip()
+        logger.info(f"Standardizer LLM returned: '{standardized_type}'")
 
-        if response_str == "create_new_type":
-            logger.info(f"New suggestion type identified for description: '{suggestion_type_description}'")
+        if not standardized_type:
+            logger.warning("Standardizer LLM returned an empty string. Defaulting to 'custom_proactive_action'.")
             return "custom_proactive_action"
-        
-        if any(t['type_name'] == response_str for t in templates):
-            return response_str
+
+        # Check if it's a new type or an existing one.
+        is_existing_type = any(t['type_name'] == standardized_type for t in templates)
+        if is_existing_type:
+            logger.info(f"Matched to existing suggestion type: '{standardized_type}'")
         else:
-            logger.warning(f"Standardizer LLM returned an invalid type name: '{response_str}'. Defaulting to custom type.")
-            return "custom_proactive_action"
+            logger.info(f"LLM generated a new suggestion type: '{standardized_type}'")
+        
+        return standardized_type
 
     except Exception as e:
         logger.error(f"Error during suggestion type standardization: {e}", exc_info=True)
@@ -200,7 +203,8 @@ async def run_proactive_pipeline_logic(user_id: str, event_type: str, event_data
             notification_payload = {
                 "suggestion_type": standardized_type,
                 "action_details": reasoner_result.get("suggestion_action_details"),
-                "gathered_context": cognitive_scratchpad
+                "gathered_context": cognitive_scratchpad,
+                "reasoning": reasoner_result.get("reasoning")
             }
             
             user_facing_message = f"AI Suggestion: {reasoner_result.get('suggestion_description')}"

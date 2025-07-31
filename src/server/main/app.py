@@ -49,6 +49,7 @@ from main.settings.routes import router as settings_router
 from main.testing.routes import router as testing_router
 from main.proactivity.routes import router as proactivity_router
 from main.search.routes import router as search_router
+from main.memories.routes import router as memories_router
 # FIX: Import both router and stream from voice.routes
 from main.voice.routes import router as voice_router, stream as voice_stream
 from main.voice.stt.base import BaseSTT
@@ -144,6 +145,7 @@ app.include_router(settings_router)
 app.include_router(testing_router)
 app.include_router(proactivity_router)
 app.include_router(search_router)
+app.include_router(memories_router)
 app.include_router(voice_router)
 
 @app.get("/", tags=["General"])

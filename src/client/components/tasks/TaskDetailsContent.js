@@ -241,6 +241,28 @@ const TaskDetailsContent = ({
 				</div>
 			</div>
 
+			{/* --- DESCRIPTION --- */}
+			<div>
+				<label className="text-sm font-medium text-neutral-400 block mb-2">
+					Description
+				</label>
+				{isEditing ? (
+					<textarea
+						value={editableTask.description}
+						onChange={(e) =>
+							handleFieldChange("description", e.target.value)
+						}
+						className="w-full p-3 bg-neutral-800/50 border border-neutral-700 rounded-lg transition-colors focus:border-[var(--color-accent-blue)]"
+						rows={4}
+						placeholder="Detailed task description..."
+					/>
+				) : (
+					<div className="bg-neutral-800/50 p-3 rounded-lg text-sm text-neutral-300 whitespace-pre-wrap">
+						{displayTask.description || "No description provided."}
+					</div>
+				)}
+			</div>
+
 			{/* --- SCHEDULE --- */}
 			<div>
 				<label className="text-sm font-medium text-neutral-400 block mb-2">

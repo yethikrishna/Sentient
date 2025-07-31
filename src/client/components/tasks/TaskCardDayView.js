@@ -19,7 +19,7 @@ const TaskCardDayView = ({ task, onSelectTask }) => {
 				"bg-sentient-blue/30 border-l-2 border-sentient-blue hover:bg-sentient-blue/40"
 			)}
 		>
-			<p className="truncate">{task.description}</p>
+			<p className="truncate">{task.name}</p>
 		</motion.div>
 	)
 }

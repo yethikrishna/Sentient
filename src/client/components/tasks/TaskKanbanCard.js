@@ -82,7 +82,7 @@ const TaskKanbanCard = ({ task, onViewDetails, onEditTask, onDataChange }) => {
 			)}
 		>
 			<p className="text-sm font-medium leading-relaxed text-neutral-100">
-				{task.description}
+				{task.name}
 			</p>
 			<div className="flex items-center justify-between mt-3 pt-2 border-t border-white/5 min-h-[28px]">
 				<div className="flex items-center gap-2 text-xs text-neutral-400">

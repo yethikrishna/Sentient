@@ -17,7 +17,7 @@ const TaskPill = ({ task, onClick }) => {
 			}}
 		>
 			{isRecurring && <IconRepeat size={12} />}
-			<span className="truncate">{task.description}</span>
+			<span className="truncate">{task.name}</span>
 		</motion.div>
 	)
 }

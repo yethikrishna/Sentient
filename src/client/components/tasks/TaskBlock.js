@@ -128,7 +128,7 @@ const TaskBlock = ({
 		>
 			<div className="flex justify-between items-start">
 				<p className="text-sm text-neutral-100 flex-grow pr-2">
-					{task.description}
+					{task.name}
 				</p>
 				<div
 					className={cn(

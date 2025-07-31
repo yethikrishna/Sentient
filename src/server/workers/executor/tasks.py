@@ -55,9 +55,9 @@ async def update_task_run_status(db, task_id: str, run_id: str, status: str, use
             {"$set": tasks_update}
         )
 
-    task_doc = await db.tasks.find_one({"task_id": task_id}, {"description": 1})
+    task_doc = await db.tasks.find_one({"task_id": task_id}, {"name": 1})
     if task_doc:
-        task_description = task_doc.get("description", "Unnamed Task")
+        task_description = task_doc.get("name", "Unnamed Task")
 
     logger.info(f"Updating task {task_id} status to '{status}' with details: {details}")
     await db.tasks.update_one(
@@ -237,7 +237,7 @@ async def async_execute_task_plan(task_id: str, user_id: str):
         user_timezone = ZoneInfo("UTC")
     current_user_time = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
 
-    plan_description = task.get("description", "Unnamed plan")
+    plan_description = task.get("name", "Unnamed plan")
     original_context_str = json.dumps(original_context_data, indent=2, default=str) if original_context_data else "No original context provided."
     block_id_prompt = f"The block_id for this task is '{block_id}'. You MUST pass this ID to the 'update_progress' tool in the 'block_id' parameter." if block_id else "This task did not originate from a tasks block."
 

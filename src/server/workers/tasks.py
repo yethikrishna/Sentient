@@ -16,7 +16,7 @@ from workers.utils.api_client import notify_user, push_task_list_update
 from main.config import INTEGRATIONS_CONFIG
 from main.tasks.prompts import TASK_CREATION_PROMPT
 from main.llm import get_qwen_assistant
-from main.dependencies import mongo_manager as main_mongo_manager # Import main mongo manager for task creation
+from main.db import MongoManager # MODIFIED: Import the class, not the instance
 from workers.celery_app import celery_app
 from workers.planner.llm import get_planner_agent, get_question_generator_agent # noqa: E501
 from workers.proactive.main import run_proactive_pipeline_logic
@@ -26,6 +26,7 @@ from workers.executor.tasks import execute_task_plan
 from main.vector_db import get_conversation_summaries_collection
 from workers.planner.prompts import TOOL_SELECTOR_SYSTEM_PROMPT
 from mcp_hub.memory.utils import cud_memory, initialize_embedding_model, initialize_agents
+from workers.utils.text_utils import clean_llm_output
 
 # Imports for poller logic
 from workers.poller.gmail.service import GmailPollingService
@@ -42,15 +43,6 @@ def get_date_from_text(text: str) -> str:
     if match:
         return match.group(1)
     return datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d')
-
-def clean_llm_output(text: str) -> str:
-    """
-    Removes reasoning tags (e.g., <think>...</think>) and trims whitespace from LLM output.
-    """
-    if not isinstance(text, str):
-        return ""
-    cleaned_text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
-    return cleaned_text.strip()
 
 # --- Tool Selection Logic (adapted from chat utils) ---
 def _get_tool_lists(user_integrations: Dict) -> Tuple[Dict, Dict]:
@@ -146,43 +138,36 @@ def create_task_from_suggestion(user_id: str, suggestion_payload: Dict[str, Any]
     action_details = suggestion_payload.get("action_details", {})
     action_type = action_details.get("action_type")
 
-    # Construct a detailed natural language prompt from the action details
-    prompt = ""
-    if action_type == "draft_email":
-        prompt = (
-            f"Draft an email to {action_details.get('recipient', 'N/A')} "
-            f"with the subject '{action_details.get('subject', 'N/A')}'. "
-            f"The body of the email should be based on the following prompt: '{action_details.get('body_prompt', '')}'"
-        )
-    # Add more prompt constructors for other action_types here...
-    else:
-        # Generic fallback
-        prompt = f"Perform the action '{action_type}' with the following details: {json.dumps(action_details)}"
-    
-    if context:
-        context_string = "Here is some context I already know to help with this task:\n"
-        for source, result in context.items():
-            if not result:
-                continue
-            
-            try:
-                # Attempt to pretty-print JSON for readability, falling back to string conversion
-                summary = json.dumps(result, indent=2, default=str)
-            except TypeError:
-                summary = str(result)
-            
-            context_string += f"- From {source}:\n```json\n{summary[:500]}\n```\n"
-        
-        prompt = f"{context_string}\n---\nTASK:\n{prompt}"
+    # Define the task name from the suggestion description and the description from all available context.
+    name = suggestion_payload.get('suggestion_description', f"Proactive Task: {action_type}")
+    description_parts = [
+        f"Action Details: {json.dumps(action_details, indent=2)}",
+        f"Reasoning: {suggestion_payload.get('reasoning', 'N/A')}",
+        f"Full Context: {json.dumps(context, indent=2, default=str)}"
+    ]
+    description = "\n\n---\n\n".join(description_parts)
 
-    if not prompt:
-        logger.error(f"Could not construct prompt for suggestion. Payload: {suggestion_payload}")
-        return
+    worker_mongo_manager = None
+    try:
+        worker_mongo_manager = MongoManager()
+        task_data = {
+            "name": name,
+            "description": description,
+            "original_context": {
+                "source": "proactive_suggestion",
+                "suggestion_type": suggestion_payload.get("suggestion_type"),
+                "trigger_event": context.get("trigger_event")
+            }
+        }
+        task_id = run_async(worker_mongo_manager.add_task(user_id, task_data))
 
-    # Use the same flow as the /add-task endpoint
-    task_id = run_async(main_mongo_manager.add_task(user_id, {"description": prompt}))
-    refine_and_plan_ai_task.delay(task_id)
-    logger.info(f"Successfully created and dispatched new task '{task_id}' from suggestion.")
+        # For proactive tasks, we have enough context to go straight to planning.
+        generate_plan_from_context.delay(task_id)
+        logger.info(f"Successfully created and dispatched new task '{task_id}' from suggestion for planning.")
+    finally:
+        if worker_mongo_manager:
+            run_async(worker_mongo_manager.close())
+
 
 @celery_app.task(name="refine_and_plan_ai_task")
 def refine_and_plan_ai_task(task_id: str):
@@ -213,7 +198,7 @@ async def async_refine_and_plan_ai_task(task_id: str):
             user_timezone = ZoneInfo("UTC")
         current_time_str = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
 
-        system_prompt = TASK_CREATION_PROMPT.format(
+        system_prompt = TASK_CREATION_PROMPT.format( # noqa
             user_name=user_name,
             user_timezone=user_timezone_str,
             current_time=current_time_str
@@ -233,8 +218,8 @@ async def async_refine_and_plan_ai_task(task_id: str):
             if 'schedule' in parsed_data and parsed_data.get('schedule'):
                 parsed_data['schedule']['timezone'] = user_timezone_str
             # Ensure description is not empty, fall back to original prompt if needed
-            if not parsed_data.get("description"):
-                parsed_data["description"] = task["description"]
+            if not parsed_data.get("name"):
+                parsed_data["name"] = task["description"] or task["name"]
             await db_manager.update_task_field(task_id, parsed_data)
             logger.info(f"Successfully refined and updated AI task {task_id} with new details.")
         else:
@@ -376,8 +361,11 @@ async def async_process_action_item(user_id: str, action_items: list, topics: li
     task_id = None
     try:
         task_description = " ".join(map(str, action_items))
+        # For proactive tasks, the initial name is the description, and the description is the context.
+        # The planner will generate a better name and description later.
+        full_description = json.dumps(original_context, indent=2, default=str)
         # Per spec, create task with 'planning' status and immediately trigger planner.
-        task = await db_manager.create_initial_task(user_id, task_description, action_items, topics, original_context, source_event_id)
+        task = await db_manager.create_initial_task(user_id, task_description, full_description, action_items, topics, original_context, source_event_id)
         task_id = task["task_id"]
         generate_plan_from_context.delay(task_id)
         logger.info(f"Task {task_id} created with status 'planning' and dispatched to planner worker.")
@@ -509,7 +497,7 @@ async def async_generate_plan(task_id: str):
         if not plan_data or "plan" not in plan_data:
             raise Exception(f"Planner agent returned invalid JSON: {final_response_str}")
 
-        await db_manager.update_task_with_plan(task_id, run_id, plan_data, is_change_request=is_change_request)
+        await db_manager.update_task_with_plan(task_id, run_id, plan_data, is_change_request)
         capture_event(user_id, "proactive_task_generated", {
             "task_id": task_id,
             "source": task.get("original_context", {}).get("source", "unknown"),
@@ -518,7 +506,7 @@ async def async_generate_plan(task_id: str):
 
         # Notify user that a plan is ready for their approval
         await notify_user(
-            user_id, f"I've created a new plan for you: '{plan_data.get('description', '...')[:50]}...'", task_id,
+            user_id, f"I've created a new plan for you: '{plan_data.get('name', '...')[:50]}...'", task_id,
             notification_type="taskNeedsApproval"
         )
 
@@ -558,7 +546,7 @@ async def async_refine_task_details(task_id: str):
         user_timezone = ZoneInfo(user_timezone_str)
         current_time_str = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
 
-        system_prompt = TASK_CREATION_PROMPT.format(
+        system_prompt = TASK_CREATION_PROMPT.format( # noqa
             user_name=user_name,
             user_timezone=user_timezone_str,
             current_time=current_time_str
@@ -577,7 +565,7 @@ async def async_refine_task_details(task_id: str):
             if 'schedule' in parsed_data and parsed_data.get('schedule'):
                 parsed_data['schedule']['timezone'] = user_timezone_str
             await db_manager.update_task_field(task_id, parsed_data)
-            logger.info(f"Successfully refined and updated task {task_id} with new details.")
+            logger.info(f"Successfully refined and updated user task {task_id} with new details.")
 
     except Exception as e:
         logger.error(f"Error refining task {task_id}: {e}", exc_info=True)

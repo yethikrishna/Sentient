@@ -42,7 +42,7 @@ const ApprovalCard = ({
 		>
 			<div onClick={() => onViewDetails(task)} className="cursor-pointer">
 				<p className="font-medium text-sm text-white mb-2">
-					{task.description}
+					{task.name}
 				</p>
 
 				{/* Simplified Plan Visualization */}

@@ -36,9 +36,9 @@ const TaskSearchResultCard = ({ task, onSelect }) => {
 				<div className="flex-grow min-w-0">
 					<p
 						className="font-medium text-white text-sm truncate"
-						title={task.description}
+						title={task.name}
 					>
-						{task.description}
+						{task.name}
 					</p>
 					<p className="text-xs text-gray-400 capitalize">
 						Task: {task.status.replace("_", " ")}

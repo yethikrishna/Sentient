@@ -41,7 +41,7 @@ const ClarificationCard = ({ task, onAnswerClarifications }) => {
 			exit={{ opacity: 0, x: -20 }}
 			className="bg-dark-surface/70 p-4 rounded-lg space-y-3 border border-dark-surface-elevated hover:border-sentient-blue/50 transition-colors"
 		>
-			<p className="font-medium text-sm text-white">{task.description}</p>
+			<p className="font-medium text-sm text-white">{task.name}</p>
 			<div className="space-y-2">
 				{task.clarifying_questions.map((q) => (
 					<div key={q.question_id}>

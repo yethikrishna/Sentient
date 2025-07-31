@@ -31,7 +31,7 @@ const TaskOverviewCard = ({
 			)}
 		>
 			<div className="flex-grow min-w-0 font-medium text-white text-sm">
-				{task.description}
+				{task.name}
 			</div>
 			<div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
 				<button

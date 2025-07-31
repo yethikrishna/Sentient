@@ -248,8 +248,13 @@ function TasksPageContent() {
 		if (!searchQuery.trim()) {
 			return oneTimeTasks
 		}
-		return oneTimeTasks.filter((task) =>
-			task.description.toLowerCase().includes(searchQuery.toLowerCase())
+		return oneTimeTasks.filter(
+			(task) =>
+				task.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+				(task.description &&
+					task.description
+						.toLowerCase()
+						.includes(searchQuery.toLowerCase()))
 		)
 	}, [oneTimeTasks, searchQuery])
 
@@ -258,7 +263,7 @@ function TasksPageContent() {
 			return recurringTasks
 		}
 		return recurringTasks.filter((task) =>
-			task.description.toLowerCase().includes(searchQuery.toLowerCase())
+			task.name.toLowerCase().includes(searchQuery.toLowerCase())
 		)
 	}, [recurringTasks, searchQuery])
 
@@ -268,7 +273,7 @@ function TasksPageContent() {
 			return allCalendarTasks
 		}
 		return allCalendarTasks.filter((task) =>
-			task.description.toLowerCase().includes(searchQuery.toLowerCase())
+			task.name.toLowerCase().includes(searchQuery.toLowerCase())
 		)
 	}, [oneTimeTasks, recurringInstances, searchQuery])
 

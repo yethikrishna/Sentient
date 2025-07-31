@@ -18,6 +18,7 @@ class AnswerClarificationsRequest(BaseModel):
 
 class UpdateTaskRequest(BaseModel):
     taskId: str
+    name: Optional[str] = None
     description: Optional[str] = None
     priority: Optional[int] = None
     plan: Optional[List[TaskStep]] = None

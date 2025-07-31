@@ -9,7 +9,8 @@ import {
 	IconPlugConnected,
 	IconUser,
 	IconMessage,
-	IconBell
+	IconBell,
+	IconBrain
 } from "@tabler/icons-react"
 import { cn } from "@utils/cn"
 import { motion } from "framer-motion"
@@ -26,6 +27,7 @@ const Sidebar = ({ onNotificationsOpen, unreadCount }) => {
 	const navLinks = [
 		{ title: "Chat", href: "/chat", icon: <IconMessage size={28} /> },
 		{ title: "Tasks", href: "/tasks", icon: <IconChecklist size={28} /> },
+		{ title: "Memories", href: "/memories", icon: <IconBrain size={28} /> },
 		{
 			title: "Integrations",
 			href: "/integrations",

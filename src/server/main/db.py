@@ -283,7 +283,6 @@ class MongoManager:
             except json.JSONDecodeError:
                 schedule = None
 
-        # All new tasks are assigned to AI and start in the 'planning' state.
         initial_run = {
             "run_id": str(uuid.uuid4()),
             "status": "planning",
@@ -292,20 +291,21 @@ class MongoManager:
             "progress_updates": [],
             "result": None,
             "error": None,
-            "prompt": task_data.get("description")
+            "prompt": task_data.get("description") or task_data.get("name")
         }
 
         task_doc = {
             "task_id": task_id,
             "user_id": user_id,
-            "description": task_data.get("description", "New Task"),
+            "name": task_data.get("name", "New Task"),
+            "description": task_data.get("description", ""),
             "status": "planning",
             "assignee": "ai",
             "priority": task_data.get("priority", 1),
             "runs": [initial_run],
             "schedule": schedule,
             "enabled": True,
-            "original_context": {"source": "manual_creation"},
+            "original_context": task_data.get("original_context", {"source": "manual_creation"}),
             "created_at": now_utc,
             "updated_at": now_utc,
             "chat_history": [],
@@ -314,7 +314,7 @@ class MongoManager:
         }
 
         await self.task_collection.insert_one(task_doc)
-        logger.info(f"Created new manual task {task_id} for user {user_id} with status 'planning'.")
+        logger.info(f"Created new task {task_id} for user {user_id} with status 'planning'.")
         return task_id
 
     async def get_task(self, task_id: str, user_id: str) -> Optional[Dict]:
@@ -491,9 +491,14 @@ class MongoManager:
     async def update_proactive_preference_score(self, user_id: str, suggestion_type: str, increment_value: int):
         """Finds or creates a user preference document and increments/decrements the score."""
         now_utc = datetime.datetime.now(datetime.timezone.utc)
+        # FIX: Removed 'score' from $setOnInsert to prevent conflict with $inc on upsert.
+        # $inc will create the field with the specified value if it doesn't exist.
         await self.user_proactive_preferences_collection.update_one(
             {"user_id": user_id, "suggestion_type": suggestion_type},
-            {"$inc": {"score": increment_value}, "$set": {"last_updated": now_utc}, "$setOnInsert": {"score": increment_value}},
+            {
+                "$inc": {"score": increment_value},
+                "$set": {"last_updated": now_utc}
+            },
             upsert=True
         )
     

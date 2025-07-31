@@ -42,7 +42,7 @@ def get_all_mcp_descriptions() -> Dict[str, str]:
     return mcp_descriptions
 
 
-class PlannerMongoManager: # noqa: E501
+class PlannerMongoManager:  # noqa: E501
     """A MongoDB manager for the planner worker."""
     def __init__(self):
         self.client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI)
@@ -54,7 +54,7 @@ class PlannerMongoManager: # noqa: E501
         self.user_proactive_preferences_collection = self.db["user_proactive_preferences"]
         logger.info("PlannerMongoManager initialized.")
 
-    async def create_initial_task(self, user_id: str, description: str, action_items: list, topics: list, original_context: dict, source_event_id: str) -> Dict:
+    async def create_initial_task(self, user_id: str, name: str, description: str, action_items: list, topics: list, original_context: dict, source_event_id: str) -> Dict:
         """Creates an initial task document when an action item is first processed."""
         task_id = str(uuid.uuid4())
         now_utc = datetime.datetime.now(datetime.timezone.utc)
@@ -67,12 +67,13 @@ class PlannerMongoManager: # noqa: E501
             "progress_updates": [],
             "result": None,
             "error": None,
-            "prompt": description
+            "prompt": name
         }
 
         task_doc = {
             "task_id": task_id,
             "user_id": user_id,
+            "name": name,
             "description": description,
             "status": "planning", # As per spec
             "assignee": "ai", # Proactive tasks are assigned to AI
@@ -109,8 +110,9 @@ class PlannerMongoManager: # noqa: E501
 
         # Only set the main description for the very first run.
         if not is_change_request:
-            description = plan_data.get("description", "Proactively generated plan")
-            update_doc["description"] = description
+            name = plan_data.get("name", "Proactively generated plan")
+            update_doc["name"] = name
+            update_doc["description"] = plan_data.get("description", "")
 
         result = await self.tasks_collection.update_one(
             {"task_id": task_id},
@@ -142,7 +144,7 @@ class PlannerMongoManager: # noqa: E501
         await self.tasks_collection.update_one({"task_id": task_id}, {"$set": update_doc})
         logger.info(f"Updated status of task {task_id} to {status}")
 
-    async def save_plan_as_task(self, user_id: str, description: str, plan: list, original_context: dict, source_event_id: str):
+    async def save_plan_as_task(self, user_id: str, name: str, description: str, plan: list, original_context: dict, source_event_id: str):
         """Saves a generated plan to the tasks collection for user approval."""
         task_id = str(uuid.uuid4())
         run_id = str(uuid.uuid4())
@@ -150,6 +152,7 @@ class PlannerMongoManager: # noqa: E501
         task_doc = {
             "task_id": task_id,
             "user_id": user_id,
+            "name": name,
             "description": description,
             "status": "approval_pending",
             "priority": 1,

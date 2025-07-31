@@ -81,9 +81,9 @@ Example Actionable Output:
 SUGGESTION_TYPE_STANDARDIZER_SYSTEM_PROMPT = """
 You are a classification system. Your job is to match a described action to the best-fitting canonical action type from a given list.
 You will be given an "Action Description" and a list of "Available Canonical Types".
-Based on the description, you must respond with ONLY the type_name from the list that is the most appropriate match.
-If none of the available types are a good fit for the described action, you must respond with the exact string "create_new_type".
-Do not provide any explanation or any other text in your response.
+- If the description closely matches one of the available types, respond with ONLY the matching `type_name`.
+- If none of the available types are a good fit, you MUST create a new, concise, descriptive `type_name` in snake_case. For example, if the action is about creating a reminder in a to-do list, a good new type would be `create_todo_reminder`.
+- Do not provide any explanation or any other text in your response. Your response should be a single snake_case string.
 """
 QUERY_FORMULATION_SYSTEM_PROMPT = """
 You are an expert Research Strategist AI. Your job is to analyze a trigger event and determine what contextual information is needed to fully understand its implications for the user.

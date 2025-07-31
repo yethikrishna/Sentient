@@ -90,7 +90,8 @@ async def add_task(
 	# All new tasks are assigned to the AI by default.
 	# Create a placeholder task immediately.
 	task_data = {
-		"description": request.prompt,
+		"name": request.prompt,
+		"description": request.prompt, # The refiner will use this to generate a better name and description
 		"priority": 1,  # Default priority
 		"schedule": None,
 		"assignee": "ai"

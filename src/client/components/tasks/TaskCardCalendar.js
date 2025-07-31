@@ -29,7 +29,7 @@ const TaskCardCalendar = ({ task, onSelectTask }) => {
 						statusInfo.bgColor
 					)}
 				/>
-				<span className="truncate">{task.description}</span>
+				<span className="truncate">{task.name}</span>
 			</div>
 		</motion.div>
 	)

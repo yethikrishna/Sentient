@@ -55,7 +55,7 @@ const TaskCardList = ({ task, onSelectTask }) => {
 		>
 			<div className="flex justify-between items-start gap-4">
 				<p className="font-sans font-semibold text-brand-white flex-1 text-sm">
-					{task.description}
+					{task.name}
 				</p>
 				<StatusBadge status={task.status} />
 			</div>

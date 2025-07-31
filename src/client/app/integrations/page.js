@@ -433,8 +433,7 @@ const PrivacySettings = ({ serviceName }) => {
 				onDelete={(value) => handleDeleteItem("keywords", value)}
 				placeholder="Add a new keyword..."
 			/>
-
-			{serviceName === "gmail" && (
+			{serviceName === "gmail" ? (
 				<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 					<FilterInputSection
 						title="Blocked Senders"
@@ -453,7 +452,16 @@ const PrivacySettings = ({ serviceName }) => {
 						placeholder="Add a label..."
 					/>
 				</div>
-			)}
+			) : serviceName === "gcalendar" ? (
+				<FilterInputSection
+					title="Blocked Attendees"
+					description="Events containing any of these attendees (by email) will be ignored."
+					items={filters.emails}
+					onAdd={(value) => handleAddItem("emails", value)}
+					onDelete={(value) => handleDeleteItem("emails", value)}
+					placeholder="Add an attendee's email..."
+				/>
+			) : null}
 		</div>
 	)
 }

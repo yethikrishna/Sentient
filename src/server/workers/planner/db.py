@@ -42,17 +42,19 @@ def get_all_mcp_descriptions() -> Dict[str, str]:
     return mcp_descriptions
 
 
-class PlannerMongoManager: # noqa: E501
+class PlannerMongoManager:  # noqa: E501
     """A MongoDB manager for the planner worker."""
     def __init__(self):
         self.client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI)
         self.db = self.client[MONGO_DB_NAME]
         self.user_profiles_collection = self.db["user_profiles"]
         self.tasks_collection = self.db["tasks"]
-        self.chats_collection = self.db["chats"]
+        self.messages_collection = self.db["messages"]
+        self.proactive_suggestion_templates_collection = self.db["proactive_suggestion_templates"]
+        self.user_proactive_preferences_collection = self.db["user_proactive_preferences"]
         logger.info("PlannerMongoManager initialized.")
 
-    async def create_initial_task(self, user_id: str, description: str, action_items: list, topics: list, original_context: dict, source_event_id: str) -> Dict:
+    async def create_initial_task(self, user_id: str, name: str, description: str, action_items: list, topics: list, original_context: dict, source_event_id: str) -> Dict:
         """Creates an initial task document when an action item is first processed."""
         task_id = str(uuid.uuid4())
         now_utc = datetime.datetime.now(datetime.timezone.utc)
@@ -65,12 +67,13 @@ class PlannerMongoManager: # noqa: E501
             "progress_updates": [],
             "result": None,
             "error": None,
-            "prompt": description
+            "prompt": name
         }
 
         task_doc = {
             "task_id": task_id,
             "user_id": user_id,
+            "name": name,
             "description": description,
             "status": "planning", # As per spec
             "assignee": "ai", # Proactive tasks are assigned to AI
@@ -107,8 +110,9 @@ class PlannerMongoManager: # noqa: E501
 
         # Only set the main description for the very first run.
         if not is_change_request:
-            description = plan_data.get("description", "Proactively generated plan")
-            update_doc["description"] = description
+            name = plan_data.get("name", "Proactively generated plan")
+            update_doc["name"] = name
+            update_doc["description"] = plan_data.get("description", "")
 
         result = await self.tasks_collection.update_one(
             {"task_id": task_id},
@@ -140,7 +144,7 @@ class PlannerMongoManager: # noqa: E501
         await self.tasks_collection.update_one({"task_id": task_id}, {"$set": update_doc})
         logger.info(f"Updated status of task {task_id} to {status}")
 
-    async def save_plan_as_task(self, user_id: str, description: str, plan: list, original_context: dict, source_event_id: str):
+    async def save_plan_as_task(self, user_id: str, name: str, description: str, plan: list, original_context: dict, source_event_id: str):
         """Saves a generated plan to the tasks collection for user approval."""
         task_id = str(uuid.uuid4())
         run_id = str(uuid.uuid4())
@@ -148,6 +152,7 @@ class PlannerMongoManager: # noqa: E501
         task_doc = {
             "task_id": task_id,
             "user_id": user_id,
+            "name": name,
             "description": description,
             "status": "approval_pending",
             "priority": 1,
@@ -177,12 +182,36 @@ class PlannerMongoManager: # noqa: E501
     async def update_chat(self, user_id: str, chat_id: str, updates: Dict) -> bool:
         """Updates fields of a chat document, like the title."""
         updates["updated_at"] = datetime.datetime.now(datetime.timezone.utc)
-        result = await self.chats_collection.update_one(
+        result = await self.messages_collection.update_one(
             {"user_id": user_id, "chat_id": chat_id},
             {"$set": updates}
         )
         return result.modified_count > 0
 
+    async def get_all_proactive_suggestion_templates(self) -> List[Dict]:
+        """Fetches all documents from the proactive_suggestion_templates collection."""
+        cursor = self.proactive_suggestion_templates_collection.find({}, {"_id": 0})
+        return await cursor.to_list(length=None)
+
+    async def get_user_proactive_preferences(self, user_id: str) -> Dict[str, int]:
+        """
+        Fetches all proactive suggestion preferences for a user and returns them
+        as a dictionary of {suggestion_type: score}.
+        """
+        if not user_id:
+            return {}
+        
+        preferences = {}
+        cursor = self.user_proactive_preferences_collection.find(
+            {"user_id": user_id},
+            {"_id": 0, "suggestion_type": 1, "score": 1}
+        )
+        async for doc in cursor:
+            if "suggestion_type" in doc and "score" in doc:
+                preferences[doc["suggestion_type"]] = doc["score"]
+        
+        logger.info(f"Fetched {len(preferences)} proactive preferences for user {user_id}.")
+        return preferences
 
     async def close(self):
         if self.client:

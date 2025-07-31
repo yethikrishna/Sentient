@@ -250,7 +250,7 @@ INTEGRATIONS_CONFIG = {
         "category": "Productivity",
         "mcp_server_config": {
             "name": "trello_server",
-            "url": os.getenv("TRELLO_MCP_SERVER_URL", "http://localhost:9020/sse")
+            "url": os.getenv("TRELLO_MCP_SERVER_URL", "http://localhost:9025/sse")
         }
     },
     "todoist": {
@@ -319,6 +319,17 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("ACCUWEATHER_MCP_SERVER_URL", "http://localhost:9007/sse")
         }
     },
+    "history": {
+        "display_name": "Conversation History",
+        "description": "Searches the user's long-term conversation history. Use 'semantic_search' for topic-based queries (e.g., 'what did we decide about X?') and 'time_based_search' for date-based queries (e.g., 'what did we talk about last Tuesday?').",
+        "auth_type": "builtin",
+        "icon": "IconHistory", # Frontend will need to add this if it's ever displayed
+        "category": "Data & Search",
+        "mcp_server_config": {
+            "name": "history_mcp",
+            "url": os.getenv("HISTORY_MCP_SERVER_URL", "http://localhost:9020/sse")
+        }
+    },
     "quickchart": { # Built-in
         "display_name": "QuickChart",
         "description": "Generates charts and data visualizations on the fly. The agent can create bar charts, line charts, pie charts, and more, then provide a URL or download the image.",
@@ -341,16 +352,15 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("PROGRESS_UPDATER_MCP_SERVER_URL", "http://localhost:9011/sse")
         }
     },
-    "supermemory": {
+    "memory": {
         "display_name": "Long-Term Memory",
-        "description": "The agent's long-term memory about the user. Use 'search' to recall facts, relationships, and preferences. Use 'addToSupermemory' to save new, permanent information about the user. This is critical for personalization.",
+        "description": "Manages the user's long-term memory. Use 'search_memory' to find facts, and 'cud_memory' to add, update, or delete information. This is critical for personalization.",
         "auth_type": "builtin",
         "icon": "IconBrain",
         "category": "Data & Search",
         "mcp_server_config": {
-            "name": "supermemory",
-            # URL is constructed dynamically based on user's supermemory_user_id
-            "url": None
+            "name": "memory_mcp",
+            "url": os.getenv("MEMORY_MCP_SERVER_URL", "http://localhost:8001/sse")
         }
     },
     "whatsapp": {
@@ -376,6 +386,20 @@ INTEGRATIONS_CONFIG = {
     }
 }
 
+# --- Service Provider Configuration ---
+STT_PROVIDER = os.getenv("STT_PROVIDER", "FASTER_WHISPER")
+TTS_PROVIDER = os.getenv("TTS_PROVIDER", "ORPHEUS")
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+
+# For Orpheus (Dev TTS)
+ORPHEUS_MODEL_PATH = os.getenv("ORPHEUS_MODEL_PATH", os.path.join(os.path.dirname(__file__), "voice", "models", "orpheus-3b-0.1-ft-q4_k_m.gguf"))
+ORPHEUS_N_GPU_LAYERS = int(os.getenv("ORPHEUS_N_GPU_LAYERS", 30))
+
+# FasterWhisper STT (Dev STT)
+FASTER_WHISPER_MODEL_SIZE = os.getenv("FASTER_WHISPER_MODEL_SIZE", "base")
+FASTER_WHISPER_DEVICE = os.getenv("FASTER_WHISPER_DEVICE", "cpu")
+FASTER_WHISPER_COMPUTE_TYPE = os.getenv("FASTER_WHISPER_COMPUTE_TYPE", "int8")
+
 # LLM Endpoint Configuration
 # --- OpenAI API Standard Configuration ---
 # This can point to OpenAI, Ollama, Groq, or any other compatible service.
@@ -385,8 +409,6 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ollama") # Default key for Ollama
 
 # MCP Server URLs
 PROGRESS_UPDATER_MCP_SERVER_URL=os.getenv("PROGRESS_UPDATER_MCP_SERVER_URL", "http://localhost:9011/sse")
-SUPERMEMORY_MCP_BASE_URL = os.getenv("SUPERMEMORY_MCP_BASE_URL", "https://mcp.supermemory.ai/")
-SUPERMEMORY_MCP_ENDPOINT_SUFFIX = os.getenv("SUPERMEMORY_MCP_ENDPOINT_SUFFIX", "/sse")
 
 print(f"[{datetime.datetime.now()}] [MainServer_Config] Configuration loaded. AUTH0_DOMAIN: {'SET' if AUTH0_DOMAIN else 'NOT SET'}")
 print(f"[{datetime.datetime.now()}] [MainServer_Config] LLM Endpoint: {OPENAI_API_BASE_URL}")

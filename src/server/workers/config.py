@@ -5,9 +5,8 @@ from dotenv import load_dotenv
 # Load .env file for 'dev-local' environment.
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
 if ENVIRONMENT == 'dev-local':
-    dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
-    if os.path.exists(dotenv_path):
-        load_dotenv(dotenv_path=dotenv_path)
-SUPERMEMORY_MCP_BASE_URL = os.getenv("SUPERMEMORY_MCP_BASE_URL", "https://mcp.supermemory.ai/")
-SUPERMEMORY_MCP_ENDPOINT_SUFFIX = os.getenv("SUPERMEMORY_MCP_ENDPOINT_SUFFIX", "/sse")
+    dotenv_local_path = os.path.join(os.path.dirname(__file__), '..', '.env.local')
+    if os.path.exists(dotenv_local_path):
+        load_dotenv(dotenv_path=dotenv_local_path)
+MEMORY_MCP_SERVER_URL = os.getenv("MEMORY_MCP_SERVER_URL", "http://localhost:8001/sse")
 SUPPORTED_POLLING_SERVICES = ["gmail", "gcalendar"]

@@ -55,6 +55,10 @@ celery_app.conf.update(
             'task': 'schedule_all_polling',
             'schedule': 3600.0,
         },
+        'summarize-old-conversations-hourly': {
+            'task': 'summarize_old_conversations',
+            'schedule': 3600.0, # Run every hour
+        }
     }
 )
 

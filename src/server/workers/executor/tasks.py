@@ -15,8 +15,7 @@ from workers.utils.api_client import notify_user, push_progress_update
 
 # Load environment variables for the worker from its own config
 from workers.executor.config import (MONGO_URI, MONGO_DB_NAME,
-                                     INTEGRATIONS_CONFIG, OPENAI_API_BASE_URL,
-                                     OPENAI_API_KEY, OPENAI_MODEL_NAME, SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX)
+                                     INTEGRATIONS_CONFIG, OPENAI_API_BASE_URL, OPENAI_API_KEY, OPENAI_MODEL_NAME)
 
 # Setup logger for this module
 logger = logging.getLogger(__name__)
@@ -56,9 +55,9 @@ async def update_task_run_status(db, task_id: str, run_id: str, status: str, use
             {"$set": tasks_update}
         )
 
-    task_doc = await db.tasks.find_one({"task_id": task_id}, {"description": 1})
+    task_doc = await db.tasks.find_one({"task_id": task_id}, {"name": 1})
     if task_doc:
-        task_description = task_doc.get("description", "Unnamed Task")
+        task_description = task_doc.get("name", "Unnamed Task")
 
     logger.info(f"Updating task {task_id} status to '{status}' with details: {details}")
     await db.tasks.update_one(
@@ -207,17 +206,11 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     logger.info(f"Task {task_id}: Plan requires tools: {required_tools_from_plan}")
     
     user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
-    supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id") if user_profile else None
     
     active_mcp_servers = {}
     progress_updater_config = INTEGRATIONS_CONFIG.get("progress_updater", {}).get("mcp_server_config")
     if progress_updater_config:
         active_mcp_servers[progress_updater_config["name"]] = {"url": progress_updater_config["url"], "headers": {"X-User-ID": user_id}}
-    if supermemory_user_id:
-        active_mcp_servers["supermemory"] = {
-            "transport": "sse",
-            "url": f"{SUPERMEMORY_MCP_BASE_URL.rstrip('/')}/{supermemory_user_id}{SUPERMEMORY_MCP_ENDPOINT_SUFFIX}"
-        }
 
     for tool_name in required_tools_from_plan:
         if tool_name not in INTEGRATIONS_CONFIG:
@@ -225,7 +218,7 @@ async def async_execute_task_plan(task_id: str, user_id: str):
             continue
         config = INTEGRATIONS_CONFIG[tool_name]
         mcp_config = config.get("mcp_server_config")
-        if not mcp_config or tool_name in ["progress_updater", "supermemory"]:
+        if not mcp_config or tool_name in ["progress_updater"]:
             continue
         is_builtin = config.get("auth_type") == "builtin"
         is_connected_via_oauth = user_integrations.get(tool_name, {}).get("connected", False)
@@ -244,7 +237,7 @@ async def async_execute_task_plan(task_id: str, user_id: str):
         user_timezone = ZoneInfo("UTC")
     current_user_time = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
 
-    plan_description = task.get("description", "Unnamed plan")
+    plan_description = task.get("name", "Unnamed plan")
     original_context_str = json.dumps(original_context_data, indent=2, default=str) if original_context_data else "No original context provided."
     block_id_prompt = f"The block_id for this task is '{block_id}'. You MUST pass this ID to the 'update_progress' tool in the 'block_id' parameter." if block_id else "This task did not originate from a tasks block."
 
@@ -254,7 +247,7 @@ async def async_execute_task_plan(task_id: str, user_id: str):
         f"Your task ID is '{task_id}' and the current run ID is '{run_id}'.\n\n"
         f"The original context that triggered this plan is:\n---BEGIN CONTEXT---\n{original_context_str}\n---END CONTEXT---\n\n"
         f"**Primary Objective:** '{plan_description}'\n\n"
-        f"**The Plan to Execute:**\n" + "\n".join([f"- Step {i+1}: Use the '{step['tool']}' tool to '{step['description']}'" for i, step in enumerate(latest_run.get("plan", []))]) + "\n\n"
+        f"**The Plan to Execute:**\n" + "\n".join([f"- Step {i+1}: Use the '{step['tool']}' tool to '{step['description']}'" for i, step in enumerate(latest_run.get("plan", []))]) + "\n\n" # noqa
         "**EXECUTION STRATEGY:**\n"
         "1.  **Execution Flow:** You MUST start by executing the first step of the plan. Do not summarize the plan or provide a final answer until you have executed all steps. Follow the plan sequentially.\n"
         "2.  **Map Plan to Tools:** The plan provides a high-level tool name (e.g., 'gmail', 'gdrive'). You must map this to the specific functions available to you (e.g., `gmail_server-sendEmail`, `gdrive_server-gdrive_search`).\n"

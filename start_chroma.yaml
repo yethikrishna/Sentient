@@ -1,0 +1,11 @@
+services:
+# ChromaDB for Vector Storage
+    chroma:
+        image: chromadb/chroma
+        container_name: sentient-chroma-selfhost
+        ports:
+            - "8002:8000" # Expose Chroma's port 8000 on host port 8002
+        volumes:
+            - chroma_data:/chroma/.chroma/index
+volumes:
+    chroma_data:

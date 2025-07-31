@@ -13,7 +13,7 @@ sys.path.insert(0, project_root)
 from workers.tasks import _get_tool_lists, _select_relevant_tools, clean_llm_output
 from workers.planner.llm import get_question_generator_agent
 from workers.planner.db import PlannerMongoManager
-from main.config import INTEGRATIONS_CONFIG, SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX
+from main.config import INTEGRATIONS_CONFIG
 from json_extractor import JsonExtractor
 
 # --- Configuration ---
@@ -41,7 +41,6 @@ async def test_context_verification(task_description: str):
             return
 
         user_integrations = user_profile.get("userData", {}).get("integrations", {})
-        supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id")
 
         # 2. --- Dynamic Tool Selection ---
         connected_tools, _ = _get_tool_lists(user_integrations)
@@ -52,9 +51,9 @@ async def test_context_verification(task_description: str):
         
         # CRITICAL VALIDATION STEP
         relevant_tool_names = [tool for tool in llm_selected_tools if tool in connected_tools]
-        
+
         final_tool_names = set(relevant_tool_names)
-        final_tool_names.add("supermemory") # Supermemory is mandatory
+        final_tool_names.add("memory") # memory is mandatory
 
         print(f"✅ Final Validated Tools for Context Search: {list(final_tool_names)}")
 
@@ -68,14 +67,9 @@ async def test_context_verification(task_description: str):
 
             available_tools_for_prompt[tool_name] = config.get("description", "")
 
-            if tool_name == "supermemory":
-                if supermemory_user_id:
-                    supermemory_mcp_url = f"{SUPERMEMORY_MCP_BASE_URL.rstrip('/')}/{supermemory_user_id}{SUPERMEMORY_MCP_ENDPOINT_SUFFIX}"
-                    mcp_servers_for_agent["supermemory"] = {"url": supermemory_mcp_url, "transport": "sse"}
-            else:
-                mcp_config = config.get("mcp_server_config")
-                if mcp_config and mcp_config.get("url"):
-                     mcp_servers_for_agent[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": TEST_USER_ID}}
+            mcp_config = config.get("mcp_server_config")
+            if mcp_config and mcp_config.get("url"):
+                 mcp_servers_for_agent[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": TEST_USER_ID}}
 
         if not mcp_servers_for_agent:
             print("❌ ERROR: No MCP servers could be configured for the selected tools. Cannot proceed.")

@@ -162,10 +162,10 @@ const TaskDetailsPanel = ({
 							{isEditing ? (
 								<input
 									type="text"
-									value={editableTask.description}
+									value={editableTask.name}
 									onChange={(e) =>
 										handleFieldChange(
-											"description",
+											"name",
 											e.target.value
 										)
 									}

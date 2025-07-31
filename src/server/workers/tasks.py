@@ -9,24 +9,24 @@ import httpx
 from dateutil import rrule
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Dict, Any, Optional, List, Tuple
+from bson import ObjectId
 from main.analytics import capture_event
-
-from workers.config import SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX, SUPPORTED_POLLING_SERVICES
 from json_extractor import JsonExtractor
 from workers.utils.api_client import notify_user, push_task_list_update
 from main.config import INTEGRATIONS_CONFIG
 from main.tasks.prompts import TASK_CREATION_PROMPT
 from main.llm import get_qwen_assistant
+from main.db import MongoManager # MODIFIED: Import the class, not the instance
 from workers.celery_app import celery_app
-from workers.planner.llm import get_planner_agent, get_question_generator_agent
-from workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions
-from workers.supermemory_agent_utils import get_supermemory_qwen_agent, get_db_manager as get_memory_db_manager
+from workers.planner.llm import get_planner_agent, get_question_generator_agent # noqa: E501
+from workers.proactive.main import run_proactive_pipeline_logic
+from workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions # noqa: E501
+from workers.memory_agent_utils import get_memory_qwen_agent, get_db_manager as get_memory_db_manager # noqa: E501
 from workers.executor.tasks import execute_task_plan
+from main.vector_db import get_conversation_summaries_collection
 from workers.planner.prompts import TOOL_SELECTOR_SYSTEM_PROMPT
-
-# Imports for extractor logic
-from workers.extractor.llm import get_extractor_agent
-from workers.extractor.db import ExtractorMongoManager
+from mcp_hub.memory.utils import cud_memory, initialize_embedding_model, initialize_agents
+from workers.utils.text_utils import clean_llm_output
 
 # Imports for poller logic
 from workers.poller.gmail.service import GmailPollingService
@@ -43,15 +43,6 @@ def get_date_from_text(text: str) -> str:
     if match:
         return match.group(1)
     return datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d')
-
-def clean_llm_output(text: str) -> str:
-    """
-    Removes reasoning tags (e.g., <think>...</think>) and trims whitespace from LLM output.
-    """
-    if not isinstance(text, str):
-        return ""
-    cleaned_text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
-    return cleaned_text.strip()
 
 # --- Tool Selection Logic (adapted from chat utils) ---
 def _get_tool_lists(user_integrations: Dict) -> Tuple[Dict, Dict]:
@@ -118,103 +109,65 @@ def run_async(coro):
         asyncio.set_event_loop(loop)
     return loop.run_until_complete(coro)
 
-# --- Memory Processing Task (Modified for Supermemory) ---
-@celery_app.task(name="process_memory_item")
-def process_memory_item(user_id: str, fact_text: str, source_event_id: Optional[str] = None):
+@celery_app.task(name="proactive_reasoning_pipeline")
+def proactive_reasoning_pipeline(user_id: str, event_type: str, event_data: Dict[str, Any]):
     """
-    Celery task to process a single memory item by calling the Supermemory MCP
-    via a dedicated Qwen agent.
+    Celery task entry point for the new proactive reasoning pipeline.
     """
-    log_prefix = f"Event {source_event_id}: " if source_event_id else ""
-    logger.info(f"{log_prefix}Celery worker received Supermemory task for user {user_id}: '{fact_text[:80]}...'")
+    logger.info(f"Celery worker received task 'proactive_reasoning_pipeline' for user_id: {user_id}, event_type: {event_type}")
+    run_async(run_proactive_pipeline_logic(user_id, event_type, event_data))
 
-    async def async_process_memory():
-        db_manager = get_memory_db_manager() # This is a PlannerMongoManager instance
-        try:
-            user_profile = await db_manager.user_profiles_collection.find_one({"user_id": user_id})
-            if not user_profile:
-                logger.error(f"User profile not found for {user_id}. Cannot process memory item.")
-                return {"status": "failure", "reason": "User profile not found"}
-
-            supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id")
-            if not supermemory_user_id:
-                logger.warning(f"User {user_id} has no Supermemory User ID. Skipping memory item: '{fact_text[:50]}...'")
-                return {"status": "skipped", "reason": "Supermemory MCP URL not configured"}
-
-            supermemory_mcp_url = f"{SUPERMEMORY_MCP_BASE_URL.rstrip('/')}/{supermemory_user_id}{SUPERMEMORY_MCP_ENDPOINT_SUFFIX}"
-
-            agent = get_supermemory_qwen_agent(supermemory_mcp_url)
-            messages = [{'role': 'user', 'content': f"Remember this fact: {fact_text}"}]
-
-            all_responses = list(agent.run(messages=messages))
-            final_history = all_responses[-1] if all_responses else None
-
-            if not final_history:
-                logger.error(f"Supermemory agent produced no output for user {user_id}.")
-                return {"status": "failure", "reason": "Agent produced no output"}
-
-            function_call_succeeded = False
-            tool_response_content = "No tool response received."
-
-            for message in reversed(final_history):
-                if message.get("role") == "function" and message.get("name") == "supermemory-addToSupermemory":
-                    tool_response_content = message.get("content", "")
-                    if isinstance(tool_response_content, str) and "success" in tool_response_content.lower():
-                        function_call_succeeded = True
-                    break
-
-            if function_call_succeeded:
-                logger.info(f"Successfully executed Supermemory store for user {user_id}. MCP Response: '{tool_response_content}'. Fact: '{fact_text[:50]}...'")
-                return {"status": "success", "fact": fact_text, "mcp_response": tool_response_content}
-            else:
-                logger.error(f"Supermemory agent tool call failed for user {user_id}. Response: {tool_response_content}")
-                return {"status": "failure", "reason": "Supermemory tool call did not succeed", "mcp_response": tool_response_content}
-        finally:
-            if 'db_manager' in locals() and db_manager:
-                await db_manager.close()
-
-    return run_async(async_process_memory())
-
-@celery_app.task(name="generate_chat_title")
-def generate_chat_title(chat_id: str, user_id: str):
+@celery_app.task(name="cud_memory_task")
+def cud_memory_task(user_id: str, information: str, source: Optional[str] = None):
     """
-    Generates a concise title for a chat session based on its first message.
+    Celery task wrapper for the CUD (Create, Update, Delete) memory operation.
+    This runs the core memory management logic asynchronously.
     """
-    logger.info(f"Generating title for chat_id: {chat_id}")
-    run_async(async_generate_chat_title(chat_id, user_id))
+    logger.info(f"Celery worker received cud_memory_task for user_id: {user_id}")
+    initialize_embedding_model()
+    initialize_agents()
+    run_async(cud_memory(user_id, information, source))
 
-async def async_generate_chat_title(chat_id: str, user_id: str):
-    db_manager = PlannerMongoManager()
+@celery_app.task(name="create_task_from_suggestion")
+def create_task_from_suggestion(user_id: str, suggestion_payload: Dict[str, Any], context: Optional[Dict[str, Any]] = None):
+    """
+    Takes an approved suggestion payload and creates a new task.
+    """
+    logger.info(f"Creating task from approved suggestion for user '{user_id}'. Type: {suggestion_payload.get('suggestion_type')}")
+    
+    action_details = suggestion_payload.get("action_details", {})
+    action_type = action_details.get("action_type")
+
+    # Define the task name from the suggestion description and the description from all available context.
+    name = suggestion_payload.get('suggestion_description', f"Proactive Task: {action_type}")
+    description_parts = [
+        f"Action Details: {json.dumps(action_details, indent=2)}",
+        f"Reasoning: {suggestion_payload.get('reasoning', 'N/A')}",
+        f"Full Context: {json.dumps(context, indent=2, default=str)}"
+    ]
+    description = "\n\n---\n\n".join(description_parts)
+
+    worker_mongo_manager = None
     try:
-        chat = await db_manager.chats_collection.find_one({"chat_id": chat_id, "user_id": user_id})
-        if not chat or not chat.get("messages"):
-            logger.warning(f"Cannot generate title: Chat {chat_id} not found or has no messages.")
-            return
+        worker_mongo_manager = MongoManager()
+        task_data = {
+            "name": name,
+            "description": description,
+            "original_context": {
+                "source": "proactive_suggestion",
+                "suggestion_type": suggestion_payload.get("suggestion_type"),
+                "trigger_event": context.get("trigger_event")
+            }
+        }
+        task_id = run_async(worker_mongo_manager.add_task(user_id, task_data))
 
-        first_user_message = chat["messages"][0].get("content", "")
-        if len(first_user_message) < 10:
-            # Title is already good enough, or message too short to summarize
-            return
-
-        system_prompt = "You are a title generator. Create a very short, concise title (5 words max) for the following user query. Do not use quotes or any extra text. Just provide the title."
-        agent = get_qwen_assistant(system_message=system_prompt)
-        messages = [{'role': 'user', 'content': first_user_message}]
-
-        final_content = ""
-        for chunk in agent.run(messages=messages):
-            if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
-                final_content = chunk[-1].get("content", "")
-
-        # Clean the final output from the LLM before using it
-        title = clean_llm_output(final_content).strip().strip('"')
-
-        if title:
-            await db_manager.update_chat(user_id, chat_id, {"title": title})
-            logger.info(f"Successfully generated and updated title for chat {chat_id}: '{title}'")
-    except Exception as e:
-        logger.error(f"Error generating title for chat {chat_id}: {e}", exc_info=True)
+        # For proactive tasks, we have enough context to go straight to planning.
+        generate_plan_from_context.delay(task_id)
+        logger.info(f"Successfully created and dispatched new task '{task_id}' from suggestion for planning.")
     finally:
-        await db_manager.close()
+        if worker_mongo_manager:
+            run_async(worker_mongo_manager.close())
+
 
 @celery_app.task(name="refine_and_plan_ai_task")
 def refine_and_plan_ai_task(task_id: str):
@@ -245,7 +198,7 @@ async def async_refine_and_plan_ai_task(task_id: str):
             user_timezone = ZoneInfo("UTC")
         current_time_str = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
 
-        system_prompt = TASK_CREATION_PROMPT.format(
+        system_prompt = TASK_CREATION_PROMPT.format( # noqa
             user_name=user_name,
             user_timezone=user_timezone_str,
             current_time=current_time_str
@@ -265,8 +218,8 @@ async def async_refine_and_plan_ai_task(task_id: str):
             if 'schedule' in parsed_data and parsed_data.get('schedule'):
                 parsed_data['schedule']['timezone'] = user_timezone_str
             # Ensure description is not empty, fall back to original prompt if needed
-            if not parsed_data.get("description"):
-                parsed_data["description"] = task["description"]
+            if not parsed_data.get("name"):
+                parsed_data["name"] = task["description"] or task["name"]
             await db_manager.update_task_field(task_id, parsed_data)
             logger.info(f"Successfully refined and updated AI task {task_id} with new details.")
         else:
@@ -331,112 +284,6 @@ async def async_process_change_request(task_id: str, user_id: str, user_message:
         logger.error(f"Error in async_process_change_request for task {task_id}: {e}", exc_info=True)
     finally:
         await db_manager.close()
-# --- Extractor Task ---
-@celery_app.task(name="extract_from_context")
-def extract_from_context(user_id: str, service_name: str, event_id: str, event_data: Dict[str, Any], current_time_iso: Optional[str] = None):
-    """
-    Celery task to replace the Extractor worker. It takes context data,
-    runs it through an LLM to extract memories and action items,
-    and then dispatches further Celery tasks.
-    """
-    logger.info(f"Extractor task running for event_id: {event_id} (service: {service_name}) for user {user_id}")
-
-    async def async_extract():
-        db_manager = ExtractorMongoManager()
-        try:
-            if await db_manager.is_event_processed(user_id, event_id):
-                logger.info(f"Skipping event_id: {event_id} - already processed.")
-                return
-
-            # Fetch user context to provide to the extractor agent
-            user_profile = await db_manager.get_user_profile(user_id)
-            personal_info = user_profile.get("userData", {}).get("personalInfo", {}) if user_profile else {}
-            user_name = personal_info.get("name", "User")
-            user_location_raw = personal_info.get("location", "Not specified")
-            user_timezone = personal_info.get("timezone", "UTC")
-            if isinstance(user_location_raw, dict) and 'latitude' in user_location_raw:
-                user_location = f"latitude: {user_location_raw.get('latitude')}, longitude: {user_location_raw.get('longitude')}"
-            else:
-                user_location = user_location_raw
-
-            current_time = datetime.datetime.fromisoformat(current_time_iso) if current_time_iso else datetime.datetime.now(datetime.timezone.utc)
-            time_context_str = f"The current date and time is {current_time.strftime('%A, %Y-%m-%d %H:%M:%S %Z')}."
-
-            llm_input_content = ""
-            if service_name == "gmail":
-                llm_input_content = f"Source: Email\nSubject: {event_data.get('subject', '')}\n\nBody:\n{event_data.get('body', '')}"
-            elif service_name == "gcalendar":
-                llm_input_content = f"Source: Calendar Event\nSummary: {event_data.get('summary', '')}\n\nDescription:\n{event_data.get('description', '')}"
-
-            # Add time context to the input for the LLM
-            full_llm_input = f"{time_context_str}\n\nPlease analyze the following content:\n\n{llm_input_content}"
-
-            if not llm_input_content or not llm_input_content.strip():
-                logger.warning(f"Skipping event_id: {event_id} due to empty content.")
-                return
-
-            agent = get_extractor_agent(user_name, user_location, user_timezone)
-            messages = [{'role': 'user', 'content': full_llm_input}]
-
-            final_content_str = ""
-            for chunk in agent.run(messages=messages):
-                if isinstance(chunk, list) and chunk:
-                    last_message = chunk[-1]
-                    if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
-                        final_content_str = last_message["content"]
-
-            if not final_content_str.strip():
-                logger.error(f"Extractor LLM returned no response for event_id: {event_id}.")
-                return
-
-
-            cleaned_content = clean_llm_output(final_content_str)
-            logger.info(f"Extractor LLM response for event_id: {event_id} - {cleaned_content}.")
-            extracted_data = JsonExtractor.extract_valid_json(cleaned_content)
-            if not extracted_data:
-                logger.error(f"Could not extract valid JSON from LLM response for event_id: {event_id}. Response: '{cleaned_content}'")
-                await db_manager.log_extraction_result(event_id, user_id, 0, 0)
-                return
-
-            if isinstance(extracted_data, list):
-                extracted_data = extracted_data[0] if extracted_data and isinstance(extracted_data[0], dict) else {}
-
-            if not isinstance(extracted_data, dict):
-                logger.error(f"Extracted JSON is not a dictionary for event_id: {event_id}. Extracted: '{extracted_data}'")
-                await db_manager.log_extraction_result(event_id, user_id, 0, 0)
-                return
-
-            memory_items = extracted_data.get("memory_items", [])
-            action_items = extracted_data.get("action_items", [])
-            topics = extracted_data.get("topics", [])
-
-            if service_name in ["gmail", "gcalendar", "chat"]:
-                for item in action_items:
-                    if not isinstance(item, str) or not item.strip():
-                        continue
-
-                    original_source_context = {
-                        "source": service_name,
-                        "event_id": event_id,
-                        "content": event_data
-                    }
-
-                    # Dispatch directly to the planner/action item processor
-                    process_action_item.delay(user_id, [item], topics, event_id, original_source_context)
-                    logger.info(f"Dispatched action item from {service_name} for processing: '{item}'")
-
-            for fact in memory_items:
-                if isinstance(fact, str) and fact.strip():
-                    process_memory_item.delay(user_id, fact, event_id)
-
-            await db_manager.log_extraction_result(event_id, user_id, len(memory_items), len(action_items))
-
-        except Exception as e:
-            logger.error(f"Error in extractor task for event_id: {event_id}: {e}", exc_info=True)
-        finally:
-            await db_manager.close()
-
-    run_async(async_extract())
 
 @celery_app.task(name="process_action_item")
 def process_action_item(user_id: str, action_items: list, topics: list, source_event_id: str, original_context: dict):
@@ -454,10 +301,6 @@ async def get_clarifying_questions(user_id: str, task_description: str, topics: 
         return [f"Can you tell me more about '{topic}'?" for topic in topics]
 
     user_integrations = user_profile.get("userData", {}).get("integrations", {})
-    supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id")
-    
-    if not supermemory_user_id:
-        logger.warning(f"User {user_id} has no Supermemory ID. Cannot verify context with memory.")
 
     # 1. Get all available (connected + built-in) tools for the user
     connected_tools, _ = _get_tool_lists(user_integrations)
@@ -465,9 +308,9 @@ async def get_clarifying_questions(user_id: str, task_description: str, topics: 
     # 2. Select tools relevant to the task description
     relevant_tool_names = await _select_relevant_tools(task_description, connected_tools)
 
-    # 3. Always include supermemory for context verification
+    # 3. Always include memory for context verification
     final_tool_names = set(relevant_tool_names)
-    final_tool_names.add("supermemory")
+    final_tool_names.add("memory")
     
     logger.info("Selected tools for context verification: " + ", ".join(final_tool_names))
 
@@ -481,14 +324,9 @@ async def get_clarifying_questions(user_id: str, task_description: str, topics: 
 
         available_tools_for_prompt[tool_name] = config.get("description", "")
         
-        if tool_name == "supermemory":
-            if supermemory_user_id:
-                supermemory_mcp_url = f"{SUPERMEMORY_MCP_BASE_URL.rstrip('/')}/{supermemory_user_id}{SUPERMEMORY_MCP_ENDPOINT_SUFFIX}"
-                mcp_servers_for_agent["supermemory"] = {"url": supermemory_mcp_url, "transport": "sse"}
-        else:
-            mcp_config = config.get("mcp_server_config")
-            if mcp_config and mcp_config.get("url"):
-                 mcp_servers_for_agent[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
+        mcp_config = config.get("mcp_server_config")
+        if mcp_config and mcp_config.get("url"):
+             mcp_servers_for_agent[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
 
     if not mcp_servers_for_agent:
         logger.warning(f"No MCP servers could be configured for context search for user {user_id}. Cannot verify context.")
@@ -523,8 +361,11 @@ async def async_process_action_item(user_id: str, action_items: list, topics: li
     task_id = None
     try:
         task_description = " ".join(map(str, action_items))
+        # For proactive tasks, the initial name is the description, and the description is the context.
+        # The planner will generate a better name and description later.
+        full_description = json.dumps(original_context, indent=2, default=str)
         # Per spec, create task with 'planning' status and immediately trigger planner.
-        task = await db_manager.create_initial_task(user_id, task_description, action_items, topics, original_context, source_event_id) # noqa: E501
+        task = await db_manager.create_initial_task(user_id, task_description, full_description, action_items, topics, original_context, source_event_id)
         task_id = task["task_id"]
         generate_plan_from_context.delay(task_id)
         logger.info(f"Task {task_id} created with status 'planning' and dispatched to planner worker.")
@@ -656,7 +497,7 @@ async def async_generate_plan(task_id: str):
         if not plan_data or "plan" not in plan_data:
             raise Exception(f"Planner agent returned invalid JSON: {final_response_str}")
 
-        await db_manager.update_task_with_plan(task_id, run_id, plan_data, is_change_request=is_change_request)
+        await db_manager.update_task_with_plan(task_id, run_id, plan_data, is_change_request)
         capture_event(user_id, "proactive_task_generated", {
             "task_id": task_id,
             "source": task.get("original_context", {}).get("source", "unknown"),
@@ -665,7 +506,7 @@ async def async_generate_plan(task_id: str):
 
         # Notify user that a plan is ready for their approval
         await notify_user(
-            user_id, f"I've created a new plan for you: '{plan_data.get('description', '...')[:50]}...'", task_id,
+            user_id, f"I've created a new plan for you: '{plan_data.get('name', '...')[:50]}...'", task_id,
             notification_type="taskNeedsApproval"
         )
 
@@ -705,7 +546,7 @@ async def async_refine_task_details(task_id: str):
         user_timezone = ZoneInfo(user_timezone_str)
         current_time_str = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
 
-        system_prompt = TASK_CREATION_PROMPT.format(
+        system_prompt = TASK_CREATION_PROMPT.format( # noqa
             user_name=user_name,
             user_timezone=user_timezone_str,
             current_time=current_time_str
@@ -724,7 +565,7 @@ async def async_refine_task_details(task_id: str):
             if 'schedule' in parsed_data and parsed_data.get('schedule'):
                 parsed_data['schedule']['timezone'] = user_timezone_str
             await db_manager.update_task_field(task_id, parsed_data)
-            logger.info(f"Successfully refined and updated task {task_id} with new details.")
+            logger.info(f"Successfully refined and updated user task {task_id} with new details.")
 
     except Exception as e:
         logger.error(f"Error refining task {task_id}: {e}", exc_info=True)
@@ -755,16 +596,22 @@ def schedule_all_polling():
     async def async_schedule():
         db_manager = GmailPollerDB()
         try:
+            # SUPPORTED_POLLING_SERVICES is no longer imported, hardcode for now or import from a new config
+            supported_polling_services = ["gmail", "gcalendar"] 
             await db_manager.reset_stale_polling_locks("gmail")
             await db_manager.reset_stale_polling_locks("gcalendar")
 
-            for service_name in SUPPORTED_POLLING_SERVICES:
+            for service_name in supported_polling_services:
                 due_tasks_states = await db_manager.get_due_polling_tasks_for_service(service_name)
                 logger.info(f"Found {len(due_tasks_states)} due tasks for {service_name}.")
 
                 for task_state in due_tasks_states:
                     user_id = task_state["user_id"]
                     locked_task_state = await db_manager.set_polling_status_and_get(user_id, service_name)
+                    # Sanitize for Celery/JSON serialization
+                    if locked_task_state and '_id' in locked_task_state and isinstance(locked_task_state['_id'], ObjectId):
+                        locked_task_state['_id'] = str(locked_task_state['_id'])
+
                     if locked_task_state:
                         if service_name == "gmail":
                             poll_gmail_for_user.delay(user_id, locked_task_state)
@@ -841,7 +688,7 @@ async def async_run_due_tasks():
 
         if not due_tasks:
             logger.info("Scheduler: No user-defined tasks are due.")
-            return
+            return # noqa
 
         logger.info(f"Scheduler: Found {len(due_tasks)} due user-defined tasks.")
         for task in due_tasks:
@@ -870,5 +717,104 @@ async def async_run_due_tasks():
 
     except Exception as e:
         logger.error(f"Scheduler: An error occurred checking user-defined tasks: {e}", exc_info=True)
+    finally:
+        await db_manager.close()
+
+
+# --- Chat History Summarization Task ---
+@celery_app.task(name="summarize_old_conversations")
+def summarize_old_conversations():
+    """
+    Celery Beat task to find old, unsummarized messages, group them into chunks,
+    summarize them, and store the summaries and embeddings in ChromaDB.
+    """
+    logger.info("Summarization Task: Starting to look for old conversations to summarize.")
+    run_async(async_summarize_conversations())
+
+async def async_summarize_conversations():
+    db_manager = PlannerMongoManager()  # Re-using for its mongo access
+    try:
+        # 1. Find users with recent, unsummarized messages
+        # We process one user at a time to keep the task manageable.
+        # This aggregation finds the first user with unsummarized messages older than 1 day.
+        one_day_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)
+        pipeline = [
+            {"$match": {"is_summarized": False, "timestamp": {"$lt": one_day_ago}}},
+            {"$group": {"_id": "$user_id"}},
+            {"$limit": 1} # Process one user per run
+        ]
+        user_to_process = await db_manager.messages_collection.aggregate(pipeline).to_list(length=1)
+
+        if not user_to_process:
+            logger.info("Summarization Task: No users with old, unsummarized messages found.")
+            return
+
+        user_id = user_to_process[0]['_id']
+        logger.info(f"Summarization Task: Found user {user_id} with messages to summarize.")
+
+        # 2. Fetch all unsummarized messages for this user
+        messages_cursor = db_manager.messages_collection.find({
+            "user_id": user_id,
+            "is_summarized": False
+        }).sort("timestamp", 1) # Get them in chronological order
+        
+        messages_to_process = await messages_cursor.to_list(length=None)
+        
+        if not messages_to_process:
+            logger.info(f"Summarization Task: No unsummarized messages to process for user {user_id}.")
+            return
+
+        # 3. Group messages into chunks (e.g., of 30 messages)
+        chunk_size = 30
+        message_chunks = [messages_to_process[i:i + chunk_size] for i in range(0, len(messages_to_process), chunk_size)]
+        
+        # 4. Process each chunk
+        system_prompt = "You are a summarization expert. Summarize the key points, decisions, facts, and topics from the following conversation chunk into a dense, third-person paragraph. Focus on information that would be useful for future context. Do not add any preamble or sign-off."
+        summarizer_agent = get_qwen_assistant(system_message=system_prompt)
+        
+        for chunk in message_chunks:
+            if len(chunk) < 5: # Don't summarize very small chunks
+                continue
+
+            conversation_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in chunk])
+            
+            # 4a. Summarize with LLM
+            messages = [{'role': 'user', 'content': conversation_text}]
+            summary_text = ""
+            for response_chunk in summarizer_agent.run(messages=messages):
+                 if isinstance(response_chunk, list) and response_chunk and response_chunk[-1].get("role") == "assistant":
+                    summary_text = response_chunk[-1].get("content", "")
+
+            summary_text = clean_llm_output(summary_text)
+            if not summary_text:
+                logger.warning(f"Summarization for user {user_id} produced an empty result. Skipping chunk.")
+                continue
+
+            # 4b. Store summary and embedding in ChromaDB
+            summary_id = str(uuid.uuid4())
+            message_ids = [msg['message_id'] for msg in chunk]
+            
+            collection = get_conversation_summaries_collection()
+            collection.add(
+                ids=[summary_id],
+                documents=[summary_text],
+                metadatas=[{
+                    "user_id": user_id,
+                    "start_timestamp": chunk[0]['timestamp'].isoformat(),
+                    "end_timestamp": chunk[-1]['timestamp'].isoformat(),
+                    "message_ids_json": json.dumps(message_ids)
+                }]
+            )
+            logger.info(f"Summarization Task: Stored summary {summary_id} in ChromaDB for user {user_id}.")
+            
+            # 4c. Update original messages in MongoDB
+            message_object_ids = [msg['_id'] for msg in chunk]
+            await db_manager.messages_collection.update_many(
+                {"_id": {"$in": message_object_ids}},
+                {"$set": {"is_summarized": True, "summary_id": summary_id}}
+            )
+
+    except Exception as e:
+        logger.error(f"Error during conversation summarization: {e}", exc_info=True)
     finally:
         await db_manager.close()

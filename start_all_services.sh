@@ -17,7 +17,7 @@
 #   - Run this script from the project's root directory.
 #   - You might need to install 'gnome-terminal' or change the TERMINAL_CMD
 #     variable below to your preferred terminal emulator (e.g., konsole, xterm, terminator).
-#   - Ensure services like MongoDB and Redis are installed and enabled on your system.
+#   - Ensure services like MongoDB, Redis, and Docker are installed and enabled.
 #   - This script may require 'sudo' for starting system services.
 #
 # ==============================================================================
@@ -65,6 +65,7 @@ echo "--- Performing Pre-run Checks ---"
 check_command systemctl
 check_command redis-cli
 check_command npm
+check_command docker
 
 # --- Path and Environment Setup ---
 echo "--- Setting up Environment ---"
@@ -118,6 +119,30 @@ else
     echo "✅ Redis service is already running."
 fi
 sleep 1
+
+# Start Docker Containers
+echo "🚀 Starting Docker services (Waha, PGVector, Chroma)..."
+DOCKER_SERVICES=(
+    "WAHA:start_waha.yaml"
+    "PGVector:start_pgvector.yaml"
+    "ChromaDB:start_chroma.yaml"
+)
+
+for service_info in "${DOCKER_SERVICES[@]}"; do
+    IFS=':' read -r name file <<< "$service_info"
+    COMPOSE_FILE="$PROJECT_ROOT/$file"
+
+    if [ -f "$COMPOSE_FILE" ]; then
+        echo "   - Starting $name from $file..."
+        # 'set -e' will cause the script to exit on failure
+        docker compose -f "$COMPOSE_FILE" up -d
+        echo "   - $name start command issued successfully."
+    else
+        echo "⚠️  - Docker compose file not found: '$file'. Skipping."
+    fi
+done
+echo "Waiting a few seconds for Docker containers to initialize..."
+sleep 5
 
 # --- 2. Resetting Queues & State ---
 echo -e "\n--- 2. Resetting Queues & State ---"

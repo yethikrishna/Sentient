@@ -1,0 +1,8 @@
+fastmcp
+python-dotenv
+asyncpg
+pgvector
+qwen-agent
+google-generativeai
+numpy
+scikit-learn

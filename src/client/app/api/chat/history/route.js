@@ -8,8 +8,17 @@ const appServerUrl =
 		: process.env.NEXT_PUBLIC_APP_SERVER_URL
 
 export const GET = withAuth(async function GET(request, { authHeader }) {
+	const { searchParams } = new URL(request.url)
+	const limit = searchParams.get("limit")
+	const before_timestamp = searchParams.get("before_timestamp")
+
+	const backendUrl = new URL(`${appServerUrl}/chat/history`)
+	if (limit) backendUrl.searchParams.append("limit", limit)
+	if (before_timestamp)
+		backendUrl.searchParams.append("before_timestamp", before_timestamp)
+
 	try {
-		const response = await fetch(`${appServerUrl}/chat/history`, {
+		const response = await fetch(backendUrl.toString(), {
 			method: "GET",
 			headers: { "Content-Type": "application/json", ...authHeader }
 		})

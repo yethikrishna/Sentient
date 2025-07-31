@@ -20,8 +20,6 @@ MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_dev_db")
 OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL", "http://localhost:11434/v1/")
 OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "qwen3:4b")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ollama")
-SUPERMEMORY_MCP_BASE_URL = os.getenv("SUPERMEMORY_MCP_BASE_URL", "https://mcp.supermemory.ai/")
-SUPERMEMORY_MCP_ENDPOINT_SUFFIX = os.getenv("SUPERMEMORY_MCP_ENDPOINT_SUFFIX", "/sse")
 
 # The executor needs to know about all possible tools.
 # This is a replication of the logic from main/config.py
@@ -153,7 +151,7 @@ INTEGRATIONS_CONFIG = {
         "icon": "IconBrandTrello",
         "mcp_server_config": {
             "name": "trello_server",
-            "url": os.getenv("TRELLO_MCP_SERVER_URL", "http://localhost:9020/sse")
+            "url": os.getenv("TRELLO_MCP_SERVER_URL", "http://localhost:9025/sse")
         }
     },
     "news": { # Built-in
@@ -206,15 +204,14 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("PROGRESS_UPDATER_MCP_SERVER_URL", "http://localhost:9011/sse")
         }
     },
-    "supermemory": {
+    "memory": {
         "display_name": "Long-Term Memory",
-        "description": "The agent's long-term memory about the user. Use 'search' to recall facts, relationships, and preferences. Use 'addToSupermemory' to save new, permanent information about the user. This is critical for personalization.",
+        "description": "Manages the user's long-term memory. Use 'search_memory' to find facts, and 'cud_memory' to add, update, or delete information. This is critical for personalization.",
         "auth_type": "builtin",
         "icon": "IconBrain",
         "mcp_server_config": {
-            "name": "supermemory",
-            # URL is constructed dynamically based on user's supermemory_user_id
-            "url": None
+            "name": "memory_mcp",
+            "url": os.getenv("MEMORY_MCP_SERVER_URL", "http://localhost:8001/sse")
         }
     },
     "whatsapp": {

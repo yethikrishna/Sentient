@@ -1,7 +1,7 @@
 import os
 import asyncio
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -84,6 +84,56 @@ async def create_task_from_prompt(ctx: Context, prompt: str) -> Dict[str, Any]:
         return {"status": "success", "result": f"Task '{task_data['description']}' has been created and is being planned."}
     except Exception as e:
         logger.error(f"Error in create_task_from_prompt: {e}", exc_info=True)
+        return {"status": "failure", "error": str(e)}
+
+@mcp.tool()
+async def search_tasks(
+    ctx: Context, 
+    query: Optional[str] = None,
+    status_list: Optional[List[str]] = None,
+    priority_list: Optional[List[int]] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Performs an advanced search for tasks with multiple optional filters.
+    - query: A keyword to search in the task description.
+    - status_list: A list of statuses to include (e.g., ["pending", "active", "processing"]).
+    - priority_list: A list of priority levels (0=High, 1=Medium, 2=Low).
+    - start_date / end_date: ISO 8601 date strings for filtering tasks due within a range.
+    """
+    try:
+        user_id = auth.get_user_id_from_context(ctx)
+
+        # Build the MongoDB query dynamically
+        mongo_query: Dict[str, Any] = {"user_id": user_id}
+        
+        if query:
+            mongo_query["$text"] = {"$search": query}
+        if status_list:
+            mongo_query["status"] = {"$in": status_list}
+        if priority_list:
+            mongo_query["priority"] = {"$in": priority_list}
+        
+        date_filter = {}
+        if start_date:
+            date_filter["$gte"] = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+        if end_date:
+            date_filter["$lte"] = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+        
+        if date_filter:
+            # We search against `next_execution_at` for scheduled tasks and `created_at` for others as a fallback
+            mongo_query["$or"] = [
+                {"next_execution_at": date_filter},
+                {"created_at": date_filter, "next_execution_at": None}
+            ]
+
+        cursor = mongo_manager.task_collection.find(mongo_query).sort([("priority", 1), ("created_at", -1)]).limit(20)
+        tasks = await cursor.to_list(length=20)
+
+        return {"status": "success", "result": {"tasks": tasks}}
+    except Exception as e:
+        logger.error(f"Error in search_tasks: {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 if __name__ == "__main__":

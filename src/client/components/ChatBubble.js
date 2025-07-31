@@ -1,17 +1,15 @@
 import React from "react"
 import { useState } from "react"
+import { cn } from "@utils/cn"
 import {
 	IconClipboard,
 	IconCheck,
 	IconBrain,
-	IconSettings,
-	IconGlobe,
 	IconLink,
 	IconMail,
-	IconCode,
 	IconChevronDown,
 	IconChevronUp,
-	IconTerminal2
+	IconArrowBackUp
 } from "@tabler/icons-react"
 import { Tooltip } from "react-tooltip"
 import ReactMarkdown from "react-markdown"
@@ -167,38 +165,39 @@ const ToolResultBlock = ({ name, result, isExpanded, onToggle }) => {
 
 // Main ChatBubble component
 const ChatBubble = ({
+	role,
+	content,
+	tools = [],
+	onReply,
 	message,
-	isUser,
-	memoryUsed,
-	agentsUsed,
-	internetUsed
+	allMessages = []
 }) => {
 	const [copied, setCopied] = useState(false)
 	const [expandedStates, setExpandedStates] = useState({})
-	const [renderedContent, setRenderedContent] = useState([])
+	const [processedContent, setProcessedContent] = useState({
+		content: content,
+		repliedTo: null
+	})
+	const isUser = role === "user"
 
-	// Memoize the parsed content to avoid re-parsing on every render
 	React.useEffect(() => {
-		setRenderedContent(renderMessageContent())
-	}, [message, expandedStates]) // Rerun parsing if message or expansion state changes
+		const replyRegex = /<reply_to id="([^"]+)">[\s\S]*?<\/reply_to>\n*/
+		const match = content.match(replyRegex)
 
-	// Function to copy message content to clipboard
-	const handleCopyToClipboard = () => {
-		// Build the text to copy from the parsed parts, ensuring we only copy the final answer
-		const plainText = renderedContent
-			.filter((part) => part.type === "answer")
-			.map((part) => part.props.children)
-			.join("")
-			.trim()
-
-		navigator.clipboard
-			.writeText(plainText)
-			.then(() => {
-				setCopied(true)
-				setTimeout(() => setCopied(false), 2000)
+		if (match) {
+			const repliedToId = match[1]
+			const actualContent = content.replace(replyRegex, "")
+			const originalMessage = allMessages.find(
+				(m) => m.id === repliedToId
+			)
+			setProcessedContent({
+				content: actualContent,
+				repliedTo: originalMessage
 			})
-			.catch((err) => toast.error(`Failed to copy text: ${err}`))
-	}
+		} else {
+			setProcessedContent({ content: content, repliedTo: null })
+		}
+	}, [content, allMessages])
 
 	// Function to toggle expansion of collapsible sections
 	const toggleExpansion = (id) => {
@@ -208,14 +207,14 @@ const ChatBubble = ({
 	// ***************************************************************
 	// *** UPDATED LOGIC: Function to render message content       ***
 	// ***************************************************************
-	const renderMessageContent = () => {
-		if (isUser || typeof message !== "string" || !message) {
+	const renderMessageContent = (contentToRender) => {
+		if (isUser || typeof contentToRender !== "string" || !contentToRender) {
 			return [
 				<ReactMarkdown
 					key="user-md"
 					className="prose prose-invert"
 					remarkPlugins={[remarkGfm]}
-					children={message || ""}
+					children={contentToRender || ""}
 					components={{
 						a: ({ href, children }) => (
 							<LinkButton href={href} children={children} />
@@ -229,10 +228,13 @@ const ChatBubble = ({
 		const regex =
 			/(<think>[\s\S]*?<\/think>|<tool_code[^>]*>[\s\S]*?<\/tool_code>|<tool_result[^>]*>[\s\S]*?<\/tool_result>|<answer>[\s\S]*?<\/answer>)/g
 		let lastIndex = 0
-		let inToolCallPhase = false // State to track if we are between a tool_code and tool_result
+		let inToolCallPhase = false
 
-		for (const match of message.matchAll(regex)) {
-			const precedingText = message.substring(lastIndex, match.index)
+		for (const match of contentToRender.matchAll(regex)) {
+			const precedingText = contentToRender.substring(
+				lastIndex,
+				match.index
+			)
 
 			// 1. Add any text that came before the current tag, but only if we're not in the "ignore" phase
 			if (precedingText.trim() && !inToolCallPhase) {
@@ -281,7 +283,7 @@ const ChatBubble = ({
 		}
 
 		// 3. Add any remaining text after the last tag (this is the final, streaming answer)
-		const remainingText = message.substring(lastIndex)
+		const remainingText = contentToRender.substring(lastIndex)
 		if (remainingText && !inToolCallPhase) {
 			contentParts.push({ type: "answer", content: remainingText })
 		}
@@ -348,62 +350,119 @@ const ChatBubble = ({
 		})
 	}
 
+	const renderedContent = React.useMemo(
+		() => renderMessageContent(processedContent.content),
+		[processedContent.content, expandedStates, isUser]
+	)
+
+	// Function to copy message content to clipboard
+	const handleCopyToClipboard = () => {
+		// Parse the raw content to extract only the user-facing parts for copying.
+		const contentToParse = processedContent.content
+		if (!contentToParse || typeof contentToParse !== "string") {
+			toast.error("Nothing to copy.")
+			return
+		}
+
+		const answerParts = []
+		const regex =
+			/(<think>[\s\S]*?<\/think>|<tool_code[^>]*>[\s\S]*?<\/tool_code>|<tool_result[^>]*>[\s\S]*?<\/tool_result>|<answer>[\s\S]*?<\/answer>)/g
+		let lastIndex = 0
+		let inToolCallPhase = false // To ignore raw text between tool_code and tool_result
+
+		for (const match of contentToParse.matchAll(regex)) {
+			const precedingText = contentToParse.substring(
+				lastIndex,
+				match.index
+			)
+			if (precedingText.trim() && !inToolCallPhase) {
+				answerParts.push(precedingText.trim())
+			}
+
+			const tag = match[0]
+			if (tag.startsWith("<tool_code")) inToolCallPhase = true
+			else if (tag.startsWith("<tool_result")) inToolCallPhase = false
+			else if (tag.startsWith("<answer>")) {
+				const answerContent =
+					tag.match(/<answer>([\s\S]*?)<\/answer>/)?.[1] || ""
+				if (answerContent) answerParts.push(answerContent.trim())
+			}
+			lastIndex = match.index + tag.length
+		}
+		const remainingText = contentToParse.substring(lastIndex)
+		if (remainingText.trim() && !inToolCallPhase) {
+			answerParts.push(remainingText.trim())
+		}
+		const plainText = answerParts.join("\n\n")
+
+		navigator.clipboard
+			.writeText(plainText)
+			.then(() => {
+				setCopied(true)
+				setTimeout(() => setCopied(false), 2000)
+			})
+			.catch((err) => toast.error(`Failed to copy text: ${err}`))
+	}
+
 	return (
 		<div
-			className={`p-4 rounded-lg ${
-				isUser
-					? "bg-[var(--color-accent-blue)] text-white text-base font-medium self-end max-w-[80%] sm:max-w-md lg:max-w-lg"
-					: "bg-transparent text-base text-white self-start w-full"
-			} mb-2 relative`}
+			className={cn(
+				"max-w-[80%] px-4 py-3 rounded-2xl relative group text-white",
+				{
+					"bg-blue-600 rounded-br-none": isUser,
+					"bg-neutral-800 rounded-bl-none": !isUser
+				}
+			)}
 			style={{ wordBreak: "break-word" }}
 		>
+			{processedContent.repliedTo && (
+				<div className="mb-3 p-2 border-l-2 border-neutral-500 bg-black/20 rounded-md">
+					<p className="text-xs text-neutral-400 font-semibold">
+						Replying to{" "}
+						{processedContent.repliedTo.role === "user"
+							? "you"
+							: "assistant"}
+					</p>
+					<p className="text-sm text-neutral-300 mt-1 truncate">
+						{processedContent.repliedTo.content}
+					</p>
+				</div>
+			)}
 			{renderedContent}
+			<div
+				className={cn(
+					"absolute top-1/2 -translate-y-1/2 flex items-center opacity-0 group-hover:opacity-100 transition-opacity",
+					isUser ? "right-full pr-2" : "left-full pl-2"
+				)}
+			>
+				<button
+					onClick={() => onReply(message)}
+					className="p-1.5 rounded-full bg-neutral-700 text-neutral-300 hover:bg-neutral-600 hover:text-white"
+					data-tooltip-id="chat-bubble-tooltip"
+					data-tooltip-content="Reply"
+				>
+					<IconArrowBackUp size={16} />
+				</button>
+			</div>
 			{!isUser && (
-				<div className="flex justify-start items-center space-x-4 mt-6">
+				<div className="flex justify-start items-center mt-4">
 					<Tooltip
 						place="right-start"
 						id="chat-bubble-tooltip"
 						style={{ zIndex: 9999 }}
 					/>
-					{memoryUsed && (
-						<span
-							data-tooltip-id="chat-bubble-tooltip"
-							data-tooltip-content="Memory was used to generate this response"
-							className="flex items-center text-[var(--color-accent-blue)]"
-						>
-							<IconBrain size={18} />
-						</span>
-					)}
-					{agentsUsed && (
-						<span
-							data-tooltip-id="chat-bubble-tooltip"
-							data-tooltip-content="Agents were used to process this response"
-							className="flex items-center text-[var(--color-text-secondary)]"
-						>
-							<IconSettings size={18} />
-						</span>
-					)}
-					{internetUsed && (
-						<span
-							data-tooltip-id="chat-bubble-tooltip"
-							data-tooltip-content="Internet was used to gather information for this response"
-							className="flex items-center text-[var(--color-text-secondary)]"
-						>
-							<IconGlobe size={18} />
-						</span>
-					)}
 					<button
 						onClick={handleCopyToClipboard}
-						className="flex items-center text-[var(--color-text-secondary)] hover:text-[var(--color-accent-green)] transition-colors"
+						className="flex items-center text-neutral-400 hover:text-white transition-colors"
 						data-tooltip-id="chat-bubble-tooltip"
 						data-tooltip-content={
 							copied ? "Copied!" : "Copy response"
 						}
 					>
 						{copied ? (
-							<IconCheck size={18} />
+							<IconCheck size={16} />
 						) : (
-							<IconClipboard size={18} />
+							<IconClipboard size={16} />
 						)}
 					</button>
 				</div>

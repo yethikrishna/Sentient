@@ -16,7 +16,13 @@ async def create_notification_internal(request: CreateNotificationRequest):
     # It trusts the user_id provided in the payload.
     # In a production environment, this should be secured (e.g., with a shared secret/API key).
     try:
-        await create_and_push_notification(request.user_id, request.message, request.task_id)
+        await create_and_push_notification(
+            request.user_id,
+            request.message,
+            request.task_id,
+            request.notification_type,
+            request.payload
+        )
         return {"message": "Notification created and pushed successfully."}
     except Exception as e:
         logger.error(f"Internal notification creation failed for user {request.user_id}: {e}", exc_info=True)

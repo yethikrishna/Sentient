@@ -2,16 +2,16 @@ import asyncio
 import json
 import logging
 import re
-from typing import Any, AsyncGenerator, Dict, List
+from typing import Any, AsyncGenerator, Dict, List, Tuple
 
-from main.chat.prompts import TOOL_SELECTOR_SYSTEM_PROMPT
+from main.chat.prompts import STAGE_1_SYSTEM_PROMPT
 from main.config import INTEGRATIONS_CONFIG
 from main.llm import get_qwen_assistant
 from json_extractor import JsonExtractor
 
 logger = logging.getLogger(__name__)
 
-async def _select_relevant_tools(query: str, user_integrations: Dict) -> List[str]:
+async def _select_search_tools(query: str, user_id: str, user_integrations: Dict) -> List[str]:
     """
     Uses a lightweight LLM call to select relevant tools for a given query,
     considering all of the user's connected integrations.
@@ -31,9 +31,9 @@ async def _select_relevant_tools(query: str, user_integrations: Dict) -> List[st
 
     try:
         tools_description = "\n".join(f"- `{name}`: {desc}" for name, desc in available_tools_map.items())
-        prompt = f"User Query: \"{query}\"\n\nAvailable Tools:\n{tools_description}"
+        prompt = f"User Query: \"{query}\"\n\nAvailable External Tools (for selection):\n{tools_description}"
 
-        selector_agent = get_qwen_assistant(system_message=TOOL_SELECTOR_SYSTEM_PROMPT, function_list=[])
+        selector_agent = get_qwen_assistant(system_message=STAGE_1_SYSTEM_PROMPT, function_list=[])
         messages = [{'role': 'user', 'content': prompt}]
 
         def _run_selector_sync():
@@ -70,7 +70,7 @@ async def perform_unified_search(query: str, user_id: str) -> AsyncGenerator[str
     user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
 
     # 2. Dynamically select relevant live tools based on the query
-    relevant_live_tools = await _select_relevant_tools(query, user_integrations)
+    relevant_live_tools = await _select_search_tools(query, user_id, user_integrations)
 
     # 3. Configure agent with mandatory tools plus the dynamically selected ones
     mcp_servers_to_use = {}

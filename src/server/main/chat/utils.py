@@ -8,11 +8,11 @@ import datetime
 import threading
 import re
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Callable, Coroutine
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Callable, Coroutine, Union
 
 from qwen_agent.tools.base import BaseTool, register_tool
 
-from main.chat.prompts import TOOL_SELECTOR_SYSTEM_PROMPT
+from main.chat.prompts import STAGE_1_SYSTEM_PROMPT, STAGE_2_SYSTEM_PROMPT
 from main.db import MongoManager
 from main.llm import get_qwen_assistant
 from main.config import (INTEGRATIONS_CONFIG, ENVIRONMENT)
@@ -55,56 +55,87 @@ class JsonValidatorTool(BaseTool):
             logger.error(f"JsonValidatorTool encountered an unexpected error: {e}", exc_info=True)
             return json.dumps({"status": "failure", "error": str(e)})
 
-async def _select_relevant_tools(query: str, available_tools_map: Dict[str, str]) -> List[str]:
+async def _get_stage1_response(messages: List[Dict[str, Any]], connected_tools_map: Dict[str, str], disconnected_tools_map: Dict[str, str], user_id: str) -> Union[List[str], str]:
     """
-    Uses a lightweight LLM call to select relevant tools for a given query.
-    This now runs the synchronous generator in a thread to avoid blocking.
+    Uses the Stage 1 LLM to either respond directly or select relevant tools.
+    Returns a list of tool names if tools are selected, or a string response if it's a direct answer.
     """
-    if not available_tools_map:
-        return []
+    # The Stage 1 agent always has access to core tools.
+    core_tools = ["memory", "history", "tasks"]
+    mcp_servers_for_stage1 = {}
+    for tool_name in core_tools:
+        config = INTEGRATIONS_CONFIG.get(tool_name, {})
+        if config:
+            mcp_config = config.get("mcp_server_config", {})
+            if mcp_config and mcp_config.get("url") and mcp_config.get("name"):
+                mcp_servers_for_stage1[mcp_config["name"]] = {
+                    "url": mcp_config["url"],
+                    "headers": {"X-User-ID": user_id},
+                    "transport": "sse"
+                }
 
-    try:
-        tools_description = "\n".join(f"- `{name}`: {desc}" for name, desc in available_tools_map.items())
-        prompt = f"User Query: \"{query}\"\n\nAvailable Tools:\n{tools_description}"
+    tools_for_agent = [{"mcpServers": mcp_servers_for_stage1}]
 
-        selector_agent = get_qwen_assistant(system_message=TOOL_SELECTOR_SYSTEM_PROMPT, function_list=[])
-        messages = [{'role': 'user', 'content': prompt}]
+    # Format history and tool lists for the prompt
+    history_for_llm = [f"<{msg['role']}>{msg['content']}</{msg['role']}>" for msg in messages]
+    history_str = "\n".join(history_for_llm)
+    connected_tools_desc = "\n".join(f"- `{name}`: {desc}" for name, desc in connected_tools_map.items())
+    disconnected_tools_desc = "\n".join(f"- `{name}`: {desc}" for name, desc in disconnected_tools_map.items())
+    prompt = (
+        f"**Conversation History:**\n{history_str}\n\n"
+        f"**Connected Tools (for selection):**\n{connected_tools_desc}\n\n"
+        f"**Disconnected Tools (for user guidance):**\n{disconnected_tools_desc}"
+    )
 
-        def _run_selector_sync():
-            """Synchronous worker function to run the generator."""
-            final_content_str = ""
-            for chunk in selector_agent.run(messages=messages):
-                if isinstance(chunk, list) and chunk:
-                    last_message = chunk[-1]
-                    if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
-                        final_content_str = last_message["content"]
-            return final_content_str
+    selector_agent = get_qwen_assistant(system_message=STAGE_1_SYSTEM_PROMPT, function_list=tools_for_agent)
+    messages = [{'role': 'user', 'content': prompt}]
 
-        # Run the synchronous function in a separate thread
-        final_content_str = await asyncio.to_thread(_run_selector_sync)
+    def _run_stage1_sync():
+        final_content_str = ""
+        for chunk in selector_agent.run(messages=messages):
+            if isinstance(chunk, list) and chunk:
+                last_message = chunk[-1]
+                if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
+                    final_content_str = last_message["content"]
+        return final_content_str
 
-        selected_tools = JsonExtractor.extract_valid_json(final_content_str)
-        if isinstance(selected_tools, list):
-            logger.info(f"Tool selector identified relevant tools: {selected_tools}")
-            return selected_tools
-        return []
-    except Exception as e:
-        logger.error(f"Error during tool selection LLM call: {e}", exc_info=True)
-        return list(available_tools_map.keys())
+    final_content_str = await asyncio.to_thread(_run_stage1_sync)
+
+    # Now, parse the output. Is it a JSON list or a text response?
+    cleaned_output = final_content_str.strip()
+
+    # Try to parse as JSON list first. This is the tool selection case.
+    json_tools = JsonExtractor.extract_valid_json(cleaned_output)
+    if isinstance(json_tools, list):
+        logger.info(f"Stage 1 selected tools: {json_tools}")
+        # Validate that the selected tools are from the available list
+        valid_tools = [tool for tool in json_tools if tool in connected_tools_map]
+        return valid_tools
+
+    # If it's not a JSON list, it's a direct response.
+    logger.info("Stage 1 is providing a direct response.")
+    return final_content_str # Return the full string with tags for the stream generator to parse.
+
 
 def _get_tool_lists(user_integrations: Dict) -> Tuple[Dict, Dict]:
     """Separates tools into connected and disconnected lists."""
-    connected_tools = {}
+    connected_tools = {} # Tools that are built-in or connected by the user
     disconnected_tools = {}
     for tool_name, config in INTEGRATIONS_CONFIG.items():
-        # We only care about tools that require user connection (oauth or manual)
-        if config.get("auth_type") not in ["oauth", "manual"]:
+        auth_type = config.get("auth_type")
+        # Skip internal tools that shouldn't be exposed to the planner/user
+        if tool_name in ["progress_updater", "chat_tools"]:
             continue
 
-        if user_integrations.get(tool_name, {}).get("connected", False):
+        # Built-in tools are always considered "connected" and available
+        if auth_type == "builtin":
             connected_tools[tool_name] = config.get("description", "")
-        else:
-            disconnected_tools[tool_name] = config.get("description", "")
+        # For user-configured tools, check the 'connected' flag from the DB
+        elif auth_type in ["oauth", "manual"]:
+            if user_integrations.get(tool_name, {}).get("connected", False):
+                connected_tools[tool_name] = config.get("description", "")
+            else:
+                disconnected_tools[tool_name] = config.get("description", "")
     return connected_tools, disconnected_tools
 
 async def generate_chat_llm_stream(
@@ -141,31 +172,38 @@ async def generate_chat_llm_stream(
         connected_tools, disconnected_tools = _get_tool_lists(user_integrations)
 
         all_available_mcp_servers = {}
-        tool_name_to_desc_map = connected_tools.copy() # Start with connected tools
+        # Populate MCP servers for all tools that Stage 2 might use:
+        # 1. User-connected tools (from connected_tools)
+        # 2. Built-in tools (memory, history, tasks)
+        tools_for_mcp_server_list = set(connected_tools.keys()) | {"memory", "history", "tasks"}
 
-        # Add other built-in tools
-        for tool_name, config in INTEGRATIONS_CONFIG.items():
-            if config.get("auth_type") == "builtin":
-                 tool_name_to_desc_map[tool_name] = config.get("description")
-
-        # Now, populate MCP servers for all available (connected + built-in) tools
-        for tool_name in tool_name_to_desc_map.keys():
+        for tool_name in tools_for_mcp_server_list:
             config = INTEGRATIONS_CONFIG.get(tool_name, {})
             if config:
                 mcp_config = config.get("mcp_server_config", {})
                 if mcp_config and mcp_config.get("url") and mcp_config.get("name"):
                     all_available_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}, "transport": "sse"}
 
-        last_user_query = messages[-1].get("content", "") if messages else ""
+        yield {"type": "status", "message": "Thinking..."}
 
-        yield {"type": "status", "message": "Choosing tools..."}
-        relevant_tool_names = await _select_relevant_tools(last_user_query, tool_name_to_desc_map)
+        # --- STAGE 1 ---
+        stage1_output = await _get_stage1_response(messages, connected_tools, disconnected_tools, user_id)
+
+        if isinstance(stage1_output, str):
+            # --- DIRECT RESPONSE FROM STAGE 1 ---
+            logger.info(f"Stage 1 provided a direct response for user {user_id}. Streaming it back.")
+            yield {"type": "assistantStream", "token": stage1_output, "done": True, "messageId": assistant_message_id}
+            return # End of stream
+
+        # --- TOOL SELECTION, PROCEED TO STAGE 2 ---
+        relevant_tool_names = stage1_output
 
         tool_display_names = [INTEGRATIONS_CONFIG.get(t, {}).get('display_name', t) for t in relevant_tool_names if t != 'memory']
         if tool_display_names:
             yield {"type": "status", "message": f"Using: {', '.join(tool_display_names)}"}
 
-        mandatory_tools = {"memory"}
+        # Stage 2 agent also needs access to core tools
+        mandatory_tools = {"memory", "history", "tasks"}
         final_tool_names = set(relevant_tool_names) | mandatory_tools
 
         filtered_mcp_servers = {}
@@ -189,37 +227,19 @@ async def generate_chat_llm_stream(
     stream_interrupted = False
     
     disconnected_tools_list_str = "\n".join([f"- `{name}`: {desc}" for name, desc in disconnected_tools.items()])
-    disconnected_tools_prompt_section = (
-        f"**Disconnected Tools (User needs to connect these in Settings):**\n{disconnected_tools_list_str}\n\n"
-        if disconnected_tools_list_str else ""
-    )
+    disconnected_tools_prompt_section = ""
+    if disconnected_tools_list_str:
+        disconnected_tools_prompt_section = f"**Disconnected Tools (User needs to connect these in Settings):**\n{disconnected_tools_list_str}\n\n"
 
     # Prepare message history for the LLM, including IDs for user messages
     history_for_llm = []
     for msg in messages[-30:]: # Limit context to the last 30 messages
-        history_for_llm.append(f"<{msg['role']}" + (f" id='{msg['id']}'" if msg.get('id') and msg['role'] == 'user' else "") + f">{msg['content']}</{msg['role']}>")
+        history_for_llm.append(f"<{msg['role']}" + (f" id='{msg.get('id')}'" if msg.get('id') and msg['role'] == 'user' else "") + f">{msg['content']}</{msg['role']}>")
 
-    system_prompt = (
-        f"You are Sentient, a personalized AI assistant. Your goal is to be as helpful as possible by using your available tools to directly execute tasks and help the user track their schedule.\n\n"
-        f"**Accessing Your Memory:**\n"
-        f"Your immediate context is limited to the last 30 messages of this conversation. To recall older information, you MUST use the following tools:\n"
-        f"- `history_mcp-semantic_search`: Use this when the user asks about a topic or concept from the past (e.g., \"What did we decide about the marketing plan?\").\n"
-        f"- `history_mcp-time_based_search`: Use this when the user asks about a specific time period (e.g., \"Remind me what we talked about last Tuesday.\").\n" # noqa
-        f"- `memory_mcp-search_memory`: Use this to recall specific facts, preferences, or details about the user that have been explicitly saved to your memory.\n" # noqa
-        f"Always check your memory and conversation history before asking the user a question you might already know the answer to.\n\n"
-        f"**Critical Instructions:**\n"
-        f"1. **Replying to a Specific Message:** The conversation history is provided with unique IDs for each user message (e.g., `<user id='user-162...'>`). If your response is a direct answer to a specific earlier message, you MUST wrap your final answer in a `<reply_to>` tag with that message's ID. Example: `<reply_to id='user-162...'>Your analysis is correct.</reply_to>`.\n"
-        f"2. **Validate Complex JSON:** Before calling any tool that requires a complex JSON string as a parameter (like Notion's `content_blocks_json`), you MUST first pass your generated JSON string to the `json_validator` tool to ensure it is syntactically correct. Use the cleaned output from `json_validator` in the subsequent tool call.\n" # noqa
-        f"3. **Handle Disconnected Tools:** You have a list of tools the user has not connected yet. If the user's query clearly refers to a capability from this list (e.g., asking to 'send a slack message' when Slack is disconnected), you MUST stop and politely inform the user that they need to connect the tool in the Integrations page. Do not proceed with other tools.\n"
-        f"4. For any command to create, send, search, or read information (e.g., create a document, send an email, search for files), you MUST call the appropriate tool directly. Complete the task within the chat and provide the result to the user.\n"
-        f"5. **Saving New Information:** If you learn a new, permanent fact about the user (e.g., their manager's name, a new preference), you MUST use `memory_mcp-cud_memory` to save it for future reference. This is an asynchronous operation, so inform the user that the memory \n" # noqa
-        f"6. **Final Answer Format:** When you have a complete, final answer for the user that is not a tool call, you MUST wrap it in `<answer>` tags. For example: `<answer>The weather in London is 15°C and cloudy.</answer>`.\n\n" # noqa
-        f"{disconnected_tools_prompt_section}"
-        f"**User Context (for your reference):**\n"
-        f"-   **User's Name:** {username}\n"
-        f"-   **User's Location:** {location}\n"
-        f"-   **Current Time:** {current_user_time}\n\n"
-        f"Your primary directive is to be as personalized and helpful as possible by actively using your memory and tools."
+    system_prompt = STAGE_2_SYSTEM_PROMPT.format(
+        username=username,
+        location=location,
+        current_user_time=current_user_time
     )
 
     def worker():
@@ -336,109 +356,102 @@ async def process_voice_command(
         connected_tools, disconnected_tools = _get_tool_lists(user_integrations)
 
         all_available_mcp_servers = {}
-        tool_name_to_desc_map = connected_tools.copy()
-        for tool_name, config in INTEGRATIONS_CONFIG.items():
-            if config.get("auth_type") == "builtin":
-                tool_name_to_desc_map[tool_name] = config.get("description")
+        # Populate MCP servers for all tools that Stage 2 might use:
+        # 1. User-connected tools (from connected_tools)
+        # 2. Built-in tools (memory, history, tasks)
+        tools_for_mcp_server_list = set(connected_tools.keys()) | {"memory", "history", "tasks"}
 
-        for tool_name in tool_name_to_desc_map.keys():
+        for tool_name in tools_for_mcp_server_list:
             config = INTEGRATIONS_CONFIG.get(tool_name, {})
             if config:
                 mcp_config = config.get("mcp_server_config", {})
                 if mcp_config and mcp_config.get("url") and mcp_config.get("name"):
                     all_available_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}, "transport": "sse"}
 
-        relevant_tool_names = await _select_relevant_tools(transcribed_text, tool_name_to_desc_map)
-        mandatory_tools = {"memory"}
-        final_tool_names = set(relevant_tool_names) | mandatory_tools
+        # Call Stage 1
+        stage1_output = await _get_stage1_response(qwen_formatted_history, connected_tools, disconnected_tools, user_id)
 
-        filtered_mcp_servers = {}
-        for server_name, server_config in all_available_mcp_servers.items():
-            tool_name_for_server = next((tn for tn, tc in INTEGRATIONS_CONFIG.items() if tc.get("mcp_server_config", {}).get("name") == server_name), None)
-            if tool_name_for_server in final_tool_names:
-                filtered_mcp_servers[server_name] = server_config
+        final_text_response = "I'm sorry, I couldn't process that." # Default error message
 
-        tools = [{"mcpServers": filtered_mcp_servers}, 'json_validator']
-        logger.info(f"Voice Command Tools: {list(filtered_mcp_servers.keys())} + json_validator")
+        if isinstance(stage1_output, str):
+            # Stage 1 provided a direct response
+            logger.info(f"Stage 1 provided a direct response for voice command for user {user_id}.")
+            final_text_response = stage1_output.strip()
+        else:
+            # Stage 1 selected tools, proceed to Stage 2
+            relevant_tool_names = stage1_output
+            mandatory_tools = {"memory", "history", "tasks"}
+            final_tool_names = set(relevant_tool_names) | mandatory_tools
 
-        # 4. Build the rich system prompt
-        disconnected_tools_list_str = "\n".join([f"- `{name}`: {desc}" for name, desc in disconnected_tools.items()])
-        disconnected_tools_prompt_section = (
-            f"**Disconnected Tools (User needs to connect these in Settings):**\n{disconnected_tools_list_str}\n\n"
-            if disconnected_tools_list_str else ""
-        )
-        history_for_llm = []
-        for msg in qwen_formatted_history:
-            history_for_llm.append(f"<{msg['role']}" + (f" id='{msg.get('id')}'" if msg.get('id') and msg['role'] == 'user' else "") + f">{msg['content']}</{msg['role']}>")
-        
-        system_prompt = (
-            f"You are Sentient, a personalized AI assistant. Your goal is to be as helpful as possible by using your available tools to directly execute tasks and help the user track their schedule.\n\n"
-            f"**Accessing Your Memory:**\n"
-            f"Your immediate context is limited to the last 30 messages of this conversation. To recall older information, you MUST use the following tools:\n"
-            f"- `history_mcp-semantic_search`: Use this when the user asks about a topic or concept from the past (e.g., \"What did we decide about the marketing plan?\").\n"
-            f"- `history_mcp-time_based_search`: Use this when the user asks about a specific time period (e.g., \"Remind me what we talked about last Tuesday.\").\n" # noqa
-            f"- `memory_mcp-search_memory`: Use this to recall specific facts, preferences, or details about the user that have been explicitly saved to your memory.\n" # noqa
-            f"Always check your memory and conversation history before asking the user a question you might already know the answer to.\n\n"
-            f"**Critical Instructions:**\n"
-            f"1. **Replying to a Specific Message:** The conversation history is provided with unique IDs for each user message (e.g., `<user id='user-162...'>`). If your response is a direct answer to a specific earlier message, you MUST wrap your final answer in a `<reply_to>` tag with that message's ID. Example: `<reply_to id='user-162...'>Your analysis is correct.</reply_to>`.\n"
-            f"2. **Validate Complex JSON:** Before calling any tool that requires a complex JSON string as a parameter (like Notion's `content_blocks_json`), you MUST first pass your generated JSON string to the `json_validator` tool to ensure it is syntactically correct. Use the cleaned output from `json_validator` in the subsequent tool call.\n" # noqa
-            f"3. **Handle Disconnected Tools:** You have a list of tools the user has not connected yet. If the user's query clearly refers to a capability from this list (e.g., asking to 'send a slack message' when Slack is disconnected), you MUST stop and politely inform the user that they need to connect the tool in the Integrations page. Do not proceed with other tools.\n"
-            f"4. For any command to create, send, search, or read information (e.g., create a document, send an email, search for files), you MUST call the appropriate tool directly. Complete the task within the chat and provide the result to the user.\n"
-            f"5. **Saving New Information:** If you learn a new, permanent fact about the user (e.g., their manager's name, a new preference), you MUST use `memory_mcp-cud_memory` to save it for future reference. This is an asynchronous operation, so inform the user that the memory \n" # noqa
-            f"6. **Final Answer Format:** When you have a complete, final answer for the user that is not a tool call, you MUST wrap it in `<answer>` tags. For example: `<answer>The weather in London is 15°C and cloudy.</answer>`.\n\n" # noqa
-            f"{disconnected_tools_prompt_section}"
-            f"**User Context (for your reference):**\n"
-            f"-   **User's Name:** {username}\n"
-            f"-   **User's Location:** {location}\n"
-            f"-   **Current Time:** {current_user_time}\n\n"
-            f"Your primary directive is to be as personalized and helpful as possible by actively using your memory and tools."
-        )
-        
-        qwen_formatted_history_for_agent = [{"role": "user", "content": "\n".join(history_for_llm)}]
+            filtered_mcp_servers = {}
+            for server_name, server_config in all_available_mcp_servers.items():
+                tool_name_for_server = next((tn for tn, tc in INTEGRATIONS_CONFIG.items() if tc.get("mcp_server_config", {}).get("name") == server_name), None)
+                if tool_name_for_server in final_tool_names:
+                    filtered_mcp_servers[server_name] = server_config
 
-        await send_status_update({"type": "status", "message": "thinking"})
-        
-        qwen_assistant = get_qwen_assistant(system_message=system_prompt, function_list=tools)
-        
-        # --- MODIFICATION: Run blocking agent code in a separate thread ---
-        loop = asyncio.get_running_loop()
-        def agent_worker():
-            final_run_response = None
-            try:
-                for response in qwen_assistant.run(messages=qwen_formatted_history_for_agent):
-                    final_run_response = response
-                    if isinstance(response, list) and response:
-                        last_step = response[-1]
-                        if last_step.get("role") == "assistant" and last_step.get("function_call"):
-                            tool_name = last_step["function_call"]["name"]
-                            # Schedule the async status update on the main event loop
-                            asyncio.run_coroutine_threadsafe(
-                                send_status_update({"type": "status", "message": f"using_tool_{tool_name}"}),
-                                loop
-                            )
-                return final_run_response
-            except Exception as e:
-                logger.error(f"Error inside agent_worker thread for voice command: {e}", exc_info=True)
-                return None
+            tools = [{"mcpServers": filtered_mcp_servers}, 'json_validator']
+            logger.info(f"Voice Command Tools (Stage 2): {list(filtered_mcp_servers.keys())} + json_validator")
 
-        final_run_response = await asyncio.to_thread(agent_worker)
-        # --- END MODIFICATION ---
-        
-        final_text_response = "I'm sorry, I couldn't process that."
-        if final_run_response and isinstance(final_run_response, list):
-            assistant_content_parts = [
-                msg.get('content', '') 
-                for msg in final_run_response 
-                if msg.get('role') == 'assistant' and msg.get('content')
-            ]
-            full_response_str = "".join(assistant_content_parts)
+            # 4. Build the rich system prompt (for Stage 2)
+            disconnected_tools_list_str = "\n".join([f"- `{name}`: {desc}" for name, desc in disconnected_tools.items()])
+            disconnected_tools_prompt_section = ""
+            if disconnected_tools_list_str:
+                disconnected_tools_prompt_section = f"**Disconnected Tools (User needs to connect these in Settings):**\n{disconnected_tools_list_str}\n\n"
 
-            final_text_response = re.sub(r'<(think|tool_code|tool_result|answer)>.*?</\1>', '', full_response_str, flags=re.DOTALL).strip()
+            history_for_llm = []
+            for msg in qwen_formatted_history:
+                history_for_llm.append(f"<{msg['role']}" + (f" id='{msg.get('id')}'" if msg.get('id') and msg['role'] == 'user' else "") + f">{msg['content']}</{msg['role']}>")
             
-            if not final_text_response:
-                last_message = final_run_response[-1]
-                if last_message.get('role') == 'function':
-                    final_text_response = "I have completed the requested action."
+            system_prompt = STAGE_2_SYSTEM_PROMPT.format(
+                username=username,
+                location=location,
+                current_user_time=current_user_time
+            )
+            
+            qwen_formatted_history_for_agent = [{"role": "user", "content": "\n".join(history_for_llm)}]
+
+            await send_status_update({"type": "status", "message": "thinking"})
+            
+            qwen_assistant = get_qwen_assistant(system_message=system_prompt, function_list=tools)
+            
+            # --- MODIFICATION: Run blocking agent code in a separate thread ---
+            loop = asyncio.get_running_loop()
+            def agent_worker():
+                final_run_response = None
+                try:
+                    for response in qwen_assistant.run(messages=qwen_formatted_history_for_agent):
+                        final_run_response = response
+                        if isinstance(response, list) and response:
+                            last_step = response[-1]
+                            if last_step.get("role") == "assistant" and last_step.get("function_call"):
+                                tool_name = last_step["function_call"]["name"]
+                                # Schedule the async status update on the main event loop
+                                asyncio.run_coroutine_threadsafe(
+                                    send_status_update({"type": "status", "message": f"using_tool_{tool_name}"}),
+                                    loop
+                                )
+                    return final_run_response
+                except Exception as e:
+                    logger.error(f"Error inside agent_worker thread for voice command: {e}", exc_info=True)
+                    return None
+
+            final_run_response = await asyncio.to_thread(agent_worker)
+            # --- END MODIFICATION ---
+            
+            if final_run_response and isinstance(final_run_response, list):
+                assistant_content_parts = [
+                    msg.get('content', '') 
+                    for msg in final_run_response 
+                    if msg.get('role') == 'assistant' and msg.get('content')
+                ]
+                full_response_str = "".join(assistant_content_parts)
+
+                final_text_response = re.sub(r'<(think|tool_code|tool_result|answer)>.*?</\1>', '', full_response_str, flags=re.DOTALL).strip()
+                
+                if not final_text_response:
+                    last_message = final_run_response[-1]
+                    if last_message.get('role') == 'function':
+                        final_text_response = "I have completed the requested action."
 
         await db_manager.messages_collection.update_one(
             {"message_id": assistant_message_id},

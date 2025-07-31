@@ -24,7 +24,7 @@ from workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions # n
 from workers.memory_agent_utils import get_memory_qwen_agent, get_db_manager as get_memory_db_manager # noqa: E501
 from workers.executor.tasks import execute_task_plan
 from main.vector_db import get_conversation_summaries_collection
-from workers.planner.prompts import TOOL_SELECTOR_SYSTEM_PROMPT
+from main.chat.prompts import STAGE_1_SYSTEM_PROMPT
 from mcp_hub.memory.utils import cud_memory, initialize_embedding_model, initialize_agents
 from workers.utils.text_utils import clean_llm_output
 
@@ -76,9 +76,9 @@ async def _select_relevant_tools(query: str, available_tools_map: Dict[str, str]
 
     try:
         tools_description = "\n".join(f"- `{name}`: {desc}" for name, desc in available_tools_map.items())
-        prompt = f"User Query: \"{query}\"\n\nAvailable Tools:\n{tools_description}"
+        prompt = f"User Query: \"{query}\"\n\nAvailable External Tools (for selection):\n{tools_description}"
 
-        selector_agent = get_qwen_assistant(system_message=TOOL_SELECTOR_SYSTEM_PROMPT, function_list=[])
+        selector_agent = get_qwen_assistant(system_message=STAGE_1_SYSTEM_PROMPT, function_list=[])
         messages = [{'role': 'user', 'content': prompt}]
 
         def _run_selector_sync():

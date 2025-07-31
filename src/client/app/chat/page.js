@@ -743,14 +743,12 @@ export default function ChatPage() {
 		getDevices()
 
 		return () => {
-			if (
-				backgroundCircleProviderRef.current &&
-				connectionStatus !== "disconnected"
-			) {
+			// This cleanup now only runs when the ChatPage component unmounts
+			if (backgroundCircleProviderRef.current) {
 				backgroundCircleProviderRef.current.disconnect()
 			}
 		}
-	}, [connectionStatus, selectedAudioInputDevice])
+	}, [selectedAudioInputDevice])
 
 	const renderReplyPreview = () => (
 		<AnimatePresence>

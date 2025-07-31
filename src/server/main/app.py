@@ -4,6 +4,26 @@ from datetime import timezone
 START_TIME = time.time()
 print(f"[{datetime.datetime.now()}] [STARTUP] Main Server application script execution started.")
 
+import os
+import platform
+import logging
+logging.basicConfig(level=logging.INFO)
+import socket
+
+if platform.system() == 'Windows':
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(('8.8.8.8', 80))
+        local_ip = s.getsockname()[0]
+    except Exception:
+        local_ip = '127.0.0.1'
+    finally:
+        s.close()
+        
+    logging.info(f"Detected local IP: {local_ip}")
+
+    os.environ['WEBRTC_IP'] = local_ip
+
 from contextlib import asynccontextmanager
 import logging
 from bson import ObjectId

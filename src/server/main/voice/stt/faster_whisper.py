@@ -5,7 +5,7 @@ import logging
 import asyncio 
 
 from .base import BaseSTT
-
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class FasterWhisperSTT(BaseSTT):
@@ -48,7 +48,7 @@ class FasterWhisperSTT(BaseSTT):
             loop = asyncio.get_running_loop()
             transcription = await loop.run_in_executor(None, self._transcribe_sync, audio_float32)
             
-            logger.debug(f"FasterWhisper Transcription: '{transcription}'")
+            logger.info(f"FasterWhisper Transcription: '{transcription}'")
             return transcription
         except Exception as e:
             logger.error(f"Error during FasterWhisper STT transcription: {e}", exc_info=True)

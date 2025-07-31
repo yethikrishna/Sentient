@@ -266,3 +266,5 @@ settings.json
 src/server/celerybeat-schedule-shm
 src/server/celerybeat-schedule-wal
 waha.sqlite3
+waha.sqlite3-shm
+waha.sqlite3-wal

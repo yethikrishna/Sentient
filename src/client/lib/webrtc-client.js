@@ -10,12 +10,15 @@ export class WebRTCClient {
 		this.animationFrameId = null
 		this.serverUrl =
 			process.env.NEXT_PUBLIC_APP_SERVER_URL || "http://localhost:5000"
+
+		// --- MODIFICATION: Add a queue for ICE candidates ---
+		this.iceCandidateQueue = []
+		// --- MODIFICATION: Add a timer for handling temporary disconnections ---
+		this.disconnectTimer = null
 	}
 
 	async connect(deviceId, authToken, rtcToken) {
-
 		console.log("Connecting WebRTC client with deviceId:", deviceId)
-
 		console.log("Using authToken:", authToken)
 		console.log("Using rtcToken:", rtcToken)
 
@@ -26,16 +29,21 @@ export class WebRTCClient {
 			throw new Error("RTC token is required to connect.")
 		}
 
-		console.log("Using server URL:", this.serverUrl)
+		// --- MODIFICATION: Reset the queue on new connection ---
+		this.iceCandidateQueue = []
 
 		try {
 			this.peerConnection = new RTCPeerConnection()
-
 			console.log("Created RTCPeerConnection:", this.peerConnection)
 
+			// --- MODIFICATION: Queue ICE candidates instead of sending immediately ---
 			this.peerConnection.onicecandidate = (event) => {
 				if (event.candidate) {
-					console.log("ICE Candidate Found:", event.candidate)
+					console.log(
+						"ICE Candidate Found, queueing:",
+						event.candidate
+					)
+					this.iceCandidateQueue.push(event.candidate)
 				} else {
 					console.log("All ICE candidates have been gathered.")
 				}
@@ -47,11 +55,6 @@ export class WebRTCClient {
 					`%cICE Connection State Change: ${state}`,
 					"font-weight: bold; color: blue;"
 				)
-				if (state === "failed") {
-					console.error(
-						"ICE connection failed. This often indicates a network or firewall issue."
-					)
-				}
 			}
 
 			this.peerConnection.onconnectionstatechange = (event) => {
@@ -60,11 +63,47 @@ export class WebRTCClient {
 					`%cPeer Connection State Change: ${state}`,
 					"font-weight: bold; color: green;"
 				)
-				if (state === "failed") {
-					console.error(
-						"Peer connection failed. The connection could not be established or has been lost."
-					)
+
+				// --- START MODIFICATION: Handle temporary disconnections ---
+				// If connection is established or re-established, clear any pending disconnect timer.
+				if (state === "connected") {
+					if (this.disconnectTimer) {
+						clearTimeout(this.disconnectTimer)
+						this.disconnectTimer = null
+						console.log(
+							"WebRTC reconnected. Disconnect timer cleared."
+						)
+					}
+					this.options.onConnected?.()
 				}
+
+				// When disconnected, it might be temporary. Start a timer to see if it recovers.
+				if (state === "disconnected") {
+					console.warn(
+						"WebRTC connection is temporarily disconnected. Starting a 20-second timer to see if it recovers..."
+					)
+					if (!this.disconnectTimer) {
+						this.disconnectTimer = setTimeout(() => {
+							console.error(
+								"WebRTC connection did not recover from 'disconnected' state within the time limit. Forcibly disconnecting."
+							)
+							this.disconnect()
+						}, 20000) // 20-second grace period for recovery, should be enough for TTS
+					}
+				}
+
+				// If the connection fails or is closed, it's permanent. Disconnect immediately.
+				if (state === "failed" || state === "closed") {
+					if (this.disconnectTimer) {
+						clearTimeout(this.disconnectTimer)
+						this.disconnectTimer = null
+					}
+					console.error(
+						"Peer connection failed or was permanently closed. Cleaning up."
+					)
+					this.disconnect()
+				}
+				// --- END MODIFICATION ---
 			}
 
 			this.peerConnection.ondatachannel = (event) => {
@@ -82,13 +121,9 @@ export class WebRTCClient {
 			})
 
 			this.setupAudioAnalysis()
-
 			console.log("Acquired media stream:", this.mediaStream)
 
 			this.mediaStream.getTracks().forEach((track) => {
-				console.log("Adding track to peer connection:", track)
-				// FIX: Add a null check before calling addTrack.
-				// This prevents a crash if a previous connection was closed.
 				if (this.peerConnection) {
 					this.peerConnection.addTrack(track, this.mediaStream)
 				}
@@ -116,9 +151,9 @@ export class WebRTCClient {
 				`${this.serverUrl}/voice/webrtc/offer`,
 				{
 					method: "POST",
+					mode: "cors",
 					headers: {
 						"Content-Type": "application/json",
-						// Add this line to authenticate the request
 						Authorization: `Bearer ${authToken}`
 					},
 					body: JSON.stringify({
@@ -137,14 +172,35 @@ export class WebRTCClient {
 			}
 
 			const serverResponse = await response.json()
-			console.log("Received server response:", serverResponse)
+			console.log("Received server answer:", serverResponse)
 			await this.peerConnection.setRemoteDescription(serverResponse)
 
-			console.log("WebRTC connection established successfully.")
+			// --- MODIFICATION: Send all queued ICE candidates now ---
+			console.log(
+				`Sending ${this.iceCandidateQueue.length} queued ICE candidates...`
+			)
+			for (const candidate of this.iceCandidateQueue) {
+				fetch(`${this.serverUrl}/voice/webrtc/offer`, {
+					method: "POST",
+					mode: "cors",
+					headers: {
+						"Content-Type": "application/json",
+						Authorization: `Bearer ${authToken}`
+					},
+					body: JSON.stringify({
+						candidate: candidate.toJSON(),
+						webrtc_id: rtcToken,
+						type: "ice-candidate"
+					})
+				}).catch((e) =>
+					console.error("Error sending queued ICE candidate:", e)
+				)
+			}
+			this.iceCandidateQueue = [] // Clear the queue
 
-			this.options.onConnected?.()
-
-			console.log("Setting up audio analysis.")
+			console.log(
+				"WebRTC signaling complete. Waiting for connection to establish..."
+			)
 		} catch (error) {
 			console.error("Error connecting WebRTC:", error)
 			this.disconnect()
@@ -153,7 +209,6 @@ export class WebRTCClient {
 	}
 
 	setupAudioAnalysis() {
-		console.log("Setting up audio analysis with mediaStream:", this.mediaStream)
 		if (!this.mediaStream || !this.options.onAudioLevel) return
 		try {
 			this.audioContext = new (window.AudioContext ||
@@ -176,7 +231,7 @@ export class WebRTCClient {
 		if (!this.analyser || !this.dataArray || !this.options.onAudioLevel)
 			return
 		let lastUpdateTime = 0
-		const throttleInterval = 100 // 100ms
+		const throttleInterval = 100
 
 		const analyze = () => {
 			if (!this.analyser || !this.dataArray) return
@@ -210,6 +265,12 @@ export class WebRTCClient {
 	}
 
 	disconnect() {
+		// --- MODIFICATION: Clear the timer on any disconnect call ---
+		if (this.disconnectTimer) {
+			clearTimeout(this.disconnectTimer)
+			this.disconnectTimer = null
+		}
+
 		this.stopAnalysis()
 		this.mediaStream?.getTracks().forEach((track) => track.stop())
 		this.mediaStream = null

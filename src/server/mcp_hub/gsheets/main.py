@@ -32,7 +32,7 @@ def get_generator_agent():
 
 mcp = FastMCP(
     name="GSheetsServer",
-    instructions="This server provides tools to create Google Sheets in a two-step process.",
+    instructions="Provides tools to create, manage, and interact with Google Sheets, including reading/writing data and managing the spreadsheet structure.",
 )
 
 # Register all 19 Google-Sheets tools
@@ -45,9 +45,8 @@ def get_gsheets_system_prompt() -> str:
 @mcp.tool()
 async def generate_sheet_json(ctx: Context, topic: str, previous_tool_response: Optional[str] = "{}") -> Dict[str, Any]:
     """
-    Step 1: Generates the structured JSON needed to create a Google Sheet.
-    Provide a topic/description of the sheet and optionally the JSON result from a previous tool. This tool will use an internal AI to create the detailed JSON for the spreadsheet's title and data.
-    The output of this tool should be passed directly to the `execute_sheet_creation` tool.
+    Step 1 of 2 for creating a complex sheet. Generates the structured JSON required by `execute_sheet_creation`.
+    Provide a `topic` for the sheet. The tool's internal AI will design the sheet's title, tabs, headers, and data.
     """
     try:
         user_id = auth.get_user_id_from_context(ctx)
@@ -83,8 +82,7 @@ async def generate_sheet_json(ctx: Context, topic: str, previous_tool_response: 
 @mcp.tool()
 async def execute_sheet_creation(ctx: Context, title: str, sheets_json: str) -> Dict[str, Any]:
     """
-    Step 2: Creates the actual Google Spreadsheet from the structured JSON.
-    This tool takes the JSON output from `generate_sheet_json` and creates the file.
+    Step 2 of 2 for creating a complex sheet. Takes the `title` and `sheets_json` output from `generate_sheet_json` and builds the actual Google Spreadsheet file, populating it with data and formatting.
     """
     try:
         user_id = auth.get_user_id_from_context(ctx)

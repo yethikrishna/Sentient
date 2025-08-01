@@ -24,14 +24,14 @@ tasks_collection = db["tasks"]
 # --- MCP Server ---
 mcp = FastMCP(
     name="ProgressUpdaterServer",
-    instructions="A server for updating the progress of a running task."
+    instructions="Provides a tool for executor agents to report progress updates on a long-running task."
 )
 
 @mcp.tool
 async def update_progress(ctx: Context, task_id: str, run_id: str, update_message: Any) -> Dict[str, Any]:
     """
-    Updates the progress of a specific task run. To be called by an executor agent.
-    The `update_message` can be a string for simple info, or a structured dictionary for tool calls/results.
+    Sends a progress update for a specific task run. This tool is intended to be called by executor agents to report their status, actions, or results back to the main server and user.
+    The `update_message` can be a simple string or a structured dictionary.
     """
     try:
         user_id = auth.get_user_id_from_context(ctx)

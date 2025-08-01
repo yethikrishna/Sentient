@@ -18,7 +18,7 @@ if ENVIRONMENT == 'dev-local':
         load_dotenv(dotenv_path=dotenv_path)
 mcp = FastMCP(
     name="SlackServer",
-    instructions="A server for interacting with a Slack workspace using a user token.",
+    instructions="Provides tools to interact with a user's Slack workspace, including listing channels and users, sending messages, and reacting to messages.",
 )
 
 # --- Prompt Registration ---
@@ -49,42 +49,58 @@ async def _execute_tool(ctx: Context, method_name: str, *args, **kwargs) -> Dict
 
 @mcp.tool
 async def slack_list_channels(ctx: Context, limit: int = 100, cursor: Optional[str] = None) -> Dict:
-    """Lists public channels in the workspace."""
+    """
+    Retrieves a list of public channels in the user's Slack workspace, returning their names and IDs.
+    """
     return await _execute_tool(ctx, "list_channels", limit, cursor)
 
 @mcp.tool
 async def slack_post_message(ctx: Context, channel_id: str, text: str) -> Dict:
-    """Posts a new message to a Slack channel."""
+    """
+    Sends a text message to a specified channel, identified by its `channel_id`.
+    """
     return await _execute_tool(ctx, "post_message", channel_id, text)
 
 @mcp.tool
 async def slack_reply_to_thread(ctx: Context, channel_id: str, thread_ts: str, text: str) -> Dict:
-    """Replies to a specific message thread in a channel."""
+    """
+    Posts a reply within a message thread. Requires the `channel_id` and the timestamp (`thread_ts`) of the parent message.
+    """
     return await _execute_tool(ctx, "reply_to_thread", channel_id, thread_ts, text)
 
 @mcp.tool
 async def slack_add_reaction(ctx: Context, channel_id: str, timestamp: str, reaction: str) -> Dict:
-    """Adds an emoji reaction to a message. The reaction is the emoji name without colons (e.g., 'thumbsup')."""
+    """
+    Adds an emoji reaction to a specific message. Requires the `channel_id`, the message `timestamp`, and the `reaction` name (e.g., 'thumbsup', 'tada').
+    """
     return await _execute_tool(ctx, "add_reaction", channel_id, timestamp, reaction)
 
 @mcp.tool
 async def slack_get_channel_history(ctx: Context, channel_id: str, limit: int = 10) -> Dict:
-    """Gets recent messages from a channel."""
+    """
+    Retrieves the most recent messages from a specific channel.
+    """
     return await _execute_tool(ctx, "get_channel_history", channel_id, limit)
 
 @mcp.tool
 async def slack_get_thread_replies(ctx: Context, channel_id: str, thread_ts: str) -> Dict:
-    """Gets all replies in a message thread."""
+    """
+    Retrieves all replies within a specific message thread.
+    """
     return await _execute_tool(ctx, "get_thread_replies", channel_id, thread_ts)
 
 @mcp.tool
 async def slack_get_users(ctx: Context, limit: int = 100, cursor: Optional[str] = None) -> Dict:
-    """Gets a list of all users in the workspace."""
+    """
+    Retrieves a list of all users in the Slack workspace.
+    """
     return await _execute_tool(ctx, "get_users", limit, cursor)
 
 @mcp.tool
 async def slack_get_user_profile(ctx: Context, user_id: str) -> Dict:
-    """Gets detailed profile information for a specific user."""
+    """
+    Retrieves the profile information for a single user, given their `user_id`.
+    """
     return await _execute_tool(ctx, "get_user_profile", user_id)
 
 # --- Server Execution ---

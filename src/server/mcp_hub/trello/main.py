@@ -15,7 +15,7 @@ if ENVIRONMENT == 'dev-local':
 
 mcp = FastMCP(
     name="TrelloServer",
-    instructions="This server provides tools for interacting with the Trello API.",
+    instructions="Provides tools to interact with a user's Trello boards, including listing boards, lists, and creating cards.",
 )
 
 async def _execute_tool(ctx: Context, func, **kwargs) -> Dict[str, Any]:
@@ -30,22 +30,30 @@ async def _execute_tool(ctx: Context, func, **kwargs) -> Dict[str, Any]:
 
 @mcp.tool()
 async def list_boards(ctx: Context) -> Dict:
-    """Lists all Trello boards for the user."""
+    """
+    Retrieves a list of all Trello boards the user has access to, returning their names and IDs.
+    """
     return await _execute_tool(ctx, utils.list_boards_util)
 
 @mcp.tool()
 async def get_lists_on_board(ctx: Context, board_id: str) -> Dict:
-    """Gets all lists on a specific Trello board."""
+    """
+    Retrieves all the lists (e.g., 'To Do', 'In Progress') on a specific Trello board, given the `board_id`.
+    """
     return await _execute_tool(ctx, utils.get_lists_on_board_util, board_id=board_id)
 
 @mcp.tool()
 async def get_cards_in_list(ctx: Context, list_id: str) -> Dict:
-    """Gets all cards in a specific Trello list."""
+    """
+    Retrieves all the cards within a specific list, given the `list_id`.
+    """
     return await _execute_tool(ctx, utils.get_cards_in_list_util, list_id=list_id)
 
 @mcp.tool()
 async def create_card(ctx: Context, list_id: str, name: str, desc: Optional[str] = None) -> Dict:
-    """Creates a new card in a specific Trello list."""
+    """
+    Creates a new card in a specific list. Requires the `list_id`, a `name` for the card, and an optional description (`desc`).
+    """
     return await _execute_tool(ctx, utils.create_card_util, list_id=list_id, name=name, desc=desc)
 
 if __name__ == "__main__":

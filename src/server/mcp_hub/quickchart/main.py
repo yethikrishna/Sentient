@@ -18,7 +18,7 @@ if ENVIRONMENT == 'dev-local':
         load_dotenv(dotenv_path=dotenv_path)
 mcp = FastMCP(
     name="QuickChartServer",
-    instructions="A server for generating data visualizations using QuickChart.io.",
+    instructions="Provides tools to generate chart images from data using the QuickChart.io service, which is based on the Chart.js library.",
 )
 
 # --- Prompt Registration ---
@@ -39,10 +39,8 @@ def build_quickchart_user_prompt(query: str, username: str, previous_tool_respon
 @mcp.tool
 async def generate_chart(ctx: Context, chart_config: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Generates a URL for a chart image based on a Chart.js configuration.
-    
-    Args:
-        chart_config: A dictionary representing the Chart.js configuration.
+    Generates a public URL for a chart image.
+    Requires a `chart_config` dictionary that follows the Chart.js configuration format.
     """
     try:
         auth.get_user_id_from_context(ctx)
@@ -54,11 +52,8 @@ async def generate_chart(ctx: Context, chart_config: Dict[str, Any]) -> Dict[str
 @mcp.tool
 async def download_chart(ctx: Context, chart_config: Dict[str, Any], output_path: Optional[str] = None) -> Dict[str, Any]:
     """
-    Generates a chart and saves it as a PNG image to a local file.
-    
-    Args:
-        chart_config: A dictionary representing the Chart.js configuration.
-        output_path: Optional local file path to save the image.
+    Generates a chart and downloads it as a PNG image to a local file path.
+    Requires a `chart_config` dictionary. If `output_path` is not specified, it saves to the user's Desktop or home directory.
     """
     try:
         auth.get_user_id_from_context(ctx)

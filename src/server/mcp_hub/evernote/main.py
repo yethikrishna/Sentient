@@ -16,7 +16,7 @@ if ENVIRONMENT == 'dev-local':
 
 mcp = FastMCP(
     name="EvernoteServer",
-    instructions="A server for interacting with an Evernote account.",
+    instructions="Provides tools to manage notes and notebooks in a user's Evernote account.",
 )
 
 # --- Prompt Registration ---
@@ -49,14 +49,15 @@ async def _execute_tool(ctx: Context, method_name: str, *args, **kwargs) -> Dict
 
 @mcp.tool
 async def list_notebooks(ctx: Context) -> Dict:
-    """Lists all notebooks in the user's Evernote account."""
+    """
+    Retrieves a list of all notebooks in the user's Evernote account, returning their names and IDs.
+    """
     return await _execute_tool(ctx, "list_notebooks")
 
 @mcp.tool
 async def create_note(ctx: Context, notebook_id: str, title: str, content: str) -> Dict:
     """
-    Creates a new note in a specified notebook.
-    'content' should be plain text; it will be wrapped in ENML.
+    Creates a new note with a specific title and content within a specified notebook. The `notebook_id` is required. The `content` should be plain text, as it will be automatically wrapped in the necessary ENML format.
     """
     return await _execute_tool(ctx, "create_note", notebook_id, title, content)
 

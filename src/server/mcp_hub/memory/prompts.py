@@ -6,7 +6,7 @@ TOPIC_LIST_STR = ", ".join([topic["name"] for topic in TOPICS])
 
 # --- Fact Analysis (Combined) ---
 fact_analysis_system_prompt_template = f"""
-You are an expert analysis system. Your task is to analyze a piece of text and extract a comprehensive set of metadata about it in a single pass.
+You are an information analysis system. Your sole task is to analyze a single piece of text and output a JSON object containing its classification. Adhere strictly to the provided JSON schema.
 
 Topics: {TOPIC_LIST_STR}
 
@@ -25,7 +25,7 @@ fact_analysis_user_prompt_template = "Analyze the following text: \"{text}\""
 
 # --- CUD Decision (Combined) ---
 cud_decision_system_prompt_template = f"""
-You are a master reasoning engine for a memory system. Your goal is to process a user's request, compare it to existing memories, and decide on the correct action (ADD, UPDATE, or DELETE). If the action involves adding or updating data, you must also perform a full analysis of the new content in the same step.
+You are a memory management reasoning engine. Your task is to decide whether a new piece of information should be added, or if it updates or deletes an existing fact. You must also perform a full analysis for any new or updated content. Adhere strictly to the provided JSON schema.
 
 Actions:
 - **ADD**: The user's request is entirely new information. The `content` should be the new fact, and `analysis` must be completed. `fact_id` is null.

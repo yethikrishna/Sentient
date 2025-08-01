@@ -21,7 +21,7 @@ if ENVIRONMENT == 'dev-local':
 # --- Server Initialization ---
 mcp = FastMCP(
     name="GDriveServer",
-    instructions="This server provides tools to search for and read files from Google Drive.",
+    instructions="Provides tools to search for files in Google Drive and read their content.",
 )
 
 # --- Prompt Registration ---
@@ -41,7 +41,9 @@ def build_gdrive_user_prompt(query: str, username: str, previous_tool_response: 
 
 @mcp.tool()
 async def gdrive_search(ctx: Context, query: str) -> Dict[str, Any]:
-    """Searches for files in Google Drive matching a query."""
+    """
+    Searches for files and folders in Google Drive using a `query`. The query should follow the Google Drive API's search syntax (e.g., `name contains 'report'` or `mimeType='application/pdf'`). Returns a list of matching files with their metadata.
+    """
     try:
         user_id = auth.get_user_id_from_context(ctx)
         creds = await auth.get_google_creds(user_id)
@@ -85,7 +87,9 @@ async def gdrive_search(ctx: Context, query: str) -> Dict[str, Any]:
 
 @mcp.tool()
 async def gdrive_read_file(ctx: Context, file_id: str) -> Dict[str, Any]:
-    """Reads the content of a file from Google Drive by its ID."""
+    """
+    Retrieves the content of a file from Google Drive, given its `file_id`. It automatically converts Google Docs/Sheets/Slides to a readable text format and returns other files (like PDFs or images) as base64-encoded strings.
+    """
     try:
         user_id = auth.get_user_id_from_context(ctx)
         creds = await auth.get_google_creds(user_id)

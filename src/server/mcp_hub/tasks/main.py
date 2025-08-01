@@ -10,7 +10,7 @@ from fastmcp import FastMCP, Context
 from qwen_agent.agents import Assistant
 from json_extractor import JsonExtractor
 
-from . import auth
+from . import auth, prompts
 from main.tasks.prompts import TASK_CREATION_PROMPT # Reusing the main server's prompt
 from main.llm import get_qwen_assistant
 from main.dependencies import mongo_manager # We can import from main as it's in the python path
@@ -26,15 +26,23 @@ if ENVIRONMENT == 'dev-local':
 
 mcp = FastMCP(
     name="TasksServer",
-    instructions="This server provides tools to create and manage user tasks.",
+    instructions="Provides tools for creating and searching user tasks that can be planned and executed by AI agents.",
 )
+
+# --- Prompt Registration ---
+@mcp.resource("prompt://tasks-agent-system")
+def get_tasks_system_prompt() -> str:
+    return prompts.tasks_agent_system_prompt
+
+@mcp.prompt(name="tasks_user_prompt_builder")
+def build_tasks_user_prompt(query: str, username: str, previous_tool_response: str = "{}") -> str:
+    return prompts.tasks_agent_user_prompt.format(query=query, username=username, previous_tool_response=previous_tool_response)
 
 @mcp.tool()
 async def create_task_from_prompt(ctx: Context, prompt: str) -> Dict[str, Any]:
     """
-    Creates a new task from a natural language prompt.
-    Parses the prompt to determine the description, priority, and schedule,
-    then creates a task for the AI to plan and execute.
+    Creates a new task from a natural language `prompt`.
+    An internal AI analyzes the prompt to extract the task description, priority, and schedule, then creates the task and queues it for planning and execution.
     """
     try:
         user_id = auth.get_user_id_from_context(ctx)
@@ -96,11 +104,7 @@ async def search_tasks(
     end_date: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Performs an advanced search for tasks with multiple optional filters.
-    - query: A keyword to search in the task description.
-    - status_list: A list of statuses to include (e.g., ["pending", "active", "processing"]).
-    - priority_list: A list of priority levels (0=High, 1=Medium, 2=Low).
-    - start_date / end_date: ISO 8601 date strings for filtering tasks due within a range.
+    Performs an advanced search for tasks using various filters like a text `query`, `status_list` (e.g., 'pending', 'active'), `priority_list` (0=High, 1=Medium, 2=Low), or a date range.
     """
     try:
         user_id = auth.get_user_id_from_context(ctx)

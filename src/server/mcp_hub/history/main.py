@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from fastmcp.exceptions import ToolError
 
-from . import auth
+from . import auth, prompts
 from main.vector_db import get_conversation_summaries_collection
 from main.db import MongoManager
 
@@ -22,17 +22,26 @@ if ENVIRONMENT == 'dev-local':
 
 mcp = FastMCP(
     name="ChatHistoryServer",
-    instructions="This server provides tools to search a user's long-term conversation history.",
+    instructions="Provides tools to search the user's long-term conversation history, using either semantic search for topics or time-based search for specific periods.",
 )
+
+# --- Prompt Registration ---
+@mcp.resource("prompt://history-agent-system")
+def get_history_system_prompt() -> str:
+    return prompts.history_agent_system_prompt
+
+@mcp.prompt(name="history_user_prompt_builder")
+def build_history_user_prompt(query: str, username: str, previous_tool_response: str = "{}") -> str:
+    return prompts.history_agent_user_prompt.format(query=query, username=username, previous_tool_response=previous_tool_response)
+
 
 # --- Tool Definitions ---
 
 @mcp.tool()
 async def semantic_search(ctx: Context, query: str) -> Dict[str, Any]:
     """
-    Performs a semantic (meaning-based) search of the user's conversation history summaries.
-    Useful for finding topics, concepts, or past decisions when the user doesn't remember the exact time.
-    For example: "What did we decide about the marketing plan?"
+    Performs a semantic (meaning-based) search of the user's long-term conversation summaries.
+    Use this to find information about topics, concepts, or past decisions when the exact time is unknown (e.g., 'what did we decide about the marketing plan?').
     """
     try:
         user_id = auth.get_user_id_from_context(ctx)
@@ -58,10 +67,8 @@ async def semantic_search(ctx: Context, query: str) -> Dict[str, Any]:
 @mcp.tool()
 async def time_based_search(ctx: Context, start_date: str, end_date: str) -> Dict[str, Any]:
     """
-    Retrieves all messages for the user within a specific date/time range.
+    Retrieves a log of all messages within a specific date range. Use this when the user asks about a conversation on a specific day or period (e.g., 'what did we talk about yesterday afternoon?').
     Dates must be in ISO 8601 format (e.g., '2024-07-29T00:00:00Z').
-    Useful for when a user asks about a specific day or period.
-    For example: "Remind me what we talked about last Tuesday."
     """
     db_manager = None
     try:

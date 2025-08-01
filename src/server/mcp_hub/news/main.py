@@ -16,7 +16,7 @@ if ENVIRONMENT == 'dev-local':
         load_dotenv(dotenv_path=dotenv_path)
 mcp = FastMCP(
     name="NewsServer",
-    instructions="A server for fetching news articles from NewsAPI.org.",
+    instructions="Provides tools to fetch top headlines and search for news articles from around the world using the NewsAPI.",
 )
 
 # --- Prompt Registration ---
@@ -48,7 +48,7 @@ async def _execute_tool(ctx: Context, func, **kwargs) -> Dict[str, Any]:
 @mcp.tool
 async def get_top_headlines(ctx: Context, query: Optional[str] = None, category: Optional[str] = None, country: str = 'us') -> Dict:
     """
-    Fetches top headlines. Can be filtered by a query, category, or country.
+    Fetches the latest top headlines. Can be filtered by a search `query`, a specific `category` (e.g., 'business', 'technology'), or a `country` code (e.g., 'us', 'gb').
     Valid categories: business, entertainment, general, health, science, sports, technology.
     """
     return await _execute_tool(ctx, utils.fetch_top_headlines, query=query, category=category, country=country)
@@ -56,7 +56,7 @@ async def get_top_headlines(ctx: Context, query: Optional[str] = None, category:
 @mcp.tool
 async def search_everything(ctx: Context, query: str, language: str = 'en', sort_by: str = 'relevancy') -> Dict:
     """
-    Searches for articles across all sources for a specific query.
+    Performs a broad search for articles on a specific `query` across a wide range of sources.
     `sort_by` can be 'relevancy', 'popularity', or 'publishedAt'.
     """
     return await _execute_tool(ctx, utils.search_everything, query=query, language=language, sort_by=sort_by)

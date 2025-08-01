@@ -53,7 +53,7 @@ async def lifespan(app):
 
 mcp = FastMCP(
     name="MemoryServer",
-    instructions="This server provides tools to manage a user's long-term memory using a PostgreSQL database.",
+    instructions="Provides tools to manage a user's long-term, structured memory, enabling the agent to learn, recall, and forget information about the user.",
     lifespan=lifespan
 )
 
@@ -77,17 +77,14 @@ async def _execute_tool(ctx: Context, func, **kwargs) -> Dict[str, Any]:
 @mcp.tool()
 async def search_memory(ctx: Context, query: str) -> Dict[str, Any]:
     """
-    Searches the user's memory to answer a question or find information.
-    Use this to recall facts, preferences, relationships, and other details about the user.
+    Performs a semantic search on the user's memory to recall facts, preferences, or other stored information. Use this when you need to answer a question about the user (e.g., 'what is my favorite color?').
     """
     return await _execute_tool(ctx, utils.search_memory, query=query)
 
 @mcp.tool()
 async def cud_memory(ctx: Context, information: str, source: str = None) -> Dict[str, Any]:
-    """Adds, updates, or deletes a fact in the user's memory based on the provided information.
-    The system will determine if the information is new, an update, or a deletion.
-    Use the optional 'source' parameter to track where the information came from (e.g., 'user_chat', 'document.txt').
-    This is an asynchronous operation.
+    """
+    Adds, updates, or deletes a single piece of information in the user's memory. The tool automatically determines if the information is new (ADD), a modification (UPDATE), or a removal (DELETE). This is the primary tool for learning from conversation. It is an asynchronous operation.
     """
     user_id = auth.get_user_id_from_context(ctx)
     cud_memory_task.delay(user_id=user_id, information=information, source=source)
@@ -96,24 +93,21 @@ async def cud_memory(ctx: Context, information: str, source: str = None) -> Dict
 @mcp.tool()
 async def search_memory_by_source(ctx: Context, query: str, source_name: str) -> Dict[str, Any]:
     """
-    Searches for information within a specific source in the user's memory.
-    Use this to recall facts related to a particular document, import, or conversation, by providing the `source_name`.
+    Performs a semantic search for facts that originated from a specific `source_name` (e.g., a document name like 'resume.pdf' or an import like 'profile_onboarding').
     """
     return await _execute_tool(ctx, utils.search_memory_by_source, query=query, source_name=source_name)
 
 @mcp.tool()
 async def build_initial_memory(ctx: Context, documents: List[Dict[str, str]]) -> Dict[str, Any]:
     """
-    Builds the user's memory from a list of documents, replacing any existing memory.
-    Each document in the list should be a dictionary with 'text' and 'source' keys.
+    Ingests a list of documents to build the user's initial memory, replacing any existing facts. Each document must have 'text' and 'source' keys. This is useful for bulk imports.
     """
     return await _execute_tool(ctx, utils.build_initial_memory, documents=documents)
 
 @mcp.tool()
 async def delete_memory_by_source(ctx: Context, source_name: str) -> Dict[str, Any]:
     """
-    Deletes all facts from the memory that originated from a specific source.
-    The `source_name` should match the 'source' property of the data (e.g., 'profile_import.txt').
+    Deletes all facts from the user's memory that are associated with a specific `source_name`.
     """
     return await _execute_tool(ctx, utils.delete_memory_by_source, source_name=source_name)
 

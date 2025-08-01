@@ -16,7 +16,7 @@ if ENVIRONMENT == 'dev-local':
 
 mcp = FastMCP(
     name="DiscordServer",
-    instructions="A server for interacting with a Discord workspace.",
+    instructions="Provides tools to interact with a user's Discord account, allowing the agent to list servers (guilds), list channels, and send messages.",
 )
 
 @mcp.resource("prompt://discord-agent-system")
@@ -45,17 +45,23 @@ async def _execute_tool(ctx: Context, method_name: str, *args, **kwargs) -> Dict
 
 @mcp.tool
 async def list_guilds(ctx: Context) -> Dict:
-    """Lists the servers (guilds) the bot is a member of."""
+    """
+    Lists the Discord servers (guilds) that the authenticated user's bot is a member of, returning their names and IDs.
+    """
     return await _execute_tool(ctx, "list_guilds")
 
 @mcp.tool
 async def list_channels(ctx: Context, guild_id: str) -> Dict:
-    """Lists the channels in a specific server (guild)."""
+    """
+    Retrieves a list of all text and voice channels within a specified Discord server (guild), returning their names and IDs.
+    """
     return await _execute_tool(ctx, "list_channels", guild_id)
 
 @mcp.tool
 async def send_channel_message(ctx: Context, channel_id: str, content: str) -> Dict:
-    """Posts a message to a specific channel."""
+    """
+    Sends a text message to a specific Discord channel, identified by its `channel_id`.
+    """
     return await _execute_tool(ctx, "send_channel_message", channel_id, content)
 
 # --- Server Execution ---

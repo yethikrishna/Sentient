@@ -25,7 +25,7 @@ if ENVIRONMENT == 'dev-local':
 # --- Server Initialization ---
 mcp = FastMCP(
     name="GMailServer",
-    instructions="This server provides tools to interact with the GMail API for sending, searching, and managing emails.",
+    instructions="Provides a comprehensive suite of tools to read, search, send, and manage emails and labels in a user's Gmail account.",
 )
 
 

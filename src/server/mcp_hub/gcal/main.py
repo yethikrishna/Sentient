@@ -24,7 +24,7 @@ if ENVIRONMENT == 'dev-local':
 # --- Server Initialization ---
 mcp = FastMCP(
     name="GCalServer",
-    instructions="This server provides tools to interact with the Google Calendar API for managing calendar events.",
+    instructions="Provides a comprehensive suite of tools to manage Google Calendar, including creating, updating, deleting, and searching for events and calendars.",
 )
 
 # --- Prompt Registration ---
@@ -48,7 +48,9 @@ def build_gcal_user_prompt(query: str, username: str, previous_tool_response: st
 
 @mcp.tool()
 async def createEvent(ctx: Context, summary: str, start_time: str, end_time: str, calendar_id: str = "primary", location: Optional[str] = None, description: Optional[str] = None, attendees: Optional[List[str]] = None) -> Dict[str, Any]:
-    """Create a new calendar event with specified details, time, and attendees."""
+    """
+    Creates a new event on a specified calendar. Requires a summary (title), start time, and end time in ISO 8601 format. Optionally accepts location, description, and a list of attendee emails.
+    """
     try:
         user_id = auth.get_user_id_from_context(ctx)
         creds = await auth.get_google_creds(user_id)
@@ -75,7 +77,9 @@ async def createEvent(ctx: Context, summary: str, start_time: str, end_time: str
 
 @mcp.tool()
 async def updateEvent(ctx: Context, event_id: str, calendar_id: str = "primary", new_summary: Optional[str] = None, new_start_time: Optional[str] = None, new_end_time: Optional[str] = None, new_location: Optional[str] = None, new_description: Optional[str] = None) -> Dict[str, Any]:
-    """Modify an existing calendar event by changing any of its properties."""
+    """
+    Updates an existing calendar event. Requires the `event_id` and at least one new property to change, such as summary, start/end times, location, or description.
+    """
     try:
         user_id = auth.get_user_id_from_context(ctx)
         creds = await auth.get_google_creds(user_id)
@@ -107,7 +111,9 @@ async def updateEvent(ctx: Context, event_id: str, calendar_id: str = "primary",
 
 @mcp.tool()
 async def getCalendars(ctx: Context) -> Dict[str, Any]:
-    """List all calendars accessible to the authenticated user."""
+    """
+    Retrieves a list of all calendars the user has access to, returning their summary, ID, and access role.
+    """
     try:
         user_id = auth.get_user_id_from_context(ctx)
         creds = await auth.get_google_creds(user_id)
@@ -115,7 +121,7 @@ async def getCalendars(ctx: Context) -> Dict[str, Any]:
 
         def _execute_sync_list():
             calendar_list = service.calendarList().list().execute()
-            return [gcal_utils._simplify_calendar_list_entry(c) for c in calendar_list.get("items", [])]
+            return [utils._simplify_calendar_list_entry(c) for c in calendar_list.get("items", [])]
 
         simplified_calendars = await asyncio.to_thread(_execute_sync_list)
         return {"status": "success", "result": {"calendars": simplified_calendars}}
@@ -124,7 +130,9 @@ async def getCalendars(ctx: Context) -> Dict[str, Any]:
 
 @mcp.tool()
 async def createCalendar(ctx: Context, summary: str) -> Dict[str, Any]:
-    """Create a new secondary calendar."""
+    """
+    Creates a new secondary calendar with a given summary (title).
+    """
     try:
         user_id = auth.get_user_id_from_context(ctx)
         creds = await auth.get_google_creds(user_id)
@@ -142,7 +150,9 @@ async def createCalendar(ctx: Context, summary: str) -> Dict[str, Any]:
 
 @mcp.tool()
 async def deleteCalendar(ctx: Context, calendar_id: str) -> Dict[str, Any]:
-    """Delete a secondary calendar (primary calendar cannot be deleted)."""
+    """
+    Deletes a secondary calendar. Requires the `calendar_id`. The primary calendar cannot be deleted.
+    """
     if calendar_id.lower() == "primary":
         return {"status": "failure", "error": "The primary calendar cannot be deleted."}
     try:
@@ -160,7 +170,9 @@ async def deleteCalendar(ctx: Context, calendar_id: str) -> Dict[str, Any]:
 
 @mcp.tool()
 async def getEvents(ctx: Context, calendar_id: str = "primary", time_min: Optional[str] = None, time_max: Optional[str] = None, query: Optional[str] = None) -> Dict[str, Any]:
-    """Retrieve calendar events within a specified time range with optional filtering."""
+    """
+    Searches for events on a specified calendar. Can be filtered by a time range (`time_min`, `time_max`) and a text query. Returns a list of simplified event objects.
+    """
     try:
         user_id = auth.get_user_id_from_context(ctx)
         creds = await auth.get_google_creds(user_id)
@@ -177,7 +189,7 @@ async def getEvents(ctx: Context, calendar_id: str = "primary", time_min: Option
                 singleEvents=True, orderBy="startTime"
             ).execute()
             events = events_result.get("items", [])
-            return [gcal_utils._simplify_event(e) for e in events]
+            return [utils._simplify_event(e) for e in events]
 
         event_list = await asyncio.to_thread(_execute_sync_list)
 
@@ -190,7 +202,9 @@ async def getEvents(ctx: Context, calendar_id: str = "primary", time_min: Option
 
 @mcp.tool()
 async def deleteEvent(ctx: Context, event_id: str, calendar_id: str = "primary") -> Dict[str, Any]:
-    """Remove a calendar event permanently."""
+    """
+    Permanently deletes an event from a calendar. Requires the `event_id`.
+    """
     try:
         user_id = auth.get_user_id_from_context(ctx)
         creds = await auth.get_google_creds(user_id)
@@ -206,7 +220,9 @@ async def deleteEvent(ctx: Context, event_id: str, calendar_id: str = "primary")
 
 @mcp.tool()
 async def getCalendar(ctx: Context, calendar_id: str = "primary") -> Dict[str, Any]:
-    """Get detailed information about a specific calendar."""
+    """
+    Retrieves detailed information for a single calendar by its `calendar_id`.
+    """
     try:
         user_id = auth.get_user_id_from_context(ctx)
         creds = await auth.get_google_creds(user_id)
@@ -222,7 +238,9 @@ async def getCalendar(ctx: Context, calendar_id: str = "primary") -> Dict[str, A
 
 @mcp.tool()
 async def updateCalendar(ctx: Context, calendar_id: str, new_summary: Optional[str] = None, new_description: Optional[str] = None) -> Dict[str, Any]:
-    """Update the properties of an existing calendar."""
+    """
+    Updates the summary or description of a secondary calendar. Requires the `calendar_id`.
+    """
     if calendar_id.lower() == "primary":
         return {"status": "failure", "error": "The primary calendar's properties cannot be updated this way."}
     try:
@@ -248,13 +266,15 @@ async def updateCalendar(ctx: Context, calendar_id: str, new_summary: Optional[s
             return service.calendars().patch(calendarId=calendar_id, body=update_body).execute()
 
         updated_calendar = await asyncio.to_thread(_execute_sync_patch)
-        return {"status": "success", "result": gcal_utils._simplify_calendar_list_entry(updated_calendar)}
+        return {"status": "success", "result": utils._simplify_calendar_list_entry(updated_calendar)}
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
 @mcp.tool()
 async def respondToEvent(ctx: Context, event_id: str, response_status: str, calendar_id: str = "primary") -> Dict[str, Any]:
-    """Update your response status for a calendar event (accepted, declined, tentative)."""
+    """
+    Sets the user's attendance status for an event they are invited to. Requires the `event_id` and a `response_status` ('accepted', 'declined', 'tentative').
+    """
     valid_statuses = ["accepted", "declined", "tentative"]
     if response_status not in valid_statuses:
         return {"status": "failure", "error": f"Invalid response status. Must be one of: {', '.join(valid_statuses)}"}

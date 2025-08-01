@@ -19,7 +19,7 @@ if ENVIRONMENT == 'dev-local':
         load_dotenv(dotenv_path=dotenv_path)
 mcp = FastMCP(
     name="NotionServer",
-    instructions="This server provides tools to interact with the Notion API.",
+    instructions="Provides a comprehensive set of tools to interact with the Notion API, allowing for the creation and management of pages, databases, and blocks.",
 )
 
 # --- Prompt Registration ---
@@ -122,8 +122,8 @@ def _list_users_sync(client):
 @mcp.tool
 async def createPage(ctx: Context, title: str, parent_page_id: Optional[str] = None, parent_database_id: Optional[str] = None, content_blocks_json: Optional[str] = None) -> Dict:
     """
-    Creates a new page in Notion, either inside another page or in a database.
-    `content_blocks_json` should be a JSON string representing a list of Notion block objects.
+    Creates a new page in Notion. Requires a `title` and a parent (`parent_page_id` or `parent_database_id`).
+    Optionally, you can add body content by providing a `content_blocks_json` string, which is a list of Notion block objects.
     """
     try:
         content_blocks = json.loads(content_blocks_json) if content_blocks_json else []
@@ -133,23 +133,31 @@ async def createPage(ctx: Context, title: str, parent_page_id: Optional[str] = N
 
 @mcp.tool
 async def getPages(ctx: Context, page_id: Optional[str] = None, query: Optional[str] = None) -> Dict:
-    """Get a Notion page by ID or list pages with optional filtering by query."""
+    """
+    Retrieves a specific page's content by its `page_id`, or searches for pages across the workspace using a text `query`.
+    """
     return await _execute_tool(ctx, _get_pages_sync, page_id=page_id, query=query)
 
 @mcp.tool
 async def queryDatabase(ctx: Context, database_id: str, filter_json: Optional[str] = None) -> Dict:
-    """Queries a Notion database with an optional filter JSON string."""
+    """
+    Retrieves pages from a specific database. Requires the `database_id` and can be filtered using a Notion API `filter_json` string.
+    """
     return await _execute_tool(ctx, _query_database_sync, database_id=database_id, filter_json=filter_json)
 
 @mcp.tool
 async def updateBlock(ctx: Context, block_id: str, content_json: str) -> Dict:
-    """Update an existing content block. `content_json` is a JSON string of the block type object (e.g., '{"paragraph": ...}')."""
+    """
+    Updates the content of an existing block. Requires the `block_id` and a `content_json` string representing the new block content (e.g., '{"paragraph":...}').
+    """
     content = json.loads(content_json)
     return await _execute_tool(ctx, _update_block_sync, block_id=block_id, content=content)
 
 @mcp.tool
 async def getBlockChildren(ctx: Context, block_id: str) -> Dict:
-    """Get all children blocks of a parent block (like a page or a toggle)."""
+    """
+    Retrieves all the content blocks nested inside a parent block (such as a page, toggle, or column).
+    """
     return await _execute_tool(ctx, _get_block_children_sync, block_id=block_id)
 
 @mcp.tool

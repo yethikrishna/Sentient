@@ -18,7 +18,7 @@ if ENVIRONMENT == 'dev-local':
 
 mcp = FastMCP(
     name="GDocsServer",
-    instructions="This server provides tools to create and manage Google Docs.",
+    instructions="Provides tools to create, search, read, modify, and share Google Docs documents.",
 )
 
 @mcp.resource("prompt://gdocs-agent-system")
@@ -47,7 +47,9 @@ async def _execute_tool(ctx: Context, func, service_types=['docs', 'drive'], **k
 
 @mcp.tool()
 async def createDocument(ctx: Context, title: str) -> Dict[str, Any]:
-    """Create a new Google Docs document with a given title."""
+    """
+    Creates a new, empty Google Docs document with a specified title.
+    """
     def _create(docs_service, title):
         doc = docs_service.documents().create(body={"title": title}).execute()
         return {"documentId": doc["documentId"], "title": doc["title"]}
@@ -55,7 +57,9 @@ async def createDocument(ctx: Context, title: str) -> Dict[str, Any]:
 
 @mcp.tool()
 async def listDocuments(ctx: Context, query: Optional[str] = None) -> Dict[str, Any]:
-    """List Google Docs documents, optionally filtering by a query in the name."""
+    """
+    Searches for Google Docs documents in the user's Drive. Can be filtered by a search `query` in the document's name or content.
+    """
     def _list(drive_service, query):
         q = "mimeType='application/vnd.google-apps.document'"
         if query:
@@ -66,7 +70,9 @@ async def listDocuments(ctx: Context, query: Optional[str] = None) -> Dict[str, 
 
 @mcp.tool()
 async def getDocument(ctx: Context, document_id: str) -> Dict[str, Any]:
-    """Get a Google Docs document's content by its ID."""
+    """
+    Retrieves the full content of a Google Docs document as plain text, given its `document_id`.
+    """
     def _get(docs_service, document_id):
         doc = docs_service.documents().get(documentId=document_id).execute()
         return {"title": doc.get("title"), "content": utils._parse_document_content(doc)}
@@ -74,7 +80,9 @@ async def getDocument(ctx: Context, document_id: str) -> Dict[str, Any]:
 
 @mcp.tool()
 async def deleteDocument(ctx: Context, document_id: str) -> Dict[str, Any]:
-    """Delete a Google Docs document by its ID."""
+    """
+    Permanently deletes a Google Docs document. Requires the `document_id`.
+    """
     def _delete(drive_service, document_id):
         drive_service.files().delete(fileId=document_id).execute()
         return {"message": f"Document {document_id} deleted successfully."}
@@ -82,7 +90,9 @@ async def deleteDocument(ctx: Context, document_id: str) -> Dict[str, Any]:
 
 @mcp.tool()
 async def shareDocument(ctx: Context, document_id: str, email_address: str, role: str = "reader", share_type: str = "user") -> Dict[str, Any]:
-    """Share a Google Docs document with a user or domain."""
+    """
+    Shares a Google Docs document with a specific user via their `email_address`. The `role` can be 'reader', 'commenter', or 'writer'.
+    """
     def _share(drive_service, document_id, email_address, role, share_type):
         permission = {'type': share_type, 'role': role, 'emailAddress': email_address}
         drive_service.permissions().create(fileId=document_id, body=permission, sendNotificationEmail=True).execute()
@@ -91,7 +101,9 @@ async def shareDocument(ctx: Context, document_id: str, email_address: str, role
 
 @mcp.tool()
 async def appendText(ctx: Context, document_id: str, text: str) -> Dict[str, Any]:
-    """Append text to the end of a Google Docs document."""
+    """
+    Adds new text to the very end of a specified Google Docs document.
+    """
     def _append(docs_service, document_id, text):
         doc = docs_service.documents().get(documentId=document_id, fields="body(content)").execute()
         end_index = doc['body']['content'][-1]['endIndex'] - 1
@@ -102,7 +114,9 @@ async def appendText(ctx: Context, document_id: str, text: str) -> Dict[str, Any
 
 @mcp.tool()
 async def insertText(ctx: Context, document_id: str, text: str, index: int) -> Dict[str, Any]:
-    """Insert text at a specific position in a Google Docs document."""
+    """
+    Inserts text at a specific character `index` within a Google Docs document.
+    """
     def _insert(docs_service, document_id, text, index):
         requests = [{'insertText': {'location': {'index': index}, 'text': text}}]
         docs_service.documents().batchUpdate(documentId=document_id, body={'requests': requests}).execute()
@@ -111,7 +125,9 @@ async def insertText(ctx: Context, document_id: str, text: str, index: int) -> D
 
 @mcp.tool()
 async def replaceText(ctx: Context, document_id: str, find_text: str, replace_text: str) -> Dict[str, Any]:
-    """Replace all occurrences of a string in a Google Docs document."""
+    """
+    Finds and replaces all occurrences of a specific string (`find_text`) with a new string (`replace_text`) within a document.
+    """
     def _replace(docs_service, document_id, find_text, replace_text):
         requests = [{'replaceAllText': {'containsText': {'text': find_text, 'matchCase': False}, 'replaceText': replace_text}}]
         response = docs_service.documents().batchUpdate(documentId=document_id, body={'requests': requests}).execute()

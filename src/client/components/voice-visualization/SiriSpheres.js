@@ -1,149 +1,117 @@
 "use client"
-import React from "react"
-import { motion, useSpring, useTransform } from "framer-motion"
-import { cn } from "@utils/cn"
+import React, { useRef, useMemo } from "react"
+import { Canvas, useFrame } from "@react-three/fiber"
+import { Color, TorusGeometry, MeshPhysicalMaterial } from "three"
+import { motion } from "framer-motion"
+import { useSpring, useTransform } from "framer-motion"
 
-const Sphere = ({
-	initial,
-	animate,
-	transition,
-	className,
-	style,
-	...props
-}) => (
-	<motion.div
-		className={cn(
-			"absolute rounded-full mix-blend-plus-lighter border-2",
-			className
-		)}
-		initial={initial}
-		animate={animate}
-		transition={transition}
-		style={style}
-		{...props}
-	/>
-)
+const Ring = ({ color, initialRotation, scale }) => {
+	const ringRef = useRef()
 
-const SiriSpheres = ({ status, audioLevel = 0 }) => {
-	const springConfig = { stiffness: 100, damping: 20, mass: 1 }
-	const audioLevelSpring = useSpring(audioLevel, springConfig)
+	useFrame(({ clock }) => {
+		if (ringRef.current) {
+			const t = clock.getElapsedTime()
+			// Apply a slow, continuous base rotation
+			ringRef.current.rotation.x = initialRotation[0] + t * 0.1
+			ringRef.current.rotation.y = initialRotation[1] + t * 0.2
+			ringRef.current.rotation.z = initialRotation[2] + t * 0.15
+		}
+	})
 
+	return (
+		<motion.mesh ref={ringRef} scale={scale}>
+			<torusGeometry args={[1.2, 0.05, 32, 100]} />
+			<meshPhysicalMaterial
+				color={color}
+				transmission={0.9}
+				roughness={0.1}
+				metalness={0.2}
+				thickness={0.2}
+				ior={1.5}
+				transparent
+				opacity={0.8}
+			/>
+		</motion.mesh>
+	)
+}
+
+const Scene = ({ status, audioLevel }) => {
+	const audioLevelSpring = useSpring(audioLevel, {
+		stiffness: 200,
+		damping: 30,
+		mass: 1
+	})
+
+	const baseScale = status === "connecting" ? 1.1 : 1
 	const scale = useTransform(
 		audioLevelSpring,
 		[0, 1],
-		[1, 1.5] // Base scale to max scale
-	)
-	const saturate = useTransform(
-		audioLevelSpring,
-		[0, 1],
-		[1, 2.5] // Base saturation to max saturation
+		[baseScale, baseScale * 1.5]
 	)
 
-	const sphereStyle = {
-		scale,
-		filter: `saturate(${saturate.get()})`
-	}
+	const redColor = useMemo(() => new Color("#ff3b30"), [])
+	const finalColors = useMemo(
+		() => [
+			new Color("#007aff"), // Blue
+			new Color("#34c759"), // Green
+			new Color("#ff9500") // Orange
+		],
+		[]
+	)
 
-	const spheres = [
-		{
-			id: 1,
-			className: "bg-blue-500/10 border-blue-400/50",
-			size: 200,
-			disconnected: {
-				x: [-20, 20, -20],
-				y: [30, -30, 30],
-				transition: {
-					duration: 10,
-					repeat: Infinity,
-					repeatType: "mirror",
-					ease: "easeInOut"
-				}
-			},
-			connecting: {
-				scale: [1, 1.1, 1],
-				transition: {
-					duration: 1.5,
-					repeat: Infinity,
-					ease: "easeInOut"
-				}
-			}
-		},
-		{
-			id: 2,
-			className: "bg-green-500/10 border-green-400/50",
-			size: 250,
-			disconnected: {
-				x: [50, -50, 50],
-				y: [-50, 50, -50],
-				transition: {
-					duration: 12,
-					repeat: Infinity,
-					repeatType: "mirror",
-					ease: "easeInOut"
-				}
-			},
-			connecting: {
-				scale: [1, 1.05, 1],
-				transition: {
-					duration: 1.8,
-					repeat: Infinity,
-					ease: "easeInOut",
-					delay: 0.2
-				}
-			}
-		},
-		{
-			id: 3,
-			className: "bg-purple-500/10 border-purple-400/50",
-			size: 180,
-			disconnected: {
-				x: [-40, 40, -40],
-				y: [40, -40, 40],
-				transition: {
-					duration: 15,
-					repeat: Infinity,
-					repeatType: "mirror",
-					ease: "easeInOut"
-				}
-			},
-			connecting: {
-				scale: [1, 1.15, 1],
-				transition: {
-					duration: 1.3,
-					repeat: Infinity,
-					ease: "easeInOut",
-					delay: 0.4
-				}
-			}
-		}
-	]
+	const ringColors = useMemo(
+		() => [new Color(), new Color(), new Color()],
+		[]
+	)
 
-	const getAnimationProps = (sphere) => {
-		switch (status) {
-			case "connecting":
-				return sphere.connecting
-			case "connected":
-				return {} // Style is handled by useSpring
-			case "disconnected":
-			default:
-				return sphere.disconnected
+	useFrame(({ clock }) => {
+		const t = clock.getElapsedTime()
+		if (status === "disconnected") {
+			ringColors.forEach((c) => c.lerp(redColor, 0.1))
+		} else if (status === "connecting") {
+			const colorFactor = (Math.sin(t * 4) + 1) / 2 // Oscillates between 0 and 1
+			ringColors.forEach((c, i) =>
+				c.lerpColors(redColor, finalColors[i], colorFactor)
+			)
+		} else {
+			ringColors.forEach((c, i) => c.lerp(finalColors[i], 0.1))
 		}
-	}
+	})
+
+	const ringConfigs = useMemo(
+		() => [
+			{ initialRotation: [Math.PI / 2, 0, 0] },
+			{ initialRotation: [0, Math.PI / 2, Math.PI / 4] },
+			{ initialRotation: [Math.PI / 4, Math.PI / 4, Math.PI / 2] }
+		],
+		[]
+	)
 
 	return (
-		<div className="relative w-96 h-96 flex items-center justify-center">
-			{spheres.map((sphere) => (
-				<Sphere
-					key={sphere.id}
-					className={sphere.className}
-					style={{
-						width: sphere.size,
-						height: sphere.size,
-						...(status === "connected" && sphereStyle)
-					}}
-					animate={getAnimationProps(sphere)}
-				/>
-			))}
+		<>
+			<ambientLight intensity={0.5} />
+			<pointLight position={[5, 5, 5]} intensity={1} />
+			<pointLight position={[-5, -5, -5]} intensity={0.5} />
+			<group>
+				{ringConfigs.map((config, i) => (
+					<Ring
+						key={i}
+						color={ringColors[i]}
+						initialRotation={config.initialRotation}
+						scale={scale}
+					/>
+				))}
+			</group>
+		</>
+	)
+}
+
+const SiriSpheres = ({ status, audioLevel = 0 }) => {
+	return (
+		<div className="absolute inset-0 z-10">
+			<Canvas camera={{ position: [0, 0, 4], fov: 50 }}>
+				<Scene status={status} audioLevel={audioLevel} />
+			</Canvas>
 		</div>
 	)
 }

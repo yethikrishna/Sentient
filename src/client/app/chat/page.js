@@ -1205,59 +1205,92 @@ export default function ChatPage() {
 							<IconLoader className="animate-spin text-neutral-500" />
 						</div>
 					) : isVoiceMode ? (
-						<div className="flex-1 flex flex-col justify-center items-center relative">
+						<div className="flex-1 flex flex-col relative overflow-hidden">
+							{/* The 3D visualization will render here as a background */}
 							<SiriSpheres
 								status={connectionStatus}
 								audioLevel={audioLevel}
 							/>
 
-							<div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-none">
-								<div className="pointer-events-auto flex flex-col items-center gap-4">
-									{connectionStatus === "disconnected" ? (
-										<button
-											onClick={handleStartVoice}
-											className="flex h-32 w-32 items-center justify-center rounded-full bg-green-600 text-white shadow-lg transition-colors duration-200 hover:bg-green-500"
-											title="Start Call"
+							{/* Overlay for controls, status, and messages */}
+							<div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-4">
+								{/* Call control buttons */}
+								<div className="mb-8">
+									<AnimatePresence mode="wait">
+										<motion.div
+											key={connectionStatus}
+											initial={{ opacity: 0, scale: 0.8 }}
+											animate={{ opacity: 1, scale: 1 }}
+											exit={{ opacity: 0, scale: 0.8 }}
 										>
-											<IconPhone size={48} />
-										</button>
-									) : connectionStatus === "connecting" ? (
-										<div className="flex h-32 w-32 items-center justify-center rounded-full bg-yellow-600 text-white shadow-lg">
-											<IconLoader
-												size={48}
-												className="animate-spin"
-											/>
-										</div>
-									) : (
-										<button
-											onClick={handleStopVoice}
-											className="flex h-32 w-32 items-center justify-center rounded-full bg-red-600 text-white shadow-lg transition-colors duration-200 hover:bg-red-500"
-											title="Hang Up"
-										>
-											<IconPhoneOff size={48} />
-										</button>
-									)}
-									<div className="mt-4 text-center text-lg font-medium text-gray-300 h-6">
-										{voiceStatusText && (
-											<TextShimmer className="font-mono text-sm">
-												{voiceStatusText}
-											</TextShimmer>
-										)}
+											{connectionStatus ===
+											"disconnected" ? (
+												<button
+													onClick={handleStartVoice}
+													className="flex h-24 w-24 items-center justify-center rounded-full bg-green-600 text-white shadow-lg transition-colors duration-200 hover:bg-green-500"
+													title="Start Call"
+												>
+													<IconPhone size={36} />
+												</button>
+											) : connectionStatus ===
+											  "connecting" ? (
+												<div className="flex h-24 w-24 items-center justify-center rounded-full bg-yellow-600 text-white shadow-lg">
+													<IconLoader
+														size={36}
+														className="animate-spin"
+													/>
+												</div>
+											) : (
+												<button
+													onClick={handleStopVoice}
+													className="flex h-24 w-24 items-center justify-center rounded-full bg-red-600 text-white shadow-lg transition-colors duration-200 hover:bg-red-500"
+													title="Hang Up"
+												>
+													<IconPhoneOff size={36} />
+												</button>
+											)}
+										</motion.div>
+									</AnimatePresence>
+								</div>
+
+								{/* Status and Message Display */}
+								<div className="text-center space-y-4 max-w-2xl">
+									<div className="text-lg font-medium text-gray-300 h-6">
+										<AnimatePresence mode="wait">
+											<motion.div
+												key={voiceStatusText}
+												initial={{ opacity: 0, y: 10 }}
+												animate={{ opacity: 1, y: 0 }}
+												exit={{ opacity: 0, y: -10 }}
+											>
+												<TextShimmer className="font-mono text-base">
+													{voiceStatusText}
+												</TextShimmer>
+											</motion.div>
+										</AnimatePresence>
+									</div>
+									<div className="text-2xl font-semibold text-white h-16">
+										<AnimatePresence>
+											{displayedMessages
+												.filter(
+													(m) => m.role === "user"
+												)
+												.slice(-1)
+												.map((msg) => (
+													<motion.p
+														key={msg.id}
+														initial={{ opacity: 0 }}
+														animate={{ opacity: 1 }}
+														exit={{ opacity: 0 }}
+													>
+														{getFinalAnswer(
+															msg.content
+														)}
+													</motion.p>
+												))}
+										</AnimatePresence>
 									</div>
 								</div>
-							</div>
-							<div className="absolute bottom-1/4 max-w-2xl text-center p-4">
-								{displayedMessages
-									.filter((m) => m.role === "user")
-									.slice(-1)
-									.map((msg) => (
-										<p
-											key={msg.id}
-											className="text-2xl font-semibold text-white"
-										>
-											{getFinalAnswer(msg.content)}
-										</p>
-									))}
 							</div>
 						</div>
 					) : displayedMessages.length === 0 && !thinking ? (

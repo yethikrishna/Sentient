@@ -11,7 +11,7 @@ from main.dependencies import mongo_manager, websocket_manager
 from main.auth.utils import PermissionChecker, AuthHelper
 from workers.tasks import generate_plan_from_context, execute_task_plan, calculate_next_run, process_task_change_request, refine_task_details, refine_and_plan_ai_task
 from .models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest, AnswerClarificationsRequest, TaskActionRequest, TaskChatRequest, ProgressUpdateRequest
-from main.llm import get_qwen_assistant
+from main.llm import run_agent_with_fallback
 from json_extractor import JsonExtractor
 from .prompts import TASK_CREATION_PROMPT
 
@@ -48,11 +48,10 @@ async def generate_plan_from_prompt(
     )
 
     try:
-        agent = get_qwen_assistant(system_message=system_prompt)
         messages = [{'role': 'user', 'content': request.prompt}]
 
         response_str = ""
-        for chunk in agent.run(messages=messages):
+        for chunk in run_agent_with_fallback(system_message=system_prompt, function_list=[], messages=messages):
             if isinstance(chunk, list) and chunk:
                 last_message = chunk[-1]
                 if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):

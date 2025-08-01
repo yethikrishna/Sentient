@@ -45,6 +45,13 @@ AUTH0_MANAGEMENT_CLIENT_SECRET = os.getenv("AUTH0_MANAGEMENT_CLIENT_SECRET")
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 
+# Google API Key for services like Maps, Custom Search
+GOOGLE_API_KEYS = list(filter(None, [
+    os.getenv("GOOGLE_API_KEY"),
+    os.getenv("GOOGLE_API_KEY_FALLBACK_1"),
+    os.getenv("GOOGLE_API_KEY_FALLBACK_2"),
+]))
+
 # GitHub OAuth Configuration
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
@@ -64,6 +71,17 @@ TRELLO_CLIENT_ID = os.getenv("TRELLO_CLIENT_ID")
 
 # News API Configuration
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
+NEWS_API_KEYS = list(filter(None, [
+    os.getenv("NEWS_API_KEY"),
+    os.getenv("NEWS_API_KEY_FALLBACK_1"),
+    os.getenv("NEWS_API_KEY_FALLBACK_2"),
+]))
+
+ACCUWEATHER_API_KEYS = list(filter(None, [
+    os.getenv("ACCUWEATHER_API_KEY"),
+    os.getenv("ACCUWEATHER_API_KEY_FALLBACK_1"),
+    os.getenv("ACCUWEATHER_API_KEY_FALLBACK_2"),
+]))
 
 # MongoDB Configuration
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
@@ -390,6 +408,17 @@ INTEGRATIONS_CONFIG = {
 STT_PROVIDER = os.getenv("STT_PROVIDER", "FASTER_WHISPER")
 TTS_PROVIDER = os.getenv("TTS_PROVIDER", "ORPHEUS")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+ELEVENLABS_API_KEYS = list(filter(None, [
+    os.getenv("ELEVENLABS_API_KEY"),
+    os.getenv("ELEVENLABS_API_KEY_FALLBACK_1"),
+    os.getenv("ELEVENLABS_API_KEY_FALLBACK_2"),
+]))
+
+GEMINI_API_KEYS = list(filter(None, [
+    os.getenv("GEMINI_API_KEY"),
+    os.getenv("GEMINI_API_KEY_FALLBACK_1"),
+    os.getenv("GEMINI_API_KEY_FALLBACK_2"),
+]))
 
 # For Orpheus (Dev TTS)
 ORPHEUS_MODEL_PATH = os.getenv("ORPHEUS_MODEL_PATH", os.path.join(os.path.dirname(__file__), "voice", "models", "orpheus-3b-0.1-ft-q4_k_m.gguf"))
@@ -406,6 +435,11 @@ FASTER_WHISPER_COMPUTE_TYPE = os.getenv("FASTER_WHISPER_COMPUTE_TYPE", "int8")
 OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL", "http://localhost:11434/v1/")
 OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "qwen3:4b")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ollama") # Default key for Ollama
+OPENAI_API_KEYS = list(filter(None, [
+    os.getenv("OPENAI_API_KEY"),
+    os.getenv("OPENAI_API_KEY_FALLBACK_1"),
+    os.getenv("OPENAI_API_KEY_FALLBACK_2"),
+]))
 
 # MCP Server URLs
 PROGRESS_UPDATER_MCP_SERVER_URL=os.getenv("PROGRESS_UPDATER_MCP_SERVER_URL", "http://localhost:9011/sse")

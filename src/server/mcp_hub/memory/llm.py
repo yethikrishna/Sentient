@@ -1,15 +1,15 @@
 import os
 import logging
 from qwen_agent.agents import Assistant
-from typing import Dict, Any, List, Union
+from typing import Dict, Any
 import json
 
 from . import prompts
 
 # Use the main server's LLM config
-OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL", "http://localhost:11434/v1/")
+OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL", "http://localhost:11434/v1/") # Keep for consistency in config
 OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "qwen3:4b")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ollama")
+OPENAI_API_KEYS = [key for key in [os.getenv("OPENAI_API_KEY"), os.getenv("OPENAI_API_KEY_FALLBACK_1"), os.getenv("OPENAI_API_KEY_FALLBACK_2")] if key]
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,6 @@ def _get_base_llm_config() -> Dict[str, Any]:
     config = {
         'model': OPENAI_MODEL_NAME,
         'model_server': OPENAI_API_BASE_URL,
-        'api_key': OPENAI_API_KEY
     }
     logger.debug(f"Using LLM config: model={config['model']}, server={config['model_server']}")
     return config
@@ -25,41 +24,42 @@ def _get_base_llm_config() -> Dict[str, Any]:
 def get_fact_summarization_agent() -> Assistant:
     """Initializes an agent for summarizing a list of facts into a paragraph."""
     logger.debug("Initializing 'FactSummarizationAgent'.")
-    system_prompt = prompts.fact_summarization_system_prompt_template
-    llm_cfg = _get_base_llm_config()
-    return Assistant(llm=llm_cfg, name="FactSummarizationAgent", system_message=system_prompt)
+    return {"system_message": prompts.fact_summarization_system_prompt_template, "name": "FactSummarizationAgent"}
 
 def get_fact_extraction_agent() -> Assistant:
     """Initializes an agent for extracting single-sentence facts from text."""
     logger.debug("Initializing 'FactExtractionAgent'.")
-    system_prompt = prompts.fact_extraction_system_prompt_template
-    llm_cfg = _get_base_llm_config()
-    return Assistant(llm=llm_cfg, name="FactExtractionAgent", system_message=system_prompt)
+    return {"system_message": prompts.fact_extraction_system_prompt_template, "name": "FactExtractionAgent"}
 
 def get_fact_analysis_agent() -> Assistant:
     """Initializes an agent for performing a full analysis of a fact."""
     logger.debug("Initializing 'FactAnalysisAgent'.")
-    system_prompt = prompts.fact_analysis_system_prompt_template
-    llm_cfg = _get_base_llm_config()
-    return Assistant(llm=llm_cfg, name="FactAnalysisAgent", system_message=system_prompt)
+    return {"system_message": prompts.fact_analysis_system_prompt_template, "name": "FactAnalysisAgent"}
 
 def get_cud_decision_agent() -> Assistant:
     """Initializes an agent for deciding on CUD operations and performing analysis."""
     logger.debug("Initializing 'CudDecisionAgent'.")
-    system_prompt = prompts.cud_decision_system_prompt_template
-    llm_cfg = _get_base_llm_config()
-    return Assistant(llm=llm_cfg, name="CudDecisionAgent", system_message=system_prompt)
+    return {"system_message": prompts.cud_decision_system_prompt_template, "name": "CudDecisionAgent"}
 
-def run_agent_with_prompt(agent: Assistant, user_prompt: str) -> str:
+def run_agent_with_prompt(agent_config: Dict[str, Any], user_prompt: str) -> str:
     """Helper function to run an agent and extract the final content string."""
-    logger.info(f"Running agent '{getattr(agent, 'name', 'UnknownAgent')}'...")
-    logger.debug(f"Agent '{getattr(agent, 'name', 'UnknownAgent')}' user prompt:\n---PROMPT START---\n{user_prompt}\n---PROMPT END---")
+    agent_name = agent_config.get('name', 'UnknownAgent')
+    system_message = agent_config.get('system_message', '')
+    logger.info(f"Running agent '{agent_name}'...")
+    logger.debug(f"Agent '{agent_name}' user prompt:\n---PROMPT START---\n{user_prompt}\n---PROMPT END---")
     messages = [{'role': 'user', 'content': user_prompt}]
     final_content = ""
-    for chunk in agent.run(messages=messages):
-        if isinstance(chunk, list) and chunk:
-            last_message = chunk[-1]
-            if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
-                final_content = last_message["content"]
-    logger.debug(f"Agent '{getattr(agent, 'name', 'UnknownAgent')}' raw response:\n---RESPONSE START---\n{final_content}\n---RESPONSE END---")
+
+    # Import here to avoid circular dependency issues at module load time
+    from main.llm import run_agent_with_fallback
+
+    try:
+        for chunk in run_agent_with_fallback(system_message=system_message, function_list=[], messages=messages):
+            if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
+                final_content = chunk[-1].get("content", "")
+    except Exception as e:
+        logger.error(f"Agent '{agent_name}' failed after trying all keys: {e}")
+        return "" # Return empty on failure
+
+    logger.debug(f"Agent '{agent_name}' raw response:\n---RESPONSE START---\n{final_content}\n---RESPONSE END---")
     return final_content

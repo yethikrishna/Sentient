@@ -15,7 +15,7 @@ from json_extractor import JsonExtractor
 from workers.utils.api_client import notify_user, push_task_list_update
 from main.config import INTEGRATIONS_CONFIG
 from main.tasks.prompts import TASK_CREATION_PROMPT
-from main.llm import get_qwen_assistant
+from main.llm import run_agent_with_fallback as run_main_agent_with_fallback
 from main.db import MongoManager # MODIFIED: Import the class, not the instance
 from workers.celery_app import celery_app
 from workers.planner.llm import get_planner_agent, get_question_generator_agent # noqa: E501
@@ -25,6 +25,7 @@ from workers.memory_agent_utils import get_memory_qwen_agent, get_db_manager as 
 from workers.executor.tasks import execute_task_plan
 from main.vector_db import get_conversation_summaries_collection
 from main.chat.prompts import STAGE_1_SYSTEM_PROMPT
+from workers.planner.llm import run_agent_with_fallback as run_worker_agent_with_fallback
 from mcp_hub.memory.utils import cud_memory, initialize_embedding_model, initialize_agents
 from workers.utils.text_utils import clean_llm_output
 
@@ -78,12 +79,11 @@ async def _select_relevant_tools(query: str, available_tools_map: Dict[str, str]
         tools_description = "\n".join(f"- `{name}`: {desc}" for name, desc in available_tools_map.items())
         prompt = f"User Query: \"{query}\"\n\nAvailable External Tools (for selection):\n{tools_description}"
 
-        selector_agent = get_qwen_assistant(system_message=STAGE_1_SYSTEM_PROMPT, function_list=[])
         messages = [{'role': 'user', 'content': prompt}]
 
         def _run_selector_sync():
             final_content_str = ""
-            for chunk in selector_agent.run(messages=messages):
+            for chunk in run_main_agent_with_fallback(system_message=STAGE_1_SYSTEM_PROMPT, function_list=[], messages=messages):
                 if isinstance(chunk, list) and chunk:
                     last_message = chunk[-1]
                     if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
@@ -203,12 +203,11 @@ async def async_refine_and_plan_ai_task(task_id: str):
             user_timezone=user_timezone_str,
             current_time=current_time_str
         )
-        agent = get_qwen_assistant(system_message=system_prompt)
         # Use the raw prompt from the task's description for parsing
         messages = [{'role': 'user', 'content': task["description"]}]
 
         response_str = ""
-        for chunk in agent.run(messages=messages):
+        for chunk in run_main_agent_with_fallback(system_message=system_prompt, function_list=[], messages=messages):
             if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
                 response_str = chunk[-1].get("content", "")
 
@@ -334,7 +333,7 @@ async def get_clarifying_questions(user_id: str, task_description: str, topics: 
 
     logger.info(f"Context Verifier for user {user_id} will use tools: {list(mcp_servers_for_agent.keys())}")
     
-    agent = get_question_generator_agent(
+    agent_config = get_question_generator_agent(
         original_context=original_context,
         available_tools_for_prompt=available_tools_for_prompt,
         mcp_servers_for_agent=mcp_servers_for_agent
@@ -344,7 +343,7 @@ async def get_clarifying_questions(user_id: str, task_description: str, topics: 
     messages = [{'role': 'user', 'content': user_prompt}]
 
     final_response_str = ""
-    for chunk in agent.run(messages=messages):
+    for chunk in run_worker_agent_with_fallback(system_message=agent_config["system_message"], function_list=agent_config["function_list"], messages=messages):
         if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
             final_response_str = chunk[-1].get("content", "")
 
@@ -480,13 +479,13 @@ async def async_generate_plan(task_id: str):
 
         available_tools = get_all_mcp_descriptions()
 
-        planner_agent = get_planner_agent(available_tools, current_user_time, user_name, user_location, retrieved_context)
+        agent_config = get_planner_agent(available_tools, current_user_time, user_name, user_location, retrieved_context)
 
         user_prompt_content = "Please create a plan for the following action items:\n- " + "\n- ".join(action_items)
         messages = [{'role': 'user', 'content': user_prompt_content}]
 
         final_response_str = ""
-        for chunk in planner_agent.run(messages=messages):
+        for chunk in run_worker_agent_with_fallback(system_message=agent_config["system_message"], function_list=agent_config["function_list"], messages=messages):
             if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
                 final_response_str = chunk[-1].get("content", "")
 
@@ -551,11 +550,10 @@ async def async_refine_task_details(task_id: str):
             user_timezone=user_timezone_str,
             current_time=current_time_str
         )
-        agent = get_qwen_assistant(system_message=system_prompt)
         messages = [{'role': 'user', 'content': task["description"]}] # Use the raw prompt for parsing
 
         response_str = ""
-        for chunk in agent.run(messages=messages):
+        for chunk in run_main_agent_with_fallback(system_message=system_prompt, function_list=[], messages=messages):
             if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
                 response_str = chunk[-1].get("content", "")
 
@@ -769,8 +767,6 @@ async def async_summarize_conversations():
         message_chunks = [messages_to_process[i:i + chunk_size] for i in range(0, len(messages_to_process), chunk_size)]
         
         # 4. Process each chunk
-        system_prompt = "You are a summarization expert. Summarize the key points, decisions, facts, and topics from the following conversation chunk into a dense, third-person paragraph. Focus on information that would be useful for future context. Do not add any preamble or sign-off."
-        summarizer_agent = get_qwen_assistant(system_message=system_prompt)
         
         for chunk in message_chunks:
             if len(chunk) < 5: # Don't summarize very small chunks
@@ -781,7 +777,8 @@ async def async_summarize_conversations():
             # 4a. Summarize with LLM
             messages = [{'role': 'user', 'content': conversation_text}]
             summary_text = ""
-            for response_chunk in summarizer_agent.run(messages=messages):
+            system_prompt = "You are a summarization expert. Summarize the key points, decisions, facts, and topics from the following conversation chunk into a dense, third-person paragraph. Focus on information that would be useful for future context. Do not add any preamble or sign-off."
+            for response_chunk in run_main_agent_with_fallback(system_message=system_prompt, function_list=[], messages=messages):
                  if isinstance(response_chunk, list) and response_chunk and response_chunk[-1].get("role") == "assistant":
                     summary_text = response_chunk[-1].get("content", "")
 

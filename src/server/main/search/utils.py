@@ -6,7 +6,7 @@ from typing import Any, AsyncGenerator, Dict, List, Tuple
 
 from main.chat.prompts import STAGE_1_SYSTEM_PROMPT
 from main.config import INTEGRATIONS_CONFIG
-from main.llm import get_qwen_assistant
+from main.llm import run_agent_with_fallback
 from json_extractor import JsonExtractor
 
 logger = logging.getLogger(__name__)
@@ -33,12 +33,11 @@ async def _select_search_tools(query: str, user_id: str, user_integrations: Dict
         tools_description = "\n".join(f"- `{name}`: {desc}" for name, desc in available_tools_map.items())
         prompt = f"User Query: \"{query}\"\n\nAvailable External Tools (for selection):\n{tools_description}"
 
-        selector_agent = get_qwen_assistant(system_message=STAGE_1_SYSTEM_PROMPT, function_list=[])
         messages = [{'role': 'user', 'content': prompt}]
 
         def _run_selector_sync():
             final_content_str = ""
-            for chunk in selector_agent.run(messages=messages):
+            for chunk in run_agent_with_fallback(system_message=STAGE_1_SYSTEM_PROMPT, function_list=[], messages=messages):
                 if isinstance(chunk, list) and chunk:
                     last_message = chunk[-1]
                     if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
@@ -109,7 +108,11 @@ async def perform_unified_search(query: str, user_id: str) -> AsyncGenerator[str
 
     try:
         # The agent's run method is a generator that yields the complete history at each step.
-        for history_chunk in agent.run(messages=messages):
+        for history_chunk in run_agent_with_fallback(
+            system_message=UNIFIED_SEARCH_SYSTEM_PROMPT,
+            function_list=[{"mcpServers": mcp_servers_to_use}],
+            messages=messages
+        ):
             if not isinstance(history_chunk, list):
                 continue
 

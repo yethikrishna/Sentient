@@ -14,7 +14,7 @@ from qwen_agent.tools.base import BaseTool, register_tool
 
 from main.chat.prompts import STAGE_1_SYSTEM_PROMPT, STAGE_2_SYSTEM_PROMPT
 from main.db import MongoManager
-from main.llm import get_qwen_assistant
+from main.llm import run_agent_with_fallback
 from main.config import (INTEGRATIONS_CONFIG, ENVIRONMENT)
 from json_extractor import JsonExtractor
 
@@ -87,12 +87,11 @@ async def _get_stage1_response(messages: List[Dict[str, Any]], connected_tools_m
         f"**Disconnected Tools (for user guidance):**\n{disconnected_tools_desc}"
     )
 
-    selector_agent = get_qwen_assistant(system_message=STAGE_1_SYSTEM_PROMPT, function_list=tools_for_agent)
     messages = [{'role': 'user', 'content': prompt}]
 
     def _run_stage1_sync():
         final_content_str = ""
-        for chunk in selector_agent.run(messages=messages):
+        for chunk in run_agent_with_fallback(system_message=STAGE_1_SYSTEM_PROMPT, function_list=tools_for_agent, messages=messages):
             if isinstance(chunk, list) and chunk:
                 last_message = chunk[-1]
                 if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
@@ -257,10 +256,9 @@ async def generate_chat_llm_stream(
 
     def worker():
         try:
-            qwen_assistant = get_qwen_assistant(system_message=system_prompt, function_list=tools)
             # Use the new formatted history with IDs
             qwen_formatted_history = [{"role": "user", "content": "\n".join(history_for_llm)}]
-            for new_history_step in qwen_assistant.run(messages=qwen_formatted_history):
+            for new_history_step in run_agent_with_fallback(system_message=system_prompt, function_list=tools, messages=qwen_formatted_history):
                 loop.call_soon_threadsafe(queue.put_nowait, new_history_step)
         except Exception as e:
             logger.error(f"Error in chat worker thread for user {user_id}: {e}", exc_info=True)
@@ -425,14 +423,12 @@ async def process_voice_command(
 
             await send_status_update({"type": "status", "message": "thinking"})
             
-            qwen_assistant = get_qwen_assistant(system_message=system_prompt, function_list=tools)
-            
             # --- MODIFICATION: Run blocking agent code in a separate thread ---
             loop = asyncio.get_running_loop()
             def agent_worker():
                 final_run_response = None
                 try:
-                    for response in qwen_assistant.run(messages=qwen_formatted_history_for_agent):
+                    for response in run_agent_with_fallback(system_message=system_prompt, function_list=tools, messages=qwen_formatted_history_for_agent):
                         final_run_response = response
                         if isinstance(response, list) and response:
                             last_step = response[-1]

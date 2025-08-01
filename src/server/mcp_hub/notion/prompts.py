@@ -32,8 +32,6 @@ To create a page with a heading and a paragraph, the `content_blocks_json` strin
   }
 ]
 ```
-- **Validation**: If you generate a `content_blocks_json` string, you should pass it to the `json_validator` tool first to ensure it is correct before calling `createPage`.
-
 - Your entire response for a tool call MUST be a single, valid JSON object.
 """
 

@@ -927,7 +927,10 @@ export default function ChatPage() {
 				)
 					return
 				await navigator.mediaDevices.getUserMedia({
-					audio: true,
+					audio: {
+						noiseSuppression: false,
+						echoCancellation: false
+					},
 					video: false
 				})
 				const devices = await navigator.mediaDevices.enumerateDevices()
@@ -1255,13 +1258,14 @@ export default function ChatPage() {
 
 								{/* Status and Message Display */}
 								<div className="text-center space-y-4 max-w-2xl">
-									<div className="text-lg font-medium text-gray-300 h-6">
+									<div className="text-lg font-medium text-gray-300 min-h-[24px]">
 										<AnimatePresence mode="wait">
 											<motion.div
 												key={voiceStatusText}
 												initial={{ opacity: 0, y: 10 }}
 												animate={{ opacity: 1, y: 0 }}
 												exit={{ opacity: 0, y: -10 }}
+												transition={{ duration: 0.2 }}
 											>
 												<TextShimmer className="font-mono text-base">
 													{voiceStatusText}
@@ -1269,24 +1273,36 @@ export default function ChatPage() {
 											</motion.div>
 										</AnimatePresence>
 									</div>
-									<div className="text-2xl font-semibold text-white h-16">
-										<AnimatePresence>
+									<div className="text-2xl font-semibold text-white min-h-[64px]">
+										<AnimatePresence mode="wait">
 											{displayedMessages
 												.filter(
 													(m) => m.role === "user"
 												)
 												.slice(-1)
 												.map((msg) => (
-													<motion.p
+													<motion.div
 														key={msg.id}
-														initial={{ opacity: 0 }}
-														animate={{ opacity: 1 }}
-														exit={{ opacity: 0 }}
+														initial={{
+															opacity: 0,
+															y: 15
+														}}
+														animate={{
+															opacity: 1,
+															y: 0
+														}}
+														exit={{
+															opacity: 0,
+															y: -15
+														}}
+														transition={{
+															duration: 0.3
+														}}
 													>
 														{getFinalAnswer(
 															msg.content
 														)}
-													</motion.p>
+													</motion.div>
 												))}
 										</AnimatePresence>
 									</div>

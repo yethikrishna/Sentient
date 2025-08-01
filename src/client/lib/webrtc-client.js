@@ -113,9 +113,11 @@ export class WebRTCClient {
 				)
 			}
 
-			const audioConstraints = deviceId
-				? { deviceId: { exact: deviceId } }
-				: true
+			const audioConstraints = {
+				...(deviceId && { deviceId: { exact: deviceId } }),
+				noiseSuppression: false,
+				echoCancellation: false
+			}
 			this.mediaStream = await navigator.mediaDevices.getUserMedia({
 				audio: audioConstraints
 			})
@@ -231,19 +233,22 @@ export class WebRTCClient {
 		if (!this.analyser || !this.dataArray || !this.options.onAudioLevel)
 			return
 		let lastUpdateTime = 0
-		const throttleInterval = 100
+		const throttleInterval = 100 // 100ms, i.e., 10 times per second
 
 		const analyze = () => {
 			if (!this.analyser || !this.dataArray) return
 			this.analyser.getByteFrequencyData(this.dataArray)
 			const currentTime = Date.now()
 			if (currentTime - lastUpdateTime > throttleInterval) {
-				let sum = 0
+				let sumOfSquares = 0
 				for (let i = 0; i < this.dataArray.length; i++) {
-					sum += this.dataArray[i]
+					sumOfSquares += this.dataArray[i] * this.dataArray[i]
 				}
-				const average = sum / this.dataArray.length / 255
-				this.options.onAudioLevel(average)
+				const rms = Math.sqrt(sumOfSquares / this.dataArray.length)
+				// Normalize RMS (0-255) to a 0-1 scale, with 128 as a midpoint.
+				// Multiply by 1.5 to boost the signal for better visualization.
+				const normalizedLevel = (rms / 128) * 1.5
+				this.options.onAudioLevel(Math.min(normalizedLevel, 1.0)) // Clamp at 1.0
 				lastUpdateTime = currentTime
 			}
 			this.animationFrameId = requestAnimationFrame(analyze)

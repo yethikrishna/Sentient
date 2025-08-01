@@ -359,7 +359,7 @@ Description: ${event.description || "No description."}`
 				place="right"
 				style={{ zIndex: 9999 }}
 			/>
-			<div className="flex-1 flex flex-col md:flex-row ml-2 gap-x-2 overflow-hidden relative">
+			<div className="flex-1 flex flex-col md:flex-row gap-x-2 overflow-hidden relative">
 				<div className="absolute inset-0 z-[-1] network-grid-background">
 					<InteractiveNetworkBackground />
 				</div>

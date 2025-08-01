@@ -60,35 +60,36 @@ async def _get_stage1_response(messages: List[Dict[str, Any]], connected_tools_m
     Uses the Stage 1 LLM to either respond directly or select relevant tools.
     Returns a list of tool names if tools are selected, or a string response if it's a direct answer.
     """
-    # The Stage 1 agent always has access to core tools.
-    core_tools = ["memory", "history", "tasks"]
-    mcp_servers_for_stage1 = {}
-    for tool_name in core_tools:
-        config = INTEGRATIONS_CONFIG.get(tool_name, {})
-        if config:
-            mcp_config = config.get("mcp_server_config", {})
-            if mcp_config and mcp_config.get("url") and mcp_config.get("name"):
-                mcp_servers_for_stage1[mcp_config["name"]] = {
-                    "url": mcp_config["url"],
-                    "headers": {"X-User-ID": user_id},
-                    "transport": "sse"
-                }
+    # Core tools for Stage 1 agent. No access given for now.
+    # core_tools = ["memory", "history", "tasks"]
+    # mcp_servers_for_stage1 = {}
+    # for tool_name in core_tools:
+    #     config = INTEGRATIONS_CONFIG.get(tool_name, {})
+    #     if config:
+    #         mcp_config = config.get("mcp_server_config", {})
+    #         if mcp_config and mcp_config.get("url") and mcp_config.get("name"):
+    #             mcp_servers_for_stage1[mcp_config["name"]] = {
+    #                 "url": mcp_config["url"],
+    #                 "headers": {"X-User-ID": user_id},
+    #                 "transport": "sse"
+    #             }
+    # tools_for_agent = [{"mcpServers": mcp_servers_for_stage1}]
+    
+    # The above section allows adding history, memory and tasks tools to the Stage 1 agent. Commented out for weaker models.
 
-    tools_for_agent = [{"mcpServers": mcp_servers_for_stage1}]
+    tools_for_agent = []
 
-    # Format history and tool lists for the prompt
-    history_for_llm = [f"<{msg['role']}>{msg['content']}</{msg['role']}>" for msg in messages]
-    history_str = "\n".join(history_for_llm)
-    connected_tools_desc = "\n".join(f"- `{name}`: {desc}" for name, desc in connected_tools_map.items())
-    disconnected_tools_desc = "\n".join(f"- `{name}`: {desc}" for name, desc in disconnected_tools_map.items())
-    prompt = (
-        f"**Conversation History:**\n{history_str}\n\n"
-        f"**Connected Tools (for selection):**\n{connected_tools_desc}\n\n"
-        f"**Disconnected Tools (for user guidance):**\n{disconnected_tools_desc}"
-    )
+    # Format history for the prompt
+    # Expand messages so each history item is a separate message dict
+    expanded_messages = []
+    for msg in messages:
+        expanded_messages.append({
+            "role": msg.get("role", "user"),
+            "content": msg.get("content", "")
+        })
 
     selector_agent = get_qwen_assistant(system_message=STAGE_1_SYSTEM_PROMPT, function_list=tools_for_agent)
-    messages = [{'role': 'user', 'content': prompt}]
+    messages = expanded_messages
 
     def _run_stage1_sync():
         final_content_str = ""
@@ -226,9 +227,9 @@ async def generate_chat_llm_stream(
             if tool_name_for_server in final_tool_names:
                 filtered_mcp_servers[server_name] = server_config
 
-        tools = [{"mcpServers": filtered_mcp_servers}, 'json_validator']
+        tools = [{"mcpServers": filtered_mcp_servers}]
 
-        logger.info(f"Final tools for agent: {list(filtered_mcp_servers.keys())}  json_validator")
+        logger.info(f"Final tools for agent: {list(filtered_mcp_servers.keys())}")
         
     except Exception as e:
         logger.error(f"Failed during initial setup for chat stream for user {user_id}: {e}", exc_info=True)
@@ -237,17 +238,18 @@ async def generate_chat_llm_stream(
 
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue[Optional[Any]] = asyncio.Queue()
-    stream_interrupted = False
     
-    disconnected_tools_list_str = "\n".join([f"- `{name}`: {desc}" for name, desc in disconnected_tools.items()])
-    disconnected_tools_prompt_section = ""
-    if disconnected_tools_list_str:
-        disconnected_tools_prompt_section = f"**Disconnected Tools (User needs to connect these in Settings):**\n{disconnected_tools_list_str}\n\n"
-
     # Prepare message history for the LLM, including IDs for user messages
-    history_for_llm = []
-    for msg in messages[-30:]: # Limit context to the last 30 messages
-        history_for_llm.append(f"<{msg['role']}" + (f" id='{msg.get('id')}'" if msg.get('id') and msg['role'] == 'user' else "") + f">{msg['content']}</{msg['role']}>")
+    # history_for_llm = []
+    # for msg in messages[-30:]: # Limit context to the last 30 messages
+    #     history_for_llm.append(f"<{msg['role']}" + (f" id='{msg.get('id')}'" if msg.get('id') and msg['role'] == 'user' else "") + f">{msg['content']}</{msg['role']}>")
+        
+    stage_2_expanded_messages = []
+    for msg in messages:
+        stage_2_expanded_messages.append({
+            "role": msg.get("role", "user"),
+            "content": msg.get("content", "")
+        })
 
     system_prompt = STAGE_2_SYSTEM_PROMPT.format(
         username=username,
@@ -259,8 +261,8 @@ async def generate_chat_llm_stream(
         try:
             qwen_assistant = get_qwen_assistant(system_message=system_prompt, function_list=tools)
             # Use the new formatted history with IDs
-            qwen_formatted_history = [{"role": "user", "content": "\n".join(history_for_llm)}]
-            for new_history_step in qwen_assistant.run(messages=qwen_formatted_history):
+            # qwen_formatted_history = [{"role": "user", "content": "\n".join(history_for_llm)}]
+            for new_history_step in qwen_assistant.run(messages=stage_2_expanded_messages):
                 loop.call_soon_threadsafe(queue.put_nowait, new_history_step)
         except Exception as e:
             logger.error(f"Error in chat worker thread for user {user_id}: {e}", exc_info=True)
@@ -402,18 +404,15 @@ async def process_voice_command(
                 if tool_name_for_server in final_tool_names:
                     filtered_mcp_servers[server_name] = server_config
 
-            tools = [{"mcpServers": filtered_mcp_servers}, 'json_validator']
-            logger.info(f"Voice Command Tools (Stage 2): {list(filtered_mcp_servers.keys())} + json_validator")
-
-            # 4. Build the rich system prompt (for Stage 2)
-            disconnected_tools_list_str = "\n".join([f"- `{name}`: {desc}" for name, desc in disconnected_tools.items()])
-            disconnected_tools_prompt_section = ""
-            if disconnected_tools_list_str:
-                disconnected_tools_prompt_section = f"**Disconnected Tools (User needs to connect these in Settings):**\n{disconnected_tools_list_str}\n\n"
-
-            history_for_llm = []
+            tools = [{"mcpServers": filtered_mcp_servers}]
+            logger.info(f"Voice Command Tools (Stage 2): {list(filtered_mcp_servers.keys())}")
+                
+            expanded_messages = []
             for msg in qwen_formatted_history:
-                history_for_llm.append(f"<{msg['role']}" + (f" id='{msg.get('id')}'" if msg.get('id') and msg['role'] == 'user' else "") + f">{msg['content']}</{msg['role']}>")
+                expanded_messages.append({
+                    "role": msg.get("role", "user"),
+                    "content": msg.get("content", "")
+                })
             
             system_prompt = STAGE_2_SYSTEM_PROMPT.format(
                 username=username,
@@ -421,8 +420,6 @@ async def process_voice_command(
                 current_user_time=current_user_time
             )
             
-            qwen_formatted_history_for_agent = [{"role": "user", "content": "\n".join(history_for_llm)}]
-
             await send_status_update({"type": "status", "message": "thinking"})
             
             qwen_assistant = get_qwen_assistant(system_message=system_prompt, function_list=tools)
@@ -432,7 +429,7 @@ async def process_voice_command(
             def agent_worker():
                 final_run_response = None
                 try:
-                    for response in qwen_assistant.run(messages=qwen_formatted_history_for_agent):
+                    for response in qwen_assistant.run(messages=expanded_messages):
                         final_run_response = response
                         if isinstance(response, list) and response:
                             last_step = response[-1]

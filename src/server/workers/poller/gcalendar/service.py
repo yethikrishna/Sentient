@@ -81,7 +81,7 @@ class GCalendarPollingService:
                 return
 
             last_updated_iso = polling_state.get("last_successful_poll_timestamp_iso")
-            events, new_last_updated_iso = await fetch_events(creds, last_updated_iso, max_results=50)
+            events, new_last_updated_iso = await fetch_events(creds, last_updated_iso, max_results=10)
             
             processed_count = 0
             for event in events:

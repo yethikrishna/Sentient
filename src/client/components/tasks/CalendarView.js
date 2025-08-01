@@ -21,6 +21,7 @@ import {
 	IconDots
 } from "@tabler/icons-react"
 import { cn } from "@utils/cn"
+import GCalEventCard from "./GCalEventCard"
 import TaskCardCalendar from "./TaskCardCalendar"
 
 const cellVariants = {
@@ -30,7 +31,7 @@ const cellVariants = {
 
 const CalendarDayCell = ({
 	day,
-	tasks,
+	items, // Now receives a mix of tasks and events
 	onSelectTask,
 	onDayClick,
 	onShowMoreClick,
@@ -38,8 +39,8 @@ const CalendarDayCell = ({
 	isSelected
 }) => {
 	const [isHovered, setIsHovered] = useState(false)
-	const firstTask = tasks[0]
-	const hasMoreTasks = tasks.length > 1
+	const firstItem = items[0]
+	const hasMoreItems = items.length > 1
 
 	return (
 		<motion.div
@@ -90,16 +91,22 @@ const CalendarDayCell = ({
 				className="space-y-1 flex-1 cursor-pointer"
 				onClick={() => onShowMoreClick(day)}
 			>
-				{firstTask && (
-					<TaskCardCalendar
-						task={firstTask}
-						onSelectTask={onSelectTask}
-					/>
-				)}
-				{tasks.length > 0 && (
+				{firstItem &&
+					(firstItem.type === "gcal" ? (
+						<GCalEventCard
+							event={firstItem}
+							onSelectTask={onSelectTask}
+						/>
+					) : (
+						<TaskCardCalendar
+							task={firstItem}
+							onSelectTask={onSelectTask}
+						/>
+					))}
+				{items.length > 0 && (
 					<div className="w-1 h-1 bg-brand-yellow rounded-full mx-auto mt-1"></div>
 				)}
-				{hasMoreTasks && (
+				{hasMoreItems && (
 					<div className="w-full text-center text-xs text-neutral-400 p-1 rounded-md hover:bg-neutral-700/50">
 						<IconDots size={16} className="mx-auto" />
 					</div>
@@ -109,19 +116,34 @@ const CalendarDayCell = ({
 	)
 }
 
-const CalendarView = ({ tasks, onSelectTask, onDayClick, onShowMoreClick }) => {
+const CalendarView = ({
+	tasks,
+	gcalEvents,
+	onSelectTask,
+	onDayClick,
+	onShowMoreClick,
+	onMonthChange
+}) => {
 	const [currentMonth, setCurrentMonth] = useState(new Date())
 	const [selectedDate, setSelectedDate] = useState(new Date())
 
 	const monthStart = startOfMonth(currentMonth)
 	const monthEnd = endOfMonth(currentMonth)
 	const daysInGrid = eachDayOfInterval({
-		start: startOfWeek(monthStart),
-		end: endOfWeek(monthEnd)
+		start: startOfWeek(monthStart, { weekStartsOn: 0 }),
+		end: endOfWeek(monthEnd, { weekStartsOn: 0 })
 	})
 
-	const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1))
-	const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1))
+	const nextMonth = () => {
+		const newMonth = addMonths(currentMonth, 1)
+		setCurrentMonth(newMonth)
+		onMonthChange(newMonth)
+	}
+	const prevMonth = () => {
+		const newMonth = subMonths(currentMonth, 1)
+		setCurrentMonth(newMonth)
+		onMonthChange(newMonth)
+	}
 
 	const handleDayClickInternal = (day) => {
 		setSelectedDate(day)
@@ -171,14 +193,19 @@ const CalendarView = ({ tasks, onSelectTask, onDayClick, onShowMoreClick }) => {
 				animate="visible"
 			>
 				{daysInGrid.map((day) => {
-					const tasksForDay = tasks.filter((task) =>
-						isSameDay(task.scheduled_date, day)
+					const tasksForDay = tasks.filter(
+						(task) =>
+						isSameDay(task.scheduled_date, day) // prettier-ignore
 					)
+					const eventsForDay = (gcalEvents || []).filter((event) =>
+						isSameDay(event.scheduled_date, day)
+					)
+					const allItemsForDay = [...tasksForDay, ...eventsForDay]
 					return (
 						<CalendarDayCell
 							key={day.toString()}
 							day={day}
-							tasks={tasksForDay}
+							items={allItemsForDay}
 							isCurrentMonth={isSameMonth(day, currentMonth)}
 							onSelectTask={onSelectTask}
 							onDayClick={handleDayClickInternal}

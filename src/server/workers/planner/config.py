@@ -230,6 +230,16 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("MEMORY_MCP_SERVER_URL", "http://localhost:8001/sse")
         }
     },
+    "file_management": {
+        "display_name": "File Management",
+        "description": "Read and write files to a temporary storage area. Useful for handling uploads, generating files for download, and data analysis.",
+        "auth_type": "builtin",
+        "icon": "IconFile",
+        "mcp_server_config": {
+            "name": "file_management_server",
+            "url": os.getenv("FILE_MANAGEMENT_MCP_SERVER_URL", "http://localhost:9026/sse")
+        }
+    },
     "whatsapp": {
         "display_name": "WhatsApp",
         "description": "Connect a WhatsApp number to allow your agent to send messages on your behalf as a tool. This is different from your notification number.",
@@ -238,6 +248,16 @@ INTEGRATIONS_CONFIG = {
         "mcp_server_config": {
             "name": "whatsapp_server",
             "url": os.getenv("WHATSAPP_MCP_SERVER_URL", "http://localhost:9024/sse")
+        }
+    },
+    "linkedin": {
+        "display_name": "LinkedIn",
+        "description": "Search for job listings on LinkedIn. Requires you to first upload a 'linkedin_cookies.json' file using the file upload button in the chat.",
+        "auth_type": "manual",
+        "icon": "IconBrandLinkedin",
+        "mcp_server_config": {
+            "name": "linkedin_server",
+            "url": os.getenv("LINKEDIN_MCP_SERVER_URL", "http://localhost:9027/sse")
         }
     }
 }

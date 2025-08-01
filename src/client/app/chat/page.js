@@ -17,13 +17,16 @@ import {
 	IconPhone,
 	IconPhoneOff,
 	IconWaveSine,
-	IconMessageOff
+	IconMessageOff,
+	IconPaperclip,
+	IconFile
 } from "@tabler/icons-react"
 import {
 	IconBrandSlack,
 	IconBrandNotion,
 	IconBrandGithub,
-	IconBrandGoogleDrive
+	IconBrandGoogleDrive,
+	IconBrandLinkedin
 } from "@tabler/icons-react"
 import IconGoogleMail from "@components/icons/IconGoogleMail"
 import IconGoogleCalendar from "@components/icons/IconGoogleCalendar"
@@ -53,7 +56,8 @@ const toolIcons = {
 	github: IconBrandGithub,
 	internet_search: IconWorldSearch,
 	memory: IconBrain,
-	gmaps: IconMapPin
+	gmaps: IconMapPin,
+	linkedin: IconBrandLinkedin
 }
 
 const useCasesByDomain = {
@@ -244,7 +248,7 @@ const UseCaseGrid = ({ useCases, onSelectPrompt }) => {
 							>
 								{useCase.action}{" "}
 								<span className="transition-transform group-hover:translate-x-1">
-									���
+									→
 								</span>
 							</button>
 						</motion.div>
@@ -264,6 +268,7 @@ export default function ChatPage() {
 	const chatEndRef = useRef(null)
 	const abortControllerRef = useRef(null)
 	const scrollContainerRef = useRef(null)
+	const fileInputRef = useRef(null)
 
 	// State for infinite scroll
 	const [isLoadingOlder, setIsLoadingOlder] = useState(false)
@@ -277,6 +282,11 @@ export default function ChatPage() {
 	const [replyingTo, setReplyingTo] = useState(null)
 	const [isOptionsOpen, setIsOptionsOpen] = useState(false)
 	const [confirmClear, setConfirmClear] = useState(false)
+
+	// --- File Upload State ---
+	const [selectedFile, setSelectedFile] = useState(null)
+	const [isUploading, setIsUploading] = useState(false)
+	const [uploadedFilename, setUploadedFilename] = useState(null)
 
 	// --- Voice Mode State ---
 	const [isVoiceMode, setIsVoiceMode] = useState(false)
@@ -415,20 +425,74 @@ export default function ChatPage() {
 		textareaRef.current?.focus()
 	}
 
+	const handleFileChange = async (event) => {
+		const file = event.target.files?.[0]
+		if (!file) return
+
+		// Reset file input to allow re-uploading the same file
+		event.target.value = ""
+
+		if (file.size > 5 * 1024 * 1024) {
+			// 5MB limit
+			toast.error(
+				"File is too large. Please select a file smaller than 5MB."
+			)
+			return
+		}
+
+		setSelectedFile(file)
+		setIsUploading(true)
+		setUploadedFilename(null)
+		const toastId = toast.loading(`Uploading ${file.name}...`)
+
+		try {
+			const formData = new FormData()
+			formData.append("file", file)
+
+			const response = await fetch("/api/files/upload", {
+				method: "POST",
+				body: formData
+			})
+
+			if (!response.ok) {
+				const errorData = await response.json()
+				throw new Error(errorData.error || "File upload failed")
+			}
+
+			const result = await response.json()
+			setUploadedFilename(result.filename)
+			toast.success(`${result.filename} uploaded successfully.`, {
+				id: toastId
+			})
+		} catch (error) {
+			toast.error(`Error: ${error.message}`, { id: toastId })
+			setSelectedFile(null)
+		} finally {
+			setIsUploading(false)
+		}
+	}
+
 	const sendMessage = async () => {
-		if (input.trim() === "" || thinking) return
+		if ((!input.trim() && !uploadedFilename) || thinking || isUploading)
+			return
 
 		setThinking(true)
 		abortControllerRef.current = new AbortController()
 
 		posthog?.capture("chat_message_sent", {
-			message_length: input.length
+			message_length: input.length,
+			has_file: !!uploadedFilename
 		})
+
+		let messageContent = input.trim()
+		if (uploadedFilename) {
+			messageContent = `(Attached file for context: ${uploadedFilename}) ${messageContent}`
+		}
 
 		const newUserMessage = {
 			id: `user-${Date.now()}`,
 			role: "user",
-			content: input.trim(),
+			content: messageContent,
 			timestamp: new Date().toISOString(),
 			...(replyingTo && { replyToId: replyingTo.id })
 		}
@@ -439,6 +503,8 @@ export default function ChatPage() {
 
 		setInput("")
 		setReplyingTo(null)
+		setUploadedFilename(null) // Reset file after sending
+		setSelectedFile(null)
 		if (textareaRef.current) textareaRef.current.style.height = "auto"
 
 		try {
@@ -916,6 +982,41 @@ export default function ChatPage() {
 		</AnimatePresence>
 	)
 
+	const renderUploadedFilePreview = () => (
+		<AnimatePresence>
+			{uploadedFilename && (
+				<motion.div
+					initial={{ opacity: 0, y: 10 }}
+					animate={{ opacity: 1, y: 0 }}
+					exit={{ opacity: 0, y: 10 }}
+					className="bg-neutral-800/60 p-3 rounded-t-lg border-b border-neutral-700/50 flex justify-between items-center"
+				>
+					<div className="flex items-center gap-2 overflow-hidden">
+						<IconFile
+							size={16}
+							className="text-neutral-400 flex-shrink-0"
+						/>
+						<p
+							className="text-sm text-neutral-200 truncate"
+							title={uploadedFilename}
+						>
+							{uploadedFilename}
+						</p>
+					</div>
+					<button
+						onClick={() => {
+							setUploadedFilename(null)
+							setSelectedFile(null)
+						}}
+						className="p-1.5 rounded-full text-neutral-400 hover:bg-neutral-700 hover:text-white"
+					>
+						<IconX size={16} />
+					</button>
+				</motion.div>
+			)}
+		</AnimatePresence>
+	)
+
 	const renderInputArea = () => (
 		<div className="relative bg-neutral-900 rounded-2xl p-px">
 			<BorderTrail className="bg-brand-orange" />
@@ -932,11 +1033,32 @@ export default function ChatPage() {
 							sendMessage()
 						}
 					}}
-					placeholder="Type a message"
-					className="w-full p-4 pr-24 bg-transparent text-base text-white placeholder-neutral-500 resize-none focus:ring-0 focus:outline-none overflow-y-auto custom-scrollbar"
+					placeholder="Type a message, or attach a file..."
+					className="w-full p-4 pl-14 pr-24 bg-transparent text-base text-white placeholder-neutral-500 resize-none focus:ring-0 focus:outline-none overflow-y-auto custom-scrollbar"
 					rows={1}
 					style={{ maxHeight: "200px" }}
 				/>
+				<div className="absolute left-3 bottom-3 flex items-center gap-2">
+					<input
+						type="file"
+						ref={fileInputRef}
+						onChange={handleFileChange}
+						className="hidden"
+					/>
+					<button
+						onClick={() => fileInputRef.current?.click()}
+						disabled={isUploading}
+						className="p-2.5 rounded-full text-white bg-neutral-700 hover:bg-neutral-600 transition-colors disabled:opacity-50"
+						data-tooltip-id="home-tooltip"
+						data-tooltip-content="Attach File (Max 5MB)"
+					>
+						{isUploading ? (
+							<IconLoader size={18} className="animate-spin" />
+						) : (
+							<IconPaperclip size={18} />
+						)}
+					</button>
+				</div>
 				<div className="absolute right-3 bottom-3 flex items-center gap-2">
 					<button
 						onClick={toggleVoiceMode}
@@ -958,7 +1080,11 @@ export default function ChatPage() {
 					) : (
 						<button
 							onClick={sendMessage}
-							disabled={!input.trim() || thinking}
+							disabled={
+								(!input.trim() && !uploadedFilename) ||
+								thinking ||
+								isUploading
+							}
 							className="p-2.5 bg-brand-orange rounded-full text-white disabled:opacity-50 hover:bg-brand-orange/90 transition-all shadow-md"
 						>
 							<IconSend size={18} />
@@ -1184,7 +1310,9 @@ export default function ChatPage() {
 				{!isLoading && !isVoiceMode && displayedMessages.length > 0 && (
 					<div className="px-4 pt-2 pb-4 sm:px-6 sm:pb-6 bg-transparent">
 						<div className="w-full max-w-4xl mx-auto">
-							{renderReplyPreview()}
+							{uploadedFilename
+								? renderUploadedFilePreview()
+								: renderReplyPreview()}
 							{renderInputArea()}
 						</div>
 					</div>

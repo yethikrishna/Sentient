@@ -30,6 +30,8 @@ snac
 torch
 fastrtc[vad, stt, tts]
 numpy
+crawl4ai
+playwright
 
 # --- Background Task Queue ---
 celery

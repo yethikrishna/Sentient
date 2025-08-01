@@ -21,6 +21,7 @@ import {
 	IconBrandGithub,
 	IconNews,
 	IconFileText,
+	IconFile,
 	IconPresentation,
 	IconTable,
 	IconMapPin,
@@ -34,7 +35,8 @@ import {
 	IconWorldSearch,
 	IconSearch,
 	IconBrandEvernote,
-	IconSparkles
+	IconSparkles,
+	IconBrandLinkedin
 } from "@tabler/icons-react"
 import { cn } from "@utils/cn"
 import { usePostHog } from "posthog-js/react"
@@ -90,7 +92,9 @@ const integrationColorIcons = {
 	todoist: IconBrandTodoist,
 	discord: IconBrandDiscord,
 	evernote: IconBrandEvernote,
-	whatsapp: IconBrandWhatsapp
+	whatsapp: IconBrandWhatsapp,
+	file_management: IconFile,
+	linkedin: IconBrandLinkedin
 }
 
 const IconPlaceholder = IconSettingsCog
@@ -272,6 +276,69 @@ const WhatsAppConnectModal = ({ integration, onClose, onSuccess }) => {
 		<ModalDialog
 			title={`Connect to ${integration.display_name}`}
 			description="Connect a number for the agent to use as a tool."
+			onConfirm={handleSubmit}
+			onCancel={onClose}
+			confirmButtonText={isSubmitting ? "Connecting..." : "Connect"}
+			isConfirmDisabled={isSubmitting}
+			extraContent={modalContent}
+		/>
+	)
+}
+
+const LinkedInConnectModal = ({ integration, onClose, onSuccess }) => {
+	const [isSubmitting, setIsSubmitting] = useState(false)
+	const posthog = usePostHog()
+
+	if (!integration) return null
+
+	const handleSubmit = async () => {
+		setIsSubmitting(true)
+		try {
+			const response = await fetch(
+				"/api/settings/integrations/connect/manual",
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						service_name: "linkedin",
+						credentials: { setup_complete: true } // Dummy credentials
+					})
+				}
+			)
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(
+					data.detail || "Failed to connect LinkedIn Agent"
+				)
+			}
+			posthog?.capture("integration_connected", {
+				integration_name: "linkedin",
+				auth_type: "manual"
+			})
+			toast.success("LinkedIn Agent connected successfully!")
+			onSuccess()
+			onClose()
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsSubmitting(false)
+		}
+	}
+
+	const modalContent = (
+		<div className="text-left space-y-4 my-4">
+			<p className="text-sm text-gray-400">
+				This will enable the LinkedIn job search tool for your account.
+				The system uses a shared, pre-configured session to perform
+				searches.
+			</p>
+		</div>
+	)
+
+	return (
+		<ModalDialog
+			title={`Connect to ${integration.display_name}`}
+			description="Enable the agent to search for jobs on LinkedIn."
 			onConfirm={handleSubmit}
 			onCancel={onClose}
 			confirmButtonText={isSubmitting ? "Connecting..." : "Connect"}
@@ -627,7 +694,7 @@ const IntegrationCard = ({ integration, icon: Icon }) => {
 			{isConnectable && (
 				<div className="mt-4 pt-4 border-t border-neutral-800 flex justify-end">
 					<span className="text-sm font-medium text-neutral-400 group-hover:text-white transition-colors">
-						View Details &rarr;
+						View Details →
 					</span>
 				</div>
 			)}
@@ -645,6 +712,7 @@ const IntegrationsPage = () => {
 	const [selectedIntegration, setSelectedIntegration] = useState(null)
 	const [activeManualIntegration, setActiveManualIntegration] = useState(null)
 	const [whatsAppToConnect, setWhatsAppToConnect] = useState(null)
+	const [linkedInToConnect, setLinkedInToConnect] = useState(null)
 	const [sparkleTrigger, setSparkleTrigger] = useState(0)
 	const [privacyModalService, setPrivacyModalService] = useState(null)
 	const posthog = usePostHog()
@@ -785,6 +853,11 @@ const IntegrationsPage = () => {
 			return
 		}
 
+		if (integration.name === "linkedin") {
+			setLinkedInToConnect(integration)
+			return
+		}
+
 		if (integration.auth_type === "oauth") {
 			const { name: serviceName, client_id: clientId } = integration
 			if (!clientId) {
@@ -922,7 +995,7 @@ const IntegrationsPage = () => {
 			toast.error(`Connection failed: ${error}`)
 			window.history.replaceState({}, document.title, "/integrations")
 		}
-	}, [fetchIntegrations])
+	}, [fetchIntegrations, posthog])
 
 	const allIntegrations = useMemo(() => {
 		return [...userIntegrations, ...defaultTools]
@@ -1206,6 +1279,15 @@ const IntegrationsPage = () => {
 					<WhatsAppConnectModal
 						integration={whatsAppToConnect}
 						onClose={() => setWhatsAppToConnect(null)}
+						onSuccess={fetchIntegrations}
+					/>
+				)}
+			</AnimatePresence>
+			<AnimatePresence>
+				{linkedInToConnect && (
+					<LinkedInConnectModal
+						integration={linkedInToConnect}
+						onClose={() => setLinkedInToConnect(null)}
 						onSuccess={fetchIntegrations}
 					/>
 				)}

@@ -119,6 +119,9 @@ _SERVER_DIR_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 GOOGLE_TOKEN_STORAGE_DIR = os.path.join(_SERVER_DIR_ROOT, "google_tokens")
 os.makedirs(GOOGLE_TOKEN_STORAGE_DIR, exist_ok=True)
 
+# File Management Configuration
+FILE_MANAGEMENT_TEMP_DIR = os.getenv("FILE_MANAGEMENT_TEMP_DIR", "/tmp/sentient_files")
+os.makedirs(FILE_MANAGEMENT_TEMP_DIR, exist_ok=True)
 
 # Polling related constants
 POLLING_INTERVALS = {
@@ -304,6 +307,17 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("EVERNOTE_MCP_SERVER_URL", "http://localhost:9023/sse")
         }
     },
+    "file_management": {
+        "display_name": "File Management",
+        "description": "Read and write files to a temporary storage area. Useful for handling uploads, generating files for download, and data analysis.",
+        "auth_type": "builtin",
+        "icon": "IconFile",
+        "category": "Utilities",
+        "mcp_server_config": {
+            "name": "file_management_server",
+            "url": os.getenv("FILE_MANAGEMENT_MCP_SERVER_URL", "http://localhost:9026/sse")
+        }
+    },
     "news": { # Built-in
         "display_name": "News",
         "description": "Fetches top headlines and news articles from around the world. The agent can get top headlines by country or category, or search for articles on any topic.",
@@ -392,6 +406,17 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("WHATSAPP_MCP_SERVER_URL", "http://localhost:9024/sse")
         }
     },
+    "linkedin": {
+        "display_name": "LinkedIn",
+        "description": "Search for job listings on LinkedIn using the system's connection.",
+        "auth_type": "manual",
+        "icon": "IconBrandLinkedin",
+        "category": "Data & Search",
+        "mcp_server_config": {
+            "name": "linkedin_server",
+            "url": os.getenv("LINKEDIN_MCP_SERVER_URL", "http://localhost:9027/sse")
+        }
+    },
     "tasks": {
         "display_name": "Internal Task Manager",
         "description": "Creates a new task in the system from a natural language prompt. Use this when the user explicitly asks to 'create a task', 'schedule something', or 'do this for me later'. This is for creating asynchronous, background tasks.",
@@ -443,6 +468,7 @@ OPENAI_API_KEYS = list(filter(None, [
 
 # MCP Server URLs
 PROGRESS_UPDATER_MCP_SERVER_URL=os.getenv("PROGRESS_UPDATER_MCP_SERVER_URL", "http://localhost:9011/sse")
+FILE_MANAGEMENT_MCP_SERVER_URL=os.getenv("FILE_MANAGEMENT_MCP_SERVER_URL", "http://localhost:9026/sse")
 
 print(f"[{datetime.datetime.now()}] [MainServer_Config] Configuration loaded. AUTH0_DOMAIN: {'SET' if AUTH0_DOMAIN else 'NOT SET'}")
 print(f"[{datetime.datetime.now()}] [MainServer_Config] LLM Endpoint: {OPENAI_API_BASE_URL}")

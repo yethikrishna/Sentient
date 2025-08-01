@@ -22,6 +22,7 @@ import IconGoogleSlides from "./icons/IconGoogleSlides"
 import IconGoogleDrive from "./icons/IconGoogleDrive"
 import IconGoogleMail from "./icons/IconGoogleMail"
 import toast from "react-hot-toast"
+import FileCard from "./FileCard"
 
 // LinkButton component (no changes needed)
 const LinkButton = ({ href, children }) => {
@@ -210,6 +211,16 @@ const ChatBubble = ({
 	// *** UPDATED LOGIC: Function to render message content       ***
 	// ***************************************************************
 	const renderMessageContent = (contentToRender) => {
+		const markdownComponents = {
+			a: ({ href, children }) => {
+				if (href && href.startsWith("file:")) {
+					const filename = href.substring(5)
+					return <FileCard filename={filename} />
+				}
+				return <LinkButton href={href} children={children} />
+			}
+		}
+
 		if (isUser || typeof contentToRender !== "string" || !contentToRender) {
 			return [
 				<ReactMarkdown
@@ -217,11 +228,7 @@ const ChatBubble = ({
 					className="prose prose-invert"
 					remarkPlugins={[remarkGfm]}
 					children={contentToRender || ""}
-					components={{
-						a: ({ href, children }) => (
-							<LinkButton href={href} children={children} />
-						)
-					}}
+					components={markdownComponents}
 				/>
 			]
 		}
@@ -339,11 +346,7 @@ const ChatBubble = ({
 						className="prose prose-invert"
 						remarkPlugins={[remarkGfm]}
 						children={part.content}
-						components={{
-							a: ({ href, children }) => (
-								<LinkButton href={href} children={children} />
-							)
-						}}
+						components={markdownComponents}
 					/>
 				)
 			}

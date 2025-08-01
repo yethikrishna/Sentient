@@ -8,6 +8,8 @@ from main.chat.prompts import STAGE_1_SYSTEM_PROMPT
 from main.config import INTEGRATIONS_CONFIG
 from main.llm import get_qwen_assistant
 from json_extractor import JsonExtractor
+# MODIFICATION: Import the class, not the global instance
+from main.db import MongoManager
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +64,8 @@ async def _select_search_tools(query: str, user_id: str, user_integrations: Dict
 
 async def perform_unified_search(query: str, user_id: str) -> AsyncGenerator[str, None]:
     """Orchestrates the unified search and streams the agent's process back."""
-    from main.dependencies import mongo_manager
+    # MODIFICATION: Instantiate a local MongoManager for this task
+    mongo_manager = MongoManager()
     from main.search.prompts import UNIFIED_SEARCH_SYSTEM_PROMPT
 
     # 1. Fetch user's connected integrations
@@ -131,6 +134,8 @@ async def perform_unified_search(query: str, user_id: str) -> AsyncGenerator[str
         logger.error(f"Error during unified search stream for user {user_id}: {e}", exc_info=True)
         yield json.dumps({"type": "error", "message": str(e)}) + "\n"
     finally:
+        # MODIFICATION: Close the local mongo_manager connection
+        await mongo_manager.close()
         # Send a final 'done' event with the synthesized report
         # Clean up any unclosed tags or artifacts from the final response
         final_report_cleaned = re.sub(r'<(tool_code|tool_result|think)>.*?</\1>', '', final_report_content, flags=re.DOTALL).strip()

@@ -8,7 +8,8 @@ import re
 
 from workers.poller.gmail.config import POLLING_INTERVALS_WORKER as POLL_CFG
 from workers.poller.gmail.db import PollerMongoManager
-from workers.poller.gmail.utils import get_gmail_credentials, fetch_emails
+from workers.poller.gmail.utils import get_gmail_credentials, fetch_emails # noqa
+from workers.proactive.utils import event_pre_filter # Import the pre-filter
 from googleapiclient.errors import HttpError # Import HttpError
 
 logger = logging.getLogger(__name__)
@@ -70,7 +71,13 @@ class GmailPollingService:
                 return
 
             all_privacy_filters = user_profile.get("userData", {}).get("privacyFilters", {})
-            gmail_filters = all_privacy_filters.get("gmail", {})
+            gmail_filters = {}
+            if isinstance(all_privacy_filters, dict):
+                gmail_filters = all_privacy_filters.get("gmail", {})
+            elif isinstance(all_privacy_filters, list):
+                # Backward compatibility: old format was a flat list of keywords
+                gmail_filters = {"keywords": all_privacy_filters, "emails": [], "labels": []}
+
             keyword_filters = gmail_filters.get("keywords", [])
             email_filters = [email.lower() for email in gmail_filters.get("emails", [])]
             label_filters = [label.lower() for label in gmail_filters.get("labels", [])]
@@ -85,11 +92,11 @@ class GmailPollingService:
                 return
 
             last_ts_unix = polling_state.get("last_successful_poll_timestamp_unix")
-            emails = await fetch_emails(creds, last_ts_unix, max_results=25) # Fetch up to 25 new emails
+            fetched_emails = await fetch_emails(creds, last_ts_unix, max_results=10)
             
             processed_count = 0
 
-            for email in emails:
+            for email in fetched_emails: # noqa
                 email_item_id = email["id"]
                 
                 # Keyword check
@@ -110,6 +117,11 @@ class GmailPollingService:
                 email_labels = [label.lower() for label in email.get("labels", [])]
                 if any(blocked_label in email_labels for blocked_label in label_filters):
                     logger.info(f"Skipping email {email['id']} for user {user_id} due to label filter match.")
+                    continue
+
+                # Run the main pre-filter here, before dispatching any tasks
+                if not event_pre_filter(email, self.service_name, user_profile.get("userData", {}).get("personalInfo", {}).get("email")):
+                    logger.info(f"Email {email['id']} for user {user_id} was discarded by the main pre-filter.")
                     continue
 
                 if not await self.db_manager.is_item_processed(user_id, self.service_name, email_item_id):
@@ -133,13 +145,13 @@ class GmailPollingService:
 
             if processed_count > 0:
                 # If we processed emails, update the timestamp to the newest one we saw.
-                highest_email_ts_ms = max(email["timestamp_ms"] for email in emails) if emails else 0
+                highest_email_ts_ms = max(email["timestamp_ms"] for email in fetched_emails) if fetched_emails else 0
                 updated_state["last_successful_poll_timestamp_unix"] = highest_email_ts_ms // 1000
 
             if processed_count > 0:
-                logger.info(f"Processed and sent {processed_count} new emails to Kafka for user {user_id}.")
-            
-            updated_state["last_successful_poll_status_message"] = f"Successfully polled. Found {len(emails)} messages, processed {processed_count} new."
+                logger.info(f"Dispatched {processed_count} new emails to the processing pipeline for user {user_id}.")
+
+            updated_state["last_successful_poll_status_message"] = f"Successfully polled. Found {len(fetched_emails)} messages, dispatched {processed_count} new." # noqa
             updated_state["consecutive_failure_count"] = 0
             updated_state["error_backoff_until_timestamp"] = None
 

@@ -1,7 +1,9 @@
 import os
 import logging
 import asyncpg
+import asyncio
 from dotenv import load_dotenv
+from typing import Dict
 
 from .constants import TOPICS
 
@@ -26,33 +28,48 @@ POSTGRES_DB = os.getenv("POSTGRES_DB")
 # See: https://ai.google.dev/gemini-api/docs/embeddings#controlling_embedding_size
 EMBEDDING_DIM = 768
 
-_pool: asyncpg.Pool = None
+# Dictionary to store connection pools, keyed by the event loop they belong to.
+_pools: Dict[asyncio.AbstractEventLoop, asyncpg.Pool] = {}
 
 async def get_db_pool() -> asyncpg.Pool:
-    """Initializes and returns a singleton PostgreSQL connection pool."""
-    global _pool
-    if _pool is None:
+    """Initializes and returns a singleton PostgreSQL connection pool for the current event loop."""
+    global _pools
+    loop = asyncio.get_running_loop()
+    
+    # Get the pool for the current event loop
+    pool = _pools.get(loop)
+    
+    # If the pool doesn't exist for this loop, or it's closing, create a new one.
+    if pool is None or pool.is_closing():
         if not all([POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB]):
             raise ValueError("PostgreSQL connection details are not configured in the environment.")
-        logger.info(f"Initializing PostgreSQL connection pool for db: {POSTGRES_DB}")
-        _pool = await asyncpg.create_pool(
+
+        logger.info(f"Initializing PostgreSQL connection pool for db: {POSTGRES_DB} on event loop {id(loop)}.")
+        pool = await asyncpg.create_pool(
             user=POSTGRES_USER,
             password=POSTGRES_PASSWORD,
             database=POSTGRES_DB,
             host=POSTGRES_HOST,
             port=POSTGRES_PORT,
         )
+        _pools[loop] = pool # Store the new pool in the dictionary
     else:
-        logger.debug("Returning existing PostgreSQL connection pool.")
-    return _pool
+        logger.debug(f"Returning existing PostgreSQL connection pool for event loop {id(loop)}.")
+    return pool
 
 async def close_db_pool():
-    """Closes the PostgreSQL connection pool."""
-    global _pool
-    if _pool is not None:
-        logger.info("Closing PostgreSQL connection pool.")
-        await _pool.close()
-        _pool = None
+    """Closes all PostgreSQL connection pools managed by this module."""
+    global _pools
+    if _pools:
+        logger.info("Closing all PostgreSQL connection pools.")
+        # Iterate over a copy of items to safely modify the dictionary during iteration
+        for loop, pool in list(_pools.items()):
+            if not pool.is_closing():
+                await pool.close()
+            # Remove the pool from the dictionary after closing
+            del _pools[loop]
+    else:
+        logger.debug("No PostgreSQL connection pools to close.")
 
 async def setup_database():
     """Ensures all necessary tables, indexes, and static data are created in the database."""

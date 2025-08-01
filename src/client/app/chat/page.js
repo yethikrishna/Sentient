@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import {
 	IconSend,
 	IconLoader,
@@ -17,7 +17,22 @@ import {
 	IconPhone,
 	IconPhoneOff,
 	IconWaveSine,
-	IconMessageOff
+	IconMessageOff,
+	IconPlus,
+	IconTools,
+	IconTool,
+	IconPresentation,
+	IconTable,
+	IconShoppingCart,
+	IconCloud,
+	IconChartPie,
+	IconNews,
+	IconBrandDiscord,
+	IconBrandEvernote,
+	IconBrandWhatsapp,
+	IconBrandTrello,
+	IconListCheck,
+	IconCalendarEvent
 } from "@tabler/icons-react"
 import {
 	IconBrandSlack,
@@ -33,13 +48,13 @@ import { cn } from "@utils/cn"
 import { Tooltip } from "react-tooltip"
 import { motion, AnimatePresence } from "framer-motion"
 import ChatBubble from "@components/ChatBubble"
-import { BorderTrail } from "@components/ui/border-trail"
 import InteractiveNetworkBackground from "@components/ui/InteractiveNetworkBackground"
 import { TextShimmer } from "@components/ui/text-shimmer"
 import React from "react"
 import { usePostHog } from "posthog-js/react"
 import SiriSpheres from "@components/voice-visualization/SiriSpheres"
 import { WebRTCClient } from "@lib/webrtc-client"
+import useClickOutside from "@hooks/useClickOutside"
 
 const toolIcons = {
 	gmail: IconGoogleMail,
@@ -53,7 +68,20 @@ const toolIcons = {
 	github: IconBrandGithub,
 	internet_search: IconWorldSearch,
 	memory: IconBrain,
-	gmaps: IconMapPin
+	gmaps: IconMapPin,
+	gslides: IconPresentation,
+	gshopping: IconShoppingCart,
+	accuweather: IconCloud,
+	quickchart: IconChartPie,
+	google_search: IconWorldSearch,
+	trello: IconBrandTrello,
+	news: IconNews,
+	todoist: IconListCheck, // Replacement for custom icon
+	discord: IconBrandDiscord,
+	evernote: IconBrandEvernote,
+	whatsapp: IconBrandWhatsapp,
+	gcalendar_alt: IconCalendarEvent,
+	default: IconTool
 }
 
 const useCasesByDomain = {
@@ -277,6 +305,10 @@ export default function ChatPage() {
 	const [replyingTo, setReplyingTo] = useState(null)
 	const [isOptionsOpen, setIsOptionsOpen] = useState(false)
 	const [confirmClear, setConfirmClear] = useState(false)
+	const [integrations, setIntegrations] = useState([])
+	const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(false)
+	const toolsMenuRef = useRef(null)
+	const toolsButtonRef = useRef(null)
 
 	// --- Voice Mode State ---
 	const [isVoiceMode, setIsVoiceMode] = useState(false)
@@ -333,6 +365,51 @@ export default function ChatPage() {
 			}
 		}
 	}, [fetchInitialMessages, fetchUserDetails])
+
+	const fetchIntegrations = useCallback(async () => {
+		try {
+			const res = await fetch("/api/settings/integrations")
+			if (!res.ok) throw new Error("Failed to fetch integrations")
+			const data = await res.json()
+			setIntegrations(data.integrations || [])
+		} catch (error) {
+			console.error(
+				"Failed to fetch integrations for tools menu:",
+				error.message
+			)
+		}
+	}, [])
+
+	useEffect(() => {
+		fetchIntegrations()
+	}, [fetchIntegrations])
+
+	useClickOutside(toolsMenuRef, (event) => {
+		if (
+			toolsButtonRef.current &&
+			!toolsButtonRef.current.contains(event.target)
+		) {
+			setIsToolsMenuOpen(false)
+		}
+	})
+
+	const { connectedTools, builtinTools } = useMemo(() => {
+		const hiddenTools = [
+			"progress_updater",
+			"chat_tools",
+			"tasks",
+			"google_search"
+		]
+		const connected = integrations.filter(
+			(i) =>
+				i.connected &&
+				(i.auth_type === "oauth" || i.auth_type === "manual")
+		)
+		const builtin = integrations.filter(
+			(i) => i.auth_type === "builtin" && !hiddenTools.includes(i.name)
+		)
+		return { connectedTools: connected, builtinTools: builtin }
+	}, [integrations])
 
 	const fetchOlderMessages = useCallback(async () => {
 		if (
@@ -917,9 +994,8 @@ export default function ChatPage() {
 	)
 
 	const renderInputArea = () => (
-		<div className="relative bg-neutral-900 rounded-2xl p-px">
-			<BorderTrail className="bg-brand-orange" />
-			<div className="relative bg-neutral-900 rounded-[calc(1rem-1px)] flex items-end ">
+		<div className="relative bg-neutral-800/60 backdrop-blur-sm border border-neutral-700/50 rounded-2xl">
+			<div className="p-4 flex items-start gap-4">
 				<textarea
 					ref={textareaRef}
 					value={input}
@@ -932,12 +1008,27 @@ export default function ChatPage() {
 							sendMessage()
 						}
 					}}
-					placeholder="Type a message"
-					className="w-full p-4 pr-24 bg-transparent text-base text-white placeholder-neutral-500 resize-none focus:ring-0 focus:outline-none overflow-y-auto custom-scrollbar"
+					placeholder="Ask anything"
+					className="w-full bg-transparent text-base text-white placeholder-neutral-400 resize-none focus:ring-0 focus:outline-none overflow-y-auto custom-scrollbar"
 					rows={1}
 					style={{ maxHeight: "200px" }}
 				/>
-				<div className="absolute right-3 bottom-3 flex items-center gap-2">
+			</div>
+			<div className="flex justify-between items-center px-3 pb-3">
+				<div className="flex items-center gap-1">
+					{/* <button className="p-2 rounded-full text-neutral-300 hover:bg-neutral-700 hover:text-white transition-colors">
+						<IconPlus size={20} />
+					</button> Use for FILE UPLOADS (TODO) */}
+					<button
+						ref={toolsButtonRef}
+						onClick={() => setIsToolsMenuOpen((prev) => !prev)}
+						className="flex items-center gap-1.5 py-2 px-3 rounded-full text-neutral-300 hover:bg-neutral-700 hover:text-white text-sm font-medium transition-colors"
+					>
+						<IconTools size={18} />
+						<span>Tools</span>
+					</button>
+				</div>
+				<div className="flex items-center gap-2">
 					<button
 						onClick={toggleVoiceMode}
 						className="p-2.5 rounded-full text-white bg-neutral-700 hover:bg-neutral-600 transition-colors"
@@ -949,7 +1040,7 @@ export default function ChatPage() {
 					{thinking ? (
 						<button
 							onClick={handleStopStreaming}
-							className="p-2.5 rounded-full text-white bg-red-600 hover:bg-red-500 transition-colors"
+							className="p-2.5 rounded-full text-white bg-red-600 hover:bg-red-500"
 							data-tooltip-id="home-tooltip"
 							data-tooltip-content="Stop Generation"
 						>
@@ -959,7 +1050,7 @@ export default function ChatPage() {
 						<button
 							onClick={sendMessage}
 							disabled={!input.trim() || thinking}
-							className="p-2.5 bg-brand-orange rounded-full text-white disabled:opacity-50 hover:bg-brand-orange/90 transition-all shadow-md"
+							className="p-2.5 bg-brand-orange rounded-full text-black disabled:opacity-50 hover:bg-brand-orange/90 transition-all shadow-md"
 						>
 							<IconSend size={18} />
 						</button>
@@ -967,6 +1058,74 @@ export default function ChatPage() {
 				</div>
 			</div>
 		</div>
+	)
+
+	const renderToolsMenu = () => (
+		<AnimatePresence>
+			{isToolsMenuOpen && (
+				<motion.div
+					ref={toolsMenuRef}
+					initial={{ opacity: 0, y: 10, scale: 0.95 }}
+					animate={{ opacity: 1, y: 0, scale: 1 }}
+					exit={{ opacity: 0, y: 10, scale: 0.95 }}
+					transition={{ duration: 0.2, ease: "easeInOut" }}
+					className="absolute bottom-full mb-2 w-full max-w-sm bg-neutral-900/90 backdrop-blur-md border border-neutral-700 rounded-xl shadow-lg p-3 z-50"
+				>
+					<div className="max-h-72 overflow-y-auto custom-scrollbar pr-2">
+						{connectedTools.length > 0 && (
+							<div className="mb-3">
+								<p className="text-xs text-neutral-400 font-semibold mb-2 px-2">
+									Connected Apps
+								</p>
+								<div className="space-y-1">
+									{connectedTools.map((tool) => {
+										const Icon =
+											toolIcons[tool.name] ||
+											toolIcons.default
+										return (
+											<div
+												key={tool.name}
+												className="flex items-center gap-3 p-2 rounded-md"
+											>
+												<Icon className="w-5 h-5 text-neutral-300 flex-shrink-0" />
+												<span className="text-sm text-neutral-200 font-medium">
+													{tool.display_name}
+												</span>
+											</div>
+										)
+									})}
+								</div>
+							</div>
+						)}
+						{builtinTools.length > 0 && (
+							<div>
+								<p className="text-xs text-neutral-400 font-semibold mb-2 px-2">
+									Built-in Tools
+								</p>
+								<div className="space-y-1">
+									{builtinTools.map((tool) => {
+										const Icon =
+											toolIcons[tool.name] ||
+											toolIcons.default
+										return (
+											<div
+												key={tool.name}
+												className="flex items-center gap-3 p-2 rounded-md"
+											>
+												<Icon className="w-5 h-5 text-neutral-300 flex-shrink-0" />
+												<span className="text-sm text-neutral-200 font-medium">
+													{tool.display_name}
+												</span>
+											</div>
+										)
+									})}
+								</div>
+							</div>
+						)}
+					</div>
+				</motion.div>
+			)}
+		</AnimatePresence>
 	)
 
 	const renderOptionsMenu = () => (
@@ -1112,8 +1271,11 @@ export default function ChatPage() {
 									How can I help you today?
 								</p>
 							</div>
-							<div className="w-full max-w-4xl mx-auto mt-12">
-								{renderInputArea()}
+							<div className="w-full max-w-4xl mx-auto mt-12 ">
+								<div className="relative">
+									{renderToolsMenu()}
+									{renderInputArea()}
+								</div>
 								<div className="mt-12">
 									<DomainSelector
 										domains={Object.keys(useCasesByDomain)}
@@ -1183,8 +1345,9 @@ export default function ChatPage() {
 				</main>
 				{!isLoading && !isVoiceMode && displayedMessages.length > 0 && (
 					<div className="px-4 pt-2 pb-4 sm:px-6 sm:pb-6 bg-transparent">
-						<div className="w-full max-w-4xl mx-auto">
+						<div className="w-full max-w-4xl mx-auto relative">
 							{renderReplyPreview()}
+							{renderToolsMenu()}
 							{renderInputArea()}
 						</div>
 					</div>

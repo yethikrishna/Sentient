@@ -11,7 +11,7 @@ from workers.utils.crypto import aes_decrypt, aes_encrypt
 from workers.poller.gcalendar.db import PollerMongoManager
 from typing import Optional, List, Dict, Tuple
 
-async def get_gcalendar_credentials(user_id: str, db_manager: PollerMongoManager) -> Optional[Credentials]:
+async def get_gcalendar_credentials(user_id: str, db_manager: PollerMongoManager) -> Optional[Credentials]: # noqa
     import asyncio
     user_profile = await db_manager.get_user_profile(user_id)
     if not user_profile or "userData" not in user_profile:
@@ -42,42 +42,41 @@ async def get_gcalendar_credentials(user_id: str, db_manager: PollerMongoManager
         print(f"[{datetime.datetime.now()}] [GCalendarPoller_Auth_ERROR] Failed to get credentials for {user_id}: {e}")
         return None
 
-async def fetch_events(creds: Credentials, last_updated_iso: Optional[str] = None, max_results: int = 50) -> Tuple[List[Dict], str]:
+async def fetch_events(creds: Credentials, max_results: int = 10) -> List[Dict]:
     import asyncio
     try:
         loop = asyncio.get_event_loop()
         service = await loop.run_in_executor(None, lambda: build('calendar', 'v3', credentials=creds))
         
         now = datetime.datetime.now(timezone.utc)
+        time_min = (now - datetime.timedelta(weeks=2)).isoformat()
+        time_max = (now + datetime.timedelta(weeks=2)).isoformat()
         
         list_params = {
             'calendarId': 'primary',
             'maxResults': max_results,
             'singleEvents': True,
-            'orderBy': 'updated',
+            'orderBy': 'startTime',
             'showDeleted': True # Important to capture cancellations
         }
-        if last_updated_iso:
-            list_params['updatedMin'] = last_updated_iso
+        list_params['timeMin'] = time_min
+        list_params['timeMax'] = time_max
 
         results = await loop.run_in_executor(None, 
             lambda: service.events().list(**list_params).execute()
         )
         events_data = results.get('items', [])
         
-        # The new "last updated" time is now, to ensure we don't miss anything between polls.
-        new_last_updated_iso = now.isoformat()
-
         if not events_data:
-            return [], new_last_updated_iso
+            return []
 
         print(f"[{datetime.datetime.now()}] [GCalendarPoller_Fetch] Found {len(events_data)} updated events.")
         
-        return events_data, new_last_updated_iso
+        return events_data
         
     except HttpError as error:
         print(f"[{datetime.datetime.now()}] [GCalendarPoller_Fetch_ERROR] An API error occurred: {error}")
         raise error
     except Exception as e:
         print(f"[{datetime.datetime.now()}] [GCalendarPoller_Fetch_ERROR] Unexpected error fetching events: {e}")
-        return [], datetime.datetime.now(timezone.utc).isoformat()
+        return []

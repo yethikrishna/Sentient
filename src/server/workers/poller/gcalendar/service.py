@@ -6,7 +6,7 @@ import logging
 
 from workers.poller.gcalendar.config import POLLING_INTERVALS_WORKER as POLL_CFG
 from workers.poller.gcalendar.db import PollerMongoManager
-from workers.poller.gcalendar.utils import get_gcalendar_credentials, fetch_events
+from workers.poller.gcalendar.utils import get_gcalendar_credentials, fetch_events # noqa
 from googleapiclient.errors import HttpError
 
 logger = logging.getLogger(__name__)
@@ -68,7 +68,13 @@ class GCalendarPollingService:
                 return
 
             all_privacy_filters = user_profile.get("userData", {}).get("privacyFilters", {})
-            calendar_filters = all_privacy_filters.get("gcalendar", {})
+            calendar_filters = {}
+            if isinstance(all_privacy_filters, dict):
+                calendar_filters = all_privacy_filters.get("gcalendar", {})
+            elif isinstance(all_privacy_filters, list):
+                # Backward compatibility: old format was a flat list of keywords
+                calendar_filters = {"keywords": all_privacy_filters, "emails": []}
+
             keyword_filters = calendar_filters.get("keywords", [])
             email_filters = [email.lower() for email in calendar_filters.get("emails", [])]
             
@@ -80,11 +86,10 @@ class GCalendarPollingService:
                 updated_state["next_scheduled_poll_time"] = datetime.datetime.now(timezone.utc) + datetime.timedelta(days=1)
                 return
 
-            last_updated_iso = polling_state.get("last_successful_poll_timestamp_iso")
-            events, new_last_updated_iso = await fetch_events(creds, last_updated_iso, max_results=10)
+            fetched_events = await fetch_events(creds, max_results=10)
             
             processed_count = 0
-            for event in events:
+            for event in fetched_events:
                 event_id = event["id"]
 
                 content_to_check = (event.get("summary", "") + " " + event.get("description", "")).lower()
@@ -101,7 +106,13 @@ class GCalendarPollingService:
                             logger.info(f"Skipping event {event_id} for user {user_id} due to attendee filter match.")
                     continue
 
-                if not await self.db_manager.is_item_processed(user_id, self.service_name, event_id):
+                # Run the main pre-filter here, before dispatching any tasks
+                from workers.proactive.utils import event_pre_filter
+                if not event_pre_filter(event, self.service_name, user_profile.get("userData", {}).get("personalInfo", {}).get("email")):
+                    logger.info(f"Event {event_id} for user {user_id} was discarded by the main pre-filter.")
+                    continue
+
+                if not await self.db_manager.is_item_processed(user_id, self.service_name, event_id): # noqa
                     from workers.tasks import cud_memory_task, proactive_reasoning_pipeline # noqa
                     # Construct a representative text string from the event data
                     source_text = f"Event: {event.get('summary', '')}\nDescription: {event.get('description', '')}"
@@ -121,10 +132,9 @@ class GCalendarPollingService:
                     processed_count += 1
 
             if processed_count > 0:
-                logger.info(f"Processed and sent {processed_count} new GCalendar events to Kafka for user {user_id}.")
+                logger.info(f"Dispatched {processed_count} new GCalendar events to the processing pipeline for user {user_id}.") # noqa
             
-            updated_state["last_successful_poll_timestamp_iso"] = new_last_updated_iso
-            updated_state["last_successful_poll_status_message"] = f"Successfully polled. Found {len(events)} updated events, processed {processed_count} new."
+            updated_state["last_successful_poll_status_message"] = f"Successfully polled. Found {len(fetched_events)} events, dispatched {processed_count} new." # noqa
             updated_state["consecutive_failure_count"] = 0
             updated_state["error_backoff_until_timestamp"] = None
 

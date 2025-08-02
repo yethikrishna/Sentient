@@ -58,10 +58,10 @@ class MongoManager:
                 IndexModel([("user_id", ASCENDING), ("notifications.timestamp", DESCENDING)], name="notification_timestamp_idx", sparse=True)
             ],
             self.polling_state_collection: [
-                IndexModel([("user_id", ASCENDING), ("service_name", ASCENDING)], unique=True, name="polling_user_service_unique_idx"),
+                IndexModel([("user_id", ASCENDING), ("service_name", ASCENDING), ("poll_type", ASCENDING)], unique=True, name="polling_user_service_type_unique_idx"),
                 IndexModel([
                     ("is_enabled", ASCENDING), ("next_scheduled_poll_time", ASCENDING), 
-                    ("is_currently_polling", ASCENDING), ("error_backoff_until_timestamp", ASCENDING) 
+                    ("is_currently_polling", ASCENDING), ("error_backoff_until_timestamp", ASCENDING)
                 ], name="polling_due_tasks_idx"),
                 IndexModel([("is_currently_polling", ASCENDING), ("last_attempted_poll_timestamp", ASCENDING)], name="polling_stale_locks_idx")
             ],

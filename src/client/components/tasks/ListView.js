@@ -1,5 +1,5 @@
 "use client"
-import React, { useMemo } from "react"
+import React, { useMemo } from "react" // prettier-ignore
 import { AnimatePresence, motion } from "framer-motion"
 import { IconSearch, IconAlignBoxLeftMiddleFilled } from "@tabler/icons-react"
 import { groupTasksByDate } from "@utils/taskUtils"
@@ -8,7 +8,7 @@ import CollapsibleSection from "./CollapsibleSection"
 
 const ListView = ({
 	oneTimeTasks,
-	recurringTasks,
+	activeWorkflows,
 	onSelectTask,
 	searchQuery,
 	onSearchChange
@@ -30,7 +30,7 @@ const ListView = ({
 	]
 
 	const upcomingTasksCount =
-		recurringTasks.length + today.length + tomorrow.length + future.length
+		activeWorkflows.length + today.length + tomorrow.length + future.length
 
 	if (upcomingTasksCount === 0 && !searchQuery) {
 		return (
@@ -75,10 +75,10 @@ const ListView = ({
 
 			<AnimatePresence>
 				<div className="divide-y divide-zinc-700">
-					{recurringTasks.length > 0 && (
+					{activeWorkflows.length > 0 && (
 						<CollapsibleSection
-							key="recurring"
-							title={`Active Workflows (${recurringTasks.length})`}
+							key="workflows"
+							title={`Active Workflows (${activeWorkflows.length})`}
 							defaultOpen={true}
 						>
 							<motion.div
@@ -87,7 +87,7 @@ const ListView = ({
 								initial="hidden"
 								animate="visible"
 							>
-								{recurringTasks.map((task) => (
+								{activeWorkflows.map((task) => (
 									<TaskCardList
 										key={task.task_id}
 										task={task}

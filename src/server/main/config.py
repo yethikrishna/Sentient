@@ -419,7 +419,7 @@ INTEGRATIONS_CONFIG = {
     },
     "tasks": {
         "display_name": "Internal Task Manager",
-        "description": "Creates a new task in the system from a natural language prompt. Use this when the user explicitly asks to 'create a task', 'schedule something', or 'do this for me later'. This is for creating asynchronous, background tasks.",
+        "description": "Manages asynchronous, background tasks. Use 'create_task_from_prompt' to create a new task from a natural language prompt. Use 'process_collection_in_parallel' to perform an action on each item in a list in parallel (e.g., summarize a list of articles).",
         "auth_type": "builtin",
         "icon": "IconChecklist",
         "mcp_server_config": {

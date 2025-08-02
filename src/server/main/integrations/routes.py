@@ -275,10 +275,24 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
         
         # Create the polling state document to enable the poller for this service
         if service_name == 'gmail' or service_name == 'gcalendar':
+            # Create a state for the proactivity poller
             await mongo_manager.update_polling_state(
                 user_id,
                 service_name,
                 {
+                    "poll_type": "proactivity",
+                    "is_enabled": True,
+                    "is_currently_polling": False,
+                    "next_scheduled_poll_time": datetime.datetime.now(datetime.timezone.utc), # Poll immediately
+                    "last_successful_poll_timestamp_unix": None,
+                }
+            )
+            # Create a separate state for the trigger poller
+            await mongo_manager.update_polling_state(
+                user_id,
+                service_name,
+                {
+                    "poll_type": "triggers",
                     "is_enabled": True,
                     "is_currently_polling": False,
                     "next_scheduled_poll_time": datetime.datetime.now(datetime.timezone.utc), # Poll immediately

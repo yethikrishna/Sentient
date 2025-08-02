@@ -12,6 +12,8 @@ from main.analytics import capture_event
 from qwen_agent.agents import Assistant
 from workers.celery_app import celery_app
 from workers.utils.api_client import notify_user, push_progress_update
+from workers.utils.text_utils import clean_llm_output
+from celery import chord, group
 
 # Load environment variables for the worker from its own config
 from workers.executor.config import (MONGO_URI, MONGO_DB_NAME,
@@ -309,3 +311,103 @@ async def async_execute_task_plan(task_id: str, user_id: str):
         await add_progress_update(db, task_id, run_id, user_id, {"type": "error", "content": f"An error occurred during execution: {error_message}"}, block_id=block_id)
         await update_task_run_status(db, task_id, run_id, "error", user_id, details={"error": error_message}, block_id=block_id)
         return {"status": "error", "message": error_message}
+
+@celery_app.task(name="aggregate_results_callback")
+def aggregate_results_callback(results):
+    """Celery callback task to aggregate results from a chord."""
+    logger.info(f"Aggregating results from parallel workers. Results: {str(results)[:500]}")
+    return results
+
+@celery_app.task(name="run_single_item_worker")
+def run_single_item_worker(user_id: str, item: Any, worker_prompt: str):
+    """
+    A Celery worker that executes a sub-task for a single item from a collection.
+    This worker runs a self-contained agent to fulfill the worker_prompt.
+    """
+    logger.info(f"Running single item worker for user {user_id} on item: {str(item)[:200]}...")
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    return loop.run_until_complete(async_run_single_item_worker(user_id, item, worker_prompt))
+
+async def async_run_single_item_worker(user_id: str, item: Any, worker_prompt: str):
+    """
+    Async logic for the single item worker.
+    """
+    db = get_db_client()
+    try:
+        # 1. Get user context
+        user_profile = await db.user_profiles.find_one({"user_id": user_id})
+        user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
+
+        # 2. Configure tools for the sub-agent. It has access to all connected tools.
+        active_mcp_servers = {}
+        for tool_name, config in INTEGRATIONS_CONFIG.items():
+            mcp_config = config.get("mcp_server_config")
+            if not mcp_config: continue
+
+            is_builtin = config.get("auth_type") == "builtin"
+            is_connected = user_integrations.get(tool_name, {}).get("connected", False)
+
+            # The sub-agent should not be able to call the task manager or progress updater to avoid loops.
+            if tool_name in ["tasks", "progress_updater"]:
+                continue
+
+            if is_builtin or is_connected:
+                active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
+
+        tools_config = [{"mcpServers": active_mcp_servers}]
+
+        # 3. Construct prompts for the sub-agent
+        system_prompt = (
+            "You are an autonomous sub-agent. Your goal is to complete a specific task given to you as part of a larger parallel operation. "
+            "You have access to a suite of tools. Follow the user's prompt precisely. "
+            "Your final output should be a single, concise result (e.g., a string, a number, a JSON object, or null). Do not add conversational filler. "
+            "If you generate a final answer, wrap it in <answer> tags."
+        )
+        
+        item_context = json.dumps(item, indent=2, default=str)
+        full_worker_prompt = f"**Task:**\n{worker_prompt}\n\n**Input Data for this Task:**\n```json\n{item_context}\n```"
+        
+        messages = [{'role': 'user', 'content': full_worker_prompt}]
+
+        # 4. Run the agent
+        agent = Assistant(llm=llm_cfg, function_list=tools_config, system_message=system_prompt)
+        
+        final_content = ""
+        final_response_list = []
+        for response in agent.run(messages=messages):
+            if isinstance(response, list) and response and response[-1].get("role") == "assistant":
+                final_content = response[-1].get("content", "")
+            final_response_list = response
+
+        # 5. Parse and return the result
+        answer_match = re.search(r'<answer>([\s\S]*?)</answer>', final_content, re.DOTALL)
+        if answer_match:
+            result_str = answer_match.group(1).strip()
+            try:
+                return json.loads(result_str)
+            except json.JSONDecodeError:
+                if result_str.lower() == 'null':
+                    return None
+                return result_str
+        
+        last_message = final_response_list[-1] if final_response_list else {}
+        if last_message.get("role") == "function":
+            try:
+                tool_result = json.loads(last_message.get("content", "{}"))
+                return tool_result.get("result")
+            except (json.JSONDecodeError, AttributeError):
+                return last_message.get("content")
+
+        cleaned_content = clean_llm_output(final_content)
+        if cleaned_content.lower() == 'null':
+            return None
+        return cleaned_content
+
+    except Exception as e:
+        logger.error(f"Error in single item worker for user {user_id}: {e}", exc_info=True)
+        return {"error": str(e)}

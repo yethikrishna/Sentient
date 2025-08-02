@@ -13,11 +13,17 @@ const RecurringTaskDetails = ({ task }) => {
 	const statusInfo = taskStatusColors[task.status] || taskStatusColors.default
 	const priorityInfo = priorityMap[task.priority] || priorityMap.default
 	const schedule = task.schedule || {}
+	let scheduleText = ""
 
-	const scheduleText =
-		schedule.frequency === "daily"
-			? `Recurring: Daily at ${schedule.time}`
-			: `Recurring: Weekly on ${schedule.days?.join(", ") || "selected days"} at ${schedule.time}`
+	if (schedule.type === "recurring") {
+		scheduleText =
+			schedule.frequency === "daily"
+				? `Recurring: Daily at ${schedule.time}`
+				: `Recurring: Weekly on ${schedule.days?.join(", ") || "selected days"} at ${schedule.time}`
+	} else if (schedule.type === "triggered") {
+		const filterText = JSON.stringify(schedule.filter || {})
+		scheduleText = `Triggered: On ${schedule.source} event '${schedule.event}' matching ${filterText}`
+	}
 
 	return (
 		<div className="space-y-6">
@@ -29,7 +35,11 @@ const RecurringTaskDetails = ({ task }) => {
 				<div className="flex items-center gap-4 text-sm bg-neutral-800/50 p-3 rounded-lg">
 					<span className="text-sm text-neutral-400">Status:</span>
 					<span
-						className={cn("font-semibold py-0.5 px-2 rounded-full text-xs flex items-center gap-1", statusInfo.color, statusInfo.border.replace("border-", "bg-") + "/20")}
+						className={cn(
+							"font-semibold py-0.5 px-2 rounded-full text-xs flex items-center gap-1",
+							statusInfo.color,
+							statusInfo.border.replace("border-", "bg-") + "/20"
+						)}
 					>
 						<statusInfo.icon size={12} />
 						{statusInfo.label}

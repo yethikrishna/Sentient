@@ -34,7 +34,9 @@ const TaskDetailsPanel = ({
 }) => {
 	const [isEditing, setIsEditing] = useState(false)
 	const [editableTask, setEditableTask] = useState(task)
-	const isRecurring = task?.schedule?.type === "recurring"
+	const isRecurringOrTriggered =
+		task?.schedule?.type === "recurring" ||
+		task?.schedule?.type === "triggered"
 
 	const missingTools = useMemo(() => {
 		if (!task || !integrations) {
@@ -187,7 +189,7 @@ const TaskDetailsPanel = ({
 
 					{/* --- CONTENT --- */}
 					<main className="flex-1 overflow-y-auto custom-scrollbar p-6">
-						{isRecurring ? (
+						{isRecurringOrTriggered ? (
 							<RecurringTaskDetails task={task} />
 						) : (
 							<TaskDetailsContent

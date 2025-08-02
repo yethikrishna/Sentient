@@ -51,8 +51,12 @@ celery_app.conf.update(
             'task': 'run_due_tasks',
             'schedule': 300.0,
         },
-        'schedule-polling-tasks-every-minute': {
-            'task': 'schedule_all_polling',
+        'schedule-trigger-polling-every-minute': {
+            'task': 'schedule_trigger_polling',
+            'schedule': 60.0, # Runs every minute for fast triggers
+        },
+        'schedule-proactivity-polling-hourly': {
+            'task': 'schedule_proactivity_polling',
             'schedule': 3600.0,
         },
         'summarize-old-conversations-hourly': {

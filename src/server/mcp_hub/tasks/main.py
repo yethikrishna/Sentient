@@ -7,13 +7,16 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
+from fastmcp.exceptions import ToolError
 from qwen_agent.agents import Assistant
 from json_extractor import JsonExtractor
+from celery import chord, group
 
 from . import auth, prompts
 from main.tasks.prompts import TASK_CREATION_PROMPT # Reusing the main server's prompt
 from main.llm import get_qwen_assistant
 from main.dependencies import mongo_manager # We can import from main as it's in the python path
+from workers.executor.tasks import run_single_item_worker, aggregate_results_callback
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +141,44 @@ async def search_tasks(
         return {"status": "success", "result": {"tasks": tasks}}
     except Exception as e:
         logger.error(f"Error in search_tasks: {e}", exc_info=True)
+        return {"status": "failure", "error": str(e)}
+
+@mcp.tool()
+async def process_collection_in_parallel(ctx: Context, items: List[Any], worker_prompt: str) -> Dict[str, Any]:
+    """
+    Processes a collection of items in parallel. For each item, it spawns a sub-agent that executes the `worker_prompt`.
+    This is a blocking operation that waits for all sub-agents to complete.
+    The results from each sub-agent are returned as a list.
+    """
+    try:
+        user_id = auth.get_user_id_from_context(ctx)
+        
+        if not isinstance(items, list):
+            raise ToolError("The 'items' parameter must be a list.")
+
+        # Create a group of parallel worker tasks
+        worker_tasks = group(
+            run_single_item_worker.s(user_id=user_id, item=item, worker_prompt=worker_prompt)
+            for item in items
+        )
+
+        # Create the chord with a callback to aggregate results
+        callback = aggregate_results_callback.s()
+        chord_task = chord(worker_tasks, callback)
+        
+        logger.info(f"Dispatching a chord of {len(items)} parallel workers for user {user_id}.")
+        
+        # Execute the chord and wait for the result. This blocks the current async function.
+        # We run this blocking call in a thread to not block the event loop.
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(
+            None,  # Use the default thread pool executor
+            lambda: chord_task.apply_async().get(timeout=600) # 10 minute timeout
+        )
+
+        return {"status": "success", "result": result}
+    except Exception as e:
+        logger.error(f"Error in process_collection_in_parallel: {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 if __name__ == "__main__":

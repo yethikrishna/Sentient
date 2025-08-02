@@ -259,6 +259,16 @@ INTEGRATIONS_CONFIG = {
             "name": "linkedin_server",
             "url": os.getenv("LINKEDIN_MCP_SERVER_URL", "http://localhost:9027/sse")
         }
+    },
+    "tasks": {
+        "display_name": "Internal Task Manager",
+        "description": "Manages asynchronous, background tasks. Use 'create_task_from_prompt' to create a new task from a natural language prompt. Use 'process_collection_in_parallel' to perform an action on each item in a list in parallel (e.g., summarize a list of articles).",
+        "auth_type": "builtin",
+        "icon": "IconChecklist",
+        "mcp_server_config": {
+            "name": "tasks_server",
+            "url": os.getenv("TASKS_MCP_SERVER_URL", "http://localhost:9018/sse/")
+        }
     }
 }
 

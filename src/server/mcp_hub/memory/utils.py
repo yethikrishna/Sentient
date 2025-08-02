@@ -228,79 +228,130 @@ async def _insert_fact_with_analysis(conn, user_id: str, content: str, source: O
         message += f" This is a short-term memory and will be forgotten around {expires_at.strftime('%Y-%m-%d %H:%M %Z')}."
     return message
 
+async def _process_single_fact_cud(conn, user_id: str, fact_content: str, source: Optional[str] = None) -> str:
+    """
+    Processes a single atomic fact by deciding to ADD, UPDATE, or DELETE it.
+    This is the core 3-step CUD logic.
+    """
+    logger.info(f"Starting CUD process for single fact: '{fact_content}'")
+    await register_vector(conn)
+    
+    logger.info("Step 1/3: Finding potentially related facts via semantic search.")
+    query_embedding = _get_normalized_embedding(fact_content, task_type="RETRIEVAL_QUERY")
+    similar_records = await conn.fetch(
+        """
+        SELECT DISTINCT f.id, f.content, 1 - (f.embedding <=> $2) AS similarity
+        FROM facts f
+        WHERE f.user_id = $1
+        ORDER BY similarity DESC
+        LIMIT 3;
+        """, user_id, query_embedding
+    )
+    logger.info(f"Found {len(similar_records)} potentially related facts.")
+
+    logger.info("Step 2/3: Using LLM to decide on action and perform analysis.")
+    prompt = cud_decision_user_prompt_template.format(
+        information=fact_content,
+        similar_facts=json.dumps([dict(r) for r in similar_records])
+    )
+    decision_raw = llm.run_agent_with_prompt(agents["cud_decision"], prompt)
+    cleaned_output = clean_llm_output(decision_raw)
+    decision = {}
+    try:
+        decision = json.loads(cleaned_output)
+    except json.JSONDecodeError:
+        logger.warning(f"Failed to parse CUD decision JSON from LLM. Defaulting to ADD. Output: {cleaned_output}")
+        decision = {"action": "ADD", "content": fact_content} # Fallback
+
+    logger.info(f"Step 3/3: Executing action '{decision.get('action')}'.")
+    action = decision.get("action")
+    
+    if action == "ADD" and decision.get("content") and decision.get("analysis"):
+        logger.info("Action is ADD. Inserting new fact with full analysis.")
+        return await _insert_fact_with_analysis(conn, user_id, decision["content"], source, decision["analysis"])
+
+    elif action == "UPDATE" and decision.get("fact_id") and decision.get("content") and decision.get("analysis"):
+        fact_id = decision["fact_id"]
+        logger.info(f"Action is UPDATE for fact_id {fact_id}. Replacing fact.")
+        async with conn.transaction():
+            await conn.execute("DELETE FROM facts WHERE id = $1 AND user_id = $2", fact_id, user_id)
+            logger.info(f"Original fact {fact_id} deleted.")
+        return await _insert_fact_with_analysis(conn, user_id, decision["content"], source, decision["analysis"])
+
+    elif action == "DELETE" and decision.get("fact_id"):
+        fact_id = decision["fact_id"]
+        logger.info(f"Action is DELETE for fact_id {fact_id}.")
+        result = await conn.execute("DELETE FROM facts WHERE id = $1 AND user_id = $2", fact_id, user_id)
+        
+        deleted_count = 0
+        try:
+            # Format is "DELETE 1", so we split and take the number.
+            deleted_count = int(result.split(" ")[1])
+        except (IndexError, ValueError):
+            pass # Keep deleted_count as 0
+
+        if deleted_count == 1:
+            logger.info(f"Successfully deleted fact {fact_id}.")
+            return f"Fact {fact_id} deleted."
+        else:
+            logger.warning(f"Attempted to delete fact {fact_id}, but it was not found or not owned by the user.")
+            return f"Fact {fact_id} not found or not owned by user."
+
+    else:
+        logger.warning(f"LLM decision was ambiguous or invalid, falling back to simple ADD. Decision: {decision}")
+        # Fallback to analyzing and adding the original information
+        prompt = fact_analysis_user_prompt_template.format(text=fact_content)
+        analysis_raw = llm.run_agent_with_prompt(agents["fact_analysis"], prompt)
+        analysis_cleaned = clean_llm_output(analysis_raw)
+        try:
+            analysis = json.loads(analysis_cleaned)
+            return await _insert_fact_with_analysis(conn, user_id, fact_content, source, analysis)
+        except json.JSONDecodeError:
+            logger.error(f"Fallback ADD failed due to analysis JSON error. Output: {analysis_cleaned}")
+            return f"Failed to process fact '{fact_content}' due to an internal analysis error."
+
 async def cud_memory(user_id: str, information: str, source: Optional[str] = None) -> str:
-    """Adds, updates, or deletes a fact based on user input using a streamlined process."""
+    """Breaks down information into atomic facts, then for each fact, decides whether to add, update, or delete it in memory."""
     logger.info(f"Executing cud_memory for user_id='{user_id}' with source='{source}'.")
     logger.debug(f"CUD information: \"{information}\"")
+
+    # Step 1: Extract atomic facts from the information.
+    logger.info("Step 1/N: Extracting atomic facts from the provided information.")
+    prompt = fact_extraction_user_prompt_template.format(username=user_id, paragraph=information)
+    facts_raw = llm.run_agent_with_prompt(agents["fact_extraction"], prompt)
+    cleaned_output = clean_llm_output(facts_raw)
+    facts = []
+    try:
+        parsed_facts = json.loads(cleaned_output)
+        if isinstance(parsed_facts, list):
+            facts = [str(f) for f in parsed_facts if f] # Ensure all are strings and not empty
+        else:
+            facts = [str(parsed_facts)] if parsed_facts else []
+    except (json.JSONDecodeError, TypeError):
+        logger.warning(f"Failed to parse fact extraction JSON from LLM. Treating entire input as one fact. Output: {cleaned_output}")
+        facts = [information]
+
+    if not facts:
+        logger.info("Fact extraction resulted in no facts. Nothing to do.")
+        return "No information was processed as no facts were extracted."
+
+    logger.info(f"Extracted {len(facts)} facts. Processing each one.")
+    
+    results = []
     pool = await db.get_db_pool()
     async with pool.acquire() as conn:
-        await register_vector(conn)
-        
-        logger.info("Step 1/3: Finding potentially related facts via semantic search.")
-        query_embedding = _get_normalized_embedding(information, task_type="RETRIEVAL_QUERY")
-        similar_records = await conn.fetch(
-            """
-            SELECT DISTINCT f.id, f.content, 1 - (f.embedding <=> $2) AS similarity
-            FROM facts f
-            WHERE f.user_id = $1
-            ORDER BY similarity DESC
-            LIMIT 3;
-            """, user_id, query_embedding
-        )
-        logger.info(f"Found {len(similar_records)} potentially related facts.")
-
-        logger.info("Step 2/3: Using LLM to decide on action and perform analysis.")
-        prompt = cud_decision_user_prompt_template.format(
-            information=information,
-            similar_facts=json.dumps([dict(r) for r in similar_records])
-        )
-        decision_raw = llm.run_agent_with_prompt(agents["cud_decision"], prompt)
-        cleaned_output = clean_llm_output(decision_raw)
-        decision = {}
-        try:
-            decision = json.loads(cleaned_output)
-        except json.JSONDecodeError:
-            logger.warning(f"Failed to parse CUD decision JSON from LLM. Defaulting to ADD. Output: {cleaned_output}")
-            decision = {"action": "ADD", "content": information} # Fallback
-
-        logger.info(f"Step 3/3: Executing action '{decision.get('action')}'.")
-        action = decision.get("action")
-        
-        if action == "ADD" and decision.get("content") and decision.get("analysis"):
-            logger.info("Action is ADD. Inserting new fact with full analysis.")
-            return await _insert_fact_with_analysis(conn, user_id, decision["content"], source, decision["analysis"])
-
-        elif action == "UPDATE" and decision.get("fact_id") and decision.get("content") and decision.get("analysis"):
-            fact_id = decision["fact_id"]
-            logger.info(f"Action is UPDATE for fact_id {fact_id}. Replacing fact.")
-            async with conn.transaction():
-                await conn.execute("DELETE FROM facts WHERE id = $1 AND user_id = $2", fact_id, user_id)
-                logger.info(f"Original fact {fact_id} deleted.")
-            return await _insert_fact_with_analysis(conn, user_id, decision["content"], source, decision["analysis"])
-
-        elif action == "DELETE" and decision.get("fact_id"):
-            fact_id = decision["fact_id"]
-            logger.info(f"Action is DELETE for fact_id {fact_id}.")
-            result = await conn.execute("DELETE FROM facts WHERE id = $1 AND user_id = $2", fact_id, user_id)
-            if result.endswith("1"):
-                logger.info(f"Successfully deleted fact {fact_id}.")
-                return f"Fact {fact_id} deleted."
-            else:
-                logger.warning(f"Attempted to delete fact {fact_id}, but it was not found or not owned by the user.")
-                return f"Fact {fact_id} not found or not owned by user."
-
-        else:
-            logger.warning(f"LLM decision was ambiguous or invalid, falling back to simple ADD. Decision: {decision}")
-            # Fallback to analyzing and adding the original information
-            prompt = fact_analysis_user_prompt_template.format(text=information)
-            analysis_raw = llm.run_agent_with_prompt(agents["fact_analysis"], prompt)
-            analysis_cleaned = clean_llm_output(analysis_raw)
+        for i, fact_content in enumerate(facts):
+            logger.info(f"Processing fact {i+1}/{len(facts)}: '{fact_content}'")
             try:
-                analysis = json.loads(analysis_cleaned)
-                return await _insert_fact_with_analysis(conn, user_id, information, source, analysis)
-            except json.JSONDecodeError:
-                logger.error(f"Fallback ADD failed due to analysis JSON error. Output: {analysis_cleaned}")
-                return "Failed to process memory due to an internal analysis error."
+                result_message = await _process_single_fact_cud(conn, user_id, fact_content, source)
+                results.append(result_message)
+            except Exception as e:
+                logger.error(f"Error processing fact '{fact_content}': {e}", exc_info=True)
+                results.append(f"Failed to process fact: '{fact_content}'.")
+
+    final_message = "\n".join(results)
+    logger.info(f"cud_memory processing complete. Result: {final_message}")
+    return final_message if final_message else "No facts were processed."
 
 async def build_initial_memory(user_id: str, documents: List[Dict[str, str]]) -> str:
     """Builds memory from documents, clearing existing memory first."""

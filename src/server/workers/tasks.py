@@ -570,56 +570,182 @@ async def async_refine_task_details(task_id: str):
     finally:
         await db_manager.close()
 
+def _event_matches_filter(event_data: Dict[str, Any], task_filter: Dict[str, Any], source: str) -> bool:
+    """
+    Checks if an event's data matches the conditions defined in a task's filter.
+    """
+    if not task_filter:
+        return True # No filter means it matches all events of this type
+
+    for key, value in task_filter.items():
+        if source == 'gmail':
+            # Special handling for gmail 'from' field which can be "Name <email@example.com>"
+            if key == 'from':
+                from_header = event_data.get('from', '').lower()
+                if value.lower() not in from_header:
+                    return False
+            # Special handling for subject contains
+            elif key == 'subject_contains':
+                subject = event_data.get('subject', '').lower()
+                if value.lower() not in subject:
+                    return False
+            else:
+                # Generic key-value check for other fields
+                event_value = event_data.get(key)
+                if isinstance(event_value, str) and value.lower() not in event_value.lower():
+                    return False
+                elif isinstance(event_value, list) and value not in event_value:
+                    return False
+                elif event_value != value:
+                    return False
+        # Add logic for other sources like 'slack' here
+        # elif source == 'slack':
+        #     if key == 'channel' and event_data.get('channel_name') != value:
+        #         return False
+        else:
+            # Default simple matching
+            if event_data.get(key) != value:
+                return False
+
+    return True
+
+async def async_execute_triggered_task(user_id: str, source: str, event_type: str, event_data: Dict[str, Any]):
+    db_manager = MongoManager()
+    try:
+        # Find all active tasks for this user that are triggered by this source and event
+        query = {
+            "user_id": user_id,
+            "status": "active",
+            "enabled": True,
+            "schedule.type": "triggered",
+            "schedule.source": source,
+            "schedule.event": event_type
+        }
+        triggered_tasks_cursor = db_manager.task_collection.find(query)
+        tasks_to_check = await triggered_tasks_cursor.to_list(length=None)
+
+        if not tasks_to_check:
+            logger.info(f"No triggered tasks found for user '{user_id}' matching this event.")
+            return
+
+        logger.info(f"Found {len(tasks_to_check)} potential triggered tasks for user '{user_id}'.")
+
+        for task in tasks_to_check:
+            task_id = task['task_id']
+            schedule = task.get('schedule', {})
+            task_filter = schedule.get('filter', {})
+
+            if _event_matches_filter(event_data, task_filter, source):
+                logger.info(f"Event matches filter for triggered task {task_id}. Queuing for execution.")
+
+                # The event data becomes the context for this execution run.
+                # We need to create a new "run" for this triggered execution.
+                new_run = {
+                    "run_id": str(uuid.uuid4()),
+                    "status": "processing", # Start execution immediately
+                    "plan": task.get("plan", []), # Use the main plan
+                    "trigger_event_data": event_data,
+                    "created_at": datetime.datetime.now(datetime.timezone.utc)
+                }
+
+                await db_manager.task_collection.update_one(
+                    {"task_id": task_id},
+                    {"$push": {"runs": new_run}}
+                )
+
+                # Queue the executor with the new run_id
+                execute_task_plan.delay(task_id, user_id)
+            else:
+                logger.debug(f"Event did not match filter for triggered task {task_id}.")
+
+    except Exception as e:
+        logger.error(f"Error during async_execute_triggered_task for user {user_id}: {e}", exc_info=True)
+    finally:
+        await db_manager.close()
+
+@celery_app.task(name="execute_triggered_task")
+def execute_triggered_task(user_id: str, source: str, event_type: str, event_data: Dict[str, Any]):
+    """
+    Checks for and executes any tasks triggered by a new event.
+    """
+    logger.info(f"Checking for triggered tasks for user '{user_id}' from source '{source}' event '{event_type}'.")
+    run_async(async_execute_triggered_task(user_id, source, event_type, event_data))
+
 # --- Polling Tasks ---
-@celery_app.task(name="poll_gmail_for_user")
-def poll_gmail_for_user(user_id: str, polling_state: dict):
-    logger.info(f"Polling Gmail for user {user_id}")
+@celery_app.task(name="poll_gmail_for_proactivity")
+def poll_gmail_for_proactivity(user_id: str, polling_state: dict):
+    logger.info(f"Polling Gmail for proactivity for user {user_id}")
     db_manager = GmailPollerDB()
     service = GmailPollingService(db_manager)
-    run_async(service._run_single_user_poll_cycle(user_id, polling_state))
+    run_async(service._run_single_user_poll_cycle(user_id, polling_state, mode='proactivity'))
 
-@celery_app.task(name="poll_gcalendar_for_user")
-def poll_gcalendar_for_user(user_id: str, polling_state: dict):
-    logger.info(f"Polling GCalendar for user {user_id}")
+@celery_app.task(name="poll_gmail_for_triggers")
+def poll_gmail_for_triggers(user_id: str, polling_state: dict):
+    logger.info(f"Polling Gmail for triggers for user {user_id}")
+    db_manager = GmailPollerDB()
+    service = GmailPollingService(db_manager)
+    run_async(service._run_single_user_poll_cycle(user_id, polling_state, mode='triggers'))
+
+@celery_app.task(name="poll_gcalendar_for_proactivity")
+def poll_gcalendar_for_proactivity(user_id: str, polling_state: dict):
+    logger.info(f"Polling GCalendar for proactivity for user {user_id}")
     db_manager = GCalPollerDB()
     service = GCalendarPollingService(db_manager)
-    run_async(service._run_single_user_poll_cycle(user_id, polling_state))
+    run_async(service._run_single_user_poll_cycle(user_id, polling_state, mode='proactivity'))
+
+@celery_app.task(name="poll_gcalendar_for_triggers")
+def poll_gcalendar_for_triggers(user_id: str, polling_state: dict):
+    logger.info(f"Polling GCalendar for triggers for user {user_id}")
+    db_manager = GCalPollerDB()
+    service = GCalendarPollingService(db_manager)
+    run_async(service._run_single_user_poll_cycle(user_id, polling_state, mode='triggers'))
 
 # --- Scheduler Tasks ---
-@celery_app.task(name="schedule_all_polling")
-def schedule_all_polling():
-    """Celery Beat task to check for and queue polling tasks for all services."""
-    logger.info("Polling Scheduler: Checking for due polling tasks...")
+@celery_app.task(name="schedule_proactivity_polling")
+def schedule_proactivity_polling():
+    """Celery Beat task for the less frequent proactivity polling."""
+    logger.info("Proactivity Polling Scheduler: Checking for due tasks...")
+    run_async(async_schedule_polling('proactivity'))
 
-    async def async_schedule():
-        db_manager = GmailPollerDB()
-        try:
-            # SUPPORTED_POLLING_SERVICES is no longer imported, hardcode for now or import from a new config
-            supported_polling_services = ["gmail", "gcalendar"] 
-            await db_manager.reset_stale_polling_locks("gmail")
-            await db_manager.reset_stale_polling_locks("gcalendar")
+@celery_app.task(name="schedule_trigger_polling")
+def schedule_trigger_polling():
+    """Celery Beat task for the frequent triggered workflow polling."""
+    logger.info("Trigger Polling Scheduler: Checking for due tasks...")
+    run_async(async_schedule_polling('triggers'))
 
-            for service_name in supported_polling_services:
-                due_tasks_states = await db_manager.get_due_polling_tasks_for_service(service_name)
-                logger.info(f"Found {len(due_tasks_states)} due tasks for {service_name}.")
+async def async_schedule_polling(mode: str):
+    """Generic scheduler logic for both proactivity and triggers."""
+    db_manager = GmailPollerDB() # Can use either DB manager as they are identical
+    try:
+        supported_polling_services = ["gmail", "gcalendar"]
+        await db_manager.reset_stale_polling_locks("gmail", mode)
+        await db_manager.reset_stale_polling_locks("gcalendar", mode)
 
-                for task_state in due_tasks_states:
-                    user_id = task_state["user_id"]
-                    locked_task_state = await db_manager.set_polling_status_and_get(user_id, service_name)
-                    # Sanitize for Celery/JSON serialization
-                    if locked_task_state and '_id' in locked_task_state and isinstance(locked_task_state['_id'], ObjectId):
-                        locked_task_state['_id'] = str(locked_task_state['_id'])
+        for service_name in supported_polling_services:
+            due_tasks_states = await db_manager.get_due_polling_tasks_for_service(service_name, mode)
+            logger.info(f"Found {len(due_tasks_states)} due '{mode}' tasks for {service_name}.")
 
-                    if locked_task_state:
-                        if service_name == "gmail":
-                            poll_gmail_for_user.delay(user_id, locked_task_state)
-                        elif service_name == "gcalendar":
-                            poll_gcalendar_for_user.delay(user_id, locked_task_state)
-                        logger.info(f"Dispatched polling task for {user_id} - service: {service_name}")
-        finally:
-            await db_manager.close()
+            for task_state in due_tasks_states:
+                user_id = task_state["user_id"]
+                locked_task_state = await db_manager.set_polling_status_and_get(user_id, service_name, mode)
 
-    run_async(async_schedule())
+                if locked_task_state and '_id' in locked_task_state and isinstance(locked_task_state['_id'], ObjectId):
+                    locked_task_state['_id'] = str(locked_task_state['_id'])
+
+                if locked_task_state:
+                    if service_name == "gmail":
+                        if mode == 'proactivity':
+                            poll_gmail_for_proactivity.delay(user_id, locked_task_state)
+                        else: # triggers
+                            poll_gmail_for_triggers.delay(user_id, locked_task_state)
+                    elif service_name == "gcalendar":
+                        if mode == 'proactivity':
+                            poll_gcalendar_for_proactivity.delay(user_id, locked_task_state)
+                        else: # triggers
+                            poll_gcalendar_for_triggers.delay(user_id, locked_task_state)
+                    logger.info(f"Dispatched '{mode}' polling task for {user_id} - service: {service_name}")
+    finally:
+        await db_manager.close()
 
 def calculate_next_run(schedule: Dict[str, Any], last_run: Optional[datetime.datetime] = None) -> Tuple[Optional[datetime.datetime], Optional[str]]:
     """Calculates the next execution time for a scheduled task in UTC."""

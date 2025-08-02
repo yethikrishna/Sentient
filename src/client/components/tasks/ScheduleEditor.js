@@ -11,6 +11,11 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 			delete baseSchedule.frequency
 			delete baseSchedule.days
 			delete baseSchedule.time
+		} else if (type === "triggered") {
+			delete baseSchedule.run_at
+			delete baseSchedule.frequency
+			delete baseSchedule.days
+			delete baseSchedule.time
 		} else {
 			delete baseSchedule.run_at
 		}
@@ -53,7 +58,8 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 			<div className="flex items-center gap-2">
 				{[
 					{ label: "Run Once", value: "once" },
-					{ label: "Recurring", value: "recurring" }
+					{ label: "Recurring", value: "recurring" },
+					{ label: "Triggered", value: "triggered" }
 				].map(({ label, value }) => (
 					<button
 						key={value}
@@ -86,6 +92,73 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 					<p className="text-xs text-gray-500 mt-1">
 						If left blank, the task will be planned immediately.
 					</p>
+				</div>
+			)}
+
+			{schedule.type === "triggered" && (
+				<div className="space-y-4">
+					<div>
+						<label className="text-xs text-gray-400 block mb-1">
+							Source Service
+						</label>
+						<select
+							value={schedule.source || "gmail"}
+							onChange={(e) =>
+								setSchedule({
+									...schedule,
+									source: e.target.value
+								})
+							}
+							className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:border-blue-500"
+						>
+							<option value="gmail">Gmail</option>
+							<option value="slack">Slack</option>
+							<option value="gcalendar">Google Calendar</option>
+						</select>
+					</div>
+					<div>
+						<label className="text-xs text-gray-400 block mb-1">
+							Trigger Event
+						</label>
+						<input
+							type="text"
+							value={schedule.event || "new_email"}
+							onChange={(e) =>
+								setSchedule({
+									...schedule,
+									event: e.target.value
+								})
+							}
+							placeholder="e.g., new_email, new_message"
+							className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:border-blue-500"
+						/>
+					</div>
+					<div>
+						<label className="text-xs text-gray-400 block mb-1">
+							Filter Conditions (JSON)
+						</label>
+						<textarea
+							value={JSON.stringify(
+								schedule.filter || {},
+								null,
+								2
+							)}
+							onChange={(e) => {
+								try {
+									const parsed = JSON.parse(e.target.value)
+									setSchedule({ ...schedule, filter: parsed })
+								} catch (err) {
+									// Silently ignore invalid JSON for now
+								}
+							}}
+							rows={4}
+							className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:border-blue-500 font-mono text-xs"
+							placeholder={`{\n  "from": "boss@example.com",\n  "subject_contains": "Urgent"\n}`}
+						/>
+						<p className="text-xs text-gray-500 mt-1">
+							Example: {`{"from": "user@example.com"}`}
+						</p>
+					</div>
 				</div>
 			)}
 

@@ -45,6 +45,7 @@ function TasksPageContent() {
 	// Processed tasks for different views
 	const [oneTimeTasks, setOneTimeTasks] = useState([])
 	const [recurringTasks, setRecurringTasks] = useState([])
+	const [triggeredTasks, setTriggeredTasks] = useState([])
 	const [recurringInstances, setRecurringInstances] = useState([])
 	const [integrations, setIntegrations] = useState([])
 	const [allTools, setAllTools] = useState([])
@@ -94,6 +95,7 @@ function TasksPageContent() {
 			// --- Process tasks for different views ---
 			const oneTime = []
 			const recurring = []
+			const triggered = []
 			const instances = []
 			const today = startOfDay(new Date())
 
@@ -130,6 +132,8 @@ function TasksPageContent() {
 							instance_id: `${task.task_id}-next`
 						})
 					}
+				} else if (task.schedule?.type === "triggered") {
+					triggered.push(task)
 				} else {
 					// One-time tasks
 					const scheduledDate = task.schedule?.run_at
@@ -145,6 +149,7 @@ function TasksPageContent() {
 
 			setOneTimeTasks(oneTime)
 			setRecurringTasks(recurring)
+			setTriggeredTasks(triggered)
 			setRecurringInstances(instances)
 
 			const integrationsRes = await fetch("/api/settings/integrations")
@@ -331,14 +336,20 @@ Description: ${event.description || "No description."}`
 		)
 	}, [oneTimeTasks, searchQuery])
 
-	const filteredRecurringTasks = useMemo(() => {
+	const filteredActiveWorkflows = useMemo(() => {
+		const allWorkflows = [...recurringTasks, ...triggeredTasks]
 		if (!searchQuery.trim()) {
-			return recurringTasks
+			return allWorkflows
 		}
-		return recurringTasks.filter((task) =>
-			task.name.toLowerCase().includes(searchQuery.toLowerCase())
+		return allWorkflows.filter(
+			(task) =>
+				task.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+				(task.description &&
+					task.description
+						.toLowerCase()
+						.includes(searchQuery.toLowerCase()))
 		)
-	}, [recurringTasks, searchQuery])
+	}, [recurringTasks, triggeredTasks, searchQuery])
 
 	const filteredCalendarTasks = useMemo(() => {
 		const allCalendarTasks = [...oneTimeTasks, ...recurringInstances]
@@ -391,8 +402,8 @@ Description: ${event.description || "No description."}`
 									{view === "list" ? (
 										<ListView
 											oneTimeTasks={filteredOneTimeTasks}
-											recurringTasks={
-												filteredRecurringTasks
+											activeWorkflows={
+												filteredActiveWorkflows
 											}
 											onSelectTask={handleSelectItem}
 											searchQuery={searchQuery}

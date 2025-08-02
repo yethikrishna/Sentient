@@ -203,14 +203,12 @@ async def generate_chat_llm_stream(
         # --- STAGE 1 ---
         stage1_output = await _get_stage1_response(messages, connected_tools, disconnected_tools, user_id)
 
-        if isinstance(stage1_output, str):
-            # --- DIRECT RESPONSE FROM STAGE 1 ---
-            logger.info(f"Stage 1 provided a direct response for user {user_id}. Streaming it back.")
-            yield {"type": "assistantStream", "token": stage1_output, "done": True, "messageId": assistant_message_id}
-            return # End of stream
-
         # --- TOOL SELECTION, PROCEED TO STAGE 2 ---
-        relevant_tool_names = stage1_output
+        try:
+            relevant_tool_names = json.loads(stage1_output) if isinstance(stage1_output, str) else stage1_output
+        except Exception as e:
+            logger.error(f"Failed to parse stage1_output as JSON list: {e}", exc_info=True)
+            relevant_tool_names = []
 
         tool_display_names = [INTEGRATIONS_CONFIG.get(t, {}).get('display_name', t) for t in relevant_tool_names if t != 'memory']
         if tool_display_names:

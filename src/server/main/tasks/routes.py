@@ -101,7 +101,7 @@ async def add_task(
 		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create task.")
 
 	# Asynchronously refine details and then trigger planning
-	refine_and_plan_ai_task.delay(task_id)
+	refine_and_plan_ai_task.delay(task_id, user_id)
 	return {"message": "Task accepted! I'll start planning it out.", "task_id": task_id}
 
 @router.post("/fetch-tasks")
@@ -236,7 +236,7 @@ async def answer_clarifications(
     # Set status to trigger re-planning and call the planner worker
     await mongo_manager.update_task(request.task_id, {"status": "clarification_answered"})
     # Re-trigger the planner
-    generate_plan_from_context.delay(request.task_id)
+    generate_plan_from_context.delay(request.task_id, user_id)
     logger.info(f"Answers submitted for task {request.task_id}. Re-triggering planner.")
     
     return JSONResponse(content={"message": "Answers submitted. Task is being re-planned."})
@@ -251,7 +251,7 @@ async def rerun_task(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Original task not found or failed to duplicate.")
 
     # Trigger the planner for the new task
-    generate_plan_from_context.delay(new_task_id)
+    generate_plan_from_context.delay(new_task_id, user_id)
     logger.info(f"Rerunning task {request.taskId}. New task {new_task_id} created and sent to planner.")
     return {"message": "Task has been duplicated for re-run.", "new_task_id": new_task_id}
 
@@ -360,7 +360,7 @@ async def task_chat(
     )
 
     # Re-trigger the planner for the same task
-    generate_plan_from_context.delay(task_id)
+    generate_plan_from_context.delay(task_id, user_id)
     return JSONResponse(content={"message": "Change request received. The task is now being re-planned."})
 
 @router.post("/internal/progress-update", include_in_schema=False)

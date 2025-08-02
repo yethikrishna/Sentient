@@ -21,3 +21,5 @@ def get_user_id_from_context(ctx: Context) -> str:
     user_id = http_request.headers.get("X-User-ID")
     if not user_id:
         raise ToolError("Authentication failed: 'X-User-ID' header is missing.")
+
+    return user_id

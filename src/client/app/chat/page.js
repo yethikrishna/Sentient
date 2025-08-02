@@ -34,6 +34,7 @@ import { cn } from "@utils/cn"
 import { Tooltip } from "react-tooltip"
 import { motion, AnimatePresence } from "framer-motion"
 import ChatBubble from "@components/ChatBubble"
+import { TextLoop } from "@components/ui/TextLoop"
 import InteractiveNetworkBackground from "@components/ui/InteractiveNetworkBackground"
 import { TextShimmer } from "@components/ui/text-shimmer"
 import React from "react"
@@ -755,7 +756,7 @@ export default function ChatPage() {
 
 	const renderInputArea = () => (
 		<div className="relative bg-neutral-800/60 backdrop-blur-sm border border-neutral-700/50 rounded-2xl">
-			<div className="p-4 flex items-start gap-4">
+			<div className="relative p-4 flex items-start gap-4">
 				<textarea
 					ref={textareaRef}
 					value={input}
@@ -768,11 +769,23 @@ export default function ChatPage() {
 							sendMessage()
 						}
 					}}
-					placeholder="Ask anything"
-					className="w-full bg-transparent text-base text-white placeholder-neutral-400 resize-none focus:ring-0 focus:outline-none overflow-y-auto custom-scrollbar"
+					placeholder=" "
+					className="w-full bg-transparent text-base text-white placeholder-transparent resize-none focus:ring-0 focus:outline-none overflow-y-auto custom-scrollbar z-10"
 					rows={1}
 					style={{ maxHeight: "200px" }}
 				/>
+				{!input && (
+					<div className="absolute top-1/2 left-4 -translate-y-1/2 text-neutral-500 pointer-events-none z-0">
+						<TextLoop className="text-base ml-5">
+							<span>Ask anything...</span>
+							<span>Summarize my unread emails from today</span>
+							<span>
+								Draft a follow-up to the project proposal
+							</span>
+							<span>Schedule a meeting with the design team</span>
+						</TextLoop>
+					</div>
+				)}
 			</div>
 			<div className="flex justify-between items-center px-3 pb-3">
 				<div className="flex items-center gap-1">

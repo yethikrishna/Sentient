@@ -188,7 +188,10 @@ const TaskDetailsPanel = ({
 					{/* --- CONTENT --- */}
 					<main className="flex-1 overflow-y-auto custom-scrollbar p-6">
 						{isRecurring ? (
-							<RecurringTaskDetails task={task} />
+							<RecurringTaskDetails
+								task={task}
+								onAnswerClarifications={onAnswerClarifications}
+							/>
 						) : (
 							<TaskDetailsContent
 								task={task}

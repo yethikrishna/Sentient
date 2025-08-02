@@ -14,6 +14,8 @@ from . import auth
 from main.tasks.prompts import TASK_CREATION_PROMPT # Reusing the main server's prompt
 from main.llm import get_qwen_assistant
 from main.dependencies import mongo_manager # We can import from main as it's in the python path
+from workers.tasks import refine_and_plan_ai_task
+
 
 logger = logging.getLogger(__name__)
 
@@ -71,15 +73,14 @@ async def create_task_from_prompt(ctx: Context, prompt: str) -> Dict[str, Any]:
 
         task_data = JsonExtractor.extract_valid_json(response_str)
         if not task_data or "description" not in task_data:
-             raise Exception(f"Failed to parse task details from LLM response: {response_str}")
+            raise Exception(f"Failed to parse task details from LLM response: {response_str}")
 
         task_id = await mongo_manager.add_task(user_id, task_data)
 
         if not task_id:
             raise Exception("Failed to save the task to the database.")
         
-        from workers.tasks import refine_and_plan_ai_task
-        refine_and_plan_ai_task.delay(task_id)
+        refine_and_plan_ai_task.delay(task_id, user_id)
 
         return {"status": "success", "result": f"Task '{task_data['description']}' has been created and is being planned."}
     except Exception as e:

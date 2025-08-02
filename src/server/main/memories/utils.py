@@ -67,7 +67,7 @@ async def create_memory_graph(user_id: str) -> Dict[str, List[Dict[str, Any]]]:
     ]
 
     # Calculate cosine similarity matrix if there's more than one embedding
-    edges = []
+    links = []
     if len(embeddings) > 1:
         logger.info(f"Calculating similarity matrix for {len(embeddings)} memories.")
         similarity_matrix = cosine_similarity(embeddings)
@@ -77,12 +77,12 @@ async def create_memory_graph(user_id: str) -> Dict[str, List[Dict[str, Any]]]:
             for j in range(i + 1, len(similarity_matrix)):
                 similarity = similarity_matrix[i][j]
                 if similarity >= SIMILARITY_THRESHOLD:
-                    edges.append({
-                        "from": fact_ids[i],
-                        "to": fact_ids[j],
+                    links.append({
+                        "source": fact_ids[i],
+                        "target": fact_ids[j],
                         "value": float(similarity), # Convert numpy.float32 to standard float
                         "title": f"Similarity: {similarity:.2%}" # Tooltip for the edge
                     })
 
-    logger.info(f"Generated graph with {len(nodes)} nodes and {len(edges)} edges.")
-    return {"nodes": nodes, "edges": edges}
+    logger.info(f"Generated graph with {len(nodes)} nodes and {len(links)} links.")
+    return {"nodes": nodes, "links": links}

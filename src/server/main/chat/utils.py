@@ -88,12 +88,9 @@ async def _get_stage1_response(messages: List[Dict[str, Any]], connected_tools_m
             "content": msg.get("content", "")
         })
 
-    selector_agent = get_qwen_assistant(system_message=STAGE_1_SYSTEM_PROMPT, function_list=tools_for_agent)
-    messages = expanded_messages
-
     def _run_stage1_sync():
         final_content_str = ""
-        for chunk in run_agent_with_fallback(system_message=STAGE_1_SYSTEM_PROMPT, function_list=tools_for_agent, messages=messages):
+        for chunk in run_agent_with_fallback(system_message=STAGE_1_SYSTEM_PROMPT, function_list=tools_for_agent, messages=expanded_messages):
             if isinstance(chunk, list) and chunk:
                 last_message = chunk[-1]
                 if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
@@ -259,9 +256,8 @@ async def generate_chat_llm_stream(
 
     def worker():
         try:
-            # Use the new formatted history with IDs
-            qwen_formatted_history = [{"role": "user", "content": "\n".join(history_for_llm)}]
-            for new_history_step in run_agent_with_fallback(system_message=system_prompt, function_list=tools, messages=qwen_formatted_history):
+            # The agent expects a list of message dicts, which is what stage_2_expanded_messages is.
+            for new_history_step in run_agent_with_fallback(system_message=system_prompt, function_list=tools, messages=stage_2_expanded_messages):
                 loop.call_soon_threadsafe(queue.put_nowait, new_history_step)
         except Exception as e:
             logger.error(f"Error in chat worker thread for user {user_id}: {e}", exc_info=True)
@@ -454,10 +450,10 @@ async def process_voice_command(
                 if not final_text_response:
                     last_message = final_run_response[-1]
                     if last_message.get('role') == 'function':
-                        final_text_response = "I have completed the requested action."
-
+                        # Provide a more generic completion message if there's no explicit text answer
+                        final_text_response = "The action has been completed."
         await db_manager.messages_collection.update_one(
-            {"message_id": assistant_message_id},
+            {"message_id": assistant_message_id, "user_id": user_id},
             {"$set": {"content": final_text_response}}
         )
 

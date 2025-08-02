@@ -309,7 +309,7 @@ INTEGRATIONS_CONFIG = {
     },
     "file_management": {
         "display_name": "File Management",
-        "description": "Read and write files to a temporary storage area. Useful for handling uploads, generating files for download, and data analysis.",
+        "description": "Read and write files to and from a temporary storage area. Useful for handling uploads, reading files which are uploaded and mentioned by the user, generating files for download, and data analysis.",
         "auth_type": "builtin",
         "icon": "IconFile",
         "category": "Utilities",

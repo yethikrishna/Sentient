@@ -90,7 +90,7 @@ Your response MUST be a single, valid JSON object with the keys "name", "descrip
     "type": "triggered",
     "source": "gmail",
     "event": "new_email",
-    "filter": {{"from": "newsletter@example.com"}}
+    "filter": {"from": "newsletter@example.com"}
   }}
 }}
 ```

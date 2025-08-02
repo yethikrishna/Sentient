@@ -2,7 +2,8 @@ import os
 from typing import Dict, Any
 
 from dotenv import load_dotenv
-from fastmcp import FastMCP, Context, Message
+from fastmcp import FastMCP, Context
+from fastmcp.prompts.prompt import Message
 
 from . import auth, utils
 

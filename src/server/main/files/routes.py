@@ -3,10 +3,8 @@ import uuid
 import re
 from fastapi import APIRouter, Depends, File, UploadFile
 from fastapi.responses import JSONResponse
-from main.auth import utils as auth_helper
-
-# Assuming FILE_MANAGEMENT_TEMP_DIR is defined and accessible (e.g., from a config file)
-# For example: FILE_MANAGEMENT_TEMP_DIR = "/tmp/ai_files"
+from main.dependencies import auth_helper
+from main.config import FILE_MANAGEMENT_TEMP_DIR
 
 router = APIRouter(
     prefix="/api/files",
@@ -39,7 +37,7 @@ async def upload_file(
     user_id: str = Depends(auth_helper.get_current_user_id)
 ):
     # Create a user-specific subdirectory
-    safe_user_id = "".join(c for c in user_id if c.isalnum() or c in ('-', '|', '_'))
+    safe_user_id = "".join(c for c in user_id if c.isalnum() or c in ('-', '_'))
     user_specific_dir = os.path.join(FILE_MANAGEMENT_TEMP_DIR, safe_user_id)
     os.makedirs(user_specific_dir, exist_ok=True)
 

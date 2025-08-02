@@ -39,6 +39,9 @@ services:
         build:
             context: ./server
             dockerfile: Dockerfile
+            args:
+                - OPENAI_API_KEY=${OPENAI_API_KEY}
+                - OPENAI_MODEL_NAME=${OPENAI_MODEL_NAME}
         ports:
             - "5000:80" # Expose Nginx proxy
         env_file:
@@ -46,6 +49,7 @@ services:
         depends_on:
             - mongodb
             - redis
+            - postgres
         networks:
             - sentient_network
         # Add DNS servers to ensure the container can resolve external domains like api.novita.ai
@@ -86,6 +90,21 @@ services:
         networks:
             - sentient_network
 
+    # PostgreSQL for Memory MCP
+    postgres:
+        image: pgvector/pgvector:pg16
+        container_name: sentient-postgres-selfhost
+        environment:
+            POSTGRES_USER: ${POSTGRES_USER}
+            POSTGRES_PASSWORD: ${POSTGRES_PASS}
+            POSTGRES_DB: ${POSTGRES_DB}
+        ports:
+            - "5432:5432"
+        volumes:
+            - postgres_data:/var/lib/postgresql/data
+        networks:
+            - sentient_network
+
 networks:
     sentient_network:
         driver: bridge
@@ -94,3 +113,4 @@ volumes:
     mongodb_data:
     redis_data:
     chroma_data:
+    postgres_data:

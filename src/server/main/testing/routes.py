@@ -9,7 +9,8 @@ from main.config import ENVIRONMENT
 from main.dependencies import auth_helper
 from main.notifications.whatsapp_client import (check_phone_number_exists,
                                                  send_whatsapp_message)
-from workers.tasks import cud_memory_task, proactive_reasoning_pipeline, run_due_tasks, schedule_all_polling
+from workers.tasks import (cud_memory_task, proactive_reasoning_pipeline, run_due_tasks,
+                           schedule_proactivity_polling, schedule_trigger_polling)
 
 from .models import ContextInjectionRequest, WhatsAppTestRequest
 
@@ -135,9 +136,10 @@ async def trigger_poller(
         "This endpoint is only available in development or self-host environments."
     )
     try:
-        schedule_all_polling.delay()
+        schedule_proactivity_polling.delay()
+        schedule_trigger_polling.delay()
         logger.info(f"Manually triggered proactive poller by user {user_id}")
-        return {"message": "Proactive poller (schedule_all_polling) triggered successfully. Check Celery worker logs for execution."}
+        return {"message": "Proactive and trigger pollers triggered successfully. Check Celery worker logs for execution."}
     except Exception as e:
         logger.error(f"Failed to manually trigger poller: {e}", exc_info=True)
         raise HTTPException(

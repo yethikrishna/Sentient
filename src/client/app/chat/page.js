@@ -19,7 +19,7 @@ import {
 	IconWaveSine,
 	IconMessageOff,
 	IconPaperclip,
-	IconFile
+	IconFile,
 	IconPlus,
 	IconTools,
 	IconTool,
@@ -84,8 +84,9 @@ const toolIcons = {
 	whatsapp: IconBrandWhatsapp,
 	gcalendar_alt: IconCalendarEvent,
 	default: IconTool
+// Ensure this closing brace matches the correct opening brace or remove it if unnecessary.
 }
-
+const useCasesByDomain = {
 	Featured: [
 		{
 			title: "Overnight Updates",
@@ -1136,27 +1137,6 @@ export default function ChatPage() {
 					</button>
 				</div>
 				<div className="absolute right-3 bottom-3 flex items-center gap-2">
-					placeholder="Ask anything"
-					className="w-full bg-transparent text-base text-white placeholder-neutral-400 resize-none focus:ring-0 focus:outline-none overflow-y-auto custom-scrollbar"
-					rows={1}
-					style={{ maxHeight: "200px" }}
-				/>
-			</div>
-			<div className="flex justify-between items-center px-3 pb-3">
-				<div className="flex items-center gap-1">
-					{/* <button className="p-2 rounded-full text-neutral-300 hover:bg-neutral-700 hover:text-white transition-colors">
-						<IconPlus size={20} />
-					</button> Use for FILE UPLOADS (TODO) */}
-					<button
-						ref={toolsButtonRef}
-						onClick={() => setIsToolsMenuOpen((prev) => !prev)}
-						className="flex items-center gap-1.5 py-2 px-3 rounded-full text-neutral-300 hover:bg-neutral-700 hover:text-white text-sm font-medium transition-colors"
-					>
-						<IconTools size={18} />
-						<span>Tools</span>
-					</button>
-				</div>
-				<div className="flex items-center gap-2">
 					<button
 						onClick={toggleVoiceMode}
 						className="p-2.5 rounded-full text-white bg-neutral-700 hover:bg-neutral-600 transition-colors"

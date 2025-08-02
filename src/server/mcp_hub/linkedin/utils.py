@@ -221,7 +221,9 @@ async def perform_job_search(user_id: str, search_query: str, num_jobs: int) -> 
     if not LINKEDIN_COOKIES_PATH:
         raise ToolError("System configuration error: LINKEDIN_COOKIES_PATH is not set.")
 
-    user_output_dir = os.path.join(FILE_MANAGEMENT_TEMP_DIR, user_id)
+    # Sanitize user_id for directory creation
+    safe_user_id = "".join(c for c in user_id if c.isalnum() or c in ('-', '_'))
+    user_output_dir = os.path.join(FILE_MANAGEMENT_TEMP_DIR, safe_user_id)
     os.makedirs(user_output_dir, exist_ok=True)
 
     browser_config = BrowserConfig(

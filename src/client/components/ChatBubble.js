@@ -409,7 +409,8 @@ const ChatBubble = ({
 	return (
 		<div
 			className={cn(
-				"max-w-[80%] px-4 py-3 rounded-2xl relative group text-white backdrop-blur-sm",
+				"px-4 py-3 rounded-2xl relative group text-white backdrop-blur-sm",
+				"max-w-full md:max-w-[80%]",
 				isUser
 					? "bg-blue-600/30 border border-blue-500/50 rounded-br-none"
 					: "bg-neutral-800/30 border border-neutral-700/50 rounded-bl-none"
@@ -432,52 +433,55 @@ const ChatBubble = ({
 			{renderedContent}
 			<div
 				className={cn(
-					"absolute top-1/2 -translate-y-1/2 flex items-center opacity-0 group-hover:opacity-100 transition-opacity",
-					isUser ? "right-full pr-2" : "left-full pl-2"
+					"flex items-center gap-2 mt-4 transition-opacity",
+					"opacity-100 md:opacity-0 group-hover:md:opacity-100",
+					isUser ? "justify-end" : "justify-start"
 				)}
 			>
+				<Tooltip
+					place={isUser ? "left-start" : "right-start"}
+					id="chat-bubble-tooltip"
+					style={{ zIndex: 9999 }}
+				/>
+
+				{/* Assistant-only buttons */}
+				{!isUser && (
+					<>
+						<button
+							onClick={handleCopyToClipboard}
+							className="flex items-center p-1.5 rounded-full text-neutral-400 hover:bg-neutral-700 hover:text-white"
+							data-tooltip-id="chat-bubble-tooltip"
+							data-tooltip-content={
+								copied ? "Copied!" : "Copy response"
+							}
+						>
+							{copied ? (
+								<IconCheck size={16} />
+							) : (
+								<IconClipboard size={16} />
+							)}
+						</button>
+						<button
+							onClick={() => onReply(message)}
+							className="p-1.5 rounded-full text-neutral-400 hover:bg-neutral-700 hover:text-white"
+							data-tooltip-id="chat-bubble-tooltip"
+							data-tooltip-content="Reply"
+						>
+							<IconArrowBackUp size={16} />
+						</button>
+					</>
+				)}
+
+				{/* Delete button for both user and assistant */}
 				<button
 					onClick={() => onDelete(message.id)}
-					className="p-1.5 rounded-full bg-neutral-700 text-neutral-300 hover:bg-red-500/20 hover:text-red-400"
+					className="p-1.5 rounded-full text-neutral-400 hover:bg-neutral-700 hover:text-red-400"
 					data-tooltip-id="chat-bubble-tooltip"
 					data-tooltip-content="Delete"
 				>
 					<IconTrash size={16} />
 				</button>
-				{!isUser && (
-					<button
-						onClick={() => onReply(message)}
-						className="p-1.5 rounded-full bg-neutral-700 text-neutral-300 hover:bg-neutral-600 hover:text-white"
-						data-tooltip-id="chat-bubble-tooltip"
-						data-tooltip-content="Reply"
-					>
-						<IconArrowBackUp size={16} />
-					</button>
-				)}
 			</div>
-			{!isUser && (
-				<div className="flex justify-start items-center mt-4">
-					<Tooltip
-						place="right-start"
-						id="chat-bubble-tooltip"
-						style={{ zIndex: 9999 }}
-					/>
-					<button
-						onClick={handleCopyToClipboard}
-						className="flex items-center text-neutral-400 hover:text-white transition-colors"
-						data-tooltip-id="chat-bubble-tooltip"
-						data-tooltip-content={
-							copied ? "Copied!" : "Copy response"
-						}
-					>
-						{copied ? (
-							<IconCheck size={16} />
-						) : (
-							<IconClipboard size={16} />
-						)}
-					</button>
-				</div>
-			)}
 		</div>
 	)
 }

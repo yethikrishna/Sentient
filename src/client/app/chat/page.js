@@ -843,19 +843,19 @@ export default function ChatPage() {
 		<AnimatePresence>
 			{isWelcomeModalOpen && (
 				<motion.div
-					initial={{ opacity: 0 }}
-					animate={{ opacity: 1 }}
-					exit={{ opacity: 0 }}
-					className="fixed inset-0 bg-black/70 backdrop-blur-md z-[60] flex items-center justify-center p-4"
+					initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
+					animate={{ opacity: 1, backdropFilter: "blur(12px)" }}
+					exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
+					className="fixed inset-0 bg-black/70 z-[60] flex p-4 md:p-6"
 					onClick={() => setIsWelcomeModalOpen(false)}
 				>
 					<motion.div
-						initial={{ scale: 0.95, y: 20 }}
-						animate={{ scale: 1, y: 0 }}
-						exit={{ scale: 0.95, y: -20 }}
+						initial={{ opacity: 0, y: 20 }}
+						animate={{ opacity: 1, y: 0 }}
+						exit={{ opacity: 0, y: 20 }}
 						transition={{ duration: 0.2, ease: "easeInOut" }}
 						onClick={(e) => e.stopPropagation()}
-						className="relative bg-neutral-900/90 backdrop-blur-xl p-6 rounded-2xl shadow-2xl w-full max-w-2xl border border-neutral-700 max-h-[80vh] flex flex-col"
+						className="relative bg-neutral-900/80 backdrop-blur-2xl p-6 rounded-2xl shadow-2xl w-full h-full border border-neutral-700 flex flex-col"
 					>
 						<header className="flex justify-between items-center mb-6 flex-shrink-0">
 							<h2 className="text-lg font-semibold text-white flex items-center gap-2">
@@ -1011,7 +1011,7 @@ export default function ChatPage() {
 	)
 
 	const renderOptionsMenu = () => (
-		<div className="absolute top-6 right-6 z-30">
+		<div className="absolute top-4 right-4 md:top-6 md:right-6 z-30">
 			<div className="relative">
 				<button
 					onClick={() => {
@@ -1073,7 +1073,7 @@ export default function ChatPage() {
 			{displayedMessages.length > 0 &&
 				!isVoiceMode &&
 				renderOptionsMenu()}
-			<div className="flex-1 flex flex-col overflow-hidden relative w-full pb-16 md:pb-0">
+			<div className="flex-1 flex flex-col overflow-hidden relative w-full pt-16 md:pt-0">
 				<div className="absolute inset-0 z-[-1] network-grid-background">
 					<InteractiveNetworkBackground />
 				</div>
@@ -1081,7 +1081,7 @@ export default function ChatPage() {
 
 				<main
 					ref={scrollContainerRef}
-					className="flex-1 overflow-y-auto p-6 flex flex-col custom-scrollbar"
+					className="flex-1 overflow-y-auto px-4 pb-4 md:p-6 flex flex-col custom-scrollbar"
 				>
 					{isLoading ? (
 						<div className="flex-1 flex justify-center items-center">
@@ -1190,7 +1190,7 @@ export default function ChatPage() {
 							</div>
 						</div>
 					) : displayedMessages.length === 0 && !thinking ? (
-						<div className="flex-1 flex flex-col justify-center items-center p-6 text-center">
+						<div className="flex-1 flex flex-col justify-center items-center p-4 md:p-6 text-center">
 							<div>
 								<h1 className="text-4xl sm:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-b from-neutral-100 to-neutral-400 py-4">
 									{getGreeting()},{" "}
@@ -1209,7 +1209,7 @@ export default function ChatPage() {
 							</div>
 						</div>
 					) : (
-						<div className="w-full max-w-4xl mx-auto flex flex-col gap-4 flex-1">
+						<div className="w-full max-w-4xl mx-auto flex flex-col gap-3 md:gap-4 flex-1">
 							{isLoadingOlder && (
 								<div className="flex justify-center py-4">
 									<IconLoader className="animate-spin text-neutral-500" />

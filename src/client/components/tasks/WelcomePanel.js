@@ -6,6 +6,7 @@ import {
 	IconMail,
 	IconCalendar,
 	IconFileText,
+	IconX,
 	IconBrandSlack,
 	IconBrandNotion,
 	IconBrandGithub,
@@ -70,24 +71,35 @@ const exampleWorkflows = [
 	}
 ]
 
-const WelcomePanel = ({ onExampleClick }) => {
+const WelcomePanel = ({ onExampleClick, onClose }) => {
 	return (
-		<div className="p-6 h-full flex flex-col overflow-y-auto custom-scrollbar">
-			<div className="text-center mb-8">
-				<IconSparkles
-					size={40}
-					className="mx-auto text-brand-orange mb-4"
-				/>
-				<h2 className="text-2xl font-bold text-white">
-					Welcome to Tasks
-				</h2>
-				<p className="text-neutral-400 mt-2">
-					Select a task to see its details or start with an example
-					workflow.
-				</p>
-			</div>
-			<div className="space-y-4">
-				<h3 className="font-semibold text-neutral-300">
+		<div className="p-4 md:p-6 h-full flex flex-col">
+			<header className="flex items-start justify-between text-center mb-6 md:mb-8 flex-shrink-0">
+				<div className="flex-1 flex flex-col items-center">
+					<IconSparkles
+						size={32}
+						className="text-brand-orange mb-3"
+					/>
+					<h2 className="text-xl md:text-2xl font-bold text-white">
+						Welcome to Tasks
+					</h2>
+					<p className="text-neutral-400 mt-1 text-sm md:text-base max-w-lg">
+						This is your command center for getting things done.
+						Simply describe what you need in the input box below.
+						You can create one-time tasks, scheduled actions, or
+						recurring workflows using natural language.
+					</p>
+				</div>
+				{/* Mobile-only close button */}
+				<button
+					onClick={onClose}
+					className="p-2 text-neutral-400 hover:text-white md:hidden -mr-2 -mt-2"
+				>
+					<IconX size={20} />
+				</button>
+			</header>
+			<div className="space-y-4 overflow-y-auto custom-scrollbar flex-1">
+				<h3 className="font-semibold text-neutral-300 px-2">
 					Example Workflows
 				</h3>
 				{exampleWorkflows.map((workflow, index) => (

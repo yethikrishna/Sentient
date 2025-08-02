@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "framer-motion"
 import NotificationsOverlay from "@components/NotificationsOverlay"
-import { IconBell } from "@tabler/icons-react"
+import { IconBell, IconMenu2 } from "@tabler/icons-react"
 import Sidebar from "@components/Sidebar"
 import CommandPalette from "./CommandPallete" // Corrected import path
 import { useGlobalShortcuts } from "@hooks/useGlobalShortcuts"
@@ -13,6 +13,7 @@ export default function LayoutWrapper({ children }) {
 	const [isNotificationsOpen, setNotificationsOpen] = useState(false)
 	const [isCommandPaletteOpen, setCommandPaletteOpen] = useState(false)
 	const [isSidebarCollapsed, setSidebarCollapsed] = useState(true)
+	const [isMobileNavOpen, setMobileNavOpen] = useState(false)
 	const [unreadCount, setUnreadCount] = useState(0)
 	const [userDetails, setUserDetails] = useState(null)
 	const wsRef = useRef(null)
@@ -118,12 +119,24 @@ export default function LayoutWrapper({ children }) {
 	return (
 		<>
 			{showNav && (
-				<Sidebar
-					isCollapsed={isSidebarCollapsed}
-					onToggle={() => setSidebarCollapsed(!isSidebarCollapsed)}
-					onNotificationsOpen={handleNotificationsOpen}
-					unreadCount={unreadCount}
-				/>
+				<>
+					<Sidebar
+						isCollapsed={isSidebarCollapsed}
+						onToggle={() =>
+							setSidebarCollapsed(!isSidebarCollapsed)
+						}
+						onNotificationsOpen={handleNotificationsOpen}
+						unreadCount={unreadCount}
+						isMobileOpen={isMobileNavOpen}
+						onMobileClose={() => setMobileNavOpen(false)}
+					/>
+					<button
+						onClick={() => setMobileNavOpen(true)}
+						className="md:hidden fixed top-4 left-4 z-30 p-2 rounded-full bg-neutral-800/50 backdrop-blur-sm text-white"
+					>
+						<IconMenu2 size={20} />
+					</button>
+				</>
 			)}
 			{showNav && (
 				<CommandPalette

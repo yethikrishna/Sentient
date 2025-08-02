@@ -34,7 +34,9 @@ import {
 	IconWorldSearch,
 	IconSearch,
 	IconBrandEvernote,
-	IconSparkles
+	IconSparkles,
+	IconEye,
+	IconPlug
 } from "@tabler/icons-react"
 import { cn } from "@utils/cn"
 import { usePostHog } from "posthog-js/react"
@@ -54,18 +56,6 @@ import { Tooltip } from "react-tooltip"
 import ModalDialog from "@components/ModalDialog"
 
 import IconBrandTodoist from "@components/icons/IconBrandTodoist"
-
-const HelpTooltip = ({ content }) => (
-	<div className="fixed bottom-6 left-6 z-40">
-		<button
-			data-tooltip-id="page-help-tooltip"
-			data-tooltip-content={content}
-			className="p-1.5 rounded-full text-neutral-500 hover:text-white hover:bg-[var(--color-primary-surface)] pulse-glow-animation"
-		>
-			<IconHelpCircle size={22} />
-		</button>
-	</div>
-)
 
 const integrationColorIcons = {
 	gmail: IconMail,
@@ -513,6 +503,40 @@ const PrivacySettingsModal = ({ serviceName, onClose }) => {
 	)
 }
 
+const InfoPanel = ({ onClose, title, children }) => (
+	<motion.div
+		initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
+		animate={{ opacity: 1, backdropFilter: "blur(12px)" }}
+		exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
+		className="fixed inset-0 bg-black/70 z-[60] flex p-4 md:p-6"
+		onClick={onClose}
+	>
+		<motion.div
+			initial={{ opacity: 0, y: 20 }}
+			animate={{ opacity: 1, y: 0 }}
+			exit={{ opacity: 0, y: 20 }}
+			transition={{ duration: 0.2, ease: "easeInOut" }}
+			onClick={(e) => e.stopPropagation()}
+			className="relative bg-neutral-900/80 backdrop-blur-2xl p-6 rounded-2xl shadow-2xl w-full h-full border border-neutral-700 flex flex-col"
+		>
+			<header className="flex justify-between items-center mb-6 flex-shrink-0">
+				<h2 className="text-lg font-semibold text-white flex items-center gap-2">
+					{title}
+				</h2>
+				<button
+					onClick={onClose}
+					className="p-1.5 rounded-full hover:bg-neutral-700"
+				>
+					<IconX size={18} />
+				</button>
+			</header>
+			<main className="flex-1 overflow-y-auto custom-scrollbar pr-2 text-left space-y-6">
+				{children}
+			</main>
+		</motion.div>
+	</motion.div>
+)
+
 const IntegrationHeader = ({
 	searchQuery,
 	onSearchChange,
@@ -647,6 +671,7 @@ const IntegrationsPage = () => {
 	const [whatsAppToConnect, setWhatsAppToConnect] = useState(null)
 	const [sparkleTrigger, setSparkleTrigger] = useState(0)
 	const [privacyModalService, setPrivacyModalService] = useState(null)
+	const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false)
 	const posthog = usePostHog()
 
 	const googleServices = [
@@ -957,18 +982,83 @@ const IntegrationsPage = () => {
 				place="right-start"
 				style={{ zIndex: 9999 }}
 			/>
-			<SparkleEffect trigger={sparkleTrigger} />
-			<div
-				className={cn(
-					"flex-1 flex flex-col overflow-hidden relative w-full pb-16 md:pb-0"
+			<AnimatePresence>
+				{isInfoPanelOpen && (
+					<InfoPanel
+						onClose={() => setIsInfoPanelOpen(false)}
+						title={
+							<div className="flex items-center gap-2">
+								<IconSparkles /> About Integrations
+							</div>
+						}
+					>
+						<p className="text-neutral-300">
+							Integrations are the bridge between me and your
+							favorite apps. By connecting your tools, you grant
+							me the ability to access information and perform
+							actions on your behalf.
+						</p>
+						<div className="space-y-4">
+							<div className="flex items-start gap-4">
+								<IconPlug
+									size={20}
+									className="text-brand-orange flex-shrink-0 mt-1"
+								/>
+								<div>
+									<h3 className="font-semibold text-white">
+										How It Works
+									</h3>
+									<p className="text-neutral-400 text-sm mt-1">
+										When you make a request in the chat, I
+										automatically select the right tool for
+										the job. For example, if you ask me to
+										'summarize my unread emails', I'll use
+										the connected Gmail tool to fetch the
+										data and complete the task.
+									</p>
+								</div>
+							</div>
+							<div className="flex items-start gap-4">
+								<IconEye
+									size={20}
+									className="text-brand-orange flex-shrink-0 mt-1"
+								/>
+								<div>
+									<h3 className="font-semibold text-white">
+										Proactive Assistance
+									</h3>
+									<p className="text-neutral-400 text-sm mt-1">
+										For some integrations like Gmail and
+										Google Calendar, I can proactively
+										monitor for important events. When I
+										find something I think you'd want to act
+										on—like an urgent email or a meeting
+										request—I'll create a suggestion and
+										send you a notification. You can then
+										approve it to have me take care of it,
+										or dismiss it.
+									</p>
+								</div>
+							</div>
+						</div>
+					</InfoPanel>
 				)}
-			>
+			</AnimatePresence>
+			<SparkleEffect trigger={sparkleTrigger} />
+			<div className="fixed bottom-6 left-6 z-40">
+				<button
+					onClick={() => setIsInfoPanelOpen(true)}
+					className="p-1.5 rounded-full text-neutral-500 hover:text-white hover:bg-[var(--color-primary-surface)] pulse-glow-animation"
+				>
+					<IconHelpCircle size={22} />
+				</button>
+			</div>
+			<div className="flex-1 flex flex-col overflow-hidden relative w-full pt-16 md:pt-0">
 				<div className="absolute inset-0 z-[-1] network-grid-background">
 					<InteractiveNetworkBackground />
 				</div>
 				<div className="absolute -top-[250px] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-brand-orange/10 rounded-full blur-3xl -z-10" />
 				<header className="flex items-center justify-between p-4 sm:p-6 md:px-8 md:py-6 bg-transparent border-b border-[var(--color-primary-surface)] shrink-0">
-					<HelpTooltip content="Connect your apps here. This allows Sentient to access information and perform actions on your behalf." />
 					<div>
 						<h1 className="text-3xl lg:text-4xl font-bold text-white">
 							Integrations

@@ -9,10 +9,8 @@ import React, {
 } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import {
-	startOfDay,
 	format,
 	isSameDay,
-	getDay,
 	parseISO,
 	startOfMonth,
 	endOfMonth,
@@ -34,6 +32,7 @@ import GCalEventDetailsPanel from "@components/tasks/GCalEventCardDetailsPanel"
 import WelcomePanel from "@components/tasks/WelcomePanel"
 import CreateTaskInput from "@components/tasks/CreateTaskInput"
 import InteractiveNetworkBackground from "@components/ui/InteractiveNetworkBackground"
+import { IconSparkles } from "@tabler/icons-react"
 import DayDetailView from "@components/tasks/DayDetailView"
 
 function TasksPageContent() {
@@ -52,15 +51,28 @@ function TasksPageContent() {
 
 	// View control state
 	const [view, setView] = useState("list") // 'list' or 'calendar'
+	// MODIFIED: Change initial state to 'initial' to handle client-side screen size check
 	const [rightPanelContent, setRightPanelContent] = useState({
-		type: "welcome",
+		type: "initial",
 		data: null
-	}) // { type: 'welcome' | 'task' | 'day', data: any }
+	}) // { type: 'initial' | 'hidden' | 'welcome' | 'task' | 'day', data: any }
 	const [gcalEvents, setGcalEvents] = useState([])
 	const [isGcalConnected, setIsGcalConnected] = useState(false)
 	const [currentCalendarDate, setCurrentCalendarDate] = useState(new Date()) // To track calendar view range
 	const [searchQuery, setSearchQuery] = useState("")
 	const [createTaskPrompt, setCreateTaskPrompt] = useState("")
+
+	useEffect(() => {
+		// On initial client-side load, determine the default panel state.
+		// On mobile, the panel is hidden. On desktop, it shows the welcome panel.
+		if (rightPanelContent.type === "initial") {
+			if (window.innerWidth < 768) {
+				setRightPanelContent({ type: "hidden", data: null })
+			} else {
+				setRightPanelContent({ type: "welcome", data: null })
+			}
+		}
+	}, [rightPanelContent.type])
 
 	// Sync selectedTask with the main tasks list
 	useEffect(() => {
@@ -75,7 +87,9 @@ function TasksPageContent() {
 					data: { ...rightPanelContent.data, ...updatedSelectedTask }
 				})
 			} else {
-				setRightPanelContent({ type: "welcome", data: null })
+				// If task disappears, hide panel on mobile, show welcome on desktop
+				const nextState = window.innerWidth < 768 ? "hidden" : "welcome"
+				setRightPanelContent({ type: nextState, data: null })
 			}
 		}
 	}, [allTasks, rightPanelContent.type, rightPanelContent.data?.task_id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -95,7 +109,6 @@ function TasksPageContent() {
 			const oneTime = []
 			const recurring = []
 			const instances = []
-			const today = startOfDay(new Date())
 
 			rawTasks.forEach((task) => {
 				if (task.schedule?.type === "recurring") {
@@ -134,7 +147,7 @@ function TasksPageContent() {
 					// One-time tasks
 					const scheduledDate = task.schedule?.run_at
 						? parseISO(task.schedule.run_at)
-						: today
+						: parseISO(task.created_at)
 					oneTime.push({
 						...task,
 						scheduled_date: scheduledDate,
@@ -285,7 +298,10 @@ function TasksPageContent() {
 	}
 
 	const handleCloseRightPanel = () => {
-		setRightPanelContent({ type: "welcome", data: null })
+		// On mobile, closing the panel should hide it completely.
+		// On desktop, it should revert to the welcome/examples panel.
+		const nextState = window.innerWidth < 768 ? "hidden" : "welcome"
+		setRightPanelContent({ type: nextState, data: null })
 	}
 
 	const handleCreateTaskFromEvent = async (event) => {
@@ -352,6 +368,10 @@ Description: ${event.description || "No description."}`
 		)
 	}, [oneTimeTasks, recurringInstances, searchQuery])
 
+	const isPanelVisible =
+		rightPanelContent.type !== "hidden" &&
+		rightPanelContent.type !== "initial"
+
 	return (
 		<div className="flex-1 flex h-screen text-white overflow-hidden">
 			<Tooltip
@@ -359,17 +379,31 @@ Description: ${event.description || "No description."}`
 				place="right"
 				style={{ zIndex: 9999 }}
 			/>
-			<div className="flex-1 flex flex-col md:flex-row gap-x-2 overflow-hidden relative">
+			<div className="flex-1 flex overflow-hidden relative">
 				<div className="absolute inset-0 z-[-1] network-grid-background">
 					<InteractiveNetworkBackground />
 				</div>
 				{/* Main Content Panel */}
 				<main className="flex-1 flex flex-col overflow-hidden relative">
 					<div className="absolute -top-[250px] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-brand-orange/10 rounded-full blur-3xl -z-10" />
-					<header className="p-6 flex-shrink-0 flex items-center justify-between bg-transparent">
+					<header className="p-6 pt-20 md:pt-6 flex-shrink-0 flex items-center justify-between bg-transparent">
 						<h1 className="text-3xl font-bold text-white">Tasks</h1>
 						<div className="absolute top-6 left-1/2 -translate-x-1/2">
 							<TaskViewSwitcher view={view} setView={setView} />
+						</div>
+						{/* Button to show examples on mobile */}
+						<div className="md:hidden">
+							<button
+								onClick={() =>
+									setRightPanelContent({
+										type: "welcome",
+										data: null
+									})
+								}
+								className="p-2 rounded-full bg-neutral-800/50 hover:bg-neutral-700/80 text-white"
+							>
+								<IconSparkles size={20} />
+							</button>
 						</div>
 					</header>
 
@@ -425,179 +459,231 @@ Description: ${event.description || "No description."}`
 				</main>
 
 				{/* Right Details Panel */}
-				<aside className="w-full md:w-[450px] lg:w-[500px] bg-brand-black/50 backdrop-blur-sm border-l border-brand-gray flex-shrink-0 flex flex-col">
-					<AnimatePresence mode="wait">
-						{rightPanelContent.type === "task" &&
-						rightPanelContent.data ? (
-							<motion.div
-								key={
-									rightPanelContent.data.instance_id ||
-									rightPanelContent.data.task_id
-								}
-								initial={{ opacity: 0 }}
-								animate={{ opacity: 1 }}
-								exit={{ opacity: 0 }}
-								className="h-full"
-							>
-								<TaskDetailsPanel
-									task={rightPanelContent.data}
-									allTools={allTools}
-									integrations={integrations}
-									onClose={handleCloseRightPanel}
-									onSave={handleUpdateTask}
-									onDelete={(taskId) =>
-										handleAction(
-											() =>
-												fetch(`/api/tasks/delete`, {
-													method: "POST",
-													body: JSON.stringify({
-														taskId
-													}),
-													headers: {
-														"Content-Type":
-															"application/json"
-													}
-												}),
-											"Task deleted."
-										)
-									}
-									onApprove={(taskId) =>
-										handleAction(
-											() =>
-												fetch(`/api/tasks/approve`, {
-													method: "POST",
-													body: JSON.stringify({
-														taskId
-													}),
-													headers: {
-														"Content-Type":
-															"application/json"
-													}
-												}),
-											"Task approved."
-										)
-									}
-									onRerun={(taskId) =>
-										handleAction(
-											() =>
-												fetch(`/api/tasks/rerun`, {
-													method: "POST",
-													body: JSON.stringify({
-														taskId
-													}),
-													headers: {
-														"Content-Type":
-															"application/json"
-													}
-												}),
-											"Task re-run."
-										)
-									}
-									onAnswerClarifications={(taskId, answers) =>
-										handleAction(
-											() =>
-												fetch(
-													`/api/tasks/answer-clarifications`,
-													{
-														method: "POST",
-														body: JSON.stringify({
-															taskId,
-															answers
-														}),
-														headers: {
-															"Content-Type":
-																"application/json"
-														}
-													}
-												),
-											"Answers submitted."
-										)
-									}
-									onArchiveTask={(taskId) =>
-										handleAction(
-											() =>
-												fetch(`/api/tasks/update`, {
-													method: "POST",
-													body: JSON.stringify({
-														taskId,
-														status: "archived"
-													}),
-													headers: {
-														"Content-Type":
-															"application/json"
-													}
-												}),
-											"Task archived."
-										)
-									}
-									onSendChatMessage={(taskId, message) =>
-										handleAction(
-											() =>
-												fetch(`/api/tasks/chat`, {
-													method: "POST",
-													body: JSON.stringify({
-														taskId,
-														message
-													}),
-													headers: {
-														"Content-Type":
-															"application/json"
-													}
-												}),
-											"Message sent."
-										)
-									}
-								/>
-							</motion.div>
-						) : rightPanelContent.type === "gcal" &&
-						  rightPanelContent.data ? (
-							<motion.div
-								key={`gcal-${rightPanelContent.data.id}`}
-								initial={{ opacity: 0 }}
-								animate={{ opacity: 1 }}
-								exit={{ opacity: 0 }}
-								className="h-full"
-							>
-								<GCalEventDetailsPanel
-									event={rightPanelContent.data}
-									onClose={handleCloseRightPanel}
-									onCreateTask={handleCreateTaskFromEvent}
-								/>
-							</motion.div>
-						) : rightPanelContent.type === "day" &&
-						  rightPanelContent.data ? (
-							<motion.div
-								key={format(
-									rightPanelContent.data.date,
-									"yyyy-MM-dd"
-								)}
-								initial={{ opacity: 0 }}
-								animate={{ opacity: 1 }}
-								exit={{ opacity: 0 }}
-								className="h-full"
-							>
-								<DayDetailView
-									date={rightPanelContent.data.date}
-									tasks={rightPanelContent.data.tasks}
-									onSelectTask={handleSelectItem}
-									onClose={handleCloseRightPanel}
-								/>
-							</motion.div>
-						) : (
-							<motion.div
-								key="welcome"
-								initial={{ opacity: 0 }}
-								animate={{ opacity: 1 }}
-								exit={{ opacity: 0 }}
-								className="h-full"
-							>
-								<WelcomePanel
-									onExampleClick={handleExampleClick}
-								/>
-							</motion.div>
-						)}
-					</AnimatePresence>
-				</aside>
+				<AnimatePresence>
+					{isPanelVisible && (
+						<motion.aside
+							key="details-panel"
+							initial={{ x: "100%" }}
+							animate={{ x: "0%" }}
+							exit={{ x: "100%" }}
+							transition={{
+								type: "spring",
+								stiffness: 300,
+								damping: 30
+							}}
+							className="fixed inset-0 z-50 bg-brand-black md:relative md:inset-auto md:z-auto md:w-[450px] lg:w-[500px] md:bg-brand-black/50 md:backdrop-blur-sm md:border-l md:border-brand-gray flex-shrink-0 flex flex-col"
+						>
+							<AnimatePresence mode="wait">
+								{rightPanelContent.type === "task" &&
+								rightPanelContent.data ? (
+									<motion.div
+										key={
+											rightPanelContent.data
+												.instance_id ||
+											rightPanelContent.data.task_id
+										}
+										initial={{ opacity: 0 }}
+										animate={{ opacity: 1 }}
+										exit={{ opacity: 0 }}
+										className="h-full"
+									>
+										<TaskDetailsPanel
+											task={rightPanelContent.data}
+											allTools={allTools}
+											integrations={integrations}
+											onClose={handleCloseRightPanel}
+											onSave={handleUpdateTask}
+											onDelete={(taskId) =>
+												handleAction(
+													() =>
+														fetch(
+															`/api/tasks/delete`,
+															{
+																method: "POST",
+																body: JSON.stringify(
+																	{
+																		taskId
+																	}
+																),
+																headers: {
+																	"Content-Type":
+																		"application/json"
+																}
+															}
+														),
+													"Task deleted."
+												)
+											}
+											onApprove={(taskId) =>
+												handleAction(
+													() =>
+														fetch(
+															`/api/tasks/approve`,
+															{
+																method: "POST",
+																body: JSON.stringify(
+																	{
+																		taskId
+																	}
+																),
+																headers: {
+																	"Content-Type":
+																		"application/json"
+																}
+															}
+														),
+													"Task approved."
+												)
+											}
+											onRerun={(taskId) =>
+												handleAction(
+													() =>
+														fetch(
+															`/api/tasks/rerun`,
+															{
+																method: "POST",
+																body: JSON.stringify(
+																	{
+																		taskId
+																	}
+																),
+																headers: {
+																	"Content-Type":
+																		"application/json"
+																}
+															}
+														),
+													"Task re-run."
+												)
+											}
+											onAnswerClarifications={(
+												taskId,
+												answers
+											) =>
+												handleAction(
+													() =>
+														fetch(
+															`/api/tasks/answer-clarifications`,
+															{
+																method: "POST",
+																body: JSON.stringify(
+																	{
+																		taskId,
+																		answers
+																	}
+																),
+																headers: {
+																	"Content-Type":
+																		"application/json"
+																}
+															}
+														),
+													"Answers submitted."
+												)
+											}
+											onArchiveTask={(taskId) =>
+												handleAction(
+													() =>
+														fetch(
+															`/api/tasks/update`,
+															{
+																method: "POST",
+																body: JSON.stringify(
+																	{
+																		taskId,
+																		status: "archived"
+																	}
+																),
+																headers: {
+																	"Content-Type":
+																		"application/json"
+																}
+															}
+														),
+													"Task archived."
+												)
+											}
+											onSendChatMessage={(
+												taskId,
+												message
+											) =>
+												handleAction(
+													() =>
+														fetch(
+															`/api/tasks/chat`,
+															{
+																method: "POST",
+																body: JSON.stringify(
+																	{
+																		taskId,
+																		message
+																	}
+																),
+																headers: {
+																	"Content-Type":
+																		"application/json"
+																}
+															}
+														),
+													"Message sent."
+												)
+											}
+										/>
+									</motion.div>
+								) : rightPanelContent.type === "gcal" &&
+								  rightPanelContent.data ? (
+									<motion.div
+										key={`gcal-${rightPanelContent.data.id}`}
+										initial={{ opacity: 0 }}
+										animate={{ opacity: 1 }}
+										exit={{ opacity: 0 }}
+										className="h-full"
+									>
+										<GCalEventDetailsPanel
+											event={rightPanelContent.data}
+											onClose={handleCloseRightPanel}
+											onCreateTask={
+												handleCreateTaskFromEvent
+											}
+										/>
+									</motion.div>
+								) : rightPanelContent.type === "day" &&
+								  rightPanelContent.data ? (
+									<motion.div
+										key={format(
+											rightPanelContent.data.date,
+											"yyyy-MM-dd"
+										)}
+										initial={{ opacity: 0 }}
+										animate={{ opacity: 1 }}
+										exit={{ opacity: 0 }}
+										className="h-full"
+									>
+										<DayDetailView
+											date={rightPanelContent.data.date}
+											tasks={rightPanelContent.data.tasks}
+											onSelectTask={handleSelectItem}
+											onClose={handleCloseRightPanel}
+										/>
+									</motion.div>
+								) : rightPanelContent.type === "welcome" ? (
+									<motion.div
+										key="welcome"
+										initial={{ opacity: 0 }}
+										animate={{ opacity: 1 }}
+										exit={{ opacity: 0 }}
+										className="h-full"
+									>
+										<WelcomePanel
+											onExampleClick={handleExampleClick}
+											onClose={handleCloseRightPanel}
+										/>
+									</motion.div>
+								) : null}
+							</AnimatePresence>
+						</motion.aside>
+					)}
+				</AnimatePresence>
 			</div>
 		</div>
 	)

@@ -12,11 +12,7 @@ from workers.proactive.prompts import (
     SUGGESTION_TYPE_STANDARDIZER_SYSTEM_PROMPT,
     QUERY_FORMULATION_SYSTEM_PROMPT
 )
-from workers.proactive.utils import (
-    event_pre_filter,
-    extract_query_text,
-    get_universal_context,
-)
+from workers.proactive.utils import extract_query_text, get_universal_context
 # Use PlannerMongoManager to get a DB connection in the worker
 from workers.planner.db import PlannerMongoManager
 from workers.utils.text_utils import clean_llm_output
@@ -128,11 +124,6 @@ async def run_proactive_pipeline_logic(user_id: str, event_type: str, event_data
     The main orchestration logic for the proactive pipeline.
     """
     logger.info(f"Starting proactive pipeline for user '{user_id}', event_type '{event_type}'.")
-
-    # 1. Event Pre-Filter
-    if not event_pre_filter(event_data, event_type):
-        logger.info("Event discarded by pre-filter. Pipeline stopped.")
-        return
 
     # 2. Formulate Dynamic Search Queries
     situational_queries = await formulate_search_queries(user_id, event_type, event_data)

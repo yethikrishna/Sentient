@@ -56,7 +56,7 @@ async def get_gmail_credentials(user_id: str, db_manager: PollerMongoManager) ->
         print(f"[{datetime.datetime.now()}] [GmailPoller_Auth_ERROR] Failed to get credentials for {user_id}: {e}")
         return None
 
-async def fetch_emails(creds: Credentials, last_processed_timestamp_unix: Optional[int] = None, max_results: int = 10) -> List[Dict]:
+async def fetch_emails(creds: Credentials, last_processed_timestamp_unix: Optional[int] = None, max_results: int = 10) -> List[Dict]: # noqa
     import asyncio
     try:
         loop = asyncio.get_event_loop()
@@ -65,6 +65,9 @@ async def fetch_emails(creds: Credentials, last_processed_timestamp_unix: Option
         query = 'is:unread'
         if last_processed_timestamp_unix:
             query += f' after:{last_processed_timestamp_unix}'
+        else:
+            # For the first run, only look at the last 2 weeks to avoid a huge backlog.
+            query += ' newer_than:14d'
             
         results = await loop.run_in_executor(None, 
             lambda: service.users().messages().list(userId='me', q=query, maxResults=max_results).execute()

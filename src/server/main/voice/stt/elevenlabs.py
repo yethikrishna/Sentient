@@ -33,7 +33,9 @@ class ElevenLabsSTT(BaseSTT):
             # Use the .speech_to_text.convert method from the library
             response = self.client.speech_to_text.convert(
                 file=audio_bytes,
-                model_id="scribe_v1" # A recommended model for speed
+                model_id="scribe_v1", # A recommended model for speed
+                language_code="eng",
+                tag_audio_events=True,
             )
             transcription = response.text
             logger.debug(f"ElevenLabs STT Transcription: '{transcription}'")

@@ -2,10 +2,11 @@
 import React, { useState, useEffect, useRef } from "react"
 import { format, getHours, getMinutes, parseISO, isToday } from "date-fns"
 import { cn } from "@utils/cn"
+import GCalEventCardDayView from "./GCalEventCardDayView"
 import TaskCardDayView from "./TaskCardDayView"
 import { IconX } from "@tabler/icons-react"
 
-const DayDetailView = ({ date, tasks, onSelectTask, onClose }) => {
+const DayDetailView = ({ date, tasks: items, onSelectTask, onClose }) => {
 	const [currentTime, setCurrentTime] = useState(new Date())
 	const timelineRef = useRef(null)
 
@@ -16,15 +17,24 @@ const DayDetailView = ({ date, tasks, onSelectTask, onClose }) => {
 
 	const hours = Array.from({ length: 24 }, (_, i) => i)
 
-	const allDayTasks = tasks.filter(
-		(t) => !t.schedule?.run_at || !t.schedule.run_at.includes("T")
-	)
-	const timedTasks = tasks.filter(
-		(t) => t.schedule?.run_at && t.schedule.run_at.includes("T")
-	)
+	const allDayItems = (items || []).filter((item) => {
+		if (item.type === "gcal") {
+			return item.start && !item.start.includes("T")
+		}
+		return !item.schedule?.run_at || !item.schedule.run_at.includes("T")
+	})
+	const timedItems = (items || []).filter((item) => {
+		if (item.type === "gcal") {
+			return item.start && item.start.includes("T")
+		}
+		return item.schedule?.run_at && item.schedule.run_at.includes("T")
+	})
 
-	const getTopPosition = (isoString) => {
+	const getTopPosition = (item) => {
 		try {
+			const isoString =
+				item.type === "gcal" ? item.start : item.schedule?.run_at
+			if (!isoString) return 0
 			const date = parseISO(isoString)
 			const hours = getHours(date)
 			const minutes = getMinutes(date)
@@ -58,17 +68,25 @@ const DayDetailView = ({ date, tasks, onSelectTask, onClose }) => {
 				{/* All-day tasks section */}
 				<div className="p-4 border-b border-neutral-800">
 					<div className="space-y-2">
-						{allDayTasks.length > 0 ? (
-							allDayTasks.map((task) => (
-								<TaskCardDayView
-									key={task.instance_id}
-									task={task}
-									onSelectTask={onSelectTask}
-								/>
-							))
+						{allDayItems.length > 0 ? (
+							allDayItems.map((item) =>
+								item.type === "gcal" ? (
+									<GCalEventCardDayView
+										key={item.instance_id}
+										event={item}
+										onSelectTask={onSelectTask}
+									/>
+								) : (
+									<TaskCardDayView
+										key={item.instance_id}
+										task={item}
+										onSelectTask={onSelectTask}
+									/>
+								)
+							)
 						) : (
 							<p className="text-xs text-neutral-500">
-								No all-day tasks.
+								No all-day tasks or events.
 							</p>
 						)}
 					</div>
@@ -95,18 +113,25 @@ const DayDetailView = ({ date, tasks, onSelectTask, onClose }) => {
 
 					{/* Timed tasks */}
 					<div className="absolute inset-0">
-						{timedTasks.map((task) => (
+						{timedItems.map((item) => (
 							<div
-								key={task.instance_id}
+								key={item.instance_id}
 								className="absolute w-full pr-4 pl-16"
 								style={{
-									top: `${getTopPosition(task.schedule.run_at)}px`
+									top: `${getTopPosition(item)}px`
 								}}
 							>
-								<TaskCardDayView
-									task={task}
-									onSelectTask={onSelectTask}
-								/>
+								{item.type === "gcal" ? (
+									<GCalEventCardDayView
+										event={item}
+										onSelectTask={onSelectTask}
+									/>
+								) : (
+									<TaskCardDayView
+										task={item}
+										onSelectTask={onSelectTask}
+									/>
+								)}
 							</div>
 						))}
 					</div>

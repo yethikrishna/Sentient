@@ -1,8 +1,9 @@
 import datetime
 import json
 import base64
+import asyncio
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import JSONResponse
 
 from main.integrations.models import ManualConnectRequest, OAuthConnectRequest, DisconnectRequest
@@ -14,6 +15,8 @@ from main.config import (
     TODOIST_CLIENT_ID, TODOIST_CLIENT_SECRET,
     DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET,
     TRELLO_CLIENT_ID,
+    DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET,
+    TRELLO_CLIENT_ID,
     EVERNOTE_CLIENT_ID, EVERNOTE_CLIENT_SECRET,
     GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SLACK_CLIENT_ID,
     SLACK_CLIENT_SECRET, NOTION_CLIENT_ID, NOTION_CLIENT_SECRET
@@ -23,6 +26,9 @@ router = APIRouter(
     prefix="/integrations",
     tags=["Integrations Management"]
 )
+
+from mcp_hub.gcal.auth import get_google_creds, authenticate_gcal
+from mcp_hub.gcal.utils import _simplify_event
 
 @router.get("/sources", summary="Get all available integration sources and their status")
 async def get_integration_sources(user_id: str = Depends(auth_helper.get_current_user_id)):
@@ -84,6 +90,43 @@ async def connect_manual_integration(request: ManualConnectRequest, user_id: str
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/gcalendar/events", summary="Get Google Calendar events for a date range")
+async def get_gcalendar_events(
+    start_date: str = Query(..., description="Start date in ISO 8601 format"),
+    end_date: str = Query(..., description="End date in ISO 8601 format"),
+    user_id: str = Depends(auth_helper.get_current_user_id)
+):
+    user_profile = await mongo_manager.get_user_profile(user_id)
+    user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
+
+    gcal_integration = user_integrations.get("gcalendar", {})
+    if not gcal_integration.get("connected"):
+        return JSONResponse(content={"events": []})
+
+    try:
+        creds = await get_google_creds(user_id)
+        service = authenticate_gcal(creds)
+
+        def _fetch_events_sync():
+            events_result = service.events().list(
+                calendarId="primary",
+                timeMin=start_date,
+                timeMax=end_date,
+                maxResults=250,
+                singleEvents=True,
+                orderBy="startTime"
+            ).execute()
+            return events_result.get("items", [])
+
+        events = await asyncio.to_thread(_fetch_events_sync)
+
+        simplified_events = [_simplify_event(e) for e in events]
+
+        return JSONResponse(content={"events": simplified_events})
+
+    except Exception as e:
+        print(f"Error fetching GCal events for user {user_id}: {e}")
+        return JSONResponse(content={"events": []})
 @router.post("/connect/oauth", summary="Finalize OAuth2 connection by exchanging code for token")
 async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str = Depends(auth_helper.get_current_user_id)):
     service_name = request.service_name

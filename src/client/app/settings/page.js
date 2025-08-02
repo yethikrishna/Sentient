@@ -382,6 +382,7 @@ const TestingTools = () => {
 		}
 	}
 	const [isTriggeringScheduler, setIsTriggeringScheduler] = useState(false)
+	const [isTriggeringPoller, setIsTriggeringPoller] = useState(false)
 
 	const [whatsAppNumber, setWhatsAppNumber] = useState("")
 	const [isVerifying, setIsVerifying] = useState(false)
@@ -408,6 +409,24 @@ const TestingTools = () => {
 			setIsTriggeringScheduler(false)
 		}
 	}
+	const handleTriggerPoller = async () => {
+		setIsTriggeringPoller(true)
+		try {
+			const response = await fetch("/api/testing/trigger-poller", {
+				method: "POST"
+			})
+			const result = await response.json()
+			if (!response.ok) {
+				throw new Error(result.detail || "Failed to trigger poller.")
+			}
+			toast.success(result.message)
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsTriggeringPoller(false)
+		}
+	}
+
 	const handleVerifyWhatsApp = async () => {
 		if (!whatsAppNumber) {
 			toast.error("Please enter a phone number to verify.")
@@ -606,6 +625,32 @@ const TestingTools = () => {
 						{verificationResult.message}
 					</p>
 				)}
+			</div>
+			{/* Poller Test Tool */}
+			<div className="bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800 mt-6">
+				<h3 className="font-semibold text-lg text-white mb-2">
+					Trigger Proactive Poller
+				</h3>
+				<p className="text-gray-400 text-sm mb-4">
+					Manually run the Celery Beat scheduler task
+					(`schedule_all_polling`) to immediately check for any users
+					who are due for a Gmail or Google Calendar poll. This is
+					useful for testing the proactive pipeline without waiting
+					for the hourly interval.
+				</p>
+				<div className="flex justify-end">
+					<button
+						onClick={handleTriggerPoller}
+						disabled={isTriggeringPoller}
+						className="flex items-center py-2 px-4 rounded-md bg-purple-600 hover:bg-purple-500 text-white font-medium transition-colors disabled:opacity-50"
+					>
+						{isTriggeringPoller ? (
+							<IconLoader className="w-5 h-5 animate-spin" />
+						) : (
+							"Run Poller Now"
+						)}
+					</button>
+				</div>
 			</div>
 			{/* Scheduler Test Tool */}
 			<div className="bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800 mt-6">

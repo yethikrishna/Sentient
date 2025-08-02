@@ -133,9 +133,9 @@ export default function LayoutWrapper({ children }) {
 			)}
 			<div
 				className={cn(
-					"flex-1 transition-all duration-300 ease-in-out",
+					"flex-1 transition-[padding-left] duration-300 ease-in-out",
 					showNav &&
-						(isSidebarCollapsed ? "md:pl-20" : "md:pl-[256px]")
+						(isSidebarCollapsed ? "md:pl-20" : "md:pl-[260px]")
 				)}
 			>
 				{children}

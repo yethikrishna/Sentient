@@ -7,6 +7,7 @@ import datetime
 from main.dependencies import auth_helper
 from main.auth.utils import PermissionChecker
 from .db import get_db_pool
+from . import utils # Import the new utils module
 
 logger = logging.getLogger(__name__)
 
@@ -60,4 +61,21 @@ async def get_all_memories(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while fetching memories."
+        )
+@router.get("/graph", summary="Get memory graph data for a user")
+async def get_memory_graph(
+    user_id: str = Depends(PermissionChecker(required_permissions=["read:profile"]))
+):
+    """
+    Retrieves all memories for a user and calculates their semantic relationships
+    to build a graph structure of nodes and edges.
+    """
+    try:
+        graph_data = await utils.create_memory_graph(user_id)
+        return JSONResponse(content=graph_data)
+    except Exception as e:
+        logger.error(f"Error generating memory graph for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while generating the memory graph."
         )

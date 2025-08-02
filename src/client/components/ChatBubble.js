@@ -447,14 +447,16 @@ const ChatBubble = ({
 				>
 					<IconTrash size={16} />
 				</button>
-				<button
-					onClick={() => onReply(message)}
-					className="p-1.5 rounded-full bg-neutral-700 text-neutral-300 hover:bg-neutral-600 hover:text-white"
-					data-tooltip-id="chat-bubble-tooltip"
-					data-tooltip-content="Reply"
-				>
-					<IconArrowBackUp size={16} />
-				</button>
+				{!isUser && (
+					<button
+						onClick={() => onReply(message)}
+						className="p-1.5 rounded-full bg-neutral-700 text-neutral-300 hover:bg-neutral-600 hover:text-white"
+						data-tooltip-id="chat-bubble-tooltip"
+						data-tooltip-content="Reply"
+					>
+						<IconArrowBackUp size={16} />
+					</button>
+				)}
 			</div>
 			{!isUser && (
 				<div className="flex justify-start items-center mt-4">

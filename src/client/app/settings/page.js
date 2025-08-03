@@ -973,7 +973,7 @@ export default function SettingsPage() {
 				place="right-start"
 				style={{ zIndex: 9999 }}
 			/>
-			<div className="flex-1 flex flex-col overflow-hidden relative w-full pb-16 md:pb-0">
+			<div className="flex-1 flex flex-col overflow-hidden relative w-full pt-16 md:pt-0">
 				<div className="absolute inset-0 z-[-1] network-grid-background">
 					<InteractiveNetworkBackground />
 				</div>

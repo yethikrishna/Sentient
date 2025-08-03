@@ -40,6 +40,23 @@ const TaskCardList = ({ task, onSelectTask }) => {
 		"clarification_answered"
 	].includes(task.status)
 
+	const getDisplayName = (task) => {
+		// Use description if name is generic
+		if (task.name === "Proactively generated plan" && task.description) {
+			return task.description
+		}
+		// Fallback to the original prompt if description is also generic/missing
+		if (
+			task.name === "Proactively generated plan" &&
+			task.runs &&
+			task.runs.length > 0 &&
+			task.runs[0].prompt
+		) {
+			return task.runs[0].prompt
+		}
+		return task.name || "Untitled Task"
+	}
+
 	const cardVariants = {
 		hidden: { opacity: 0, y: -20, scale: 0.95 },
 		visible: { opacity: 1, y: 0, scale: 1 }
@@ -54,8 +71,8 @@ const TaskCardList = ({ task, onSelectTask }) => {
 			className="bg-neutral-900/50 p-4 rounded-lg border border-zinc-700 hover:border-brand-orange transition-all cursor-pointer relative"
 		>
 			<div className="flex justify-between items-start gap-4">
-				<p className="font-sans font-semibold text-brand-white flex-1 text-sm">
-					{task.name}
+				<p className="font-sans font-semibold text-brand-white flex-1 text-sm line-clamp-2">
+					{getDisplayName(task)}
 				</p>
 				<StatusBadge status={task.status} />
 			</div>

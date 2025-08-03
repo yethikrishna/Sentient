@@ -21,11 +21,13 @@ import {
 import { cn } from "@utils/cn"
 import { motion, AnimatePresence } from "framer-motion"
 
-const Sidebar = ({
+const SidebarContent = ({
 	isCollapsed,
 	onToggle,
 	onNotificationsOpen,
-	unreadCount
+	unreadCount,
+	isMobile = false,
+	onMobileClose = () => {}
 }) => {
 	const pathname = usePathname()
 	const [userDetails, setUserDetails] = useState(null)
@@ -53,11 +55,7 @@ const Sidebar = ({
 	]
 
 	return (
-		<motion.div
-			animate={{ width: isCollapsed ? 80 : 260 }}
-			transition={{ type: "spring", stiffness: 300, damping: 30 }}
-			className="hidden md:flex fixed top-0 left-0 h-screen bg-black flex-col p-3 text-neutral-200 border-r border-neutral-800/50 z-40"
-		>
+		<div className="flex flex-col h-full w-full overflow-y-auto custom-scrollbar">
 			{/* Header */}
 			<div
 				className={cn(
@@ -166,25 +164,37 @@ const Sidebar = ({
 
 			{/* Footer */}
 			<div className="flex flex-col gap-2">
-				<button
-					onClick={onToggle}
-					className={cn(
-						"flex items-center gap-3 rounded-md p-2 transition-colors duration-200 text-sm",
-						"text-neutral-400 hover:text-white hover:bg-neutral-800/50",
-						isCollapsed && "justify-center"
-					)}
-				>
-					{isCollapsed ? (
-						<IconLayoutSidebarLeftExpand size={20} />
-					) : (
+				{isMobile ? (
+					<button
+						onClick={onMobileClose}
+						className="flex items-center gap-3 rounded-md p-2 transition-colors duration-200 text-sm text-neutral-400 hover:text-white hover:bg-neutral-800/50"
+					>
 						<IconLayoutSidebarLeftCollapse size={20} />
-					)}
-					{!isCollapsed && (
 						<span className="font-medium whitespace-nowrap">
 							Collapse
 						</span>
-					)}
-				</button>
+					</button>
+				) : (
+					<button
+						onClick={onToggle}
+						className={cn(
+							"flex items-center gap-3 rounded-md p-2 transition-colors duration-200 text-sm",
+							"text-neutral-400 hover:text-white hover:bg-neutral-800/50",
+							isCollapsed && "justify-center"
+						)}
+					>
+						{isCollapsed ? (
+							<IconLayoutSidebarLeftExpand size={20} />
+						) : (
+							<IconLayoutSidebarLeftCollapse size={20} />
+						)}
+						{!isCollapsed && (
+							<span className="font-medium whitespace-nowrap">
+								Collapse
+							</span>
+						)}
+					</button>
+				)}
 				<button
 					className={cn(
 						"w-full flex items-center gap-3 bg-neutral-800/40 border border-neutral-700/80 rounded-lg p-2 text-left text-sm hover:bg-neutral-800/80 transition-colors",
@@ -238,7 +248,66 @@ const Sidebar = ({
 					)}
 				</div>
 			</div>
-		</motion.div>
+		</div>
 	)
 }
+
+const Sidebar = ({
+	isCollapsed,
+	onToggle,
+	onNotificationsOpen,
+	unreadCount,
+	isMobileOpen,
+	onMobileClose
+}) => (
+	<>
+		{/* Mobile Sidebar */}
+		<AnimatePresence>
+			{isMobileOpen && (
+				<>
+					<motion.div
+						className="fixed inset-0 bg-black/60 z-40 md:hidden"
+						initial={{ opacity: 0 }}
+						animate={{ opacity: 1 }}
+						exit={{ opacity: 0 }}
+						onClick={onMobileClose}
+					/>
+					<motion.div
+						className="fixed top-0 left-0 h-screen w-[260px] bg-black p-3 text-neutral-200 border-r border-neutral-800/50 z-50 md:hidden"
+						initial={{ x: "-100%" }}
+						animate={{ x: 0 }}
+						exit={{ x: "-100%" }}
+						transition={{
+							type: "spring",
+							stiffness: 300,
+							damping: 30
+						}}
+					>
+						<SidebarContent
+							isCollapsed={false}
+							onMobileClose={onMobileClose}
+							onNotificationsOpen={onNotificationsOpen}
+							unreadCount={unreadCount}
+							isMobile={true}
+						/>
+					</motion.div>
+				</>
+			)}
+		</AnimatePresence>
+
+		{/* Desktop Sidebar */}
+		<motion.div
+			animate={{ width: isCollapsed ? 80 : 260 }}
+			transition={{ type: "spring", stiffness: 300, damping: 30 }}
+			className="hidden md:flex fixed top-0 left-0 h-screen bg-black flex-col p-3 text-neutral-200 border-r border-neutral-800/50 z-40"
+		>
+			<SidebarContent
+				isCollapsed={isCollapsed}
+				onToggle={onToggle}
+				onNotificationsOpen={onNotificationsOpen}
+				unreadCount={unreadCount}
+			/>
+		</motion.div>
+	</>
+)
 export default Sidebar

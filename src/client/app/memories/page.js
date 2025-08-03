@@ -10,13 +10,50 @@ import {
 	IconFileText,
 	IconX,
 	IconLayoutGrid,
-	IconShare3
+	IconShare3,
+	IconInfoCircle,
+	IconSparkles,
+	IconHeart
 } from "@tabler/icons-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { formatDistanceToNow, parseISO } from "date-fns"
 import { cn } from "@utils/cn"
+import dynamic from "next/dynamic"
 import InteractiveNetworkBackground from "@components/ui/InteractiveNetworkBackground"
-import { Network } from "vis-network/standalone/esm/vis-network"
+
+const InfoPanel = ({ onClose, title, children }) => (
+	<motion.div
+		initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
+		animate={{ opacity: 1, backdropFilter: "blur(12px)" }}
+		exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
+		className="fixed inset-0 bg-black/70 z-[60] flex p-4 md:p-6"
+		onClick={onClose}
+	>
+		<motion.div
+			initial={{ opacity: 0, y: 20 }}
+			animate={{ opacity: 1, y: 0 }}
+			exit={{ opacity: 0, y: 20 }}
+			transition={{ duration: 0.2, ease: "easeInOut" }}
+			onClick={(e) => e.stopPropagation()}
+			className="relative bg-neutral-900/80 backdrop-blur-2xl p-6 rounded-2xl shadow-2xl w-full h-full border border-neutral-700 flex flex-col"
+		>
+			<header className="flex justify-between items-center mb-6 flex-shrink-0">
+				<h2 className="text-lg font-semibold text-white flex items-center gap-2">
+					{title}
+				</h2>
+				<button
+					onClick={onClose}
+					className="p-1.5 rounded-full hover:bg-neutral-700"
+				>
+					<IconX size={18} />
+				</button>
+			</header>
+			<main className="flex-1 overflow-y-auto custom-scrollbar pr-2 text-left space-y-6">
+				{children}
+			</main>
+		</motion.div>
+	</motion.div>
+)
 
 const MemoryDetailPanel = ({ memory, onClose }) => {
 	if (!memory) return null
@@ -32,11 +69,11 @@ const MemoryDetailPanel = ({ memory, onClose }) => {
 			animate={{ x: 0 }}
 			exit={{ x: "100%" }}
 			transition={{ type: "spring", stiffness: 300, damping: 30 }}
-			className="absolute top-0 right-0 h-full w-full md:w-[400px] lg:w-[450px] bg-black/50 backdrop-blur-lg border-l border-neutral-800 flex flex-col z-20"
+			className="fixed inset-0 md:absolute md:top-0 md:right-0 md:inset-auto h-full w-full md:w-[400px] lg:w-[450px] bg-black/50 backdrop-blur-lg md:border-l border-neutral-800 flex flex-col z-50"
 		>
 			<header className="flex items-start justify-between p-4 border-b border-neutral-800 flex-shrink-0">
 				<div className="flex items-center gap-3">
-					<IconBrain className="w-6 h-6 text-sentient-blue" />
+					<IconBrain className="w-6 h-6 text-brand-orange" />
 					<h2 className="text-lg font-semibold text-white">Memory</h2>
 				</div>
 				<button
@@ -127,8 +164,8 @@ const MemoryCard = ({ memory, onSelect }) => {
 			animate={{ opacity: 1, scale: 1 }}
 			exit={{ opacity: 0, scale: 0.9 }}
 			transition={{ duration: 0.3 }}
-			onClick={() => onSelect(memory)}
-			className="bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800/80 flex flex-col justify-between text-left h-full shadow-lg hover:border-sentient-blue/30 transition-colors cursor-pointer"
+			onClick={() => onSelect(memory)} // prettier-ignore
+			className="bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800/80 flex flex-col justify-between text-left h-full shadow-lg hover:border-brand-orange/50 transition-colors cursor-pointer"
 		>
 			<p className="text-neutral-200 text-base mb-4 font-sans leading-relaxed line-clamp-6">
 				{memory.content}
@@ -162,87 +199,78 @@ const MemoryCard = ({ memory, onSelect }) => {
 	)
 }
 
+const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
+	ssr: false,
+	loading: () => (
+		<p className="flex-1 flex justify-center items-center text-neutral-500">
+			Loading 3D Graph...
+		</p>
+	)
+})
+
 const MemoryGraph = ({ data, onSelectNode, onClearSelection }) => {
-	const containerRef = useRef(null)
+	const fgRef = useRef()
 
-	useEffect(() => {
-		if (!containerRef.current || !data || data.nodes.length === 0) return
+	const graphData = useMemo(() => {
+		if (!data) return { nodes: [], links: [] }
 
-		const options = {
-			nodes: {
-				shape: "dot",
-				size: 12,
-				font: {
-					size: 14,
-					color: "#ffffff"
-				},
-				borderWidth: 2,
-				color: {
-					border: "#252525",
-					background: "#F1A21D",
-					highlight: {
-						border: "#FFFFFF",
-						background: "#4a9eff"
-					}
-				}
-			},
-			edges: {
-				width: 0.5,
-				color: {
-					color: "#848484",
-					highlight: "#4a9eff"
-				},
-				arrows: {
-					to: { enabled: false }
-				},
-				smooth: {
-					type: "continuous"
-				}
-			},
-			physics: {
-				enabled: true,
-				solver: "forceAtlas2Based",
-				forceAtlas2Based: {
-					gravitationalConstant: -50,
-					centralGravity: 0.01,
-					springLength: 230,
-					springConstant: 0.08
-				},
-				stabilization: {
-					iterations: 150
-				}
-			},
-			interaction: {
-				hover: true,
-				tooltipDelay: 200
-			},
-			layout: {
-				randomSeed: 42
+		const links = (data.links || data.edges || []).map((edge) => ({
+			source: edge.source || edge.from,
+			target: edge.target || edge.to,
+			...edge
+		}))
+
+		const nodes = data.nodes.map((node) => ({
+			...node,
+			color: node.id % 5 === 0 ? "#22c55e" : "#f59e0b", // green-500 or amber-500
+			val: 1 // a small default size
+		}))
+
+		return { nodes, links }
+	}, [data])
+
+	const handleNodeClick = useCallback(
+		(node) => {
+			const originalNode = data.nodes.find((n) => n.id === node.id)
+			if (originalNode) {
+				onSelectNode(originalNode)
 			}
-		}
 
-		const network = new Network(containerRef.current, data, options)
-
-		network.on("selectNode", (params) => {
-			if (params.nodes.length > 0) {
-				const nodeId = params.nodes[0]
-				const node = data.nodes.find((n) => n.id === nodeId)
-				if (node) {
-					onSelectNode(node)
-				}
+			const distance = 120
+			const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z)
+			if (fgRef.current) {
+				fgRef.current.cameraPosition(
+					{
+						x: node.x * distRatio,
+						y: node.y * distRatio,
+						z: node.z * distRatio
+					},
+					node, // lookAt
+					1000 // transition duration
+				)
 			}
-		})
+		},
+		[data.nodes, onSelectNode]
+	)
 
-		network.on("deselectNode", () => {
-			onClearSelection()
-		})
-
-		return () => {
-			network.destroy()
-		}
-	}, [data, onSelectNode, onClearSelection])
-
-	return <div ref={containerRef} className="w-full h-full" />
+	return (
+		<div className="w-full h-full bg-transparent absolute inset-0">
+			<ForceGraph3D
+				ref={fgRef}
+				graphData={graphData}
+				backgroundColor="rgba(0,0,0,0)"
+				nodeLabel="title"
+				nodeVal={4}
+				nodeColor="color"
+				nodeOpacity={0.8}
+				nodeResolution={8}
+				linkColor={() => "rgba(74, 158, 255, 1)"}
+				linkWidth={2}
+				onNodeClick={handleNodeClick}
+				onBackgroundClick={onClearSelection}
+			/>
+		</div>
+	)
 }
 
 export default function MemoriesPage() {
@@ -252,6 +280,7 @@ export default function MemoriesPage() {
 	const [isLoading, setIsLoading] = useState(true)
 	const [activeTopic, setActiveTopic] = useState("All")
 	const [selectedMemory, setSelectedMemory] = useState(null)
+	const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false)
 
 	const topics = useMemo(() => {
 		const allTopics = new Set()
@@ -278,7 +307,7 @@ export default function MemoriesPage() {
 				const data = await response.json()
 				setMemories(data.memories || [])
 			} else {
-				const response = await fetch("/api/memories/graph")
+				const response = await fetch("/api/memories/graph/")
 				if (!response.ok)
 					throw new Error("Failed to fetch memory graph data.")
 				const data = await response.json()
@@ -323,14 +352,79 @@ export default function MemoriesPage() {
 	)
 
 	return (
-		<div className="flex-1 flex h-screen bg-brand-black text-white overflow-hidden relative">
-			<div className="flex-1 flex flex-col overflow-hidden relative">
-				<header className="flex items-center justify-between p-4 sm:p-6 bg-transparent shrink-0 z-10 absolute top-0 left-0 right-0">
+		<div className="flex-1 flex h-screen text-white overflow-hidden">
+			<AnimatePresence>
+				{isInfoPanelOpen && (
+					<InfoPanel
+						onClose={() => setIsInfoPanelOpen(false)}
+						title={
+							<div className="flex items-center gap-2">
+								<IconSparkles /> About Memories
+							</div>
+						}
+					>
+						<p className="text-neutral-300">
+							This is your long-term memory, a collection of facts
+							and information I've learned about you to provide a
+							truly personalized experience.
+						</p>
+						<div className="space-y-4">
+							<div className="flex items-start gap-4">
+								<IconBrain
+									size={20}
+									className="text-brand-orange flex-shrink-0 mt-1"
+								/>
+								<div>
+									<h3 className="font-semibold text-white">
+										How it Works
+									</h3>
+									<p className="text-neutral-400 text-sm mt-1">
+										As we interact, I identify key pieces of
+										information—like your preferences,
+										goals, relationships, and interests—and
+										store them as individual memories. This
+										can happen during our chats or when I
+										process information from your connected
+										apps.
+									</p>
+								</div>
+							</div>
+							<div className="flex items-start gap-4">
+								<IconHeart
+									size={20}
+									className="text-brand-orange flex-shrink-0 mt-1"
+								/>
+								<div>
+									<h3 className="font-semibold text-white">
+										How it's Used
+									</h3>
+									<p className="text-neutral-400 text-sm mt-1">
+										I use these memories to provide more
+										context-aware assistance. For example,
+										if you ask me to 'email my manager', I
+										can look up who your manager is from my
+										memory instead of asking you every time.
+										This makes our interactions faster and
+										more intelligent.
+									</p>
+								</div>
+							</div>
+						</div>
+					</InfoPanel>
+				)}
+			</AnimatePresence>
+			<div className="flex-1 flex flex-col overflow-hidden relative w-full">
+				<div className="absolute inset-0 z-[-1] network-grid-background">
+					{view === "list" && <InteractiveNetworkBackground />}
+				</div>
+				<div className="absolute -top-[250px] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-brand-orange/10 rounded-full blur-3xl -z-10" />
+
+				<header className="flex flex-col md:flex-row md:items-center justify-between p-4 pt-20 md:pt-4 sm:p-6 bg-transparent shrink-0 z-10 border-b border-neutral-800/80">
 					<div>
 						<h1 className="text-3xl lg:text-4xl font-bold text-white flex items-center gap-3">
 							<IconBrain
 								size={36}
-								className="text-sentient-blue"
+								className="text-brand-orange"
 							/>
 							Your Memories
 						</h1>
@@ -339,24 +433,31 @@ export default function MemoriesPage() {
 							about you.
 						</p>
 					</div>
-					<ViewSwitcher />
-				</header>
-				<main className="flex-1 w-full h-full relative">
-					<div className="absolute inset-0 z-[-1]">
-						<InteractiveNetworkBackground />
+					<div className="w-full md:w-auto mt-4 md:mt-0 flex justify-center items-center gap-2">
+						<ViewSwitcher />
+						<button
+							onClick={() => setIsInfoPanelOpen(true)}
+							className="p-2 rounded-full bg-neutral-800/50 hover:bg-neutral-700/80 text-white"
+						>
+							<IconInfoCircle size={20} />
+						</button>
 					</div>
+				</header>
+				<main className="flex-1 relative overflow-hidden">
 					{isLoading ? (
 						<div className="w-full h-full flex justify-center items-center">
-							<IconLoader className="w-12 h-12 animate-spin text-sentient-blue" />
+							<IconLoader className="w-12 h-12 animate-spin text-brand-orange" />
 						</div>
 					) : view === "graph" ? (
-						<MemoryGraph
-							data={graphData}
-							onSelectNode={setSelectedMemory}
-							onClearSelection={() => setSelectedMemory(null)}
-						/>
+						<div className="w-full h-full">
+							<MemoryGraph
+								data={graphData}
+								onSelectNode={setSelectedMemory}
+								onClearSelection={() => setSelectedMemory(null)}
+							/>
+						</div>
 					) : (
-						<div className="overflow-y-auto h-full p-6 md:p-10 pt-32 custom-scrollbar">
+						<div className="overflow-y-auto h-full p-6 md:p-10 custom-scrollbar">
 							<div className="w-full max-w-7xl mx-auto">
 								<div className="flex flex-wrap gap-2 mb-8">
 									{topics.map((topic) => (
@@ -368,7 +469,7 @@ export default function MemoriesPage() {
 											className={cn(
 												"px-4 py-2 rounded-full text-sm font-medium transition-colors",
 												activeTopic === topic
-													? "bg-white text-black shadow-lg shadow-white/10"
+													? "bg-brand-orange text-black"
 													: "bg-neutral-800 text-neutral-300 hover:bg-neutral-700 hover:text-white"
 											)}
 										>

@@ -23,7 +23,7 @@ You are an expert planner agent. Your primary function is to create robust, high
 -   `gpeople`: This is your PRIMARY tool for finding contact information (email, phone number) for individuals. If a task involves contacting someone whose details are not provided, you MUST use this tool first.
 -   `gcalendar`: Use for managing the user's own calendar (creating events, finding free slots). It CANNOT see other people's calendars. To schedule a meeting, first find the attendees' emails using `gpeople`, then create the event.
 -   `gmail`: Use for all email-related actions. Requires a recipient's email address, which you should find using `gpeople` if necessary.
--   `supermemory`: Use to recall personal facts, preferences, and relationships about the user (e.g., "Who is my manager?").
+-   `memory`: Use to recall personal facts, preferences, and relationships about the user (e.g., "Who is my manager?").
 -   `gdrive` / `gdocs`: Use for file and document management.
 
 Here is the complete list of services (tools) available to the executor agent:
@@ -76,12 +76,27 @@ You are a highly intelligent context verification agent. Your primary function i
 **Your Goal:**
 1.  Use the provided tools to search for context related to the task.
 2.  Analyze the gathered context.
-3.  If critical information is still missing, generate a JSON object with clarifying questions.
-4.  If you have enough information to create a plan, return an empty list of questions.
+3.  If critical information is still missing, generate clarifying questions.
+4.  If you have enough information to create a plan, you will indicate that no questions are needed.
 
 **You have been given the following information:**
 **Original Context:** The raw information (e.g., email body) that triggered the task.
 ```json
 {original_context}
 ```
+
+Output Requirements:
+Your response MUST be a single, valid JSON object that strictly adheres to the following schema. Do not include any other text or explanations.
+
+JSON Schema:
+```json
+{{
+"clarifying_questions": [
+"A clear, concise question for the user.",
+"Another question if needed."
+]
+}}
+```
+- If you have enough information to proceed with planning, return an empty list: {{"clarifying_questions": []}}.
+- If you need more information, populate the list with your questions.
 """

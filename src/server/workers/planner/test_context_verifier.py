@@ -119,7 +119,7 @@ async def test_context_verification(task_description: str):
             print("-" * 35)
             if questions:
                 for i, q in enumerate(questions):
-                    print(f"  {i1}. {q}")
+                    print(f"  {i+1}. {q}")
             else:
                 print("  (No questions needed, agent found enough context)")
             print("-" * 35)

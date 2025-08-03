@@ -174,7 +174,7 @@ const TaskDetailsPanel = ({
 									className="w-full bg-transparent text-2xl font-bold text-white focus:ring-0 focus:border-blue-500 border-b-2 border-transparent"
 								/>
 							) : (
-								<h2 className="text-xl font-bold text-white leading-snug">
+								<h2 className="text-lg md:text-xl font-bold text-white leading-snug">
 									{task.description}
 								</h2>
 							)}
@@ -210,7 +210,7 @@ const TaskDetailsPanel = ({
 					</main>
 
 					{/* --- FOOTER --- */}
-					<footer className="flex items-center justify-between p-4 border-t border-neutral-700/50 flex-shrink-0 bg-brand-gray/50">
+					<footer className="p-4 border-t border-neutral-700/50 flex-shrink-0 bg-brand-gray/50">
 						{isEditing ? (
 							<>
 								<div className="flex items-center gap-2">
@@ -234,32 +234,36 @@ const TaskDetailsPanel = ({
 								</div>
 							</>
 						) : (
-							<>
-								<div className="flex items-center gap-2">
-									<ActionButton
-										onClick={handleStartEditing}
-										icon={<IconPencil size={16} />}
-										className="text-neutral-400 hover:bg-neutral-700 hover:text-white"
-									/>
-									<ActionButton
-										onClick={() => onDelete(task.task_id)}
-										icon={<IconTrash size={16} />}
-										className="text-neutral-400 hover:bg-red-500/20 hover:text-red-400"
-									/>
-									<ActionButton
-										onClick={() => onRerun(task.task_id)}
-										icon={<IconRepeat size={16} />}
-										className="text-neutral-400 hover:bg-neutral-700 hover:text-white"
-									/>
-								</div>
-								<div className="flex flex-col items-end gap-2">
+							<div className="flex flex-col gap-4">
+								{/* Top section with minor actions and warnings */}
+								<div className="flex justify-between items-start gap-2">
+									<div className="flex items-center gap-2">
+										<ActionButton
+											onClick={handleStartEditing}
+											icon={<IconPencil size={16} />}
+											className="text-neutral-400 hover:bg-neutral-700 hover:text-white"
+										/>
+										<ActionButton
+											onClick={() =>
+												onDelete(task.task_id)
+											}
+											icon={<IconTrash size={16} />}
+											className="text-neutral-400 hover:bg-red-500/20 hover:text-red-400"
+										/>
+										<ActionButton
+											onClick={() =>
+												onRerun(task.task_id)
+											}
+											icon={<IconRepeat size={16} />}
+											className="text-neutral-400 hover:bg-neutral-700 hover:text-white"
+										/>
+									</div>
 									{missingTools.length > 0 && (
-										<div className="text-xs text-red-400 flex flex-col items-end gap-1">
+										<div className="text-xs text-red-400 flex flex-col items-end gap-1 text-right">
 											<span>
-												Connect required tools to
-												approve:
+												Connect tools to approve:
 											</span>
-											<div className="flex gap-2">
+											<div className="flex gap-2 flex-wrap justify-end">
 												{missingTools.map((tool) => (
 													<ConnectToolButton
 														key={tool.name}
@@ -271,35 +275,33 @@ const TaskDetailsPanel = ({
 											</div>
 										</div>
 									)}
-									<div className="flex items-center gap-2">
-										{task.status === "approval_pending" && (
-											<ActionButton
-												onClick={() =>
-													onApprove(task.task_id)
-												}
-												icon={
-													<IconPlayerPlay size={16} />
-												}
-												className="bg-green-600 text-white hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
-												disabled={
-													missingTools.length > 0
-												}
-											>
-												Approve & Run
-											</ActionButton>
-										)}
+								</div>
+
+								{/* Main action buttons */}
+								<div className="flex flex-col sm:flex-row gap-2 w-full">
+									{task.status === "approval_pending" && (
 										<ActionButton
 											onClick={() =>
-												onArchiveTask(task.task_id)
+												onApprove(task.task_id)
 											}
-											icon={<IconArchive size={16} />}
-											className="bg-neutral-700 text-neutral-200 hover:bg-neutral-600"
+											icon={<IconPlayerPlay size={16} />}
+											className="bg-green-600 text-white hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto flex-grow justify-center"
+											disabled={missingTools.length > 0}
 										>
-											Archive
+											Approve & Run
 										</ActionButton>
-									</div>
+									)}
+									<ActionButton
+										onClick={() =>
+											onArchiveTask(task.task_id)
+										}
+										icon={<IconArchive size={16} />}
+										className="bg-neutral-700 text-neutral-200 hover:bg-neutral-600 w-full sm:w-auto justify-center"
+									>
+										Archive
+									</ActionButton>
 								</div>
-							</>
+							</div>
 						)}
 					</footer>
 				</>

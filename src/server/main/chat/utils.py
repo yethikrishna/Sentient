@@ -182,32 +182,17 @@ async def generate_chat_llm_stream(
         # Get both connected and disconnected tools
         connected_tools, disconnected_tools = _get_tool_lists(user_integrations)
 
-        all_available_mcp_servers = {}
-        # Populate MCP servers for all tools that Stage 2 might use:
-        # 1. User-connected tools (from connected_tools)
-        # 2. Built-in tools (memory, history, tasks)
-        tools_for_mcp_server_list = set(connected_tools.keys()) | {"memory", "history", "tasks"}
-
-        for tool_name in tools_for_mcp_server_list:
-            config = INTEGRATIONS_CONFIG.get(tool_name, {})
-            if config:
-                mcp_config = config.get("mcp_server_config", {})
-                if mcp_config and mcp_config.get("url") and mcp_config.get("name"):
-                    all_available_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}, "transport": "sse"}
-
         yield {"type": "status", "message": "Thinking..."}
 
         # --- STAGE 1 ---
         stage1_output = await _get_stage1_response(messages, connected_tools, disconnected_tools, user_id)
 
-        if isinstance(stage1_output, str):
-            # --- DIRECT RESPONSE FROM STAGE 1 ---
-            logger.info(f"Stage 1 provided a direct response for user {user_id}. Streaming it back.")
-            yield {"type": "assistantStream", "token": stage1_output, "done": True, "messageId": assistant_message_id}
-            return # End of stream
-
         # --- TOOL SELECTION, PROCEED TO STAGE 2 ---
-        relevant_tool_names = stage1_output
+        try:
+            relevant_tool_names = json.loads(stage1_output) if isinstance(stage1_output, str) else stage1_output
+        except Exception as e:
+            logger.error(f"Failed to parse stage1_output as JSON list: {e}", exc_info=True)
+            relevant_tool_names = []
 
         tool_display_names = [INTEGRATIONS_CONFIG.get(t, {}).get('display_name', t) for t in relevant_tool_names if t != 'memory']
         if tool_display_names:
@@ -217,13 +202,19 @@ async def generate_chat_llm_stream(
         mandatory_tools = {"memory", "history", "tasks"}
         final_tool_names = set(relevant_tool_names) | mandatory_tools
 
+        # Build the list of tools for the agent, including MCPs and local tools, ensuring headers are included.
         filtered_mcp_servers = {}
-        # Build the list of tools for the agent, including MCPs and local tools
-        for server_name, server_config in all_available_mcp_servers.items():
-            tool_name_for_server = next((tn for tn, tc in INTEGRATIONS_CONFIG.items() if tc.get("mcp_server_config", {}).get("name") == server_name), None)
-            if tool_name_for_server in final_tool_names:
-                filtered_mcp_servers[server_name] = server_config
-
+        for tool_name in final_tool_names:
+            config = INTEGRATIONS_CONFIG.get(tool_name, {})
+            if config:
+                mcp_config = config.get("mcp_server_config", {})
+                if mcp_config and mcp_config.get("url") and mcp_config.get("name"):
+                    server_name = mcp_config["name"]
+                    filtered_mcp_servers[server_name] = {
+                        "url": mcp_config["url"],
+                        "headers": {"X-User-ID": user_id},
+                        "transport": "sse"
+                    }
         tools = [{"mcpServers": filtered_mcp_servers}]
 
         logger.info(f"Final tools for agent: {list(filtered_mcp_servers.keys())}")
@@ -365,19 +356,6 @@ async def process_voice_command(
         user_integrations = user_data.get("integrations", {})
         connected_tools, disconnected_tools = _get_tool_lists(user_integrations)
 
-        all_available_mcp_servers = {}
-        # Populate MCP servers for all tools that Stage 2 might use:
-        # 1. User-connected tools (from connected_tools)
-        # 2. Built-in tools (memory, history, tasks)
-        tools_for_mcp_server_list = set(connected_tools.keys()) | {"memory", "history", "tasks"}
-
-        for tool_name in tools_for_mcp_server_list:
-            config = INTEGRATIONS_CONFIG.get(tool_name, {})
-            if config:
-                mcp_config = config.get("mcp_server_config", {})
-                if mcp_config and mcp_config.get("url") and mcp_config.get("name"):
-                    all_available_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}, "transport": "sse"}
-
         # Call Stage 1
         stage1_output = await _get_stage1_response(qwen_formatted_history, connected_tools, disconnected_tools, user_id)
 
@@ -393,12 +371,19 @@ async def process_voice_command(
             mandatory_tools = {"memory", "history", "tasks"}
             final_tool_names = set(relevant_tool_names) | mandatory_tools
 
+            # Build the list of tools for the agent, ensuring headers are included.
             filtered_mcp_servers = {}
-            for server_name, server_config in all_available_mcp_servers.items():
-                tool_name_for_server = next((tn for tn, tc in INTEGRATIONS_CONFIG.items() if tc.get("mcp_server_config", {}).get("name") == server_name), None)
-                if tool_name_for_server in final_tool_names:
-                    filtered_mcp_servers[server_name] = server_config
-
+            for tool_name in final_tool_names:
+                config = INTEGRATIONS_CONFIG.get(tool_name, {})
+                if config:
+                    mcp_config = config.get("mcp_server_config", {})
+                    if mcp_config and mcp_config.get("url") and mcp_config.get("name"):
+                        server_name = mcp_config["name"]
+                        filtered_mcp_servers[server_name] = {
+                            "url": mcp_config["url"],
+                            "headers": {"X-User-ID": user_id},
+                            "transport": "sse"
+                        }
             tools = [{"mcpServers": filtered_mcp_servers}]
             logger.info(f"Voice Command Tools (Stage 2): {list(filtered_mcp_servers.keys())}")
                 

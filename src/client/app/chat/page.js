@@ -7,12 +7,9 @@ import {
 	IconPlayerStopFilled,
 	IconBrain,
 	IconWorldSearch,
-	IconUsers,
-	IconMapPin,
 	IconFileText,
 	IconArrowBackUp,
 	IconX,
-	IconCopy,
 	IconMenu2,
 	IconPhone,
 	IconPhoneOff,
@@ -23,17 +20,19 @@ import {
 	IconPlus,
 	IconTools,
 	IconTool,
-	IconPresentation,
-	IconTable,
+	IconInfoCircle,
+	IconSparkles,
+	IconClockHour4,
+	IconMessageChatbot,
+	IconMapPin,
 	IconShoppingCart,
-	IconCloud,
 	IconChartPie,
+	IconBrandTrello,
 	IconNews,
+	IconListCheck,
 	IconBrandDiscord,
 	IconBrandEvernote,
 	IconBrandWhatsapp,
-	IconBrandTrello,
-	IconListCheck,
 	IconCalendarEvent
 } from "@tabler/icons-react"
 import {
@@ -44,13 +43,12 @@ import {
 	IconBrandLinkedin
 } from "@tabler/icons-react"
 import IconGoogleMail from "@components/icons/IconGoogleMail"
-import IconGoogleCalendar from "@components/icons/IconGoogleCalendar"
-import IconGoogleSheets from "@components/icons/IconGoogleSheets"
 import toast from "react-hot-toast"
 import { cn } from "@utils/cn"
 import { Tooltip } from "react-tooltip"
 import { motion, AnimatePresence } from "framer-motion"
 import ChatBubble from "@components/ChatBubble"
+import { TextLoop } from "@components/ui/TextLoop"
 import InteractiveNetworkBackground from "@components/ui/InteractiveNetworkBackground"
 import { TextShimmer } from "@components/ui/text-shimmer"
 import React from "react"
@@ -61,11 +59,8 @@ import useClickOutside from "@hooks/useClickOutside"
 
 const toolIcons = {
 	gmail: IconGoogleMail,
-	gcalendar: IconGoogleCalendar,
-	gsheets: IconGoogleSheets,
 	gdocs: IconFileText,
 	gdrive: IconBrandGoogleDrive,
-	gpeople: IconUsers,
 	slack: IconBrandSlack,
 	notion: IconBrandNotion,
 	github: IconBrandGithub,
@@ -78,211 +73,12 @@ const toolIcons = {
 	google_search: IconWorldSearch,
 	trello: IconBrandTrello,
 	news: IconNews,
-	todoist: IconListCheck, // Replacement for custom icon
+	todoist: IconListCheck,
 	discord: IconBrandDiscord,
 	evernote: IconBrandEvernote,
 	whatsapp: IconBrandWhatsapp,
 	gcalendar_alt: IconCalendarEvent,
 	default: IconTool
-// Ensure this closing brace matches the correct opening brace or remove it if unnecessary.
-}
-const useCasesByDomain = {
-	Featured: [
-		{
-			title: "Overnight Updates",
-			description: "Update me on overnight slack/email messages",
-			prompt: "Catch me up on any important Slack messages or emails I missed overnight and summarize them for me.",
-			tools: ["slack", "gmail"],
-			action: "Run now"
-		},
-		{
-			title: "Expense Analysis",
-			description: "Analyze my expenses and generate a report",
-			prompt: "Analyze the 'Q3 Expenses' sheet in my Google Drive and generate a summary report, highlighting the top 3 spending categories.",
-			tools: ["gsheets"],
-			action: "Run now"
-		},
-		{
-			title: "Team Birthday Reminders",
-			description: "Check team birthdays and send a birthday message",
-			prompt: "Check my 'Team Info' Google Sheet for any birthdays today. If there is one, draft a celebratory message to post in the #general Slack channel.",
-			tools: ["gsheets", "slack"],
-			action: "Create workflow"
-		}
-	],
-	Productivity: [
-		{
-			title: "Summarize Unread Emails",
-			description: "Get a digest of your unread emails",
-			prompt: "Summarize my unread emails from the last 24 hours and highlight any urgent requests.",
-			tools: ["gmail"],
-			action: "Run now"
-		},
-		{
-			title: "Schedule a Meeting",
-			description: "Find a time and schedule a meeting with a contact",
-			prompt: "Schedule a 30-minute meeting with John Doe for tomorrow morning to discuss the Q3 report. Find a time that works for both of us.",
-			tools: ["gcalendar", "gpeople"],
-			action: "Run now"
-		},
-		{
-			title: "Create a Project Brief",
-			description: "Draft a new project brief in Notion",
-			prompt: "Create a new page in Notion for 'Project Phoenix' with sections for Goals, Timeline, and Team Members.",
-			tools: ["notion"],
-			action: "Run now"
-		}
-	],
-	Sales: [
-		{
-			title: "Meeting Prep",
-			description: "Summarize emails & docs for an upcoming meeting",
-			prompt: "I have a meeting with Acme Corp tomorrow. Summarize my recent emails with them and find the latest proposal document in Google Drive.",
-			tools: ["gcalendar", "gmail", "gdrive"],
-			action: "Run now"
-		},
-		{
-			title: "Draft Follow-up Email",
-			description: "Write a follow-up email after a sales call",
-			prompt: "Draft a follow-up email to Jane Doe summarizing our call today and outlining the next steps we discussed.",
-			tools: ["gmail", "gpeople"],
-			action: "Run now"
-		},
-		{
-			title: "Update CRM",
-			description: "Log call notes and update a contact",
-			prompt: "Add a note to John Smith's contact record that we discussed pricing and he is interested in the Pro plan.",
-			tools: ["gpeople"],
-			action: "Run now"
-		}
-	],
-	Marketing: [
-		{
-			title: "Draft Campaign Email",
-			description: "Write an email for a new marketing campaign",
-			prompt: "Draft a marketing email to our subscribers about the new summer sale, highlighting a 20% discount.",
-			tools: ["gmail"],
-			action: "Run now"
-		},
-		{
-			title: "Social Media Post Idea",
-			description: "Brainstorm ideas for social media",
-			prompt: "Generate 5 ideas for a tweet about our new feature launch.",
-			tools: ["internet_search"],
-			action: "Run now"
-		},
-		{
-			title: "Create Campaign Brief",
-			description: "Start a new campaign brief in Notion",
-			prompt: "Create a new page in our Marketing workspace in Notion for the 'Q4 Holiday Campaign'.",
-			tools: ["notion"],
-			action: "Run now"
-		}
-	],
-	Engineering: [
-		{
-			title: "Daily Standup Update",
-			description: "Summarize your recent commits for standup",
-			prompt: "Summarize my GitHub commits from yesterday and draft a message to post in the #engineering Slack channel for my daily update.",
-			tools: ["github", "slack"],
-			action: "Run now"
-		},
-		{
-			title: "Create a New Issue",
-			description: "Log a bug or feature request in GitHub",
-			prompt: "Create a new issue in the 'frontend' repository titled 'Bug: Login button not working on Safari' and assign it to me.",
-			tools: ["github"],
-			action: "Run now"
-		},
-		{
-			title: "Draft Technical Docs",
-			description: "Start drafting new technical documentation",
-			prompt: "Create a new page in our 'Engineering Wiki' in Notion to document the new API endpoint.",
-			tools: ["notion"],
-			action: "Run now"
-		}
-	]
-}
-
-const DomainSelector = ({ domains, activeDomain, onSelectDomain }) => {
-	return (
-		<div className="flex items-center justify-center gap-2 flex-wrap mb-8">
-			{domains.map((domain) => (
-				<button
-					key={domain}
-					onClick={() => onSelectDomain(domain)}
-					className={cn(
-						"px-4 py-2 rounded-full text-sm font-medium transition-colors duration-200",
-						activeDomain === domain
-							? "bg-white text-black shadow-lg shadow-white/10"
-							: "bg-neutral-800/80 text-neutral-400 hover:bg-neutral-700/80 hover:text-white"
-					)}
-				>
-					{domain}
-				</button>
-			))}
-		</div>
-	)
-}
-
-const UseCaseGrid = ({ useCases, onSelectPrompt }) => {
-	const cardVariants = {
-		hidden: { opacity: 0, y: 20 },
-		visible: { opacity: 1, y: 0 }
-	}
-
-	return (
-		<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-			<AnimatePresence>
-				{useCases.map((useCase, index) => {
-					const icons = useCase.tools.map((tool) => ({
-						Icon: toolIcons[tool],
-						name: tool
-					}))
-					return (
-						<motion.div
-							key={useCase.title + index}
-							layout
-							variants={cardVariants}
-							initial="hidden"
-							animate="visible"
-							exit="hidden"
-							transition={{ duration: 0.3, delay: index * 0.05 }}
-							className="bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800/80 flex flex-col justify-between text-left h-full"
-						>
-							<div>
-								<div className="flex -space-x-2 mb-4">
-									{icons.map(({ Icon, name }, i) => (
-										<div
-											key={name + i}
-											className="w-8 h-8 rounded-full flex items-center justify-center border-2 border-neutral-900 bg-white"
-										>
-											<Icon className="w-5 h-5" />
-										</div>
-									))}
-								</div>
-								<h3 className="font-semibold text-white mb-2">
-									{useCase.title}
-								</h3>
-								<p className="text-neutral-400 text-sm mb-4">
-									{useCase.description}
-								</p>
-							</div>
-							<button
-								onClick={() => onSelectPrompt(useCase.prompt)}
-								className="text-sm font-medium text-neutral-300 hover:text-white transition-colors flex items-center gap-2"
-							>
-								{useCase.action}{" "}
-								<span className="transition-transform group-hover:translate-x-1">
-									→
-								</span>
-							</button>
-						</motion.div>
-					)
-				})}
-			</AnimatePresence>
-		</div>
-	)
 }
 
 export default function ChatPage() {
@@ -304,7 +100,7 @@ export default function ChatPage() {
 	const [userDetails, setUserDetails] = useState(null)
 	const posthog = usePostHog()
 	const [isFocused, setIsFocused] = useState(false)
-	const [activeDomain, setActiveDomain] = useState("Featured")
+	const [isWelcomeModalOpen, setIsWelcomeModalOpen] = useState(false)
 	const [replyingTo, setReplyingTo] = useState(null)
 	const [isOptionsOpen, setIsOptionsOpen] = useState(false)
 	const [confirmClear, setConfirmClear] = useState(false)
@@ -478,20 +274,6 @@ export default function ChatPage() {
 				textareaRef.current.scrollHeight,
 				200
 			)}px`
-		}
-	}
-
-	const handleSelectPrompt = (prompt) => {
-		setInput(prompt)
-		if (textareaRef.current) {
-			setTimeout(() => {
-				textareaRef.current.style.height = "auto"
-				textareaRef.current.style.height = `${Math.min(
-					textareaRef.current.scrollHeight,
-					200
-				)}px`
-				textareaRef.current.focus()
-			}, 0)
 		}
 	}
 
@@ -1097,7 +879,7 @@ export default function ChatPage() {
 
 	const renderInputArea = () => (
 		<div className="relative bg-neutral-800/60 backdrop-blur-sm border border-neutral-700/50 rounded-2xl">
-			<div className="p-4 flex items-start gap-4">
+			<div className="relative p-4 flex items-start gap-4">
 				<textarea
 					ref={textareaRef}
 					value={input}
@@ -1110,12 +892,26 @@ export default function ChatPage() {
 							sendMessage()
 						}
 					}}
-					placeholder="Type a message, or attach a file..."
-					className="w-full p-4 pl-14 pr-24 bg-transparent text-base text-white placeholder-neutral-500 resize-none focus:ring-0 focus:outline-none overflow-y-auto custom-scrollbar"
+					placeholder=" "
+					className="w-full bg-transparent text-base text-white placeholder-transparent resize-none focus:ring-0 focus:outline-none overflow-y-auto custom-scrollbar z-10"
 					rows={1}
 					style={{ maxHeight: "200px" }}
 				/>
-				<div className="absolute left-3 bottom-3 flex items-center gap-2">
+				{!input && !uploadedFilename && (
+					<div className="absolute top-1/2 left-4 -translate-y-1/2 text-neutral-500 pointer-events-none z-0">
+						<TextLoop className="text-base">
+							<span>Ask anything...</span>
+							<span>Summarize my unread emails from today</span>
+							<span>
+								Draft a follow-up to the project proposal
+							</span>
+							<span>Schedule a meeting with the design team</span>
+						</TextLoop>
+					</div>
+				)}
+			</div>
+			<div className="flex justify-between items-center px-3 pb-3">
+				<div className="flex items-center gap-1">
 					<input
 						type="file"
 						ref={fileInputRef}
@@ -1125,18 +921,35 @@ export default function ChatPage() {
 					<button
 						onClick={() => fileInputRef.current?.click()}
 						disabled={isUploading}
-						className="p-2.5 rounded-full text-white bg-neutral-700 hover:bg-neutral-600 transition-colors disabled:opacity-50"
+						className="p-2 rounded-full text-neutral-300 hover:bg-neutral-700 hover:text-white transition-colors disabled:opacity-50"
 						data-tooltip-id="home-tooltip"
 						data-tooltip-content="Attach File (Max 5MB)"
 					>
 						{isUploading ? (
-							<IconLoader size={18} className="animate-spin" />
+							<IconLoader size={20} className="animate-spin" />
 						) : (
-							<IconPaperclip size={18} />
+							<IconPaperclip size={20} />
 						)}
 					</button>
+					<button
+						onClick={() => setIsWelcomeModalOpen(true)}
+						className="p-2 rounded-full text-neutral-300 hover:bg-neutral-700 hover:text-white transition-colors"
+						data-tooltip-id="home-tooltip"
+						data-tooltip-content="About Chat"
+					>
+						<IconInfoCircle size={20} />
+					</button>
+					<button
+						ref={toolsButtonRef}
+						onClick={() => setIsToolsMenuOpen((prev) => !prev)}
+						className="p-2 rounded-full text-neutral-300 hover:bg-neutral-700 hover:text-white transition-colors"
+						data-tooltip-id="home-tooltip"
+						data-tooltip-content="View Available Tools"
+					>
+						<IconTool size={20} />
+					</button>
 				</div>
-				<div className="absolute right-3 bottom-3 flex items-center gap-2">
+				<div className="flex items-center gap-2">
 					<button
 						onClick={toggleVoiceMode}
 						className="p-2.5 rounded-full text-white bg-neutral-700 hover:bg-neutral-600 transition-colors"
@@ -1170,6 +983,109 @@ export default function ChatPage() {
 				</div>
 			</div>
 		</div>
+	)
+
+	const renderWelcomeModal = () => (
+		<AnimatePresence>
+			{isWelcomeModalOpen && (
+				<motion.div
+					initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
+					animate={{ opacity: 1, backdropFilter: "blur(12px)" }}
+					exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
+					className="fixed inset-0 bg-black/70 z-[60] flex p-4 md:p-6"
+					onClick={() => setIsWelcomeModalOpen(false)}
+				>
+					<motion.div
+						initial={{ opacity: 0, y: 20 }}
+						animate={{ opacity: 1, y: 0 }}
+						exit={{ opacity: 0, y: 20 }}
+						transition={{ duration: 0.2, ease: "easeInOut" }}
+						onClick={(e) => e.stopPropagation()}
+						className="relative bg-neutral-900/80 backdrop-blur-2xl p-6 rounded-2xl shadow-2xl w-full h-full border border-neutral-700 flex flex-col"
+					>
+						<header className="flex justify-between items-center mb-6 flex-shrink-0">
+							<h2 className="text-lg font-semibold text-white flex items-center gap-2">
+								<IconMessageChatbot /> Welcome to Unified Chat
+							</h2>
+							<button
+								onClick={() => setIsWelcomeModalOpen(false)}
+								className="p-1.5 rounded-full hover:bg-neutral-700"
+							>
+								<IconX size={18} />
+							</button>
+						</header>
+						<main className="flex-1 overflow-y-auto custom-scrollbar pr-2 text-left space-y-6">
+							<p className="text-neutral-300">
+								This is your single, continuous conversation
+								with me. No need to juggle multiple chats—just
+								keep the dialogue flowing. Here’s how it works:
+							</p>
+							<div className="space-y-4">
+								<div className="flex items-start gap-4">
+									<IconSparkles
+										size={20}
+										className="text-brand-orange flex-shrink-0 mt-1"
+									/>
+									<div>
+										<h3 className="font-semibold text-white">
+											One Conversation, Infinite History
+										</h3>
+										<p className="text-neutral-400 text-sm mt-1">
+											I remember our entire conversation,
+											so you can always pick up where you
+											left off.
+										</p>
+									</div>
+								</div>
+								<div className="flex items-start gap-4">
+									<IconTools
+										size={20}
+										className="text-brand-orange flex-shrink-0 mt-1"
+									/>
+									<div>
+										<h3 className="font-semibold text-white">
+											Dynamic Tools for Any Task
+										</h3>
+										<p className="text-neutral-400 text-sm mt-1">
+											I automatically select and use the
+											right tools from your connected
+											apps. Just tell me what you need,
+											and I'll figure out how to get it
+											done.
+										</p>
+									</div>
+								</div>
+								<div className="flex items-start gap-4">
+									<IconClockHour4
+										size={20}
+										className="text-brand-orange flex-shrink-0 mt-1"
+									/>
+									<div>
+										<h3 className="font-semibold text-white">
+											Schedule for Later
+										</h3>
+										<p className="text-neutral-400 text-sm mt-1">
+											Tell me to do something 'tomorrow at
+											9am' or 'next Friday', and I'll
+											handle it in the background, keeping
+											you updated in the Tasks panel.
+										</p>
+									</div>
+								</div>
+							</div>
+						</main>
+						<footer className="mt-6 pt-4 border-t border-neutral-800 flex justify-end">
+							<button
+								onClick={() => setIsWelcomeModalOpen(false)}
+								className="py-2 px-5 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-sm font-medium"
+							>
+								Got it
+							</button>
+						</footer>
+					</motion.div>
+				</motion.div>
+			)}
+		</AnimatePresence>
 	)
 
 	const renderToolsMenu = () => (
@@ -1241,7 +1157,7 @@ export default function ChatPage() {
 	)
 
 	const renderOptionsMenu = () => (
-		<div className="absolute top-6 right-6 z-30">
+		<div className="absolute top-4 right-4 md:top-6 md:right-6 z-30">
 			<div className="relative">
 				<button
 					onClick={() => {
@@ -1298,11 +1214,12 @@ export default function ChatPage() {
 				src="/audio/connected.mp3"
 				preload="auto"
 			></audio>
+			{renderWelcomeModal()}
 			<audio ref={remoteAudioRef} autoPlay playsInline />
 			{displayedMessages.length > 0 &&
 				!isVoiceMode &&
 				renderOptionsMenu()}
-			<div className="flex-1 flex flex-col overflow-hidden relative w-full pb-16 md:pb-0">
+			<div className="flex-1 flex flex-col overflow-hidden relative w-full pt-16 md:pt-0">
 				<div className="absolute inset-0 z-[-1] network-grid-background">
 					<InteractiveNetworkBackground />
 				</div>
@@ -1310,7 +1227,7 @@ export default function ChatPage() {
 
 				<main
 					ref={scrollContainerRef}
-					className="flex-1 overflow-y-auto p-6 flex flex-col custom-scrollbar"
+					className="flex-1 overflow-y-auto px-4 pb-4 md:p-6 flex flex-col custom-scrollbar"
 				>
 					{isLoading ? (
 						<div className="flex-1 flex justify-center items-center">
@@ -1419,7 +1336,7 @@ export default function ChatPage() {
 							</div>
 						</div>
 					) : displayedMessages.length === 0 && !thinking ? (
-						<div className="flex-1 flex flex-col justify-center items-center p-6 text-center">
+						<div className="flex-1 flex flex-col justify-center items-center p-4 md:p-6 text-center">
 							<div>
 								<h1 className="text-4xl sm:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-b from-neutral-100 to-neutral-400 py-4">
 									{getGreeting()},{" "}
@@ -1434,24 +1351,11 @@ export default function ChatPage() {
 									{renderToolsMenu()}
 									{renderInputArea()}
 								</div>
-								<div className="mt-12">
-									<DomainSelector
-										domains={Object.keys(useCasesByDomain)}
-										activeDomain={activeDomain}
-										onSelectDomain={setActiveDomain}
-									/>
-									<UseCaseGrid
-										key={activeDomain}
-										useCases={
-											useCasesByDomain[activeDomain]
-										}
-										onSelectPrompt={handleSelectPrompt}
-									/>
-								</div>
+								<div className="mt-12"></div>
 							</div>
 						</div>
 					) : (
-						<div className="w-full max-w-4xl mx-auto flex flex-col gap-4 flex-1">
+						<div className="w-full max-w-4xl mx-auto flex flex-col gap-3 md:gap-4 flex-1">
 							{isLoadingOlder && (
 								<div className="flex justify-center py-4">
 									<IconLoader className="animate-spin text-neutral-500" />
@@ -1506,7 +1410,7 @@ export default function ChatPage() {
 						<div className="w-full max-w-4xl mx-auto">
 							{uploadedFilename
 								? renderUploadedFilePreview()
-									: renderReplyPreview()}
+								: renderReplyPreview()}
 							{renderToolsMenu()}
 							{renderInputArea()}
 						</div>

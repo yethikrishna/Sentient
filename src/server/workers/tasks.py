@@ -162,7 +162,7 @@ def create_task_from_suggestion(user_id: str, suggestion_payload: Dict[str, Any]
         task_id = run_async(worker_mongo_manager.add_task(user_id, task_data))
 
         # For proactive tasks, we have enough context to go straight to planning.
-        generate_plan_from_context.delay(task_id)
+        generate_plan_from_context.delay(task_id, user_id)
         logger.info(f"Successfully created and dispatched new task '{task_id}' from suggestion for planning.")
     finally:
         if worker_mongo_manager:
@@ -170,15 +170,15 @@ def create_task_from_suggestion(user_id: str, suggestion_payload: Dict[str, Any]
 
 
 @celery_app.task(name="refine_and_plan_ai_task")
-def refine_and_plan_ai_task(task_id: str):
+def refine_and_plan_ai_task(task_id: str, user_id: str):
     """
     Asynchronously refines an AI-assigned task's details using an LLM,
     updates the task in the DB, and then triggers the planning process.
     """
     logger.info(f"Refining and planning for AI task_id: {task_id}")
-    run_async(async_refine_and_plan_ai_task(task_id))
+    run_async(async_refine_and_plan_ai_task(task_id, user_id))
 
-async def async_refine_and_plan_ai_task(task_id: str):
+async def async_refine_and_plan_ai_task(task_id: str, user_id: str):
     """Async logic for refining an AI task and then kicking off the planner."""
     db_manager = PlannerMongoManager()
     try:
@@ -213,6 +213,14 @@ async def async_refine_and_plan_ai_task(task_id: str):
 
         parsed_data = JsonExtractor.extract_valid_json(clean_llm_output(response_str))
         if parsed_data:
+            # Safeguard: never allow the refiner to nullify or change the user_id
+            if "user_id" in parsed_data:
+                del parsed_data["user_id"]
+
+            # Safeguard: never allow the refiner to nullify or change the user_id
+            if "user_id" in parsed_data:
+                del parsed_data["user_id"]
+
             # Inject user's timezone into the schedule object if it exists
             if 'schedule' in parsed_data and parsed_data.get('schedule'):
                 parsed_data['schedule']['timezone'] = user_timezone_str
@@ -225,7 +233,7 @@ async def async_refine_and_plan_ai_task(task_id: str):
             logger.warning(f"Could not parse details for AI task {task_id}, proceeding with raw description.")
 
         # Now trigger the planning step, which is the main purpose of AI-assigned tasks
-        generate_plan_from_context.delay(task_id)
+        generate_plan_from_context.delay(task_id, user_id)
         logger.info(f"Refinement complete for AI task {task_id}, dispatched to planner.")
 
     except Exception as e:
@@ -377,11 +385,11 @@ async def async_process_action_item(user_id: str, action_items: list, topics: li
         await db_manager.close()
 
 @celery_app.task(name="generate_plan_from_context")
-def generate_plan_from_context(task_id: str):
+def generate_plan_from_context(task_id: str, user_id: str):
     """Generates a plan for a task once all context is available."""
-    run_async(async_generate_plan(task_id))
+    run_async(async_generate_plan(task_id, user_id))
 
-async def async_generate_plan(task_id: str):
+async def async_generate_plan(task_id: str, user_id: str):
     """Async logic for plan generation."""
     db_manager = PlannerMongoManager()
     try:
@@ -407,8 +415,13 @@ async def async_generate_plan(task_id: str):
         latest_run = task["runs"][-1]
         run_id = latest_run["run_id"]
 
-        user_id = task["user_id"]
-        topics = task.get("topics", [])
+        # Trust the user_id passed to the Celery task.
+        # If the document is missing it for some reason, log a warning and proceed.
+        if not task.get("user_id"):
+            logger.warning(f"Task {task_id} document is missing user_id. Proceeding with passed user_id '{user_id}'.")
+            # Attempt to heal the document
+            await db_manager.update_task_field(task_id, {"user_id": user_id})
+
         original_context = task.get("original_context", {})
 
         # For re-planning, add previous results and chat history to the context
@@ -421,7 +434,7 @@ async def async_generate_plan(task_id: str):
 
         # If the task is in the 'planning' state, check if clarification is needed.
         if latest_run.get("status") == "planning":
-            questions_list = await get_clarifying_questions(user_id, task_description, topics, original_context, db_manager)
+            questions_list = await get_clarifying_questions(user_id, task_description, task.get("topics", []), original_context, db_manager) # noqa
             if questions_list and isinstance(questions_list, list) and len(questions_list) > 0:
                 logger.info(f"Task {task_id}: Needs clarification. Questions: {questions_list}")
                 questions_for_db = [{"question_id": str(uuid.uuid4()), "text": q.strip(), "answer": None} for q in questions_list]
@@ -444,6 +457,16 @@ async def async_generate_plan(task_id: str):
             {"user_id": user_id},
             {"userData.personalInfo": 1} # Projection to get only necessary data
         )
+        if not user_profile:
+            logger.error(f"User profile not found for user_id '{user_id}' associated with task {task_id}. Cannot generate plan.")
+            await db_manager.update_task_status(task_id, "error", {"error": f"User profile not found for user_id '{user_id}'."})
+            return
+
+        if not user_profile:
+            logger.error(f"User profile not found for user_id '{user_id}' associated with task {task_id}. Cannot generate plan.")
+            await db_manager.update_task_status(task_id, "error", {"error": f"User profile not found for user_id '{user_id}'."})
+            return
+
         personal_info = user_profile.get("userData", {}).get("personalInfo", {})
         user_name = personal_info.get("name", "User")
         user_location_raw = personal_info.get("location", "Not specified")

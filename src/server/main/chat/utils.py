@@ -17,6 +17,7 @@ from main.db import MongoManager
 from main.llm import run_agent_with_fallback
 from main.config import (INTEGRATIONS_CONFIG, ENVIRONMENT)
 from json_extractor import JsonExtractor
+from workers.utils.text_utils import clean_llm_output
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +101,7 @@ async def _get_stage1_response(messages: List[Dict[str, Any]], connected_tools_m
     final_content_str = await asyncio.to_thread(_run_stage1_sync)
 
     # Now, parse the output. Is it a JSON list or a text response?
-    cleaned_output = final_content_str.strip()
+    cleaned_output = clean_llm_output(final_content_str)
 
     # Try to parse as JSON list first. This is the tool selection case.
     json_tools = JsonExtractor.extract_valid_json(cleaned_output)

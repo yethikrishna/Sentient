@@ -23,7 +23,7 @@ You are an intelligent assistant that helps users create tasks from natural lang
     - **Triggered Workflows:** If the task should run in response to an event (e.g., "on every new email"), use the `triggered` type.
         - `source`: The service that triggers the workflow (e.g., "gmail", "slack").
         - `event`: The specific event (e.g., "new_email", "new_message").
-        - `filter`: A dictionary of conditions to match (e.g., `{"from": "boss@example.com"}` or `{"channel": "#general"}`).
+        - `filter`: A dictionary of conditions to match (e.g., `{{"from": "boss@example.com"}}` or `{{"channel": "#general"}}`).
     - **Crucial Distinction:** Differentiate between the *task's execution time* (`run_at`) and the *event's time* mentioned in the prompt. A task to arrange a future event (e.g., 'book a flight for next month', 'schedule a meeting for Friday') should be executed *now* to make the arrangement. Therefore, its `run_at` should be the current time. The future date belongs in the task `description`.
     - **Ambiguity**: Phrases like "weekly hourly" are ambiguous. Interpret "weekly" as the frequency and ignore "hourly".
     - Use the current time and user's timezone to resolve relative dates like "tomorrow", "next Friday at 2pm", etc. correctly.
@@ -90,7 +90,7 @@ Your response MUST be a single, valid JSON object with the keys "name", "descrip
     "type": "triggered",
     "source": "gmail",
     "event": "new_email",
-    "filter": {"from": "newsletter@example.com"}
+    "filter": {{"from": "newsletter@example.com"}}
   }}
 }}
 ```

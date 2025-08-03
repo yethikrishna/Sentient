@@ -36,7 +36,7 @@ import {
 	IconSearch,
 	IconBrandEvernote,
 	IconSparkles,
-	IconBrandLinkedin
+	IconBrandLinkedin,
 	IconEye,
 	IconPlug
 } from "@tabler/icons-react"

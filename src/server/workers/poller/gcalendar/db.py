@@ -24,7 +24,7 @@ class PollerMongoManager:
         print(f"[{datetime.datetime.now()}] [GCalendarPoller_MongoManager] Assuming indexes are managed by main server.")
         pass
 
-    async def get_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
+    async def get_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]: # noqa
         return await self.user_profiles_collection.find_one({"user_id": user_id})
 
     async def get_polling_state(self, user_id: str, service_name: str, poll_type: str) -> Optional[Dict[str, Any]]:

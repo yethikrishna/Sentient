@@ -246,26 +246,24 @@ class MongoManager:
             {"user_id": user_id, "service_name": service_name}
         )
 
-    async def update_polling_state(self, user_id: str, service_name: str, state_data: Dict[str, Any]) -> bool: 
-        if not user_id or not service_name or state_data is None: return False
+    async def update_polling_state(self, user_id: str, service_name: str, poll_type: str, state_data: Dict[str, Any]) -> bool:
+        if not user_id or not service_name or not poll_type or state_data is None: return False
         for key, value in state_data.items(): 
             if isinstance(value, datetime.datetime):
                 state_data[key] = value.replace(tzinfo=datetime.timezone.utc) if value.tzinfo is None else value.astimezone(datetime.timezone.utc)
         
         # Prevent conflict errors by not trying to $set fields that are part of the unique index
         # or are immutable.
-        if '_id' in state_data:
-            del state_data['_id']
-        if 'user_id' in state_data:
-            del state_data['user_id']
-        if 'service_name' in state_data:
-            del state_data['service_name']
+        if '_id' in state_data: del state_data['_id']
+        if 'user_id' in state_data: del state_data['user_id']
+        if 'service_name' in state_data: del state_data['service_name']
+        if 'poll_type' in state_data: del state_data['poll_type']
         now_utc = datetime.datetime.now(datetime.timezone.utc)
         state_data["last_updated_at"] = now_utc
 
         result = await self.polling_state_collection.update_one(
-            {"user_id": user_id, "service_name": service_name}, 
-            {"$set": state_data, "$setOnInsert": {"created_at": now_utc, "user_id": user_id, "service_name": service_name}}, 
+            {"user_id": user_id, "service_name": service_name, "poll_type": poll_type},
+            {"$set": state_data, "$setOnInsert": {"created_at": now_utc, "user_id": user_id, "service_name": service_name, "poll_type": poll_type}},
             upsert=True
         )
         return result.matched_count > 0 or result.upserted_id is not None

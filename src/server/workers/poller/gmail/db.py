@@ -72,7 +72,7 @@ class PollerMongoManager:
             "$or": [{"error_backoff_until_timestamp": None}, {"error_backoff_until_timestamp": {"$lte": now_utc}}]
         }
         cursor = self.polling_state_collection.find(query).sort("next_scheduled_poll_time", ASCENDING)
-        return await cursor.to_list(length=None) # Get all due tasks for this service
+        return await cursor.to_list(length=None)
 
     async def set_polling_status_and_get(self, user_id: str, service_name: str, poll_type: str) -> Optional[Dict[str, Any]]:
         now_utc = datetime.datetime.now(timezone.utc)

@@ -1,13 +1,14 @@
 import os
 from typing import Dict, Any
 from fastmcp.exceptions import ToolError
+import asyncio
+import textract
 
 from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from fastmcp.prompts.prompt import Message
 
 from . import auth
-
 # --- Environment Setup ---
 # Load environment variables from a .env file.
 # By default, load_dotenv() looks for .env in the current directory and its parents.
@@ -47,15 +48,24 @@ def _get_safe_filepath(filename: str) -> str:
 @mcp.tool()
 async def read_file(ctx: Context, filename: str) -> Dict[str, Any]:
     """
-    Reads the content of a specified file from the temporary storage. The `filename` should be one of the files returned by `list_files`.
+    Reads the content of a specified file from the temporary storage and extracts its text content. The `filename` should be one of the files returned by `list_files`.
     """
     try:
         safe_path = _get_safe_filepath(filename)
         if not os.path.exists(safe_path):
             return {"status": "failure", "error": "File not found."}
         
-        with open(safe_path, "r", encoding="utf-8") as f:
-            content = f.read()
+        def process_file():
+            try:
+                # textract returns bytes, so we need to decode
+                extracted_bytes = textract.process(safe_path)
+                return extracted_bytes.decode('utf-8', errors='ignore')
+            except Exception as e:
+                # textract can raise various exceptions for different file types
+                return f"Error extracting text from file: {str(e)}"
+
+        content = await asyncio.to_thread(process_file)
+
         return {"status": "success", "result": content}
     except Exception as e:
         return {"status": "failure", "error": str(e)}
@@ -83,7 +93,7 @@ async def list_files(ctx: Context) -> Dict[str, Any]:
     try:
         user_id = auth.get_user_id_from_context(ctx)
         # Sanitize user_id to ensure it's safe for use in a file path
-        safe_user_id = "".join(c for c in user_id if c.isalnum() or c in ('-', '|', '_'))
+        safe_user_id = "".join(c for c in user_id if c.isalnum() or c in ('-', '_'))
         user_dir = os.path.join(FILE_MANAGEMENT_TEMP_DIR, safe_user_id)
 
         if not os.path.isdir(user_dir):

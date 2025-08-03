@@ -278,6 +278,18 @@ async def approve_task(
         else:
             update_data["status"] = "error"
             update_data["error"] = "Could not calculate next run time for recurring task."
+    elif schedule_data.get("type") == "triggered":
+        # This is a workflow that runs on an event. Activating it means it's now listening.
+        update_data["status"] = "active"
+        update_data["enabled"] = True
+        # No next_execution_at for triggered tasks as they are event-driven
+        logger.info(f"Approving triggered task {task_id}. Setting status to 'active'.")
+    elif schedule_data.get("type") == "triggered":
+        # This is a workflow that runs on an event. Activating it means it's now listening.
+        update_data["status"] = "active"
+        update_data["enabled"] = True
+        # No next_execution_at for triggered tasks as they are event-driven
+        logger.info(f"Approving triggered task {task_id}. Setting status to 'active'.")
     elif schedule_data.get("type") == "once" and schedule_data.get("run_at"):
         run_at_time_str = schedule_data.get("run_at")
         # Append :00 if seconds are missing for robust parsing

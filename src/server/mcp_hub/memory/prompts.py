@@ -60,32 +60,52 @@ fact_summarization_user_prompt_template = "Facts: {facts}"
 
 # --- Fact Extraction ---
 fact_extraction_system_prompt_template = f"""
-You are an expert system for information decomposition. Your primary goal is to break down a user's statement into a list of "atomic" facts. An atomic fact is a single, indivisible piece of information.
+You are an expert system for information decomposition. Your primary goal is to break down a user's statement into a list of "atomic" facts. An atomic fact is a single, indivisible piece of information that is **meaningful and personally relevant to the user**.
+
+**Primary Directive: Filter for Significance**
+You MUST ignore trivial details, boilerplate text, UI elements, and metadata. Focus only on extracting facts that reveal something important about the user's life, work, relationships, preferences, or plans.
 
 Key Instructions:
-1. **Deconstruct Compound Sentences**: Vigorously split sentences containing conjunctions like 'and', 'but', or 'while' into separate, self-contained facts. Each fact must stand on its own.
-2. **Isolate Each Idea**: Ensure every item in the output list represents one distinct idea. A single sentence from the user might contain multiple facts.
-3. **Handle Pronouns and Possessives**: If the input contains "I", "me", or "my", correctly convert them to refer to the provided USERNAME. For example, "My sister" becomes "{{USERNAME}}'s sister".
-4. **Strict JSON Output**: Your entire response MUST be a single, valid JSON array of strings that strictly adheres to the following schema. Do not add any commentary before or after the JSON.
+1.  **Deconstruct Compound Sentences**: Vigorously split sentences containing conjunctions like 'and', 'but', or 'while' into separate, self-contained facts. Each fact must stand on its own.
+2.  **Isolate Each Idea**: Ensure every item in the output list represents one distinct, meaningful idea.
+3.  **Handle Pronouns and Possessives**: If the input contains "I", "me", or "my", correctly convert them to refer to the provided USERNAME. For example, "My sister" becomes "{{USERNAME}}'s sister".
+4.  **Strict JSON Output**: Your entire response MUST be a single, valid JSON array of strings that strictly adheres to the following schema. Do not add any commentary before or after the JSON.
+
+**Crucial Filtering Rules - What to IGNORE:**
+-   **Boilerplate & Formatting**: Ignore signatures ("Sent from my iPhone"), headers/footers, navigation links ("Home", "About Us"), confidentiality notices, and unsubscribe links.
+-   **UI Text & Metadata**: Ignore button text ("Reply", "Submit"), image alt text ("Avatar of..."), system messages ("You have unread notifications"), and purely structural titles ("Subject:", "Fwd:", "Meeting Notes").
+-   **Vague & Procedural Statements**: Ignore generic phrases like "See below for details", "Here is the information you requested", "Let me know your thoughts", or "The task was completed".
+-   **Trivial & Temporary Information**: Do not extract facts that have no lasting value. For example, "The meeting is at 2 PM today" is a temporary detail, not a core fact about the user's life. However, "The user's weekly marketing meeting is on Tuesdays at 2 PM" IS a valuable, recurring fact.
+
+**What to EXTRACT:**
+-   **Personal Details**: "user123's sister works at Google."
+-   **Preferences**: "user123's favorite color is blue."
+-   **Professional Context**: "user123 is the project lead for Project Phoenix."
+-   **Relationships**: "user123's manager is Jane Doe."
+-   **Commitments & Plans**: "user123 promised to send the report by Friday."
 
 JSON Schema:
 {json.dumps(formats.fact_extraction_required_format, indent=2)}
 
 ---
-**Examples of Correct Decomposition:**
+**Examples:**
 ---
 
-**Example 1:**
-Username: 'user123'
-Paragraph: "I work at Google and my sister works there as well."
+**Example 1 (Good Extraction):**
+Username: 'sarthak'
+Paragraph: "Hi team, just a reminder that I'm the lead on the new mobile app project. My manager, Jane, and I decided that the deadline is next Friday. Also, my favorite snack is almonds."
 Correct Output:
-["user123 works at Google.", "user123's sister works at Google."]
+[
+  "sarthak is the lead on the new mobile app project.",
+  "sarthak's manager is Jane.",
+  "The deadline for the new mobile app project is next Friday.",
+  "sarthak's favorite snack is almonds."
+]
 
-**Example 2:**
-Username: 'user456'
-Paragraph: "My favorite color is blue, but I also like green, and I live in New York."
-Correct Ouptut:
-["user456's favorite color is blue.", "user456 also likes green.", "user456 lives in New York."]
-
+**Example 2 (Filtering Noise):**
+Username: 'alex'
+Paragraph: "Notification from Asana: Task 'Update Website Copy' was completed by you. Due Date: Yesterday. Project: Q3 Marketing. Click here to view the task. Avatar of Alex."
+Correct Output:
+[]
 """
 fact_extraction_user_prompt_template = "Username: '{username}'\n\nParagraph: {paragraph}"

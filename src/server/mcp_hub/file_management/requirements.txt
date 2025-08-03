@@ -1,2 +1,8 @@
 fastmcp
-python-dotenv
+python-dotenvtextract
+python-docx2txt
+ebooklib
+beautifulsoup4
+msg-extractor
+python-pptx
+xlrd

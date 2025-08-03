@@ -61,3 +61,11 @@ chromadb-client
 sentence-transformers
 google-generativeai
 rich
+# --- File Extraction (for file_management MCP) ---
+textract
+python-docx2txt
+ebooklib
+beautifulsoup4
+msg-extractor
+python-pptx
+xlrd

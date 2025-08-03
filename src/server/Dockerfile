@@ -23,6 +23,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     gnupg \
     python3-pip \
+    # Add textract dependencies
+    antiword \
+    poppler-utils \
+    tesseract-ocr \
+    unrtf \
     && rm -rf /var/lib/apt/lists/*
 
 # --- Conditional Ollama Installation ---

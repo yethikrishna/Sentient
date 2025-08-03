@@ -289,6 +289,41 @@ export default function ChatPage() {
 		// Reset file input to allow re-uploading the same file
 		event.target.value = ""
 
+		// --- ADDED: File Type Validation ---
+		const supportedExtensions = [
+			".csv",
+			".doc",
+			".docx",
+			".eml",
+			".epub",
+			".gif",
+			".jpg",
+			".jpeg",
+			".json",
+			".html",
+			".htm",
+			".msg",
+			".odt",
+			".pdf",
+			".png",
+			".pptx",
+			".ps",
+			".rtf",
+			".tiff",
+			".tif",
+			".txt",
+			".xlsx",
+			".xls"
+		]
+		const fileExtension = `.${file.name.split(".").pop()?.toLowerCase()}`
+
+		if (!supportedExtensions.includes(fileExtension)) {
+			toast.error(
+				`Unsupported file type: ${fileExtension}. Please upload a supported file.`
+			)
+			return
+		}
+		// --- END ADDED SECTION ---
 		if (file.size > 5 * 1024 * 1024) {
 			// 5MB limit
 			toast.error(
@@ -917,6 +952,7 @@ export default function ChatPage() {
 						ref={fileInputRef}
 						onChange={handleFileChange}
 						className="hidden"
+						accept=".csv,.doc,.docx,.eml,.epub,.gif,.jpg,.jpeg,.json,.html,.htm,.msg,.odt,.pdf,.png,.pptx,.ps,.rtf,.tiff,.tif,.txt,.xlsx,.xls"
 					/>
 					<button
 						onClick={() => fileInputRef.current?.click()}
@@ -1407,7 +1443,7 @@ export default function ChatPage() {
 				</main>
 				{!isLoading && !isVoiceMode && displayedMessages.length > 0 && (
 					<div className="px-4 pt-2 pb-4 sm:px-6 sm:pb-6 bg-transparent">
-						<div className="w-full max-w-4xl mx-auto">
+						<div className="relative w-full max-w-4xl mx-auto">
 							{uploadedFilename
 								? renderUploadedFilePreview()
 								: renderReplyPreview()}

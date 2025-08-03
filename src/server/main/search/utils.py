@@ -98,12 +98,6 @@ async def perform_unified_search(query: str, user_id: str) -> AsyncGenerator[str
         yield json.dumps({"type": "error", "message": "No searchable tools are available or connected for this query."}) + "\n"
         return
 
-    # 4. Execute agent
-    agent = get_qwen_assistant(
-        system_message=UNIFIED_SEARCH_SYSTEM_PROMPT,
-        function_list=[{"mcpServers": mcp_servers_to_use}]
-    )
-    
     messages = [{'role': 'user', 'content': query}]
     
     last_history_len = len(messages)

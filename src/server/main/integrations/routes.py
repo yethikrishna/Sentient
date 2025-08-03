@@ -279,8 +279,8 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
             await mongo_manager.update_polling_state(
                 user_id,
                 service_name,
+                "proactivity",
                 {
-                    "poll_type": "proactivity",
                     "is_enabled": True,
                     "is_currently_polling": False,
                     "next_scheduled_poll_time": datetime.datetime.now(datetime.timezone.utc), # Poll immediately
@@ -291,8 +291,8 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
             await mongo_manager.update_polling_state(
                 user_id,
                 service_name,
+                "triggers",
                 {
-                    "poll_type": "triggers",
                     "is_enabled": True,
                     "is_currently_polling": False,
                     "next_scheduled_poll_time": datetime.datetime.now(datetime.timezone.utc), # Poll immediately

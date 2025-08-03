@@ -343,7 +343,7 @@ export default function ChatPage() {
 
 		let messageContent = input.trim()
 		if (uploadedFilename) {
-			messageContent = `(Attached file for context: ${uploadedFilename}) ${messageContent}`
+			messageContent = `(Attached file for context: ${uploadedFilename}) ${messageContent}. Use file-management MCP to read it`
 		}
 
 		const newUserMessage = {

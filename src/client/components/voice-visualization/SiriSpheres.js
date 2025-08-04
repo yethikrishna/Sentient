@@ -19,7 +19,7 @@ const Ring = ({ color, initialRotation }) => {
 
 	return (
 		<mesh ref={ringRef}>
-			<torusGeometry args={[1.2, 0.05, 32, 100]} />
+			<torusGeometry args={[1.0, 0.04, 32, 100]} />
 			<meshPhysicalMaterial
 				color={color}
 				emissive={color}
@@ -39,18 +39,13 @@ const Ring = ({ color, initialRotation }) => {
 const Scene = ({ status, audioLevel = 0 }) => {
 	const groupRef = useRef()
 	const [currentScale, setCurrentScale] = useState(1)
-	const redColor = useMemo(() => new Color("#ff3b30"), [])
-	const finalColors = useMemo(() => {
-		const orange = new Color("#F1A21D") // brand-orange
-		const blue = new Color("#4a9eff") // sentient-blue
-		const green = new Color("#28A745") // brand-green
-		return [orange, blue, green]
-	}, [])
+	const dullOrange = useMemo(() => new Color("#8B5F11"), [])
+	const brandOrange = useMemo(() => new Color("#F1A21D"), [])
 
 	const [ringColors, setRingColors] = useState(() => [
-		new Color("#ff3b30"),
-		new Color("#ff3b30"),
-		new Color("#ff3b30")
+		new Color("#8B5F11"),
+		new Color("#8B5F11"),
+		new Color("#8B5F11")
 	])
 
 	useFrame(({ clock }) => {
@@ -60,15 +55,15 @@ const Scene = ({ status, audioLevel = 0 }) => {
 			const newColors = prevColors.map((color) => color.clone())
 
 			if (status === "disconnected") {
-				newColors.forEach((c) => c.copy(redColor))
+				newColors.forEach((c) => c.copy(dullOrange))
 			} else if (status === "connecting") {
 				const colorFactor = (Math.sin(t * 3) + 1) / 2 // Slower oscillation
-				newColors.forEach((c, i) => {
-					c.lerpColors(redColor, finalColors[i], colorFactor)
+				newColors.forEach((c) => {
+					c.lerpColors(dullOrange, brandOrange, colorFactor)
 				})
 			} else if (status === "connected") {
-				newColors.forEach((c, i) => {
-					c.lerp(finalColors[i], 0.05) // Slower transition
+				newColors.forEach((c) => {
+					c.lerp(brandOrange, 0.05) // Slower transition
 				})
 			}
 

@@ -10,13 +10,18 @@ export const GET = withAuth(async function GET(
 	request,
 	{ params, authHeader }
 ) {
-	const { filename } = params
-	if (!filename) {
+	// The [...filename] route parameter captures all segments into an array.
+	const filenameParts = params.filename
+
+	// Safely check if filenameParts is a valid, non-empty array before using it.
+	if (!Array.isArray(filenameParts) || filenameParts.length === 0) {
 		return NextResponse.json(
 			{ error: "Filename is required" },
 			{ status: 400 }
 		)
 	}
+
+	const filename = filenameParts.join("/")
 
 	try {
 		const backendResponse = await fetch(

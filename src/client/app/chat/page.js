@@ -968,14 +968,6 @@ export default function ChatPage() {
 						)}
 					</button>
 					<button
-						onClick={() => setIsWelcomeModalOpen(true)}
-						className="p-2 rounded-full text-neutral-300 hover:bg-neutral-700 hover:text-white transition-colors"
-						data-tooltip-id="home-tooltip"
-						data-tooltip-content="About Chat"
-					>
-						<IconInfoCircle size={20} />
-					</button>
-					<button
 						ref={toolsButtonRef}
 						onClick={() => setIsToolsMenuOpen((prev) => !prev)}
 						className="p-2 rounded-full text-neutral-300 hover:bg-neutral-700 hover:text-white transition-colors"
@@ -983,6 +975,14 @@ export default function ChatPage() {
 						data-tooltip-content="View Available Tools"
 					>
 						<IconTool size={20} />
+					</button>
+					<button
+						onClick={() => setIsWelcomeModalOpen(true)}
+						className="p-2 rounded-full text-neutral-300 hover:bg-neutral-700 hover:text-white transition-colors"
+						data-tooltip-id="home-tooltip"
+						data-tooltip-content="About Chat"
+					>
+						<IconInfoCircle size={20} />
 					</button>
 				</div>
 				<div className="flex items-center gap-2">
@@ -1384,6 +1384,15 @@ export default function ChatPage() {
 							</div>
 							<div className="w-full max-w-4xl mx-auto mt-12 ">
 								<div className="relative">
+									{uploadedFilename
+										? renderUploadedFilePreview()
+										: renderReplyPreview()}
+									{uploadedFilename
+										? renderUploadedFilePreview()
+										: renderReplyPreview()}
+									{uploadedFilename
+										? renderUploadedFilePreview()
+										: renderReplyPreview()}
 									{renderToolsMenu()}
 									{renderInputArea()}
 								</div>
@@ -1489,3 +1498,4 @@ export default function ChatPage() {
 		</div>
 	)
 }
+

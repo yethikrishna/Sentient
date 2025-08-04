@@ -52,7 +52,7 @@ async def _load_and_normalize_cookies(context: BrowserContext, cookies_path: str
         raise ToolError(f"Failed to load/add cookies from file: {e}")
 
 async def manage_linkedin_session(page: Page, context: BrowserContext, **kwargs) -> bool:
-    cookies_path = kwargs.get("cookies_path")
+    cookies_path = LINKEDIN_COOKIES_PATH
     if not cookies_path:
         raise ToolError("Cookies path not provided to session manager.")
 
@@ -239,7 +239,7 @@ async def perform_job_search(user_id: str, search_query: str, num_jobs: int) -> 
     async with AsyncWebCrawler(config=browser_config) as crawler:
         crawler.crawler_strategy.set_hook(
             "on_page_context_created", 
-            lambda page, context, **kwargs: manage_linkedin_session(page, context, cookies_path=LINKEDIN_COOKIES_PATH, **kwargs)
+            manage_linkedin_session
         )
         
         run_config = CrawlerRunConfig(

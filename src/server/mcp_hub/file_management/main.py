@@ -20,6 +20,8 @@ FILE_MANAGEMENT_TEMP_DIR = os.getenv('FILE_MANAGEMENT_TEMP_DIR', '/tmp/mcp_file_
 # Ensure the base temporary directory exists at startup
 os.makedirs(FILE_MANAGEMENT_TEMP_DIR, exist_ok=True)
 
+os.environ["PATH"] += os.pathsep + r"C:\Program Files\Tesseract-OCR"
+
 # --- MCP Server Initialization ---
 mcp = FastMCP(
     name="FileManagementServer",

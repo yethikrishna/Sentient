@@ -210,9 +210,17 @@ const ChatBubble = ({
 	// ***************************************************************
 	// *** UPDATED LOGIC: Function to render message content       ***
 	// ***************************************************************
+	const transformLinkUri = (uri) => {
+		if (uri.startsWith("file:")) {
+			return uri // Keep our custom protocol
+		}
+		// Let ReactMarkdown handle its default security for other links
+		return uri
+	}
 	const renderMessageContent = (contentToRender) => {
 		const markdownComponents = {
 			a: ({ href, children }) => {
+				console.log("Link clicked:", href)
 				if (href && href.startsWith("file:")) {
 					const filename = href.substring(5)
 					return <FileCard filename={filename} />
@@ -228,6 +236,7 @@ const ChatBubble = ({
 					className="prose prose-invert"
 					remarkPlugins={[remarkGfm]}
 					children={contentToRender || ""}
+					urlTransform={transformLinkUri}
 					components={markdownComponents}
 				/>
 			]
@@ -346,6 +355,7 @@ const ChatBubble = ({
 						className="prose prose-invert"
 						remarkPlugins={[remarkGfm]}
 						children={part.content}
+						urlTransform={transformLinkUri}
 						components={markdownComponents}
 					/>
 				)

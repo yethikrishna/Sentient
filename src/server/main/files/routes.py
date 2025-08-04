@@ -1,10 +1,11 @@
 import os
 import uuid
 import re
-from fastapi import APIRouter, Depends, File, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
+from fastapi.responses import JSONResponse, FileResponse
 from main.dependencies import auth_helper
-from main.config import FILE_MANAGEMENT_TEMP_DIR
+from main.config import FILE_MANAGEMENT_TEMP_DIR # Import the base directory constant
+from .utils import get_user_temp_dir
 
 router = APIRouter(
     prefix="/api/files",
@@ -58,3 +59,37 @@ async def upload_file(
     # Return the relative path including the user's directory
     relative_path = os.path.join(safe_user_id, final_filename)
     return JSONResponse(content={"filename": relative_path})
+
+@router.get("/download/{filepath:path}", summary="Download a file")
+async def download_file(
+    filepath: str,
+    user_id: str = Depends(auth_helper.get_current_user_id)
+):
+    """
+    Provides a secure way to download a file from the user's temporary directory.
+    """
+    try:
+        # This is the directory we will check against for security.
+        user_specific_dir = get_user_temp_dir(user_id)
+
+        # The 'filepath' from the URL already contains the user's directory.
+        # We join it with the BASE temp directory, not the user-specific one.
+        full_path = os.path.normpath(os.path.join(FILE_MANAGEMENT_TEMP_DIR, filepath))
+        print(f"Safe filepath: {full_path}")
+
+        # Security Check: Ensure the final, resolved path is inside the user's designated directory.
+        # This prevents path traversal attacks (e.g., filepath = "../other_user/secret.txt").
+        if not os.path.abspath(full_path).startswith(os.path.abspath(user_specific_dir)):
+            raise HTTPException(status_code=403, detail="Forbidden: Access denied.")
+
+        if not os.path.isfile(full_path):
+            raise HTTPException(status_code=404, detail="File not found.")
+
+        # Use FileResponse to stream the file back to the client.
+        # The filename for the download is the base name of the path.
+        return FileResponse(path=full_path, filename=os.path.basename(filepath), media_type='application/octet-stream')
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

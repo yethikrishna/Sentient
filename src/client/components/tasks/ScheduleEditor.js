@@ -66,9 +66,9 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 						type="button"
 						onClick={() => handleTypeChange(value)}
 						className={cn(
-							"px-4 py-1.5 rounded-full text-sm font-medium",
+							"px-4 py-1.5 rounded-full text-sm font-medium transition-colors",
 							(schedule.type || "once") === value
-								? "bg-blue-600 text-white"
+								? "bg-brand-orange text-brand-black font-semibold"
 								: "bg-neutral-700 hover:bg-neutral-600"
 						)}
 					>
@@ -87,7 +87,7 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 						value={getLocalDateTimeString(schedule.run_at)}
 						step="1" // Ensures seconds are included in the value
 						onChange={handleRunAtChange}
-						className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:border-blue-500"
+						className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:border-brand-orange focus:ring-brand-orange/50"
 					/>
 					<p className="text-xs text-gray-500 mt-1">
 						If left blank, the task will be planned immediately.
@@ -109,7 +109,7 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 									source: e.target.value
 								})
 							}
-							className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:border-blue-500"
+							className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:border-brand-orange focus:ring-brand-orange/50"
 						>
 							<option value="gmail">Gmail</option>
 							<option value="slack">Slack</option>
@@ -130,7 +130,7 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 								})
 							}
 							placeholder="e.g., new_email, new_message"
-							className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:border-blue-500"
+							className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:border-brand-orange focus:ring-brand-orange/50"
 						/>
 					</div>
 					<div>
@@ -152,7 +152,7 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 								}
 							}}
 							rows={4}
-							className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:border-blue-500 font-mono text-xs"
+							className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:border-brand-orange focus:ring-brand-orange/50 font-mono text-xs"
 							placeholder={`{\n  "from": "boss@example.com",\n  "subject_contains": "Urgent"\n}`}
 						/>
 						<p className="text-xs text-gray-500 mt-1">
@@ -176,7 +176,7 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 									frequency: e.target.value
 								})
 							}
-							className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:border-blue-500"
+							className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:border-brand-orange focus:ring-brand-orange/50"
 						>
 							<option value="daily">Daily</option>
 							<option value="weekly">Weekly</option>
@@ -195,7 +195,7 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 									time: e.target.value
 								})
 							}
-							className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:border-blue-500"
+							className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:border-brand-orange focus:ring-brand-orange/50"
 						/>
 					</div>
 					{schedule.frequency === "weekly" && (
@@ -218,9 +218,9 @@ const ScheduleEditor = ({ schedule, setSchedule }) => {
 										key={day}
 										onClick={() => handleDayToggle(day)}
 										className={cn(
-											"px-3 py-1.5 rounded-full text-xs font-semibold",
+											"px-3 py-1.5 rounded-full text-xs font-semibold transition-colors",
 											(schedule.days || []).includes(day)
-												? "bg-blue-600 text-white"
+												? "bg-brand-orange text-brand-black"
 												: "bg-neutral-700 hover:bg-neutral-600"
 										)}
 									>

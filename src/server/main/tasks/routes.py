@@ -8,8 +8,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import uuid
 
 from main.dependencies import mongo_manager, websocket_manager
-from main.auth.utils import PermissionChecker, AuthHelper
-from workers.tasks import generate_plan_from_context, execute_task_plan, calculate_next_run, process_task_change_request, refine_task_details, refine_and_plan_ai_task
+from main.auth.utils import PermissionChecker
+from workers.tasks import generate_plan_from_context, execute_task_plan, calculate_next_run, process_task_change_request, refine_task_details, refine_and_plan_ai_task, cud_memory_task
 from .models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest, AnswerClarificationsRequest, TaskActionRequest, TaskChatRequest, ProgressUpdateRequest
 from main.llm import run_agent_with_fallback
 from json_extractor import JsonExtractor
@@ -225,13 +225,34 @@ async def answer_clarifications(
     request: AnswerClarificationsRequest, 
     user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"]))
 ):
-    if not await mongo_manager.get_task(request.task_id, user_id):
+    task = await mongo_manager.get_task(request.task_id, user_id)
+    if not task:
         raise HTTPException(status_code=404, detail="Task not found or permission denied.")
     
     success = await mongo_manager.add_answers_to_task(request.task_id, [ans.dict() for ans in request.answers], user_id)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to save answers to the task.")
     
+    # --- NEW LOGIC: Save answers to memory ---
+    try:
+        if task.get("runs"):
+            latest_run = task["runs"][-1]
+            questions = latest_run.get("clarifying_questions", [])
+            question_map = {q.get("question_id"): q.get("text") for q in questions}
+
+            for answer in request.answers:
+                question_text = question_map.get(answer.question_id)
+                if question_text:
+                    # Format as a fact
+                    fact_to_remember = f"In response to the question '{question_text}', the user provided the answer: '{answer.answer_text}'"
+                    # Dispatch to memory worker
+                    cud_memory_task.delay(user_id=user_id, information=fact_to_remember, source=f"task_clarification_{request.task_id}")
+            logger.info(f"Dispatched {len(request.answers)} clarification answers to memory for task {request.task_id}.")
+    except Exception as e:
+        # Don't fail the whole request if memory dispatch fails, just log it.
+        logger.error(f"Failed to dispatch clarification answers to memory for task {request.task_id}: {e}", exc_info=True)
+    # --- END NEW LOGIC ---
+
     # Set status to trigger re-planning and call the planner worker
     await mongo_manager.update_task(request.task_id, {"status": "clarification_answered"})
     # Re-trigger the planner

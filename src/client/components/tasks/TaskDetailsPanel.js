@@ -14,6 +14,7 @@ import {
 	IconClipboardList
 } from "@tabler/icons-react"
 import TaskDetailsContent from "./TaskDetailsContent"
+import { getDisplayName } from "@utils/taskUtils"
 import RecurringTaskDetails from "./RecurringTaskDetails"
 import ConnectToolButton from "./ConnectToolButton"
 import { cn } from "@utils/cn"
@@ -134,7 +135,7 @@ const TaskDetailsPanel = ({
 			)}
 		>
 			{icon}
-			<span>{children}</span>
+			{children}
 		</button>
 	)
 
@@ -164,18 +165,18 @@ const TaskDetailsPanel = ({
 							{isEditing ? (
 								<input
 									type="text"
-									value={editableTask.name}
+									value={editableTask.description}
 									onChange={(e) =>
 										handleFieldChange(
-											"name",
+											"description",
 											e.target.value
 										)
 									}
-									className="w-full bg-transparent text-2xl font-bold text-white focus:ring-0 focus:border-blue-500 border-b-2 border-transparent"
+									className="w-full bg-transparent text-2xl font-bold text-white focus:ring-0 focus:border-brand-orange border-b-2 border-transparent"
 								/>
 							) : (
 								<h2 className="text-lg md:text-xl font-bold text-white leading-snug">
-									{task.description}
+									{getDisplayName(task)}
 								</h2>
 							)}
 						</div>
@@ -189,8 +190,26 @@ const TaskDetailsPanel = ({
 
 					{/* --- CONTENT --- */}
 					<main className="flex-1 overflow-y-auto custom-scrollbar p-6">
-						{isRecurringOrTriggered ? (
-							<RecurringTaskDetails task={task} />
+						{isEditing ? (
+							<TaskDetailsContent
+								task={task}
+								isEditing={isEditing}
+								editableTask={editableTask}
+								handleFieldChange={handleFieldChange}
+								handleScheduleChange={handleScheduleChange}
+								handleAddStep={handleAddStep}
+								handleRemoveStep={handleRemoveStep}
+								handleStepChange={handleStepChange}
+								allTools={allTools}
+								integrations={integrations}
+								onAnswerClarifications={onAnswerClarifications}
+								onSendChatMessage={onSendChatMessage}
+							/>
+						) : isRecurringOrTriggered ? (
+							<RecurringTaskDetails
+								task={task}
+								onAnswerClarifications={onAnswerClarifications}
+							/>
 						) : (
 							<TaskDetailsContent
 								task={task}
@@ -227,7 +246,7 @@ const TaskDetailsPanel = ({
 									<ActionButton
 										onClick={handleSaveEdit}
 										icon={<IconDeviceFloppy size={16} />}
-										className="bg-blue-600 text-white hover:bg-blue-500"
+										className="bg-brand-orange text-brand-black font-semibold hover:bg-brand-orange/90"
 									>
 										Save
 									</ActionButton>
@@ -242,21 +261,27 @@ const TaskDetailsPanel = ({
 											onClick={handleStartEditing}
 											icon={<IconPencil size={16} />}
 											className="text-neutral-400 hover:bg-neutral-700 hover:text-white"
-										/>
+										>
+											Edit
+										</ActionButton>
 										<ActionButton
 											onClick={() =>
 												onDelete(task.task_id)
 											}
 											icon={<IconTrash size={16} />}
 											className="text-neutral-400 hover:bg-red-500/20 hover:text-red-400"
-										/>
+										>
+											Delete
+										</ActionButton>
 										<ActionButton
 											onClick={() =>
 												onRerun(task.task_id)
 											}
 											icon={<IconRepeat size={16} />}
 											className="text-neutral-400 hover:bg-neutral-700 hover:text-white"
-										/>
+										>
+											Rerun
+										</ActionButton>
 									</div>
 									{missingTools.length > 0 && (
 										<div className="text-xs text-red-400 flex flex-col items-end gap-1 text-right">
@@ -284,7 +309,7 @@ const TaskDetailsPanel = ({
 											onClick={() =>
 												onApprove(task.task_id)
 											}
-											icon={<IconPlayerPlay size={16} />}
+											icon={<IconCircleCheck size={16} />}
 											className="bg-green-600 text-white hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto flex-grow justify-center"
 											disabled={missingTools.length > 0}
 										>

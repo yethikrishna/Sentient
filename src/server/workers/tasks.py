@@ -16,7 +16,7 @@ from workers.utils.api_client import notify_user, push_task_list_update
 from main.config import INTEGRATIONS_CONFIG
 from main.tasks.prompts import TASK_CREATION_PROMPT
 from main.llm import run_agent_with_fallback as run_main_agent_with_fallback
-from main.db import MongoManager # MODIFIED: Import the class, not the instance
+from main.db import MongoManager
 from workers.celery_app import celery_app
 from workers.planner.llm import get_planner_agent, get_question_generator_agent # noqa: E501
 from workers.proactive.main import run_proactive_pipeline_logic
@@ -835,11 +835,34 @@ async def async_run_due_tasks():
 
         if not due_tasks:
             logger.info("Scheduler: No user-defined tasks are due.")
-            return # noqa
+            return
 
         logger.info(f"Scheduler: Found {len(due_tasks)} due user-defined tasks.")
         for task in due_tasks:
             logger.info(f"Scheduler: Queuing user-defined task {task['task_id']} for execution.")
+            
+            # --- NEW LOGIC: Create a new run for recurring tasks ---
+            if task.get('schedule', {}).get('type') == 'recurring':
+                # The plan is copied from the latest existing run, which is the approved template.
+                latest_run_plan = task.get("runs", [{}])[-1].get("plan", [])
+                new_run = {
+                    "run_id": str(uuid.uuid4()),
+                    "status": "processing", # Start execution immediately
+                    "plan": latest_run_plan, # Use the approved plan
+                    "created_at": datetime.datetime.now(datetime.timezone.utc)
+                }
+                
+                # Atomically push the new run and update the top-level task status
+                await db_manager.task_collection.update_one(
+                    {"_id": task["_id"]},
+                    {
+                        "$push": {"runs": new_run},
+                        "$set": {"status": "processing"}
+                    }
+                )
+                logger.info(f"Created new run {new_run['run_id']} for recurring task {task['task_id']}.")
+            # --- END NEW LOGIC ---
+
             execute_task_plan.delay(task['task_id'], task['user_id'])
 
             # For recurring tasks, calculate the next run time.

@@ -39,6 +39,3 @@ cud_decision_required_format = {
     },
     "required": ["action", "fact_id", "content", "analysis"]
 }
-
-# Kept for its general utility in breaking down paragraphs into single-sentence facts.
-fact_extraction_required_format = {"type": "array", "items": {"type": "string"}}

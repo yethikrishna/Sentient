@@ -422,11 +422,7 @@ export default function MemoriesPage() {
 				<header className="flex flex-col md:flex-row md:items-center justify-between p-4 pt-20 md:pt-4 sm:p-6 bg-transparent shrink-0 z-10 border-b border-neutral-800/80">
 					<div>
 						<h1 className="text-3xl lg:text-4xl font-bold text-white flex items-center gap-3">
-							<IconBrain
-								size={36}
-								className="text-brand-orange"
-							/>
-							Your Memories
+							Memories
 						</h1>
 						<p className="text-neutral-400 mt-1">
 							A collection of facts and information I've learned

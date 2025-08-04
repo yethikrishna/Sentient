@@ -3,11 +3,12 @@ import React, { useState, useEffect, useCallback, useRef } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "framer-motion"
 import NotificationsOverlay from "@components/NotificationsOverlay"
-import { IconBell, IconMenu2 } from "@tabler/icons-react"
+import { IconBell, IconMenu2, IconLoader } from "@tabler/icons-react"
 import Sidebar from "@components/Sidebar"
 import CommandPalette from "./CommandPallete" // Corrected import path
 import { useGlobalShortcuts } from "@hooks/useGlobalShortcuts"
 import { cn } from "@utils/cn"
+import toast from "react-hot-toast"
 
 export default function LayoutWrapper({ children }) {
 	const [isNotificationsOpen, setNotificationsOpen] = useState(false)
@@ -18,8 +19,46 @@ export default function LayoutWrapper({ children }) {
 	const [userDetails, setUserDetails] = useState(null)
 	const wsRef = useRef(null)
 	const pathname = usePathname()
+	const router = useRouter()
+
+	// State for onboarding check
+	const [isLoading, setIsLoading] = useState(true)
+	const [isAllowed, setIsAllowed] = useState(false)
 
 	const showNav = !["/", "/onboarding"].includes(pathname)
+
+	useEffect(() => {
+		if (!showNav) {
+			setIsLoading(false)
+			setIsAllowed(true) // Allow rendering for public pages like '/' and '/onboarding'
+			return
+		}
+
+		const checkStatus = async () => {
+			setIsLoading(true)
+			try {
+				const res = await fetch("/api/user/data")
+				if (!res.ok) {
+					throw new Error("Session error. Please log in again.")
+				}
+				const data = await res.json()
+				if (data?.data?.onboardingComplete) {
+					setIsAllowed(true)
+				} else {
+					toast.error("Please complete onboarding first.")
+					router.push("/onboarding")
+					// isAllowed remains false, content won't flash
+				}
+			} catch (error) {
+				toast.error(error.message || "Failed to verify user status.")
+				router.push("/") // Redirect to home on error
+			} finally {
+				setIsLoading(false)
+			}
+		}
+
+		checkStatus()
+	}, [pathname, router, showNav])
 
 	useEffect(() => {
 		fetch("/api/user/profile")
@@ -116,6 +155,22 @@ export default function LayoutWrapper({ children }) {
 		return () => window.removeEventListener("keydown", handleEscape)
 	}, [isNotificationsOpen, isCommandPaletteOpen])
 
+	if (isLoading) {
+		return (
+			<div className="flex-1 flex h-screen bg-black text-white overflow-hidden justify-center items-center">
+				<IconLoader className="w-10 h-10 animate-spin text-brand-orange" />
+			</div>
+		)
+	}
+
+	if (!isAllowed) {
+		// This will be shown briefly during the redirect to /onboarding
+		return (
+			<div className="flex-1 flex h-screen bg-black text-white overflow-hidden justify-center items-center">
+				<IconLoader className="w-10 h-10 animate-spin text-brand-orange" />
+			</div>
+		)
+	}
 	return (
 		<>
 			{showNav && (

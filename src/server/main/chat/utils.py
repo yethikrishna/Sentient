@@ -99,9 +99,13 @@ async def _get_stage1_response(messages: List[Dict[str, Any]], connected_tools_m
         return final_content_str
 
     final_content_str = await asyncio.to_thread(_run_stage1_sync)
+    
+    print(f"Stage 1 LLM output for user {user_id}: {final_content_str}")
 
     # Now, parse the output. Is it a JSON list or a text response?
     cleaned_output = clean_llm_output(final_content_str)
+    
+    print(f"Cleaned Stage 1 output for user {user_id}: {cleaned_output}")
 
     # Try to parse as JSON list first. This is the tool selection case.
     json_tools = JsonExtractor.extract_valid_json(cleaned_output)
@@ -113,7 +117,7 @@ async def _get_stage1_response(messages: List[Dict[str, Any]], connected_tools_m
 
     # If it's not a JSON list, it's a direct response.
     logger.info("Stage 1 is providing a direct response.")
-    return final_content_str # Return the full string with tags for the stream generator to parse.
+    return cleaned_output # Return the full string with tags for the stream generator to parse.
 
 def _extract_answer_from_llm_response(llm_output: str) -> str:
     """

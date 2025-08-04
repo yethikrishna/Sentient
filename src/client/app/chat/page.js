@@ -1387,12 +1387,6 @@ export default function ChatPage() {
 									{uploadedFilename
 										? renderUploadedFilePreview()
 										: renderReplyPreview()}
-									{uploadedFilename
-										? renderUploadedFilePreview()
-										: renderReplyPreview()}
-									{uploadedFilename
-										? renderUploadedFilePreview()
-										: renderReplyPreview()}
 									{renderToolsMenu()}
 									{renderInputArea()}
 								</div>
@@ -1498,4 +1492,3 @@ export default function ChatPage() {
 		</div>
 	)
 }
-

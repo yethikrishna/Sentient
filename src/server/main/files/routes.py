@@ -22,16 +22,6 @@ def sanitize_filename(filename: str) -> str:
     filename = re.sub(r'[<>:"|?*]', '', filename)
     return filename
 
-def get_unique_filename(directory: str, filename: str) -> str:
-    """Checks if a file exists and appends a number if it does."""
-    name, ext = os.path.splitext(filename)
-    counter = 1
-    new_filename = filename
-    while os.path.exists(os.path.join(directory, new_filename)):
-        new_filename = f"{name} ({counter}){ext}"
-        counter += 1
-    return new_filename
-
 @router.post("/upload", summary="Upload a file for AI context")
 async def upload_file(
     file: UploadFile = File(...),
@@ -45,10 +35,8 @@ async def upload_file(
     # Sanitize the original filename to prevent security issues
     sanitized_filename = sanitize_filename(file.filename)
 
-    # Ensure the filename is unique within the user's directory
-    final_filename = get_unique_filename(user_specific_dir, sanitized_filename)
-
-    file_path = os.path.join(user_specific_dir, final_filename)
+    # Overwrite file if it exists, no need to make it unique.
+    file_path = os.path.join(user_specific_dir, sanitized_filename)
 
     try:
         with open(file_path, "wb") as buffer:
@@ -56,9 +44,8 @@ async def upload_file(
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": f"Failed to save file: {e}"})
     
-    # Return the relative path including the user's directory
-    relative_path = os.path.join(safe_user_id, final_filename)
-    return JSONResponse(content={"filename": relative_path})
+    # Return only the filename, not the full path with user_id
+    return JSONResponse(content={"filename": sanitized_filename})
 
 @router.get("/download/{filepath:path}", summary="Download a file")
 async def download_file(

@@ -3,10 +3,12 @@ from typing import Dict, Any
 from fastmcp.exceptions import ToolError
 import asyncio
 import textract
+import platform
 
 from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from fastmcp.prompts.prompt import Message
+from pathlib import Path
 
 from . import auth
 # --- Environment Setup ---
@@ -28,22 +30,22 @@ mcp = FastMCP(
     instructions="Provides tools to read and write files in a temporary storage area, useful for handling uploads and generating files for download.",
 )
 
-def _get_safe_filepath(filename: str) -> str:
+def _get_safe_filepath(filename: str) -> Path:
     """
     Constructs a full, safe path to a file within the temp directory and validates it.
     Prevents path traversal attacks.
     """
     # Base directory where all user files are stored
-    base_dir = os.path.abspath(FILE_MANAGEMENT_TEMP_DIR)
+    base_dir = Path(FILE_MANAGEMENT_TEMP_DIR).resolve()
     
     # Create the full path by joining the base directory and the relative filename
     # The filename from the agent already includes the user's subdirectory, e.g., "user-id/report.pdf"
-    full_path = os.path.abspath(os.path.join(base_dir, filename))
+    full_path = (base_dir / filename).resolve()
     
     # SECURITY CHECK: Ensure the resolved path is still inside the base directory
-    if not full_path.startswith(base_dir):
+    if base_dir not in full_path.parents:
         raise ToolError("Access denied: Path traversal attempt detected.")
-        
+
     return full_path
 
 # --- Tool Definitions ---
@@ -53,14 +55,31 @@ async def read_file(ctx: Context, filename: str) -> Dict[str, Any]:
     Reads the content of a specified file from the temporary storage and extracts its text content. The `filename` should be one of the files returned by `list_files`.
     """
     try:
-        safe_path = _get_safe_filepath(filename)
-        if not os.path.exists(safe_path):
+        user_id = auth.get_user_id_from_context(ctx)
+        safe_user_id = "".join(c for c in user_id if c.isalnum() or c in ('-', '_'))
+        # Prepend user_id to filename to create the relative path
+        relative_path = os.path.join(safe_user_id, filename)
+        safe_path = _get_safe_filepath(relative_path)
+        
+        print(f"Reading file from: {str(safe_path)}")
+
+        if not safe_path.exists():
             return {"status": "failure", "error": "File not found."}
         
         def process_file():
             try:
+                # Convert the Path object to a string for processing
+                path_for_textract = str(safe_path)
+
+                # On Windows, replace backslashes with forward slashes for better compatibility
+                # with underlying tools that textract might call.
+                if platform.system() == "Windows":
+                    path_for_textract = path_for_textract.replace('\\', '/')
+
+                    print(f"Reading file from: {str(path_for_textract)}")
+
                 # textract returns bytes, so we need to decode
-                extracted_bytes = textract.process(safe_path)
+                extracted_bytes = textract.process(path_for_textract)
                 return extracted_bytes.decode('utf-8', errors='ignore')
             except Exception as e:
                 # textract can raise various exceptions for different file types
@@ -78,10 +97,15 @@ async def write_file(ctx: Context, filename: str, content: str) -> Dict[str, Any
     Writes or overwrites a file in the temporary storage with the provided `content`.
     """
     try:
-        safe_path = _get_safe_filepath(filename)
+        user_id = auth.get_user_id_from_context(ctx)
+        safe_user_id = "".join(c for c in user_id if c.isalnum() or c in ('-', '_'))
+        # Prepend user_id to filename to create the relative path
+        relative_path = os.path.join(safe_user_id, filename)
+        safe_path = _get_safe_filepath(relative_path)
+
         # Ensure the directory exists before writing
-        os.makedirs(os.path.dirname(safe_path), exist_ok=True)
-        with open(safe_path, "w", encoding="utf-8") as f:
+        safe_path.parent.mkdir(parents=True, exist_ok=True)
+        with safe_path.open("w", encoding="utf-8") as f:
             f.write(content)
         return {"status": "success", "result": f"File '{filename}' written successfully."}
     except Exception as e:
@@ -103,9 +127,8 @@ async def list_files(ctx: Context) -> Dict[str, Any]:
 
         files = [f for f in os.listdir(user_dir) if os.path.isfile(os.path.join(user_dir, f))]
         
-        # Return the relative path for the agent to use (e.g., "user-id/my_file.txt")
-        relative_files = [os.path.join(safe_user_id, f) for f in files]
-        return {"status": "success", "result": relative_files}
+        # Return just the filenames, not the relative path
+        return {"status": "success", "result": files}
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 

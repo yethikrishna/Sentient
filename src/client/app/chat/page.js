@@ -14,6 +14,8 @@ import {
 	IconPhone,
 	IconPhoneOff,
 	IconWaveSine,
+	IconMicrophone,
+	IconMicrophoneOff,
 	IconMessageOff,
 	IconPaperclip,
 	IconFile,
@@ -115,6 +117,7 @@ export default function ChatPage() {
 	const [uploadedFilename, setUploadedFilename] = useState(null)
 
 	// --- Voice Mode State ---
+	const [isMuted, setIsMuted] = useState(false)
 	const [isVoiceMode, setIsVoiceMode] = useState(false)
 	const [connectionStatus, setConnectionStatus] = useState("disconnected")
 	const [audioInputDevices, setAudioInputDevices] = useState([])
@@ -770,6 +773,68 @@ export default function ChatPage() {
 		}
 	}
 
+	const initializeVoiceMode = async () => {
+		// Check if devices are already loaded to avoid re-prompting
+		if (audioInputDevices.length > 0) {
+			return true
+		}
+
+		try {
+			if (
+				!navigator.mediaDevices ||
+				!navigator.mediaDevices.enumerateDevices
+			) {
+				toast.error("Media devices are not supported in this browser.")
+				return false
+			}
+			// This is the permission prompt
+			await navigator.mediaDevices.getUserMedia({
+				audio: {
+					noiseSuppression: false,
+					echoCancellation: false
+				},
+				video: false
+			})
+			const devices = await navigator.mediaDevices.enumerateDevices()
+			const audioInputDevices = devices.filter(
+				(d) => d.kind === "audioinput"
+			)
+			if (audioInputDevices.length > 0) {
+				setAudioInputDevices(
+					audioInputDevices.map((d, i) => ({
+						deviceId: d.deviceId,
+						label: d.label || `Microphone ${i + 1}`
+					}))
+				)
+				// Set default device if not already set
+				if (!selectedAudioInputDevice) {
+					setSelectedAudioInputDevice(audioInputDevices[0].deviceId)
+				}
+				return true
+			} else {
+				toast.error("No audio input devices found.")
+				return false
+			}
+		} catch (error) {
+			toast.error("Microphone permission is required for voice mode.")
+			return false
+		}
+	}
+
+	const handleToggleMute = () => {
+		if (webrtcClientRef.current?.mediaStream) {
+			const audioTracks =
+				webrtcClientRef.current.mediaStream.getAudioTracks()
+			if (audioTracks.length > 0) {
+				const isCurrentlyEnabled = audioTracks[0].enabled
+				audioTracks[0].enabled = !isCurrentlyEnabled
+				const newMutedState = !audioTracks[0].enabled
+				setIsMuted(newMutedState)
+				setVoiceStatusText(newMutedState ? "Muted" : "Listening...")
+			}
+		}
+	}
+
 	const handleStopVoice = () => {
 		if (connectionStatus === "disconnected" || !webrtcClientRef.current) {
 			return
@@ -790,61 +855,30 @@ export default function ChatPage() {
 		// 3. Force the UI state back to disconnected immediately.
 		setConnectionStatus("disconnected")
 		setVoiceStatusText("Click to start call")
+		setIsMuted(false)
 	}
 
-	const toggleVoiceMode = () => {
+	const toggleVoiceMode = async () => {
 		if (isVoiceMode) {
 			handleStopVoice()
+			setIsVoiceMode(false)
+		} else {
+			// Switching TO voice mode, first get permissions
+			const permissionsGranted = await initializeVoiceMode()
+			if (permissionsGranted) {
+				setIsVoiceMode(true)
+			}
 		}
-		setIsVoiceMode(!isVoiceMode)
 	}
 
 	useEffect(() => {
-		const getDevices = async () => {
-			try {
-				if (
-					!navigator.mediaDevices ||
-					!navigator.mediaDevices.enumerateDevices
-				)
-					return
-				await navigator.mediaDevices.getUserMedia({
-					audio: {
-						noiseSuppression: false,
-						echoCancellation: false
-					},
-					video: false
-				})
-				const devices = await navigator.mediaDevices.enumerateDevices()
-				const audioInputDevices = devices.filter(
-					(d) => d.kind === "audioinput"
-				)
-				if (audioInputDevices.length > 0) {
-					setAudioInputDevices(
-						audioInputDevices.map((d, i) => ({
-							deviceId: d.deviceId,
-							label: d.label || `Microphone ${i + 1}`
-						}))
-					)
-					if (!selectedAudioInputDevice)
-						setSelectedAudioInputDevice(
-							audioInputDevices[0].deviceId
-						)
-				}
-			} catch (error) {
-				toast.error(
-					"Could not get microphone list. Please grant permission."
-				)
-			}
-		}
-		getDevices()
-
+		// This cleanup now only runs when the ChatPage component unmounts
 		return () => {
-			// This cleanup now only runs when the ChatPage component unmounts
 			if (webrtcClientRef.current) {
 				webrtcClientRef.current.disconnect()
 			}
 		}
-	}, [selectedAudioInputDevice])
+	}, [])
 
 	const renderReplyPreview = () => (
 		<AnimatePresence>
@@ -1028,7 +1062,7 @@ export default function ChatPage() {
 					initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
 					animate={{ opacity: 1, backdropFilter: "blur(12px)" }}
 					exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
-					className="fixed inset-0 bg-black/70 z-[60] flex p-4 md:p-6"
+					className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4 md:p-6"
 					onClick={() => setIsWelcomeModalOpen(false)}
 				>
 					<motion.div
@@ -1037,7 +1071,7 @@ export default function ChatPage() {
 						exit={{ opacity: 0, y: 20 }}
 						transition={{ duration: 0.2, ease: "easeInOut" }}
 						onClick={(e) => e.stopPropagation()}
-						className="relative bg-neutral-900/80 backdrop-blur-2xl p-6 rounded-2xl shadow-2xl w-full h-full border border-neutral-700 flex flex-col"
+						className="relative bg-neutral-900/80 backdrop-blur-2xl p-6 rounded-2xl shadow-2xl w-full max-w-2xl md:h-auto md:max-h-[85vh] h-full border border-neutral-700 flex flex-col"
 					>
 						<header className="flex justify-between items-center mb-6 flex-shrink-0">
 							<h2 className="text-lg font-semibold text-white flex items-center gap-2">
@@ -1270,56 +1304,120 @@ export default function ChatPage() {
 							<IconLoader className="animate-spin text-neutral-500" />
 						</div>
 					) : isVoiceMode ? (
-						<div className="flex-1 flex flex-col relative overflow-hidden">
+						<div className="flex-1 flex flex-col -translate-y-12 relative overflow-hidden">
 							{/* The 3D visualization will render here as a background */}
 							<SiriSpheres
 								status={connectionStatus}
 								audioLevel={audioLevel}
 							/>
 
-							{/* Overlay for controls, status, and messages */}
-							<div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-4">
-								{/* Call control buttons */}
-								<div className="mb-8">
-									<AnimatePresence mode="wait">
-										<motion.div
-											key={connectionStatus}
-											initial={{ opacity: 0, scale: 0.8 }}
-											animate={{ opacity: 1, scale: 1 }}
-											exit={{ opacity: 0, scale: 0.8 }}
-										>
-											{connectionStatus ===
-											"disconnected" ? (
-												<button
-													onClick={handleStartVoice}
-													className="flex h-24 w-24 items-center justify-center rounded-full bg-green-600 text-white shadow-lg transition-colors duration-200 hover:bg-green-500"
-													title="Start Call"
+							{/* Overlay for controls and status text */}
+							<div className="absolute inset-0 z-20 flex flex-col translate-y-20 items-center justify-end p-6 pb-12">
+								{/* Call Control Bar */}
+								<div className="flex items-center justify-center gap-4 p-3 bg-neutral-900/50 backdrop-blur-md rounded-full border border-neutral-700/50 shadow-lg mb-6">
+									{/* Mic Selector */}
+									<select
+										value={selectedAudioInputDevice}
+										onChange={(e) =>
+											setSelectedAudioInputDevice(
+												e.target.value
+											)
+										}
+										className="bg-brand-gray backdrop-blur-sm border border-brand-gray text-brand-white text-sm rounded-full px-4 py-4 focus:outline-none focus:border-brand-orange appearance-none max-w-[150px] truncate shadow-lg"
+										title="Select Microphone"
+										disabled={
+											connectionStatus !== "disconnected"
+										}
+									>
+										{audioInputDevices.length === 0 ? (
+											<option value="">
+												No mics found
+											</option>
+										) : (
+											audioInputDevices.map((device) => (
+												<option
+													key={device.deviceId}
+													value={device.deviceId}
 												>
-													<IconPhone size={36} />
-												</button>
-											) : connectionStatus ===
-											  "connecting" ? (
-												<div className="flex h-24 w-24 items-center justify-center rounded-full bg-yellow-600 text-white shadow-lg">
-													<IconLoader
-														size={36}
-														className="animate-spin"
+													{device.label}
+												</option>
+											))
+										)}
+									</select>
+
+									{/* Mute Button */}
+									<AnimatePresence>
+										{connectionStatus === "connected" && (
+											<motion.button
+												initial={{
+													opacity: 0,
+													scale: 0
+												}}
+												animate={{
+													opacity: 1,
+													scale: 1
+												}}
+												exit={{ opacity: 0, scale: 0 }}
+												onClick={handleToggleMute}
+												className={cn(
+													"flex h-12 w-12 items-center justify-center rounded-full text-white shadow-lg transition-colors duration-200",
+													isMuted
+														? "bg-white text-black"
+														: "bg-neutral-700 hover:bg-neutral-600"
+												)}
+												title={
+													isMuted ? "Unmute" : "Mute"
+												}
+											>
+												{isMuted ? (
+													<IconMicrophoneOff
+														size={24}
 													/>
-												</div>
-											) : (
-												<button
-													onClick={handleStopVoice}
-													className="flex h-24 w-24 items-center justify-center rounded-full bg-red-600 text-white shadow-lg transition-colors duration-200 hover:bg-red-500"
-													title="Hang Up"
-												>
-													<IconPhoneOff size={36} />
-												</button>
-											)}
-										</motion.div>
+												) : (
+													<IconMicrophone size={24} />
+												)}
+											</motion.button>
+										)}
 									</AnimatePresence>
+
+									{/* Main Call/End Button */}
+									{connectionStatus === "disconnected" ? (
+										<button
+											onClick={handleStartVoice}
+											className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-green text-white shadow-lg transition-colors duration-200 hover:bg-brand-green/80"
+											title="Start Call"
+										>
+											<IconPhone size={24} />
+										</button>
+									) : connectionStatus === "connecting" ? (
+										<div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-yellow text-brand-black shadow-lg">
+											<IconLoader
+												size={24}
+												className="animate-spin"
+											/>
+										</div>
+									) : (
+										<button
+											onClick={handleStopVoice}
+											className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-red text-white shadow-lg transition-colors duration-200 hover:bg-brand-red/80"
+											title="Hang Up"
+										>
+											<IconPhoneOff size={24} />
+										</button>
+									)}
+
+									{/* Switch to Text Mode Button */}
+									<button
+										onClick={toggleVoiceMode}
+										className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-gray hover:bg-neutral-600 text-white shadow-lg"
+										title="Switch to Text Mode"
+									>
+										<IconMessageOff size={24} />
+									</button>
 								</div>
 
-								{/* Status and Message Display */}
-								<div className="text-center space-y-4 max-w-2xl">
+								{/* Status and Message Display (below controls) */}
+								<div className="text-center space-y-2 max-w-2xl">
 									<div className="text-lg font-medium text-gray-300 min-h-[24px]">
 										<AnimatePresence mode="wait">
 											<motion.div
@@ -1453,39 +1551,6 @@ export default function ChatPage() {
 							{renderToolsMenu()}
 							{renderInputArea()}
 						</div>
-					</div>
-				)}
-				{isVoiceMode && (
-					<div className="absolute bottom-6 right-6 z-30 flex items-center gap-2">
-						<button
-							onClick={toggleVoiceMode}
-							className="p-2.5 rounded-full bg-neutral-700/80 backdrop-blur-sm hover:bg-blue-500 text-white shadow-lg"
-							title="Switch to Text Mode"
-						>
-							<IconMessageOff size={18} />
-						</button>
-						<select
-							value={selectedAudioInputDevice}
-							onChange={(e) =>
-								setSelectedAudioInputDevice(e.target.value)
-							}
-							className="bg-neutral-700/80 backdrop-blur-sm border border-neutral-600 text-white text-xs rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 appearance-none max-w-[200px] truncate shadow-lg"
-							title="Select Microphone"
-							disabled={connectionStatus !== "disconnected"}
-						>
-							{audioInputDevices.length === 0 ? (
-								<option value="">No mics found</option>
-							) : (
-								audioInputDevices.map((device) => (
-									<option
-										key={device.deviceId}
-										value={device.deviceId}
-									>
-										{device.label}
-									</option>
-								))
-							)}
-						</select>
 					</div>
 				)}
 			</div>

@@ -68,21 +68,18 @@ async def read_file(ctx: Context, filename: str) -> Dict[str, Any]:
         
         def process_file():
             try:
-                # Convert the Path object to a string for processing
+                # Convert the Path object to a string. This is all that's needed.
                 path_for_textract = str(safe_path)
+                
+                # On Windows, you might need to handle paths differently for some tools,
+                # but doubling the slashes is incorrect. Let's try passing it directly.
+                # If issues persist with specific file types, we might need a more nuanced fix,
+                # but this is the correct first step.
+                print(f"Reading file from: {path_for_textract}")
 
-                # On Windows, replace backslashes with forward slashes for better compatibility
-                # with underlying tools that textract might call.
-                if platform.system() == "Windows":
-                    path_for_textract = path_for_textract.replace('\\', '/')
-
-                    print(f"Reading file from: {str(path_for_textract)}")
-
-                # textract returns bytes, so we need to decode
                 extracted_bytes = textract.process(path_for_textract)
                 return extracted_bytes.decode('utf-8', errors='ignore')
             except Exception as e:
-                # textract can raise various exceptions for different file types
                 return f"Error extracting text from file: {str(e)}"
 
         content = await asyncio.to_thread(process_file)

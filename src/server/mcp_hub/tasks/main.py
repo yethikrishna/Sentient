@@ -4,6 +4,7 @@ import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+import json
 
 from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
@@ -15,12 +16,16 @@ from celery import chord, group
 from . import auth, prompts
 from main.tasks.prompts import TASK_CREATION_PROMPT # Reusing the main server's prompt
 from main.llm import get_qwen_assistant
-from main.dependencies import mongo_manager # We can import from main as it's in the python path
-from workers.executor.tasks import run_single_item_worker, aggregate_results_callback
+from main.dependencies import mongo_manager
+from main.llm import run_agent_with_fallback
+from main.config import INTEGRATIONS_CONFIG
+from main.tasks.utils import clean_llm_output
 from workers.tasks import refine_and_plan_ai_task
+from workers.executor.tasks import run_single_item_worker, aggregate_results_callback
 
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 # Conditionally load .env for local development
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
@@ -145,36 +150,93 @@ async def search_tasks(
         return {"status": "failure", "error": str(e)}
 
 @mcp.tool()
-async def process_collection_in_parallel(ctx: Context, items: List[Any], worker_prompt: str) -> Dict[str, Any]:
+async def process_collection_in_parallel(ctx: Context, items: List[Any], goal: str) -> Dict[str, Any]:
     """
-    Processes a collection of items in parallel. For each item, it spawns a sub-agent that executes the `worker_prompt`.
+    Orchestrates parallel processing of a collection of items based on a high-level goal.
+    A resource manager agent analyzes the goal and items, then defines one or more sub-tasks. Each sub-task can have a different prompt and a different set of tools, which are then executed in parallel by worker agents.
     This is a blocking operation that waits for all sub-agents to complete.
-    The results from each sub-agent are returned as a list.
+    The aggregated results from all workers are returned as a list.
     """
     try:
         user_id = auth.get_user_id_from_context(ctx)
         
         if not isinstance(items, list):
             raise ToolError("The 'items' parameter must be a list.")
+        
+        if not items:
+            return {"status": "success", "result": "The collection is empty, nothing to process."}
 
-        # Create a group of parallel worker tasks
-        worker_tasks = group(
-            run_single_item_worker.s(user_id=user_id, item=item, worker_prompt=worker_prompt)
-            for item in items
+        # --- 1. Resource Manager Agent ---
+        logger.info(f"Invoking Resource Manager for user {user_id} with goal: {goal}")
+        
+        user_profile = await mongo_manager.get_user_profile(user_id)
+        user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
+        
+        available_tools = {}
+        for tool_name, config in INTEGRATIONS_CONFIG.items():
+            if tool_name in ["tasks", "progress_updater"]: continue
+            is_builtin = config.get("auth_type") == "builtin"
+            is_connected = user_integrations.get(tool_name, {}).get("connected", False)
+            if is_builtin or is_connected:
+                available_tools[tool_name] = config.get("description", "")
+        
+        system_prompt = prompts.RESOURCE_MANAGER_SYSTEM_PROMPT.format(
+            available_tools_json=json.dumps(list(available_tools.keys()))
         )
+        
+        items_sample = items[:5]
+        user_prompt = f"Goal: \"{goal}\"\n\nItems (sample of {len(items)} total):\n{json.dumps(items_sample, indent=2, default=str)}"
+        
+        messages = [{'role': 'user', 'content': user_prompt}]
+        
+        manager_response_str = ""
+        for chunk in run_agent_with_fallback(system_message=system_prompt, function_list=[], messages=messages):
+            if isinstance(chunk, list) and chunk:
+                last_message = chunk[-1]
+                if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
+                    manager_response_str = last_message["content"]
 
-        # Create the chord with a callback to aggregate results
+        manager_response_str = clean_llm_output(manager_response_str).strip()
+
+        if not manager_response_str:
+            raise ToolError("Resource Manager agent returned an empty response.")
+        
+        execution_plan = JsonExtractor.extract_valid_json(manager_response_str)
+        
+        if not isinstance(execution_plan, list) or not all(isinstance(item, dict) for item in execution_plan):
+            raise ToolError(f"Resource Manager returned an invalid plan. Response: {manager_response_str}")
+
+        logger.info(f"Resource Manager created execution plan with {len(execution_plan)} sub-task(s).")
+
+        # --- 2. Dispatch Worker Tasks ---
+        all_worker_groups = []
+        for config in execution_plan:
+            item_indices = config.get("item_indices", [])
+            worker_prompt = config.get("worker_prompt")
+            required_tools = config.get("required_tools", [])
+            
+            if not all([isinstance(item_indices, list), worker_prompt, isinstance(required_tools, list)]):
+                logger.warning(f"Skipping invalid worker configuration: {config}")
+                continue
+
+            task_group = group(run_single_item_worker.s(user_id=user_id, item=items[i], worker_prompt=worker_prompt, worker_tools=required_tools) for i in item_indices if i < len(items))
+            if task_group:
+                all_worker_groups.append(task_group)
+
+        if not all_worker_groups:
+            raise ToolError("The execution plan resulted in no valid tasks to run.")
+        
+        header = group(all_worker_groups)
         callback = aggregate_results_callback.s()
-        chord_task = chord(worker_tasks, callback)
+        chord_task = chord(header, callback)
         
-        logger.info(f"Dispatching a chord of {len(items)} parallel workers for user {user_id}.")
+        logger.info(f"Dispatching a chord of {sum(len(g.tasks) for g in all_worker_groups)} parallel workers for user {user_id}.")
         
-        # Execute the chord and wait for the result. This blocks the current async function.
-        # We run this blocking call in a thread to not block the event loop.
         loop = asyncio.get_running_loop()
+        result_async = chord_task.apply_async()
         result = await loop.run_in_executor(
-            None,  # Use the default thread pool executor
-            lambda: chord_task.apply_async().get(timeout=600) # 10 minute timeout
+            None,
+            lambda: result_async.get(timeout=1800)
         )
 
         return {"status": "success", "result": result}

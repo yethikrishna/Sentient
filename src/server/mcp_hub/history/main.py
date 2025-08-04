@@ -58,7 +58,7 @@ async def semantic_search(ctx: Context, query: str) -> Dict[str, Any]:
         # Extract and format the documents (summaries)
         documents = results.get('documents', [[]])[0]
         if not documents:
-            return {"status": "success", "result": "No relevant conversation summaries found in your long-term memory."}
+            return {"status": "success", "result": "No relevant conversation summaries found in your memory."}
             
         return {"status": "success", "result": {"summaries": documents}}
     except Exception as e:

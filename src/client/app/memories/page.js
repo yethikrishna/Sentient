@@ -364,8 +364,8 @@ export default function MemoriesPage() {
 						}
 					>
 						<p className="text-neutral-300">
-							This is your long-term memory, a collection of facts
-							and information I've learned about you to provide a
+							This is your memory, a collection of facts and
+							information I've learned about you to provide a
 							truly personalized experience.
 						</p>
 						<div className="space-y-4">

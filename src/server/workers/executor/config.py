@@ -194,8 +194,8 @@ INTEGRATIONS_CONFIG = {
         }
     },
     "memory": {
-        "display_name": "Long-Term Memory",
-        "description": "Manages the user's long-term memory. Use 'search_memory' to find facts, and 'cud_memory' to add, update, or delete information. This is critical for personalization.",
+        "display_name": "Memory",
+        "description": "Manages the user's memory. Use 'search_memory' to find facts, and 'cud_memory' to add, update, or delete information. This is critical for personalization.",
         "auth_type": "builtin",
         "icon": "IconBrain",
         "mcp_server_config": {

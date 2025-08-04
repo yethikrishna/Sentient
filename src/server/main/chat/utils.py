@@ -412,7 +412,7 @@ async def process_voice_command(
             def agent_worker():
                 final_run_response = None
                 try:
-                    for response in run_agent_with_fallback(system_message=system_prompt, function_list=tools, messages=qwen_formatted_history_for_agent):
+                    for response in run_agent_with_fallback(system_message=system_prompt, function_list=tools, messages=expanded_messages):
 
                         if isinstance(response, list) and response:
                                 # Schedule the async status update on the main event loop

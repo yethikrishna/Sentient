@@ -1,3 +1,6 @@
+
+### `src\server\workers\executor\tasks.py`
+
 import os
 import json
 import datetime
@@ -319,21 +322,21 @@ def aggregate_results_callback(results):
     return results
 
 @celery_app.task(name="run_single_item_worker")
-def run_single_item_worker(user_id: str, item: Any, worker_prompt: str):
+def run_single_item_worker(user_id: str, item: Any, worker_prompt: str, worker_tools: List[str]):
     """
     A Celery worker that executes a sub-task for a single item from a collection.
-    This worker runs a self-contained agent to fulfill the worker_prompt.
+    This worker runs a self-contained agent to fulfill the worker_prompt using a specific set of tools.
     """
-    logger.info(f"Running single item worker for user {user_id} on item: {str(item)[:200]}...")
+    logger.info(f"Running single item worker for user {user_id} on item: {str(item)[:200]} with tools: {worker_tools}")
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
     
-    return loop.run_until_complete(async_run_single_item_worker(user_id, item, worker_prompt))
+    return loop.run_until_complete(async_run_single_item_worker(user_id, item, worker_prompt, worker_tools))
 
-async def async_run_single_item_worker(user_id: str, item: Any, worker_prompt: str):
+async def async_run_single_item_worker(user_id: str, item: Any, worker_prompt: str, worker_tools: List[str]):
     """
     Async logic for the single item worker.
     """
@@ -343,28 +346,31 @@ async def async_run_single_item_worker(user_id: str, item: Any, worker_prompt: s
         user_profile = await db.user_profiles.find_one({"user_id": user_id})
         user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
 
-        # 2. Configure tools for the sub-agent. It has access to all connected tools.
+        # 2. Configure tools for the sub-agent based on the provided list
         active_mcp_servers = {}
-        for tool_name, config in INTEGRATIONS_CONFIG.items():
+        for tool_name in worker_tools:
+            config = INTEGRATIONS_CONFIG.get(tool_name)
+            if not config:
+                logger.warning(f"Worker for user {user_id} requested unknown tool '{tool_name}'.")
+                continue
+            
             mcp_config = config.get("mcp_server_config")
             if not mcp_config: continue
 
             is_builtin = config.get("auth_type") == "builtin"
             is_connected = user_integrations.get(tool_name, {}).get("connected", False)
 
-            # The sub-agent should not be able to call the task manager or progress updater to avoid loops.
-            if tool_name in ["tasks", "progress_updater"]:
-                continue
-
             if is_builtin or is_connected:
                 active_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
+            else:
+                logger.warning(f"Worker for user {user_id} needs tool '{tool_name}' but it is not connected/available.")
 
         tools_config = [{"mcpServers": active_mcp_servers}]
 
         # 3. Construct prompts for the sub-agent
         system_prompt = (
             "You are an autonomous sub-agent. Your goal is to complete a specific task given to you as part of a larger parallel operation. "
-            "You have access to a suite of tools. Follow the user's prompt precisely. "
+            "You have access to a specific, limited suite of tools. Follow the user's prompt precisely. "
             "Your final output should be a single, concise result (e.g., a string, a number, a JSON object, or null). Do not add conversational filler. "
             "If you generate a final answer, wrap it in <answer> tags."
         )

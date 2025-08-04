@@ -29,7 +29,7 @@ agent = Assistant(
     llm=llm_cfg,
     function_list=tools,
     name="MemoryAgentClient",
-    description="An agent that uses a remote MCP server to manage long-term memory.",
+    description="An agent that uses a remote MCP server to manage memory.",
     system_message="You are a helpful assistant that can remember and recall information about the user using the provided memory tools."
 )
 

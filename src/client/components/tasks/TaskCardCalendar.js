@@ -3,10 +3,10 @@ import React from "react"
 import { motion } from "framer-motion"
 import { cn } from "@utils/cn"
 import { taskStatusColors } from "./constants"
+import { getDisplayName } from "@utils/taskUtils"
 
 const TaskCardCalendar = ({ task, onSelectTask }) => {
 	const statusInfo = taskStatusColors[task.status] || taskStatusColors.default
-
 	return (
 		<motion.div
 			layout
@@ -29,7 +29,7 @@ const TaskCardCalendar = ({ task, onSelectTask }) => {
 						statusInfo.bgColor
 					)}
 				/>
-				<span className="truncate">{task.name}</span>
+				<span className="truncate">{getDisplayName(task)}</span>
 			</div>
 		</motion.div>
 	)

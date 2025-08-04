@@ -5,6 +5,7 @@ import { cn } from "@utils/cn"
 import { taskStatusColors, priorityMap } from "./constants"
 import { format } from "date-fns"
 import { BorderTrail } from "@components/ui/border-trail"
+import { getDisplayName } from "@utils/taskUtils"
 
 const StatusBadge = ({ status }) => {
 	const statusInfo = taskStatusColors[status] || taskStatusColors.default
@@ -39,23 +40,6 @@ const TaskCardList = ({ task, onSelectTask }) => {
 		"planning",
 		"clarification_answered"
 	].includes(task.status)
-
-	const getDisplayName = (task) => {
-		// Use description if name is generic
-		if (task.name === "Proactively generated plan" && task.description) {
-			return task.description
-		}
-		// Fallback to the original prompt if description is also generic/missing
-		if (
-			task.name === "Proactively generated plan" &&
-			task.runs &&
-			task.runs.length > 0 &&
-			task.runs[0].prompt
-		) {
-			return task.runs[0].prompt
-		}
-		return task.name || "Untitled Task"
-	}
 
 	const cardVariants = {
 		hidden: { opacity: 0, y: -20, scale: 0.95 },

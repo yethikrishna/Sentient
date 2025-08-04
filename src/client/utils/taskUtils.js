@@ -35,6 +35,30 @@ export function groupTasksByDate(tasks) {
 }
 
 /**
+ * Gets the best display name for a task, handling legacy/generic names.
+ * @param {object} task - The task object.
+ * @returns {string} The display name for the task.
+ */
+export function getDisplayName(task) {
+	if (!task) return "Untitled Task"
+
+	// Use description if name is a generic placeholder
+	if (task.name === "Proactively generated plan" && task.description) {
+		return task.description
+	}
+	// Fallback to the original prompt from the first run if description is also generic/missing
+	if (
+		task.name === "Proactively generated plan" &&
+		task.runs &&
+		task.runs.length > 0 &&
+		task.runs[0].prompt
+	) {
+		return task.runs[0].prompt
+	}
+	return task.name || "Untitled Task"
+}
+
+/**
  * Calculates the next run time for a recurring task.
  * @param {object} schedule - The task's schedule object.
  * @param {string} createdAt - The ISO string of when the task was created.

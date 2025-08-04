@@ -19,7 +19,6 @@ POLLING_STATE_COLLECTION = "polling_state_store"
 PROCESSED_ITEMS_COLLECTION = "processed_items_log" 
 TASK_COLLECTION = "tasks"
 MESSAGES_COLLECTION = "messages"
-CONVERSATION_SUMMARIES_COLLECTION = "conversation_summaries"
 USER_PROACTIVE_PREFERENCES_COLLECTION = "user_proactive_preferences"
 PROACTIVE_SUGGESTION_TEMPLATES_COLLECTION = "proactive_suggestion_templates"
 
@@ -36,7 +35,6 @@ class MongoManager:
         self.processed_items_collection = self.db[PROCESSED_ITEMS_COLLECTION]
         self.task_collection = self.db[TASK_COLLECTION]
         self.messages_collection = self.db[MESSAGES_COLLECTION]
-        self.conversation_summaries_collection = self.db[CONVERSATION_SUMMARIES_COLLECTION]
         self.user_proactive_preferences_collection = self.db[USER_PROACTIVE_PREFERENCES_COLLECTION]
         self.proactive_suggestion_templates_collection = self.db[PROACTIVE_SUGGESTION_TEMPLATES_COLLECTION]
         
@@ -79,11 +77,6 @@ class MongoManager:
             self.messages_collection: [
                 IndexModel([("message_id", ASCENDING)], unique=True, name="message_id_unique_idx"),
                 IndexModel([("user_id", ASCENDING), ("timestamp", DESCENDING)], name="message_user_timestamp_idx"),
-            ],
-            self.conversation_summaries_collection: [
-                IndexModel([("summary_id", ASCENDING)], unique=True, name="summary_id_unique_idx"),
-                IndexModel([("user_id", ASCENDING)], name="summary_user_id_idx"),
-                # A vector index would be added here in a later phase
             ],
             self.user_proactive_preferences_collection: [
                 IndexModel([("user_id", ASCENDING), ("suggestion_type", ASCENDING)], unique=True, name="user_suggestion_preference_unique_idx")

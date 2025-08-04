@@ -878,13 +878,16 @@ def summarize_old_conversations():
     logger.info("Summarization Task: Starting to look for old conversations to summarize.")
     run_async(async_summarize_conversations())
 
+# src/server/workers/tasks.py
+
 async def async_summarize_conversations():
     db_manager = PlannerMongoManager()  # Re-using for its mongo access
     try:
         # 1. Find users with recent, unsummarized messages
         # We process one user at a time to keep the task manageable.
         # This aggregation finds the first user with unsummarized messages older than 1 day.
-        one_day_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)
+        # Temporarily changed for testing
+        one_day_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=1)
         pipeline = [
             {"$match": {"is_summarized": False, "timestamp": {"$lt": one_day_ago}}},
             {"$group": {"_id": "$user_id"}},
@@ -918,20 +921,34 @@ async def async_summarize_conversations():
         # 4. Process each chunk
         
         for chunk in message_chunks:
-            if len(chunk) < 5: # Don't summarize very small chunks
+            if len(chunk) < 2: # Don't summarize single messages
                 continue
 
             conversation_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in chunk])
             
-            # 4a. Summarize with LLM
+            # 4a. Summarize with LLM using the new, narrative-style prompt
             messages = [{'role': 'user', 'content': conversation_text}]
             summary_text = ""
-            system_prompt = "You are a summarization expert. Summarize the key points, decisions, facts, and topics from the following conversation chunk into a dense, third-person paragraph. Focus on information that would be useful for future context. Do not add any preamble or sign-off."
+            
+            # --- MODIFIED PROMPT ---
+            system_prompt = """
+You are the AI assistant in the provided conversation log. Your task is to write a summary of the conversation from your own perspective, as if you are recalling the memory of the interaction.
+
+**Core Instructions:**
+1.  **Adopt a First-Person Narrative:** Use "I", "me", and "my" to refer to your own actions and thoughts. Refer to the other party as "the user".
+2.  **Describe the Flow:** Recount the conversation as a sequence of events. For example: "The user told me about their project...", "I then asked for clarification on...", "We then discussed...".
+3.  **CRITICAL INSTRUCTION FOR FILE UPLOADS:** If a user message involves uploading a file (e.g., "user: (Attached file for context: report.pdf) Can you summarize this?"), your summary must NOT state that you cannot process it. Instead, you MUST describe the user's action factually. For example: "The user uploaded a file named 'report.pdf' and asked for a summary."
+4.  **Goal:** The goal is to create a dense, narrative paragraph that captures the key information, decisions, and flow of the conversation from your point of view. Focus on information that would be useful for future context.
+5.  **Format:** Do not add any preamble or sign-off. Respond only with the summary paragraph.
+"""
+            # --- END MODIFIED PROMPT ---
+
             for response_chunk in run_main_agent_with_fallback(system_message=system_prompt, function_list=[], messages=messages):
                  if isinstance(response_chunk, list) and response_chunk and response_chunk[-1].get("role") == "assistant":
                     summary_text = response_chunk[-1].get("content", "")
 
             summary_text = clean_llm_output(summary_text)
+            
             if not summary_text:
                 logger.warning(f"Summarization for user {user_id} produced an empty result. Skipping chunk.")
                 continue

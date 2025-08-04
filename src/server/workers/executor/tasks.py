@@ -38,12 +38,13 @@ async def update_task_run_status(db, task_id: str, run_id: str, status: str, use
     # Update the status of the specific run and the top-level task status
     update_doc = {
         "status": status, # Top-level status
-        "updated_at": datetime.datetime.now(datetime.timezone.utc)
+        "updated_at": datetime.datetime.now(datetime.timezone.utc),
+        # Always update the status of the specific run to use the array filter
+        "runs.$[run].status": status
     }
     task_description = ""
     
     if details:
-        update_doc["runs.$[run].status"] = status
         if "result" in details:
             update_doc["runs.$[run].result"] = details["result"]
         if "error" in details:
@@ -120,12 +121,7 @@ def parse_agent_string_to_updates(content: str) -> List[Dict[str, Any]]:
         tool_code_match = re.search(r'<tool_code name="([^"]+)">([\s\S]*?)</tool_code>', tag_content, re.DOTALL)
         if tool_code_match:
             tool_name = tool_code_match.group(1)
-            params_str = tool_code_match.group(2).strip()
-            try:
-                params = json.loads(params_str)
-            except json.JSONDecodeError:
-                params = {"raw_arguments": params_str}
-            updates.append({"type": "tool_call", "tool_name": tool_name, "parameters": params})
+            updates.append({"type": "info", "content": f"Using tool: {tool_name}"})
             continue
 
         tool_result_match = re.search(r'<tool_result tool_name="([^"]+)">([\s\S]*?)</tool_result>', tag_content, re.DOTALL)
@@ -284,8 +280,9 @@ async def async_execute_task_plan(task_id: str, user_id: str):
                         if update.get("type") == "final_answer":
                             final_answer_content = update.get("content")
                 elif msg.get('role') == 'assistant' and msg.get('function_call'):
-                    # This is a tool call
-                    update_to_push = {"type": "tool_call", "tool_name": msg['function_call']['name'], "parameters": json.loads(msg['function_call']['arguments'])}
+                    # This is a tool call.
+                    tool_name = msg['function_call']['name']
+                    update_to_push = {"type": "info", "content": f"Using tool: {tool_name}"}
                 elif msg.get('role') == 'function':
                     # This is a tool result
                     result_content = json.loads(msg.get('content', '{}'))

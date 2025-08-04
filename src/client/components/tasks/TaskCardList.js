@@ -62,7 +62,7 @@ const TaskCardList = ({ task, onSelectTask }) => {
 		visible: { opacity: 1, y: 0, scale: 1 }
 	}
 
-	const cardContent = (
+	return (
 		<motion.div
 			layout
 			variants={cardVariants}
@@ -70,7 +70,10 @@ const TaskCardList = ({ task, onSelectTask }) => {
 			onClick={() => onSelectTask(task)}
 			className="bg-neutral-900/50 p-4 rounded-lg border border-zinc-700 hover:border-brand-orange transition-all cursor-pointer relative"
 		>
-			<div className="flex justify-between items-start gap-4">
+			{inProgress && (
+				<BorderTrail size={80} className="bg-brand-yellow" />
+			)}
+			<div className="flex bg-transparent p-1 transition-all justify-between items-start gap-4">
 				<p className="font-sans font-semibold text-brand-white flex-1 text-sm line-clamp-2">
 					{getDisplayName(task)}
 				</p>
@@ -80,19 +83,6 @@ const TaskCardList = ({ task, onSelectTask }) => {
 				{dateText && <span>{dateText}</span>}
 			</div>
 		</motion.div>
-	)
-
-	return inProgress ? (
-		<div className="relative">
-			<BorderTrail
-				size={80}
-				className="bg-brand-yellow"
-				style={{ boxShadow: "none" }}
-			/>
-			{cardContent}
-		</div>
-	) : (
-		cardContent
 	)
 }
 

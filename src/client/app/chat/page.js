@@ -934,7 +934,7 @@ export default function ChatPage() {
 				/>
 				{!input && !uploadedFilename && (
 					<div className="absolute top-1/2 left-4 -translate-y-1/2 text-neutral-500 pointer-events-none z-0">
-						<TextLoop className="text-base">
+						<TextLoop className="text-base ml-5">
 							<span>Ask anything...</span>
 							<span>Summarize my unread emails from today</span>
 							<span>
@@ -1445,7 +1445,7 @@ export default function ChatPage() {
 					)}
 				</main>
 				{!isLoading && !isVoiceMode && displayedMessages.length > 0 && (
-					<div className="px-4 pt-2 pb-4 sm:px-6 sm:pb-6 bg-transparent">
+					<div className="flex-shrink-0 px-4 pt-2 pb-4 sm:px-6 sm:pb-6 bg-transparent">
 						<div className="relative w-full max-w-4xl mx-auto">
 							{uploadedFilename
 								? renderUploadedFilePreview()

@@ -56,10 +56,10 @@ class JsonValidatorTool(BaseTool):
             logger.error(f"JsonValidatorTool encountered an unexpected error: {e}", exc_info=True)
             return json.dumps({"status": "failure", "error": str(e)})
 
-async def _get_stage1_response(messages: List[Dict[str, Any]], connected_tools_map: Dict[str, str], disconnected_tools_map: Dict[str, str], user_id: str) -> Union[List[str], str]:
+async def _get_stage1_response(messages: List[Dict[str, Any]], connected_tools_map: Dict[str, str], disconnected_tools_map: Dict[str, str], user_id: str) -> Dict[str, Any]:
     """
-    Uses the Stage 1 LLM to either respond directly or select relevant tools.
-    Returns a list of tool names if tools are selected, or a string response if it's a direct answer.
+    Uses the Stage 1 LLM to detect topic changes and select relevant tools.
+    Returns a dictionary containing a 'topic_changed' boolean and a 'tools' list.
     """
     # Core tools for Stage 1 agent. No access given for now.
     # core_tools = ["memory", "history", "tasks"]
@@ -82,12 +82,16 @@ async def _get_stage1_response(messages: List[Dict[str, Any]], connected_tools_m
 
     # Format history for the prompt
     # Expand messages so each history item is a separate message dict
+    
+    print(f"Stage 1 LLM input for user {user_id}: {messages}")
     expanded_messages = []
     for msg in messages:
         expanded_messages.append({
             "role": msg.get("role", "user"),
             "content": msg.get("content", "")
         })
+        
+    print(f"Expanded messages for Stage 1 LLM for user {user_id}: {expanded_messages}")
 
     def _run_stage1_sync():
         final_content_str = ""
@@ -107,17 +111,26 @@ async def _get_stage1_response(messages: List[Dict[str, Any]], connected_tools_m
     
     print(f"Cleaned Stage 1 output for user {user_id}: {cleaned_output}")
 
-    # Try to parse as JSON list first. This is the tool selection case.
-    json_tools = JsonExtractor.extract_valid_json(cleaned_output)
-    if isinstance(json_tools, list):
-        logger.info(f"Stage 1 selected tools: {json_tools}")
-        # Validate that the selected tools are from the available list
-        valid_tools = [tool for tool in json_tools if tool in connected_tools_map]
-        return valid_tools
+    # The output should now be a JSON object with 'topic_changed' and 'tools'
+    stage1_result = JsonExtractor.extract_valid_json(cleaned_output)
 
-    # If it's not a JSON list, it's a direct response.
-    logger.info("Stage 1 is providing a direct response.")
-    return cleaned_output # Return the full string with tags for the stream generator to parse.
+    if isinstance(stage1_result, dict) and "topic_changed" in stage1_result and "tools" in stage1_result:
+        # Validate that the selected tools are from the available list
+        selected_tools = stage1_result.get("tools", [])
+        valid_tools = [tool for tool in selected_tools if tool in connected_tools_map]
+        stage1_result["tools"] = valid_tools
+        logger.info(f"Stage 1 triage result: {stage1_result}")
+        return stage1_result
+
+    # Fallback logic if the LLM fails to produce the correct JSON object
+    logger.warning(f"Stage 1 failed to produce valid JSON object. Falling back to simple tool detection. Output: {cleaned_output}")
+    # Try to see if it just returned a list (old behavior)
+    if isinstance(stage1_result, list):
+        valid_tools = [tool for tool in stage1_result if tool in connected_tools_map]
+        return {"topic_changed": False, "tools": valid_tools}
+
+    # If all else fails, assume no topic change and no tools.
+    return {"topic_changed": False, "tools": []}
 
 def _extract_answer_from_llm_response(llm_output: str) -> str:
     """
@@ -190,15 +203,12 @@ async def generate_chat_llm_stream(
         yield {"type": "status", "message": "Thinking..."}
 
         # --- STAGE 1 ---
-        stage1_output = await _get_stage1_response(messages, connected_tools, disconnected_tools, user_id)
+        stage1_result = await _get_stage1_response(messages, connected_tools, disconnected_tools, user_id)
 
-        # --- TOOL SELECTION, PROCEED TO STAGE 2 ---
-        try:
-            relevant_tool_names = json.loads(stage1_output) if isinstance(stage1_output, str) else stage1_output
-        except Exception as e:
-            logger.error(f"Failed to parse stage1_output as JSON list: {e}", exc_info=True)
-            relevant_tool_names = []
+        topic_changed = stage1_result.get("topic_changed", False)
+        relevant_tool_names = stage1_result.get("tools", [])
 
+        # --- TOOL SELECTION & HISTORY TRUNCATION, PROCEED TO STAGE 2 ---
         tool_display_names = [INTEGRATIONS_CONFIG.get(t, {}).get('display_name', t) for t in relevant_tool_names if t != 'memory']
         if tool_display_names:
             yield {"type": "status", "message": f"Using: {', '.join(tool_display_names)}"}
@@ -206,7 +216,6 @@ async def generate_chat_llm_stream(
         # Stage 2 agent also needs access to core tools
         mandatory_tools = {"memory", "history", "tasks"}
         final_tool_names = set(relevant_tool_names) | mandatory_tools
-
         # Build the list of tools for the agent, including MCPs and local tools, ensuring headers are included.
         filtered_mcp_servers = {}
         for tool_name in final_tool_names:
@@ -232,16 +241,32 @@ async def generate_chat_llm_stream(
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue[Optional[Any]] = asyncio.Queue()
     
-    # Prepare message history for the LLM, including IDs for user messages
-    # history_for_llm = []
-    # for msg in messages[-30:]: # Limit context to the last 30 messages
-    #     history_for_llm.append(f"<{msg['role']}" + (f" id='{msg.get('id')}'" if msg.get('id') and msg['role'] == 'user' else "") + f">{msg['content']}</{msg['role']}>")
-        
+    # --- Prepare message history for Stage 2 based on topic change detection ---
     stage_2_expanded_messages = []
-    for msg in messages:
+    if topic_changed:
+        logger.info(f"Topic change detected for user {user_id}. Truncating history for Stage 2.")
+        # Find the last user message and send only that
+        last_user_message = next((msg for msg in reversed(messages) if msg.get("role") == "user"), None)
+        if last_user_message:
+            stage_2_expanded_messages.append({
+                "role": "user",
+                "content": last_user_message.get("content", "")
+            })
+    else:
+        logger.info(f"No topic change detected for user {user_id}. Using full history for Stage 2.")
+        for msg in messages:
+            stage_2_expanded_messages.append({
+                "role": msg.get("role", "user"),
+                "content": msg.get("content", "")
+            })
+
+    if not stage_2_expanded_messages:
+        logger.error(f"Message history for Stage 2 is empty for user {user_id}. This should not happen.")
+        # As a fallback, use the last message anyway
+        last_message = messages[-1] if messages else {}
         stage_2_expanded_messages.append({
-            "role": msg.get("role", "user"),
-            "content": msg.get("content", "")
+            "role": last_message.get("role", "user"),
+            "content": last_message.get("content", "Hello.")
         })
 
     system_prompt = STAGE_2_SYSTEM_PROMPT.format(

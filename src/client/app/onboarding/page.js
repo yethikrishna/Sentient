@@ -170,6 +170,14 @@ const OnboardingPage = () => {
 					answers["user-name"] || "friend"
 				)
 			}
+			// Append the question text if it exists for the current step
+			if (index < questions.length) {
+				const question = questions[index]
+				if (question) {
+					message += `\n\n${question.question}`
+				}
+			}
+
 			setConversation((prev) => [
 				...prev,
 				{ sender: "ai", text: message }
@@ -254,7 +262,7 @@ const OnboardingPage = () => {
 				)
 			}
 			posthog?.capture("onboarding_completed")
-			router.push("/tasks?show_demo=true")
+			router.push("/chat")
 		} catch (error) {
 			toast.error(`Error: ${error.message}`)
 			setStage("questions") // Go back to questions on error
@@ -341,8 +349,12 @@ const OnboardingPage = () => {
 				if (result?.data?.onboardingComplete) {
 					router.push("/tasks")
 				} else {
+					const firstQuestion = questions[0]?.question || ""
 					setConversation([
-						{ sender: "ai", text: sentientComments[0] }
+						{
+							sender: "ai",
+							text: `${sentientComments[0]}\n\n${firstQuestion}`
+						}
 					])
 					setIsLoading(false)
 				}
@@ -460,7 +472,7 @@ const OnboardingPage = () => {
 								onClick={() => {
 									setStage("questions")
 								}}
-								className="rounded-xl bg-brand-orange px-8 py-3 text-lg font-semibold text-neutral-300 transition-colors hover:bg-opacity-80"
+								className="rounded-xl bg-brand-orange/80 px-8 py-3 text-lg font-semibold text-brand-white transition-colors hover:bg-opacity-80"
 								whileHover={{ scale: 1.05 }}
 								whileTap={{ scale: 0.95 }}
 							>
@@ -490,7 +502,7 @@ const OnboardingPage = () => {
 							{conversation.map((msg, index) => (
 								<div key={index}>
 									{msg.sender === "ai" ? (
-										<p>
+										<p className="whitespace-pre-wrap">
 											<span className="text-brand-orange">
 												[SENTIENT]:
 											</span>
@@ -500,7 +512,7 @@ const OnboardingPage = () => {
 											</span>
 										</p>
 									) : (
-										<p>
+										<p className="whitespace-pre-wrap">
 											<span className="text-green-400">
 												[YOU]:
 											</span>

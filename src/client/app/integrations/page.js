@@ -56,7 +56,7 @@ import {
 } from "@components/ui/morphing-dialog"
 import { Tooltip } from "react-tooltip"
 import ModalDialog from "@components/ModalDialog"
-
+import { useRouter } from "next/navigation"
 import IconBrandTodoist from "@components/icons/IconBrandTodoist"
 
 const integrationColorIcons = {
@@ -90,119 +90,6 @@ const integrationColorIcons = {
 const IconPlaceholder = IconSettingsCog
 
 const MANUAL_INTEGRATION_CONFIGS = {} // Manual integrations removed for Slack and Notion
-
-const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {
-	const [credentials, setCredentials] = useState({})
-	const [isSubmitting, setIsSubmitting] = useState(false)
-	const posthog = usePostHog()
-
-	if (!integration) return null
-
-	const config = MANUAL_INTEGRATION_CONFIGS[integration?.name]
-	const instructions = config?.instructions || []
-	const fields = config?.fields || []
-
-	if (fields.length === 0) return null
-
-	const handleChange = (e) => {
-		setCredentials({
-			...credentials,
-			[e.target.name]: e.target.value
-		})
-	}
-
-	const handleSubmit = async () => {
-		for (const field of fields) {
-			if (!credentials[field.id]?.trim()) {
-				toast.error(`Please provide the ${field.label}.`)
-				return
-			}
-		}
-
-		setIsSubmitting(true)
-		try {
-			const response = await fetch(
-				"/api/settings/integrations/connect/manual",
-				{
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						service_name: integration.name,
-						credentials
-					})
-				}
-			)
-
-			const data = await response.json()
-			if (!response.ok) {
-				throw new Error(
-					data.error ||
-						`Failed to connect ${integration.display_name}`
-				)
-			}
-
-			posthog?.capture("integration_connected", {
-				integration_name: integration.name,
-				auth_type: "manual"
-			})
-			toast.success(`${integration.display_name} connected successfully!`)
-			onSuccess()
-			onClose()
-		} catch (error) {
-			toast.error(error.message)
-		} finally {
-			setIsSubmitting(false)
-		}
-	}
-
-	const modalContent = (
-		<div className="text-left space-y-4 my-4">
-			<div>
-				<h4 className="font-semibold text-gray-300 mb-2">
-					Instructions:
-				</h4>
-				<ol className="list-decimal list-inside space-y-1 text-sm text-gray-400">
-					{instructions.map((step, index) => (
-						<li key={index}>{step}</li>
-					))}
-				</ol>
-			</div>
-			<div className="space-y-3">
-				{fields.map((field) => (
-					<div key={field.id}>
-						<label
-							htmlFor={field.id}
-							className="block text-sm font-medium text-gray-300 mb-1"
-						>
-							Enter {field.label}
-						</label>
-						<input
-							type={field.type}
-							name={field.id}
-							id={field.id}
-							onChange={handleChange}
-							value={credentials[field.id] || ""}
-							className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
-							autoComplete="off"
-						/>
-					</div>
-				))}
-			</div>
-		</div>
-	)
-
-	return (
-		<ModalDialog
-			title={`Connect to ${integration.display_name}`}
-			description="Follow the instructions below and enter your credentials."
-			onConfirm={handleSubmit}
-			onCancel={onClose}
-			confirmButtonText={isSubmitting ? "Connecting..." : "Connect"}
-			isConfirmDisabled={isSubmitting}
-			extraContent={modalContent}
-		/>
-	)
-}
 
 const WhatsAppConnectModal = ({ integration, onClose, onSuccess }) => {
 	const [number, setNumber] = useState("")
@@ -741,6 +628,7 @@ const IntegrationsPage = () => {
 	const [privacyModalService, setPrivacyModalService] = useState(null)
 	const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false)
 	const posthog = usePostHog()
+	const router = useRouter()
 
 	const googleServices = [
 		"gmail",
@@ -791,87 +679,6 @@ const IntegrationsPage = () => {
 		}
 	}, [])
 
-	const handleTrelloConnect = (integration) => {
-		const trelloApiKey = integration.client_id
-		if (!trelloApiKey) {
-			toast.error(
-				"Trello API Key is not configured by the administrator."
-			)
-			return
-		}
-
-		const returnUrl = `${window.location.origin}/integrations`
-		const authUrl = `https://trello.com/1/authorize?expiration=never&name=Sentient&scope=read,write&response_type=token&key=${trelloApiKey}&return_url=${encodeURIComponent(returnUrl)}&callback_method=postMessage`
-
-		const authWindow = window.open(
-			authUrl,
-			"trelloAuth",
-			"width=600,height=700,noopener,noreferrer"
-		)
-
-		// --- ADDED FOR DEBUGGING ---
-		// This listener will log EVERY message event that comes into the window,
-		// helping us see what Trello is sending back, even if it fails the security checks.
-		const debugListener = (event) => {
-			console.log("DEBUG: Received a postMessage event:", event)
-			console.log("DEBUG: Event Origin:", event.origin)
-			console.log("DEBUG: Event Data:", event.data)
-		}
-		window.addEventListener("message", debugListener)
-		// --- END OF DEBUGGING CODE ---
-
-		const handleMessage = async (event) => {
-			// Basic security checks
-			if (
-				event.source !== authWindow ||
-				event.origin !== "https://trello.com" ||
-				!event.data
-			) {
-				return
-			}
-
-			const token = event.data
-			// Trello tokens are 64-char hex strings
-			if (token && /^[0-9a-f]{64}$/.test(token)) {
-				// --- ADDED FOR DEBUGGING ---
-				// Clean up both listeners once we have a valid token
-				window.removeEventListener("message", debugListener)
-				// --- END OF DEBUGGING CODE ---
-
-				window.removeEventListener("message", handleMessage)
-				authWindow.close()
-
-				setProcessingIntegration("trello")
-				try {
-					const response = await fetch(
-						"/api/settings/integrations/connect/manual",
-						{
-							method: "POST",
-							headers: { "Content-Type": "application/json" },
-							body: JSON.stringify({
-								service_name: "trello",
-								credentials: { token: token }
-							})
-						}
-					)
-					if (!response.ok)
-						throw new Error(
-							(await response.json()).error ||
-								"Failed to save Trello token."
-						)
-					toast.success("Trello connected successfully!")
-					fetchIntegrations()
-				} catch (error) {
-					toast.error(error.message)
-				} finally {
-					setProcessingIntegration(null)
-				}
-			}
-		}
-
-		window.addEventListener("message", handleMessage, false)
-	}
-
 	const handleConnect = (integration) => {
 		if (integration.name === "whatsapp") {
 			setWhatsAppToConnect(integration)
@@ -893,8 +700,12 @@ const IntegrationsPage = () => {
 			}
 
 			if (serviceName === "trello") {
-				handleTrelloConnect(integration)
-				return
+				// Trello uses an implicit grant flow where the token is returned in the URL fragment.
+				const returnUrl = `${window.location.origin}/integrations` // Redirect back to this page to handle the fragment.
+				const scope = "read,write" // Request read and write permissions for creating cards.
+				const authUrl = `https://trello.com/1/authorize?expiration=never&scope=${scope}&response_type=token&key=${clientId}&return_url=${encodeURIComponent(returnUrl)}&callback_method=fragment`
+				window.location.href = authUrl
+				return // Stop execution for Trello as it's a redirect.
 			}
 
 			const redirectUri = `${window.location.origin}/api/settings/integrations/connect/oauth/callback`
@@ -1043,6 +854,57 @@ const IntegrationsPage = () => {
 		// Use `get` which returns the first value, which is fine here.
 		const success = urlParams.get("integration_success")
 		const error = urlParams.get("integration_error")
+
+		// Handle Trello's implicit grant flow which returns the token in the URL hash.
+		// This must be handled on the client-side as the hash is not sent to the server.
+		if (window.location.hash.includes("#token=")) {
+			const hash = window.location.hash.substring(1) // remove #
+			const params = new URLSearchParams(hash)
+			const token = params.get("token")
+
+			if (token) {
+				// Immediately clear the hash from the URL bar for security
+				window.history.replaceState({}, document.title, "/integrations")
+
+				const saveTrelloToken = async (t) => {
+					const toastId = toast.loading(
+						"Finalizing Trello connection..."
+					)
+					try {
+						// Use the manual connection endpoint to save the user's token
+						const response = await fetch(
+							"/api/settings/integrations/connect/manual",
+							{
+								method: "POST",
+								headers: { "Content-Type": "application/json" },
+								body: JSON.stringify({
+									service_name: "trello",
+									credentials: { token: t } // Trello returns a single token
+								})
+							}
+						)
+						if (!response.ok) {
+							const errorData = await response.json()
+							throw new Error(
+								errorData.error ||
+									"Failed to save Trello token."
+							)
+						}
+						// This will trigger the success toast and state refresh below
+						router.replace(
+							"/integrations?integration_success=trello",
+							{ scroll: false }
+						)
+					} catch (error) {
+						toast.error(
+							`Trello connection failed: ${error.message}`,
+							{ id: toastId }
+						)
+					}
+				}
+				saveTrelloToken(token)
+			}
+		}
 
 		if (success) {
 			const capitalized =

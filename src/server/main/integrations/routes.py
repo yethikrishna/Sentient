@@ -73,8 +73,14 @@ async def get_integration_sources(user_id: str = Depends(auth_helper.get_current
 @router.post("/connect/manual", summary="Connect an integration using manual credentials")
 async def connect_manual_integration(request: ManualConnectRequest, user_id: str = Depends(auth_helper.get_current_user_id)):
     service_name = request.service_name
-    if service_name not in INTEGRATIONS_CONFIG or INTEGRATIONS_CONFIG[service_name]["auth_type"] != "manual":
-        raise HTTPException(status_code=400, detail="Invalid service name or auth type is not manual.")
+    service_config = INTEGRATIONS_CONFIG.get(service_name)
+
+    if not service_config:
+        raise HTTPException(status_code=400, detail="Invalid service name.")
+
+    # Allow Trello to use this endpoint despite being 'oauth' type, as its flow provides a token directly.
+    if service_config["auth_type"] != "manual" and service_name != "trello":
+        raise HTTPException(status_code=400, detail=f"Service '{service_name}' does not support this connection method.")
 
     try:
         encrypted_creds = aes_encrypt(json.dumps(request.credentials))

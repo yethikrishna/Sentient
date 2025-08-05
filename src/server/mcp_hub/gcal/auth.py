@@ -56,18 +56,29 @@ def get_user_id_from_context(ctx: Context) -> str:
     return user_id
 
 async def get_user_info(user_id: str) -> Dict[str, Any]:
-    """Fetches the user's info like timezone and email from their profile."""
+    """Fetches the user's info like timezone, email, and privacy filters from their profile."""
     user_doc = await users_collection.find_one(
         {"user_id": user_id},
-        {"userData.personalInfo.timezone": 1, "userData.personalInfo.email": 1}
+        {"userData.personalInfo.timezone": 1, "userData.personalInfo.email": 1, "userData.privacyFilters": 1}
     )
     if not user_doc:
-        return {"timezone": "UTC", "email": None}
+        return {"timezone": "UTC", "email": None, "privacy_filters": {}}
 
-    personal_info = user_doc.get("userData", {}).get("personalInfo", {})
+    user_data = user_doc.get("userData", {})
+    personal_info = user_data.get("personalInfo", {})
+
+    # Handle both old and new privacy filter formats
+    all_filters = user_data.get("privacyFilters", {})
+    gcal_filters = {}
+    if isinstance(all_filters, dict):
+        gcal_filters = all_filters.get("gcalendar", {})
+    elif isinstance(all_filters, list): # Backward compatibility
+        gcal_filters = {"keywords": all_filters, "emails": []}
+
     return {
         "timezone": personal_info.get("timezone", "UTC"),
-        "email": personal_info.get("email", None)
+        "email": personal_info.get("email"),
+        "privacy_filters": gcal_filters
     }
 
 async def get_google_creds(user_id: str) -> Credentials:

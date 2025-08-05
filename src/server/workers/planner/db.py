@@ -104,7 +104,7 @@ class PlannerMongoManager:  # noqa: E501
         update_doc = {
             "status": "approval_pending", # Update top-level status
             "runs.$[run].plan": plan_steps,
-            "runs.$[run].status": "approval_pending",
+            "runs.$[run].status": "pending",
             "updated_at": datetime.datetime.now(datetime.timezone.utc)
         }
 

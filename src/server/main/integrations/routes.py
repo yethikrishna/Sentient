@@ -3,6 +3,7 @@ import json
 import base64
 import asyncio
 import httpx
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import JSONResponse
 
@@ -21,6 +22,8 @@ from main.config import (
     SLACK_CLIENT_SECRET, NOTION_CLIENT_ID, NOTION_CLIENT_SECRET
 )
 from requests_oauthlib import OAuth1Session
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/integrations",
@@ -266,11 +269,11 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
             raise HTTPException(status_code=500, detail="Failed to save integration credentials.")
         
         if service_name == 'gmail' or service_name == 'gcalendar':
-            # Check user's proactivity preference before enabling polling
+            # Check user's proactivity preference before enabling polling for PROACTIVITY ONLY
             user_profile = await mongo_manager.get_user_profile(user_id)
             is_proactivity_enabled = user_profile.get("userData", {}).get("preferences", {}).get("proactivityEnabled", False)
 
-            # Create a state for the proactivity poller
+            # Create a state for the proactivity poller (depends on user setting)
             await mongo_manager.update_polling_state(
                 user_id,
                 service_name,
@@ -282,12 +285,13 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
                     "last_successful_poll_timestamp_unix": None,
                 }
             )
+            # Create a state for the triggered workflow poller (ALWAYS enabled on connect)
             await mongo_manager.update_polling_state(
                 user_id,
                 service_name,
                 "triggers",
                 {
-                    "is_enabled": is_proactivity_enabled,
+                    "is_enabled": True,
                     "is_currently_polling": False,
                     "next_scheduled_poll_time": datetime.datetime.now(datetime.timezone.utc), # Poll immediately
                     "last_successful_poll_timestamp_unix": None,
@@ -395,17 +399,26 @@ async def disconnect_integration(request: DisconnectRequest, user_id: str = Depe
         raise HTTPException(status_code=400, detail="Invalid service name.")
 
     try:
-        # Unset the specific integration object
+        # Delete tasks that rely on this tool
+        deleted_tasks_count = await mongo_manager.delete_tasks_by_tool(user_id, service_name)
+        logger.info(f"Deleted {deleted_tasks_count} tasks for user {user_id} associated with disconnected tool '{service_name}'.")
+
+        # Delete polling state for this source
+        deleted_polling_states_count = await mongo_manager.delete_polling_state_by_service(user_id, service_name)
+        logger.info(f"Deleted {deleted_polling_states_count} polling states for user {user_id} associated with disconnected source '{service_name}'.")
+
+        # Unset the specific integration object from the user profile
         update_payload = {f"userData.integrations.{service_name}": ""}
         result = await mongo_manager.user_profiles_collection.update_one(
             {"user_id": user_id},
             {"$unset": update_payload}
         )
 
-        if result.modified_count == 0:
+        if result.modified_count == 0 and deleted_tasks_count == 0 and deleted_polling_states_count == 0:
             # This can happen if the field didn't exist, which is not an error.
             return JSONResponse(content={"message": f"{service_name} was not connected or already disconnected."})
 
         return JSONResponse(content={"message": f"{service_name} disconnected successfully."})
     except Exception as e:
+        logger.error(f"Error disconnecting integration {service_name} for user {user_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

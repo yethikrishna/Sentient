@@ -253,7 +253,7 @@ const MemoryDetailPanel = ({ memory, onClose, onUpdate, onDelete }) => {
 	)
 }
 
-const CreateMemoryModal = ({ isOpen, onClose, onCreate }) => {
+const CreateMemoryModal = ({ isOpen, onClose, onCreate, userDetails }) => {
 	const [content, setContent] = useState("")
 	const [isSaving, setIsSaving] = useState(false)
 
@@ -305,6 +305,14 @@ const CreateMemoryModal = ({ isOpen, onClose, onCreate }) => {
 						className="w-full h-40 bg-neutral-800 border border-neutral-700 rounded-lg p-3 text-base text-neutral-200 focus:ring-2 focus:ring-brand-orange"
 						autoFocus
 					/>
+					<p className="text-xs text-neutral-500 mt-2 px-1">
+						Note: All memories should be in the third person. e.g.,
+						"
+						<span className="font-semibold text-neutral-400">
+							{userDetails?.given_name || "User"} likes football
+						</span>
+						" instead of "I like football".
+					</p>
 				</main>
 				<footer className="mt-6 pt-4 border-t border-neutral-800 flex justify-end gap-2">
 					<button
@@ -455,6 +463,7 @@ export default function MemoriesPage() {
 	const [selectedMemory, setSelectedMemory] = useState(null)
 	const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false)
 	const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+	const [userDetails, setUserDetails] = useState(null)
 
 	const topics = useMemo(() => {
 		const allTopics = new Set()
@@ -495,9 +504,24 @@ export default function MemoriesPage() {
 		}
 	}, [view])
 
+	const fetchUserDetails = useCallback(async () => {
+		try {
+			const res = await fetch("/api/user/profile")
+			if (res.ok) {
+				const data = await res.json()
+				setUserDetails(data)
+			} else {
+				setUserDetails({ given_name: "User" })
+			}
+		} catch (error) {
+			console.error("Failed to fetch user details:", error)
+			setUserDetails({ given_name: "User" })
+		}
+	}, [])
 	useEffect(() => {
 		fetchData()
-	}, [fetchData])
+		fetchUserDetails()
+	}, [fetchData, fetchUserDetails])
 
 	const handleCreateMemory = async (content) => {
 		const toastId = toast.loading("Adding memory...")
@@ -760,6 +784,7 @@ export default function MemoriesPage() {
 						isOpen={isCreateModalOpen}
 						onClose={() => setIsCreateModalOpen(false)}
 						onCreate={handleCreateMemory}
+						userDetails={userDetails}
 					/>
 				)}
 			</AnimatePresence>

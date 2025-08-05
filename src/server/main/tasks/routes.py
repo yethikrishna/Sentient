@@ -286,6 +286,12 @@ async def approve_task(
     if not task_doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found or user does not have permission.")
 
+    if not task_doc.get("runs"):
+        raise HTTPException(status_code=500, detail="Task has no runs to approve.")
+
+    # Target the latest run for status updates
+    latest_run_id = task_doc["runs"][-1]["run_id"]
+
     update_data = {}
     schedule_data = task_doc.get("schedule") or {}
 
@@ -296,19 +302,16 @@ async def approve_task(
             update_data["next_execution_at"] = next_run
             update_data["status"] = "active"
             update_data["enabled"] = True
+            update_data["runs.$[run].status"] = "pending"
         else:
             update_data["status"] = "error"
             update_data["error"] = "Could not calculate next run time for recurring task."
+            update_data["runs.$[run].status"] = "error"
     elif schedule_data.get("type") == "triggered":
         # This is a workflow that runs on an event. Activating it means it's now listening.
         update_data["status"] = "active"
         update_data["enabled"] = True
-        # No next_execution_at for triggered tasks as they are event-driven
-        logger.info(f"Approving triggered task {task_id}. Setting status to 'active'.")
-    elif schedule_data.get("type") == "triggered":
-        # This is a workflow that runs on an event. Activating it means it's now listening.
-        update_data["status"] = "active"
-        update_data["enabled"] = True
+        update_data["runs.$[run].status"] = "pending" # The run is pending a trigger
         # No next_execution_at for triggered tasks as they are event-driven
         logger.info(f"Approving triggered task {task_id}. Setting status to 'active'.")
     elif schedule_data.get("type") == "once" and schedule_data.get("run_at"):
@@ -329,18 +332,28 @@ async def approve_task(
         if utc_run_at_time > datetime.now(timezone.utc):
             update_data["next_execution_at"] = utc_run_at_time
             update_data["status"] = "pending"
+            update_data["runs.$[run].status"] = "pending"
         else:
             # Task is due now or in the past, execute immediately and update status
             update_data["status"] = "processing"
+            update_data["runs.$[run].status"] = "processing"
             execute_task_plan.delay(task_id, user_id)
     else: # Default case: not scheduled, run immediately
         update_data["status"] = "processing"
+        update_data["runs.$[run].status"] = "processing"
         execute_task_plan.delay(task_id, user_id)
     
     if update_data:
-        success = await mongo_manager.update_task(task_id, update_data)
-        if not success:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to approve task.")
+        # Use a direct update with array_filters to target the specific run's status
+        result = await mongo_manager.task_collection.update_one(
+            {"task_id": task_id},
+            {"$set": update_data},
+            array_filters=[{"run.run_id": latest_run_id}]
+        )
+        if result.modified_count == 0:
+            # This might happen if the task was already approved in another tab, which is not a critical error.
+            # Log it for debugging but don't fail the request.
+            logger.warning(f"Approve task for task_id {task_id} resulted in 0 modified documents. It might have been actioned already.")
             
     return JSONResponse(content={"message": "Task approved and scheduled/executed."})
 

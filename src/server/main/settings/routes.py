@@ -183,7 +183,11 @@ async def update_proactivity_settings(
     polling_update_payload = {"is_enabled": is_enabled}
 
     polling_result = await mongo_manager.polling_state_collection.update_many(
-        {"user_id": user_id, "service_name": {"$in": supported_services}},
+        {
+            "user_id": user_id,
+            "service_name": {"$in": supported_services},
+            "poll_type": "proactivity"
+        },
         {"$set": polling_update_payload}
     )
 

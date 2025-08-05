@@ -140,7 +140,7 @@ function TasksPageContent() {
 					if (nextRunDate) {
 						instances.push({
 							...task,
-							status: "active", // Upcoming runs are part of an active workflow
+							status: "pending", // An upcoming run is pending
 							scheduled_date: nextRunDate,
 							instance_id: `${task.task_id}-next`
 						})

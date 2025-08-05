@@ -183,7 +183,10 @@ class GmailPollingService:
                     updated_state["is_enabled"] = False # Disable after too many failures
                     updated_state["next_scheduled_poll_time"] = datetime.datetime.now(timezone.utc) + datetime.timedelta(days=1) # Check much later
             else:
-                next_interval = self._calculate_next_poll_interval(user_profile or {})
+                if mode == 'triggers':
+                    next_interval = 60  # Always poll every 60 seconds for triggers
+                else: # proactivity
+                    next_interval = self._calculate_next_poll_interval(user_profile or {})
                 updated_state["next_scheduled_poll_time"] = datetime.datetime.now(timezone.utc) + datetime.timedelta(seconds=next_interval)
             
             updated_state["is_currently_polling"] = False # Release lock

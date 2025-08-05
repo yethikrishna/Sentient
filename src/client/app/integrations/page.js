@@ -37,6 +37,7 @@ import {
 	IconBrandEvernote,
 	IconSparkles,
 	IconBrandLinkedin,
+	IconAlertTriangle,
 	IconEye,
 	IconPlug
 } from "@tabler/icons-react"
@@ -740,6 +741,8 @@ const IntegrationsPage = () => {
 	const [sparkleTrigger, setSparkleTrigger] = useState(0)
 	const [privacyModalService, setPrivacyModalService] = useState(null)
 	const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false)
+	const [disconnectingIntegration, setDisconnectingIntegration] =
+		useState(null)
 	const posthog = usePostHog()
 
 	const googleServices = [
@@ -1003,17 +1006,14 @@ const IntegrationsPage = () => {
 		}
 	}
 
-	const handleDisconnect = async (integrationName) => {
-		const displayName =
-			userIntegrations.find((i) => i.name === integrationName)
-				?.display_name || integrationName
-		if (
-			!window.confirm(
-				`Are you sure you want to disconnect ${displayName}?`
-			)
-		)
-			return
+	const handleDisconnect = async () => {
+		if (!disconnectingIntegration) return
+
+		const { name: integrationName, display_name: displayName } =
+			disconnectingIntegration
+
 		setProcessingIntegration(integrationName)
+
 		try {
 			const response = await fetch(
 				"/api/settings/integrations/disconnect",
@@ -1034,6 +1034,7 @@ const IntegrationsPage = () => {
 			toast.error(error.message)
 		} finally {
 			setProcessingIntegration(null)
+			setDisconnectingIntegration(null) // Close modal
 		}
 	}
 
@@ -1153,6 +1154,27 @@ const IntegrationsPage = () => {
 							</div>
 						</div>
 					</InfoPanel>
+				)}
+			</AnimatePresence>
+			<AnimatePresence>
+				{disconnectingIntegration && (
+					<ModalDialog
+						title={
+							<div className="flex items-center gap-2">
+								<IconAlertTriangle className="text-yellow-400" />
+								<span>{`Disconnect ${disconnectingIntegration.display_name}?`}</span>
+							</div>
+						}
+						description="This will permanently delete all tasks that use this tool and any related polling data. This action cannot be undone."
+						confirmButtonText="Disconnect"
+						confirmButtonType="danger"
+						onConfirm={handleDisconnect}
+						onCancel={() => setDisconnectingIntegration(null)}
+						confirmButtonLoading={
+							processingIntegration ===
+							disconnectingIntegration.name
+						}
+					/>
 				)}
 			</AnimatePresence>
 			<SparkleEffect trigger={sparkleTrigger} />
@@ -1328,8 +1350,8 @@ const IntegrationsPage = () => {
 																										e
 																									) => {
 																										e.stopPropagation()
-																										handleDisconnect(
-																											integration.name
+																										setDisconnectingIntegration(
+																											integration
 																										)
 																									}}
 																									className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-[var(--color-accent-red)]/20 hover:bg-[var(--color-accent-red)]/40 text-[var(--color-accent-red)] text-sm font-medium transition-colors"

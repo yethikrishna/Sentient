@@ -6,6 +6,9 @@ export async function GET(request) {
 	const { searchParams } = new URL(request.url)
 	const code = searchParams.get("code")
 	const state = searchParams.get("state") // This will be 'gdrive', 'gcalendar', etc.
+	// --- ADDED FOR OAUTH1 ---
+	const oauth_token = searchParams.get("oauth_token")
+	const oauth_verifier = searchParams.get("oauth_verifier")
 	const error = searchParams.get("error")
 
 	const publicBaseUrl = process.env.APP_BASE_URL
@@ -26,6 +29,49 @@ export async function GET(request) {
 	// This ensures the browser is redirected to the correct, publicly accessible address.
 	const integrationsUrl = new URL("/integrations", publicBaseUrl)
 
+	// --- ADDED FOR OAUTH1 ---
+	if (oauth_token && oauth_verifier) {
+		// This is an OAuth 1.0a callback from Evernote.
+		const serviceName = "evernote"
+		try {
+			const headersList = await headers()
+			const cookie = headersList.get("cookie")
+
+			const bodyPayload = {
+				service_name: serviceName,
+				oauth_token: oauth_token,
+				oauth_verifier: oauth_verifier
+			}
+
+			const apiResponse = await fetch(
+				`${apiUrlForFetch}/api/settings/integrations/connect/oauth1/finish`,
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						...(cookie && { Cookie: cookie })
+					},
+					body: JSON.stringify(bodyPayload)
+				}
+			)
+
+			if (!apiResponse.ok) {
+				const errorData = await apiResponse.json()
+				throw new Error(
+					errorData.detail ||
+						"Failed to finalize OAuth 1.0a connection."
+				)
+			}
+
+			integrationsUrl.searchParams.set("integration_success", serviceName)
+			return NextResponse.redirect(integrationsUrl)
+		} catch (e) {
+			console.error("OAuth 1.0a callback error:", e)
+			integrationsUrl.searchParams.set("integration_error", e.message)
+			return NextResponse.redirect(integrationsUrl)
+		}
+	}
+	// --- END OAUTH1 SECTION ---
 	if (error) {
 		// User denied access or an error occurred
 		integrationsUrl.searchParams.set(

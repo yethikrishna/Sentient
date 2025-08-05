@@ -6,21 +6,21 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import JSONResponse
 
-from main.integrations.models import ManualConnectRequest, OAuthConnectRequest, DisconnectRequest
+from main.integrations.models import ManualConnectRequest, OAuthConnectRequest, DisconnectRequest, OAuth1StartRequest, OAuth1FinishRequest
 from main.dependencies import mongo_manager, auth_helper
 from main.auth.utils import aes_encrypt
 from main.config import (
+    EVERNOTE_SANDBOX,
     INTEGRATIONS_CONFIG, 
     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
     TODOIST_CLIENT_ID, TODOIST_CLIENT_SECRET,
-    DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET,
-    TRELLO_CLIENT_ID,
     DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET,
     TRELLO_CLIENT_ID,
     EVERNOTE_CLIENT_ID, EVERNOTE_CLIENT_SECRET,
     GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SLACK_CLIENT_ID,
     SLACK_CLIENT_SECRET, NOTION_CLIENT_ID, NOTION_CLIENT_SECRET
 )
+from requests_oauthlib import OAuth1Session
 
 router = APIRouter(
     prefix="/integrations",
@@ -61,7 +61,9 @@ async def get_integration_sources(user_id: str = Depends(auth_helper.get_current
             elif name == 'todoist':
                 source_info["client_id"] = TODOIST_CLIENT_ID
             elif name == 'evernote':
-                source_info["client_id"] = EVERNOTE_CLIENT_ID
+                # Evernote uses OAuth 1.0a, client_id is not directly used for client-side redirect in the same way
+                # but it's good to include for consistency if the client expects it.
+                source_info["client_id"] = EVERNOTE_CLIENT_ID 
 
         all_sources.append(source_info)
 
@@ -127,6 +129,7 @@ async def get_gcalendar_events(
     except Exception as e:
         print(f"Error fetching GCal events for user {user_id}: {e}")
         return JSONResponse(content={"events": []})
+
 @router.post("/connect/oauth", summary="Finalize OAuth2 connection by exchanging code for token")
 async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str = Depends(auth_helper.get_current_user_id)):
     service_name = request.service_name
@@ -137,6 +140,9 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
     token_payload = {}
     request_headers = {}
     creds_to_save = {}
+
+    if not request.code:
+        raise HTTPException(status_code=400, detail="Authorization code is missing.")
 
     if service_name.startswith('g') and service_name != 'github': # Google Services
         token_url = "https://oauth2.googleapis.com/token"
@@ -202,16 +208,6 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
             "code": request.code,
             "redirect_uri": request.redirect_uri
         }
-    elif service_name == 'evernote':
-        # Using sandbox for safety in dev. Production would use www.evernote.com
-        token_url = "https://sandbox.evernote.com/oauth2/token"
-        token_payload = {
-            "grant_type": "authorization_code",
-            "code": request.code,
-            "redirect_uri": request.redirect_uri,
-            "client_id": EVERNOTE_CLIENT_ID,
-            "client_secret": EVERNOTE_CLIENT_SECRET,
-        }
     else:
         raise HTTPException(status_code=400, detail=f"OAuth flow not implemented for {service_name}")
 
@@ -257,10 +253,6 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
             if "access_token" not in token_data:
                 raise HTTPException(status_code=400, detail=f"Discord OAuth error: {token_data.get('error_description', 'No access token.')}")
             creds_to_save = token_data # This includes access_token, refresh_token, and the 'bot' object with bot token
-        elif service_name == 'evernote':
-            if "access_token" not in token_data:
-                raise HTTPException(status_code=400, detail=f"Evernote OAuth error: {token_data.get('error', 'No access token.')}")
-            creds_to_save = token_data # Stores access_token, expires, etc.
 
         encrypted_creds = aes_encrypt(json.dumps(creds_to_save))
 
@@ -278,7 +270,8 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
             user_profile = await mongo_manager.get_user_profile(user_id)
             is_proactivity_enabled = user_profile.get("userData", {}).get("preferences", {}).get("proactivityEnabled", False)
 
-            logger.info(f"User {user_id} connected {service_name}. Proactivity preference is: {is_proactivity_enabled}")
+            # Removed logger.info as logger is not defined in this file.
+            # print(f"User {user_id} connected {service_name}. Proactivity preference is: {is_proactivity_enabled}")
 
             # Create a state for the proactivity poller
             await mongo_manager.update_polling_state(
@@ -312,6 +305,91 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/connect/oauth1/start", summary="Start OAuth 1.0a connection flow")
+async def start_oauth1_flow(request: OAuth1StartRequest, user_id: str = Depends(auth_helper.get_current_user_id)):
+    service_name = request.service_name
+    if service_name != 'evernote':
+        raise HTTPException(status_code=400, detail="Unsupported service for OAuth 1.0a")
+
+    consumer_key = EVERNOTE_CLIENT_ID
+    consumer_secret = EVERNOTE_CLIENT_SECRET
+    base_url = "https://sandbox.evernote.com" if EVERNOTE_SANDBOX else "https://www.evernote.com"
+    
+    request_token_url = f"{base_url}/oauth"
+    
+    oauth = OAuth1Session(consumer_key, client_secret=consumer_secret, callback_uri=request.redirect_uri)
+    
+    try:
+        fetch_response = await asyncio.to_thread(oauth.fetch_request_token, request_token_url)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch request token from Evernote: {e}")
+
+    resource_owner_key = fetch_response.get('oauth_token')
+    resource_owner_secret = fetch_response.get('oauth_token_secret')
+
+    # Store the secret temporarily
+    temp_secret_payload = {
+        f"userData.tempOAuth1Secrets.{service_name}": {
+            "oauth_token": resource_owner_key,
+            "oauth_token_secret": resource_owner_secret
+        }
+    }
+    await mongo_manager.update_user_profile(user_id, temp_secret_payload)
+
+    authorization_url = oauth.authorization_url(f'{base_url}/OAuth.action')
+    
+    return JSONResponse(content={"authorization_url": authorization_url})
+
+
+@router.post("/connect/oauth1/finish", summary="Finish OAuth 1.0a connection flow")
+async def finish_oauth1_flow(request: OAuth1FinishRequest, user_id: str = Depends(auth_helper.get_current_user_id)):
+    service_name = request.service_name
+    if service_name != 'evernote':
+        raise HTTPException(status_code=400, detail="Unsupported service for OAuth 1.0a")
+
+    consumer_key = EVERNOTE_CLIENT_ID
+    consumer_secret = EVERNOTE_CLIENT_SECRET
+    base_url = "https://sandbox.evernote.com" if EVERNOTE_SANDBOX else "https://www.evernote.com"
+    access_token_url = f"{base_url}/oauth"
+
+    # Retrieve the temporary secret
+    user_profile = await mongo_manager.get_user_profile(user_id)
+    temp_secrets = user_profile.get("userData", {}).get("tempOAuth1Secrets", {}).get(service_name, {})
+    
+    if not temp_secrets or temp_secrets.get("oauth_token") != request.oauth_token:
+        raise HTTPException(status_code=400, detail="OAuth token mismatch or secret not found. Please try again.")
+
+    resource_owner_secret = temp_secrets["oauth_token_secret"]
+
+    oauth = OAuth1Session(
+        consumer_key,
+        client_secret=consumer_secret,
+        resource_owner_key=request.oauth_token,
+        resource_owner_secret=resource_owner_secret,
+        verifier=request.oauth_verifier
+    )
+
+    try:
+        oauth_tokens = await asyncio.to_thread(oauth.fetch_access_token, access_token_url)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch access token from Evernote: {e}")
+
+    encrypted_creds = aes_encrypt(json.dumps(oauth_tokens))
+    
+    update_payload = {
+        f"userData.integrations.{service_name}.credentials": encrypted_creds,
+        f"userData.integrations.{service_name}.connected": True,
+        f"userData.integrations.{service_name}.auth_type": "oauth1"
+    }
+    await mongo_manager.update_user_profile(user_id, update_payload)
+
+    # Clean up the temporary secret
+    await mongo_manager.user_profiles_collection.update_one(
+        {"user_id": user_id},
+        {"$unset": {f"userData.tempOAuth1Secrets.{service_name}": ""}}
+    )
+
+    return JSONResponse(content={"message": "Evernote connected successfully."})
 
 @router.post("/disconnect", summary="Disconnect an integration")
 async def disconnect_integration(request: DisconnectRequest, user_id: str = Depends(auth_helper.get_current_user_id)):

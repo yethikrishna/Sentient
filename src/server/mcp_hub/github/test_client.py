@@ -63,6 +63,7 @@ def run_agent_interaction():
             
             last_assistant_text = ""
             final_response_from_run = None
+            final_assistant_message = None
             for response in agent.run(messages=messages):
                 if isinstance(response, list) and response and response[-1].get("role") == "assistant":
                     current_text = response[-1].get("content", "")
@@ -70,11 +71,11 @@ def run_agent_interaction():
                         delta = current_text[len(last_assistant_text):]
                         print(delta, end="", flush=True)
                         last_assistant_text = current_text
-                final_response_from_run = response
+                    final_assistant_message = response[-1]
 
             print()
-            if final_response_from_run:
-                messages = final_response_from_run
+            if final_assistant_message:
+                messages.append(final_assistant_message)
             else:
                 print("I could not process that request.")
                 messages.pop()

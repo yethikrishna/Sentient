@@ -54,7 +54,7 @@ def get_user_id_from_context(ctx: Context) -> str:
     return user_id
 
 async def get_evernote_creds(user_id: str) -> Dict[str, str]:
-    """Fetches Evernote credentials (token) from MongoDB."""
+    """Fetches Evernote credentials (OAuth1 token dictionary) from MongoDB."""
     user_doc = await users_collection.find_one({"user_id": user_id})
 
     if not user_doc or not user_doc.get("userData"):
@@ -71,8 +71,9 @@ async def get_evernote_creds(user_id: str) -> Dict[str, str]:
     except Exception as e:
         raise ToolError(f"Failed to decrypt or parse token for Evernote: {e}")
 
-    access_token = token_info.get("access_token")
+    # For OAuth1, the main token is 'oauth_token'
+    access_token = token_info.get("oauth_token")
     if not access_token:
-        raise ToolError("Invalid token data in database for Evernote. 'access_token' not found.")
+        raise ToolError("Invalid token data in database for Evernote. 'oauth_token' not found.")
 
-    return {"token": access_token}
+    return token_info

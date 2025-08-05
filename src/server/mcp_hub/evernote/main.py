@@ -35,8 +35,8 @@ def build_evernote_user_prompt(query: str, username: str, previous_tool_response
 async def _execute_tool(ctx: Context, method_name: str, *args, **kwargs) -> Dict[str, Any]:
     try:
         user_id = auth.get_user_id_from_context(ctx)
-        creds = await auth.get_evernote_creds(user_id)
-        client = utils.EvernoteApiClient(token=creds['token'])
+        token_info = await auth.get_evernote_creds(user_id)
+        client = utils.EvernoteApiClient(token_info=token_info)
 
         method_to_call = getattr(client, method_name)
         result = await method_to_call(*args, **kwargs)
@@ -55,11 +55,11 @@ async def list_notebooks(ctx: Context) -> Dict:
     return await _execute_tool(ctx, "list_notebooks")
 
 @mcp.tool
-async def create_note(ctx: Context, notebook_id: str, title: str, content: str) -> Dict:
+async def create_note(ctx: Context, notebook_guid: str, title: str, content: str) -> Dict:
     """
-    Creates a new note with a specific title and content within a specified notebook. The `notebook_id` is required. The `content` should be plain text, as it will be automatically wrapped in the necessary ENML format.
+    Creates a new note with a specific title and content within a specified notebook. The `notebook_guid` is required. The `content` should be plain text, as it will be automatically wrapped in the necessary ENML format.
     """
-    return await _execute_tool(ctx, "create_note", notebook_id, title, content)
+    return await _execute_tool(ctx, "create_note", notebook_guid, title, content)
 
 # --- Server Execution ---
 if __name__ == "__main__":

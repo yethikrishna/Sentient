@@ -940,16 +940,54 @@ const IntegrationsPage = () => {
 			} else if (serviceName === "discord") {
 				// Scopes for Discord: identify (read user info), guilds (list servers), bot (add bot to servers), applications.commands (for slash commands)
 				const scope = "identify guilds bot applications.commands"
-				// Permissions for the bot to read/send messages
-				const permissions = "274877908992"
+				// Permissions for the bot
+				const permissions = "580851377359936"
 				authUrl = `https://discord.com/api/oauth2/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
 					redirectUri
-				)}&response_type=code&scope=${encodeURIComponent(scope)}&permissions=${permissions}&state=${serviceName}`
+				)}&response_type=code&scope=${encodeURIComponent(
+					scope
+				)}&permissions=${permissions}&state=${serviceName}`
 			} else if (serviceName === "evernote") {
-				const serviceHost = "sandbox.evernote.com" // Use sandbox for dev
-				authUrl = `https://${serviceHost}/oauth2/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(
-					redirectUri
-				)}&state=${serviceName}`
+				// Evernote uses OAuth 1.0a, which requires a server-side flow to start.
+				// We call our backend to get the authorization URL, then redirect.
+				const startEvernoteAuth = async () => {
+					try {
+						const redirectUriForEvernote = `${window.location.origin}/api/settings/integrations/connect/oauth1/callback`
+
+						const response = await fetch(
+							"/api/settings/integrations/connect/oauth1/start",
+							{
+								method: "POST",
+								headers: { "Content-Type": "application/json" },
+								body: JSON.stringify({
+									service_name: "evernote",
+									redirect_uri: redirectUriForEvernote
+								})
+							}
+						)
+
+						if (!response.ok) {
+							const errorData = await response.json()
+							throw new Error(
+								errorData.detail ||
+									"Failed to start Evernote connection."
+							)
+						}
+
+						const { authorization_url } = await response.json()
+						if (authorization_url) {
+							window.location.href = authorization_url
+						} else {
+							throw new Error(
+								"Authorization URL not received from server."
+							)
+						}
+					} catch (error) {
+						toast.error(error.message)
+					}
+				}
+				startEvernoteAuth()
+				return // Stop execution here to prevent falling through
 			}
 			if (authUrl) window.location.href = authUrl
 			else

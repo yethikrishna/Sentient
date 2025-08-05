@@ -12,6 +12,8 @@ cryptography
 # --- Asynchronous & HTTP Clients ---
 httpx
 requests
+requests-oauthlib
+evernote3
 
 # --- Database & Caching ---
 motor

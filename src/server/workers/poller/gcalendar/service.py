@@ -119,11 +119,11 @@ class GCalendarPollingService:
                         # Construct a representative text string from the event data
                         source_text = f"Event: {event.get('summary', '')}\nDescription: {event.get('description', '')}"
                         # 1. Send to memory
-                        cud_memory_task.delay(
-                            user_id=user_id,
-                            information=source_text,
-                            source=self.service_name
-                        )
+                        # cud_memory_task.delay(
+                        #     user_id=user_id,
+                        #     information=source_text,
+                        #     source=self.service_name
+                        # ) # NOT SENDING TO MEMORY FOR NOW
                         # 2. Send to proactive reasoning
                         proactive_reasoning_pipeline.delay(
                             user_id=user_id,

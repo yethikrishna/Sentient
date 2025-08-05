@@ -466,6 +466,9 @@ OPENAI_API_KEYS = list(filter(None, [
     os.getenv("OPENAI_API_KEY_FALLBACK_2"),
 ]))
 
+EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "models/gemini-embedding-001") # Default to same as LLM, can be overridden
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
 # MCP Server URLs
 PROGRESS_UPDATER_MCP_SERVER_URL=os.getenv("PROGRESS_UPDATER_MCP_SERVER_URL", "http://localhost:9011/sse")
 FILE_MANAGEMENT_MCP_SERVER_URL=os.getenv("FILE_MANAGEMENT_MCP_SERVER_URL", "http://localhost:9026/sse")

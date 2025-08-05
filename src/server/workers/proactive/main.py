@@ -187,10 +187,37 @@ async def run_proactive_pipeline_logic(user_id: str, event_type: str, event_data
             logger.info("Suggestion passed dynamic threshold. Notifying user.")
             # --- END NEW ---
 
+            # Prune sensitive data from the context before saving it in the notification
+            pruned_context = {
+                "universal_search_results": cognitive_scratchpad.get("universal_search_results")
+            }
+
+            trigger_event = cognitive_scratchpad.get("trigger_event")
+            if trigger_event:
+                event_type = trigger_event.get("event_type")
+                event_data = trigger_event.get("event_data")
+
+                pruned_event_data = {}
+                if event_type == 'gcalendar' and isinstance(event_data, dict):
+                    pruned_event_data['summary'] = event_data.get('summary')
+                    pruned_event_data['url'] = event_data.get('url') # This is the htmlLink
+                elif event_type == 'gmail' and isinstance(event_data, dict):
+                    pruned_event_data['subject'] = event_data.get('subject')
+                    if event_data.get('threadId'):
+                        pruned_event_data['url'] = f"https://mail.google.com/mail/u/0/#inbox/{event_data['threadId']}"
+                else:
+                    # For other types, or if data is not a dict, store a generic message
+                    pruned_event_data = {"info": "Event data has been omitted for privacy."}
+
+                pruned_context["trigger_event"] = {
+                    "event_type": event_type,
+                    "event_data": pruned_event_data
+                }
+
             notification_payload = {
                 "suggestion_type": standardized_type,
                 "action_details": reasoner_result.get("suggestion_action_details"),
-                "gathered_context": cognitive_scratchpad,
+                    "gathered_context": pruned_context, # Use the pruned context
                 "reasoning": reasoner_result.get("reasoning")
             }
             

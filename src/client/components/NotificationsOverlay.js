@@ -13,7 +13,8 @@ import {
 	IconCheck,
 	IconThumbDown,
 	IconChevronDown,
-	IconChevronUp
+	IconChevronUp,
+	IconLink
 } from "@tabler/icons-react"
 import { formatDistanceToNow, parseISO } from "date-fns"
 import ReactMarkdown from "react-markdown"
@@ -45,9 +46,33 @@ const SuggestionDetails = ({ payload }) => {
 					<h5 className="font-semibold text-neutral-300 mb-1">
 						Source Event ({triggerEvent.event_type})
 					</h5>
-					<pre className="bg-black/30 p-2 rounded-md text-neutral-400 whitespace-pre-wrap font-mono text-[11px] max-h-40 overflow-auto custom-scrollbar">
-						{JSON.stringify(triggerEvent.event_data, null, 2)}
-					</pre>
+					{triggerEvent.event_data && triggerEvent.event_data.url ? (
+						<div className="mt-1">
+							{(triggerEvent.event_data.summary ||
+								triggerEvent.event_data.subject) && (
+								<p className="text-neutral-300 truncate">
+									{triggerEvent.event_data.summary ||
+										triggerEvent.event_data.subject}
+								</p>
+							)}
+							<a
+								href={triggerEvent.event_data.url}
+								target="_blank"
+								rel="noopener noreferrer"
+								className="text-blue-400 hover:underline text-xs flex items-center gap-1 mt-1"
+							>
+								<IconLink size={12} />
+								View Original{" "}
+								{triggerEvent.event_type === "gcalendar"
+									? "Event"
+									: "Email"}
+							</a>
+						</div>
+					) : (
+						<pre className="bg-black/30 p-2 rounded-md text-neutral-400 whitespace-pre-wrap font-mono text-[11px] max-h-40 overflow-auto custom-scrollbar">
+							{JSON.stringify(triggerEvent.event_data, null, 2)}
+						</pre>
+					)}
 				</div>
 			)}
 			{searchResults && Object.keys(searchResults).length > 0 && (

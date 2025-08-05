@@ -54,6 +54,32 @@ def get_user_id_from_context(ctx: Context) -> str:
         raise ToolError("Authentication failed: 'X-User-ID' header is missing.")
     return user_id
 
+async def get_user_info(user_id: str) -> Dict[str, Any]:
+    """Fetches user info like email and privacy filters from their profile."""
+    user_doc = await users_collection.find_one(
+        {"user_id": user_id},
+        {"userData.personalInfo.email": 1, "userData.privacyFilters": 1}
+    )
+    if not user_doc:
+        return {"email": None, "privacy_filters": {}}
+
+    user_data = user_doc.get("userData", {})
+    personal_info = user_data.get("personalInfo", {})
+
+    # Handle both old and new privacy filter formats
+    all_filters = user_data.get("privacyFilters", {})
+    gmail_filters = {}
+    if isinstance(all_filters, dict):
+        gmail_filters = all_filters.get("gmail", {})
+    elif isinstance(all_filters, list): # Backward compatibility
+        gmail_filters = {"keywords": all_filters, "emails": [], "labels": []}
+
+    return {
+        "email": personal_info.get("email"),
+        "privacy_filters": gmail_filters
+    }
+
+
 async def get_google_creds(user_id: str) -> Credentials:
     """Fetches Google OAuth token from MongoDB for a given user_id."""
     user_doc = await users_collection.find_one({"user_id": user_id})

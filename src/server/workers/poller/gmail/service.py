@@ -130,12 +130,12 @@ class GmailPollingService:
                     if mode == 'proactivity':
                         # Construct a representative text string from the email data
                         source_text = f"Subject: {email.get('subject', '')}\n\n{email.get('body', '')}"
-                        # 1. Send to memory
-                        cud_memory_task.delay(
-                            user_id=user_id,
-                            information=source_text,
-                            source=self.service_name
-                        )
+                        # # 1. Send to memory
+                        # cud_memory_task.delay(
+                        #     user_id=user_id,
+                        #     information=source_text,
+                        #     source=self.service_name
+                        # ) NOT SENDING TO MEMORY FOR NOW
                         # 2. Send to proactive reasoning
                         proactive_reasoning_pipeline.delay(
                             user_id=user_id,

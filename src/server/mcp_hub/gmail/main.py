@@ -3,6 +3,7 @@ from typing import Dict, Any, List, Optional
 
 import base64
 from email.mime.text import MIMEText
+import re
 import asyncio
 
 from dotenv import load_dotenv
@@ -53,11 +54,18 @@ async def _execute_tool(ctx: Context, func, *args, **kwargs) -> Dict[str, Any]:
         user_id = auth.get_user_id_from_context(ctx)
         creds = await auth.get_google_creds(user_id)
         service = auth.authenticate_gmail(creds)
-        
+
+        # NEW: Fetch user info including privacy filters for tools that need it
+        needs_user_info = func.__name__ in ["_list_emails_sync", "_read_email_sync", "_catchup_sync"]
+        if needs_user_info:
+            user_info = await auth.get_user_info(user_id)
+            kwargs['user_info'] = user_info
+
         # Use asyncio.to_thread to run synchronous Google API calls
         result = await asyncio.to_thread(func, service, *args, **kwargs)
         return {"status": "success", "result": result}
     except HttpError as e:
+        # Catching HttpError specifically to get more details
         return {"status": "failure", "error": f"Google API Error: {e.content.decode()}"}
     except Exception as e:
         return {"status": "failure", "error": str(e)}
@@ -95,13 +103,89 @@ def _reply_to_email_sync(service, message_id: str, body: str, reply_all: bool = 
     service.users().messages().send(userId="me", body={"raw": raw_message, "threadId": thread_id}).execute()
     return {"message": "Reply sent successfully."}
 
-def _list_emails_sync(service, query: str = None, max_results: int = 10):
-    results = service.users().messages().list(userId="me", q=query, maxResults=max_results).execute()
-    messages = results.get("messages", [])
-    return [helpers._simplify_message(service.users().messages().get(userId="me", id=m["id"]).execute()) for m in messages]
+def _list_emails_sync(service, query: str = None, max_results: int = 10, user_info: Dict = None):
+    # Fetch more results than requested to account for potential filtering
+    results = service.users().messages().list(userId="me", q=query, maxResults=max_results * 2).execute()
+    messages_info = results.get("messages", [])
 
-def _read_email_sync(service, message_id: str):
+    if not messages_info:
+        return []
+
+    # Fetch full message details in a batch for efficiency
+    batch = service.new_batch_http_request()
+    messages_full = []
+    def callback(request_id, response, exception):
+        if exception is None:
+            messages_full.append(response)
+
+    for msg_info in messages_info:
+        batch.add(service.users().messages().get(userId="me", id=msg_info["id"]), callback=callback)
+
+    batch.execute()
+
+    # Apply privacy filters if available
+    filtered_messages = []
+    if user_info and user_info.get("privacy_filters"):
+        filters = user_info["privacy_filters"]
+        keyword_filters = filters.get("keywords", [])
+        email_filters = [e.lower() for e in filters.get("emails", [])]
+        label_filters = [l.lower() for l in filters.get("labels", [])]
+
+        for msg in messages_full:
+            is_filtered = False
+            simplified = helpers._simplify_message(msg)
+
+            # Check labels
+            email_labels = [l.lower() for l in simplified.get("labels", [])]
+            if any(fl in email_labels for fl in label_filters):
+                is_filtered = True
+
+            # Check sender
+            sender_header = simplified.get("from", "").lower()
+            sender_match = re.search(r'<(.+?)>', sender_header)
+            sender_email = sender_match.group(1) if sender_match else sender_header
+            if any(fe in sender_email for fe in email_filters):
+                is_filtered = True
+
+            # Check keywords in subject/snippet
+            content_to_check = (simplified.get("subject", "") + " " + simplified.get("snippet", "")).lower()
+            if any(kw.lower() in content_to_check for kw in keyword_filters):
+                is_filtered = True
+
+            if not is_filtered:
+                filtered_messages.append(simplified)
+    else:
+        # No filters, just simplify all fetched messages
+        filtered_messages = [helpers._simplify_message(msg) for msg in messages_full]
+
+    return filtered_messages[:max_results]
+
+def _read_email_sync(service, message_id: str, user_info: Dict = None):
     msg = service.users().messages().get(userId="me", id=message_id, format="full").execute()
+
+    # Apply privacy filters before returning content
+    if user_info and user_info.get("privacy_filters"):
+        filters = user_info["privacy_filters"]
+        keyword_filters = filters.get("keywords", [])
+        email_filters = [e.lower() for e in filters.get("emails", [])]
+        label_filters = [l.lower() for l in filters.get("labels", [])]
+
+        simplified_check = helpers._simplify_message(msg)
+
+        email_labels = [l.lower() for l in simplified_check.get("labels", [])]
+        if any(fl in email_labels for fl in label_filters):
+            raise Exception("Access denied to this email due to a privacy filter (label).")
+
+        sender_header = simplified_check.get("from", "").lower()
+        sender_match = re.search(r'<(.+?)>', sender_header)
+        sender_email = sender_match.group(1) if sender_match else sender_header
+        if any(fe in sender_email for fe in email_filters):
+            raise Exception("Access denied to this email due to a privacy filter (sender).")
+
+        content_to_check = (simplified_check.get("subject", "") + " " + simplified_check.get("snippet", "")).lower()
+        if any(kw.lower() in content_to_check for kw in keyword_filters):
+            raise Exception("Access denied to this email due to a privacy filter (keyword).")
+
     simplified = helpers._simplify_message(msg)
     simplified["body"] = helpers.extract_email_body(msg.get("payload", {}))
     return simplified
@@ -133,8 +217,9 @@ def _delete_filter_sync(service, filter_id: str):
     service.users().settings().filters().delete(userId="me", id=filter_id).execute()
     return {"message": f"Filter {filter_id} deleted."}
 
-def _catchup_sync(service):
-    unread_emails = _list_emails_sync(service, query="is:unread", max_results=20)
+def _catchup_sync(service, user_info: Dict = None):
+    # The list function now handles filtering
+    unread_emails = _list_emails_sync(service, query="is:unread", max_results=20, user_info=user_info)
     if not unread_emails:
         return "Your inbox is all caught up!"
     # Need to run the async helper in the event loop

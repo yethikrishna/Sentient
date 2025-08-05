@@ -51,24 +51,22 @@ async def _execute_tool(ctx: Context, async_func, **kwargs) -> Dict[str, Any]:
 
 # --- Synchronous Implementations for Tools ---
 
-async def _create_page_async(client, parent_page_id: Optional[str], parent_database_id: Optional[str], title: str, content: Optional[List[Dict]]):
-    if not parent_page_id and not parent_database_id:
-        raise ToolError("Either parent_page_id or parent_database_id must be provided.")
-    parent_key = "page_id" if parent_page_id else "database_id"
-    parent_value = parent_page_id or parent_database_id
-    parent = {parent_key: parent_value}
+async def _create_page_async(client, parent_page_id: Optional[str], title: str, content: Optional[List[Dict]]):
+    if not parent_page_id:
+        raise ToolError("parent_page_id must be provided.")
+    parent = {"page_id": parent_page_id}
     properties = {"title": {"title": [{"text": {"content": title}}]}}
     children_blocks = content or []
     response = await client.pages.create(parent=parent, properties=properties, children=children_blocks)
     return {"page_id": response.get("id"), "url": response.get("url")}
 
-async def _get_pages_async(client, page_id: Optional[str], query: Optional[str]):
-    if page_id:
-        response = await client.blocks.children.list(block_id=page_id)
-        return utils.simplify_block_children(response)
-    else:
-        response = await client.search(query=query, filter={"value": "page", "property": "object"})
-        return [utils._simplify_database_pages({"results": [p]})[0] for p in response.get("results", [])]
+async def _search_pages_async(client, query: str):
+    response = await client.search(query=query, filter={"value": "page", "property": "object"})
+    return utils.simplify_search_results(response)
+
+async def _read_page_content_async(client, page_id: str):
+    response = await client.blocks.children.list(block_id=page_id)
+    return utils.simplify_block_children(response)
 
 async def _query_database_async(client, database_id: str, filter_json: Optional[str]):
     filter_obj = json.loads(filter_json) if filter_json else None
@@ -84,12 +82,12 @@ async def _get_block_children_async(client, block_id: str):
     return utils.simplify_block_children(response)
 
 async def _get_comments_async(client, block_id: str):
-    response = await client.comments.list(block_id=block_id)
-    return [utils._simplify_comment(c) for c in response.get("results", [])]
+    response = await client.comments.list(block_id=block_id) # type: ignore
+    return [utils._simplify_comment(c) for c in response.get("results", [])] # type: ignore
 
 async def _get_workspace_async(client):
-    response = await client.bots.me()
-    return response.get("owner", {})
+    response = await client.users.me()
+    return response.get("bot", {}).get("owner", {})
 
 async def _update_page_async(client, page_id: str, properties_json: str):
     properties = json.loads(properties_json)
@@ -98,7 +96,17 @@ async def _update_page_async(client, page_id: str, properties_json: str):
 
 async def _get_databases_async(client, query: Optional[str]):
     response = await client.search(query=query, filter={"value": "database", "property": "object"})
-    return [utils.simplify_database_pages({"results": [db]})[0] for db in response.get("results", [])]
+    # This function was incorrectly trying to parse database objects as page objects.
+    # This is the corrected, simplified implementation.
+    simplified_dbs = []
+    for db in response.get("results", []):
+        title_list = db.get("title", [])
+        title = utils._simplify_rich_text(title_list) if title_list else "Untitled Database"
+        simplified_dbs.append({
+            "database_id": db.get("id"),
+            "title": title
+        })
+    return simplified_dbs
 
 async def _create_block_async(client, parent_block_id: str, content_blocks: List[Dict]):
     response = await client.blocks.children.append(block_id=parent_block_id, children=content_blocks)
@@ -120,23 +128,32 @@ async def _list_users_async(client):
 
 # --- Tool Definitions ---
 @mcp.tool
-async def createPage(ctx: Context, title: str, parent_page_id: Optional[str] = None, parent_database_id: Optional[str] = None, content_blocks_json: Optional[str] = None) -> Dict:
+async def createPage(ctx: Context, title: str, parent_page_id: str, content_blocks_json: Optional[str] = None) -> Dict:
     """
-    Creates a new page in Notion. Requires a `title` and a parent (`parent_page_id` or `parent_database_id`).
+    Creates a new page in Notion. Requires a `title` and a parent (`parent_page_id`). If parent page ID is not provided, ask the user to provide the title of the parent page, then use the `search_pages` tool to find its ID.
     Optionally, you can add body content by providing a `content_blocks_json` string, which is a list of Notion block objects.
     """
     try:
         content_blocks = json.loads(content_blocks_json) if content_blocks_json else []
     except (json.JSONDecodeError, TypeError):
         raise ToolError("Invalid `content_blocks_json`. It must be a valid JSON string representing a list of block objects.")
-    return await _execute_tool(ctx, _create_page_async, parent_page_id=parent_page_id, parent_database_id=parent_database_id, title=title, content=content_blocks)
+    return await _execute_tool(ctx, _create_page_async, parent_page_id=parent_page_id, title=title, content=content_blocks)
 
 @mcp.tool
-async def getPages(ctx: Context, page_id: Optional[str] = None, query: Optional[str] = None) -> Dict:
+async def search_pages(ctx: Context, query: str) -> Dict:
     """
-    Retrieves a specific page's content by its `page_id`, or searches for pages across the workspace using a text `query`.
+    Searches for pages across the Notion workspace using a text `query`.
+    Returns a list of pages with their ID, title, and URL. This does NOT return page content.
     """
-    return await _execute_tool(ctx, _get_pages_async, page_id=page_id, query=query)
+    return await _execute_tool(ctx, _search_pages_async, query=query)
+
+@mcp.tool
+async def read_page_content(ctx: Context, page_id: str) -> Dict:
+    """
+    Retrieves the full content of a specific page, formatted as markdown-like text.
+    Requires the `page_id`, which can be found using the `search_pages` tool.
+    """
+    return await _execute_tool(ctx, _read_page_content_async, page_id=page_id)
 
 @mcp.tool
 async def queryDatabase(ctx: Context, database_id: str, filter_json: Optional[str] = None) -> Dict:

@@ -65,6 +65,7 @@ DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
 EVERNOTE_CLIENT_ID = os.getenv("EVERNOTE_CLIENT_ID")
 EVERNOTE_CLIENT_SECRET = os.getenv("EVERNOTE_CLIENT_SECRET")
+EVERNOTE_SANDBOX = os.getenv("EVERNOTE_SANDBOX", "False").lower() in ('true', '1', 't')
 TODOIST_CLIENT_ID = os.getenv("TODOIST_CLIENT_ID")
 TODOIST_CLIENT_SECRET = os.getenv("TODOIST_CLIENT_SECRET")
 TRELLO_CLIENT_ID = os.getenv("TRELLO_CLIENT_ID")
@@ -300,7 +301,7 @@ INTEGRATIONS_CONFIG = {
         "display_name": "Evernote",
         "description": "Create and manage notes in Evernote. The agent can create notes with titles and content, and list existing notebooks.",
         "auth_type": "oauth",
-        "icon": "IconFileText",
+        "icon": "IconBrandEvernote",
         "category": "Productivity",
         "mcp_server_config": {
             "name": "evernote_server",
@@ -441,7 +442,7 @@ ELEVENLABS_API_KEYS = list(filter(None, [
 
 # For Orpheus (Dev TTS)
 ORPHEUS_MODEL_PATH = os.getenv("ORPHEUS_MODEL_PATH", os.path.join(os.path.dirname(__file__), "voice", "models", "orpheus-3b-0.1-ft-q4_k_m.gguf"))
-ORPHEUS_N_GPU_LAYERS = int(os.getenv("ORPHEUS_N_GPU_LAYERS", 30))
+ORPHEUS_N_GPU_LAYERS = int(os.getenv("ORPHEUS_N_GPU_LAYERS", -1))
 
 # FasterWhisper STT (Dev STT)
 FASTER_WHISPER_MODEL_SIZE = os.getenv("FASTER_WHISPER_MODEL_SIZE", "base")

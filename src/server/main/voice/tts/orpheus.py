@@ -5,8 +5,8 @@ import asyncio
 from llama_cpp import Llama, CreateCompletionStreamResponse
 import os
 import threading
-import traceback 
-import logging 
+import traceback
+import logging
 from typing import (
     AsyncGenerator,
     Generator,
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 AVAILABLE_VOICES_ORPHEUS: list[Literal["tara", "leah", "jess", "leo", "dan", "mia", "zac", "zoe"]] = ["tara", "leah", "jess", "leo", "dan", "mia", "zac", "zoe"]
 DEFAULT_VOICE_ORPHEUS: Literal["tara", "leah", "jess", "leo", "dan", "mia", "zac", "zoe"] = "tara"
 
-class OrpheusTTSOptions(TTSOptionsBase): 
+class OrpheusTTSOptions(TTSOptionsBase):
     max_tokens: int = 4096
     temperature: float = 0.7
     top_p: float = 0.9
@@ -44,25 +44,25 @@ class OrpheusTTS(BaseTTS):
 
     def __init__(
         self,
-        model_path: str | None = None, 
-        n_gpu_layers: int | None = None, 
-        verbose: bool = False,
-        n_ctx: int = 2048, 
+        model_path: str | None = None,
+        n_gpu_layers: int | None = None,
+        verbose: bool = True,
+        n_ctx: int = 2048,
         default_voice_id: Literal["tara", "leah", "jess", "leo", "dan", "mia", "zac", "zoe"] = DEFAULT_VOICE_ORPHEUS
     ):
-        from main.config import ORPHEUS_MODEL_PATH as MAIN_ORPHEUS_MODEL_PATH
+        from main.config import ORPHEUS_MODEL_PATH as ORPHEUS_MODEL_PATH
         from main.config import ORPHEUS_N_GPU_LAYERS as MAIN_ORPHEUS_N_GPU_LAYERS
 
-        self.model_path = model_path or MAIN_ORPHEUS_MODEL_PATH
+        self.model_path = model_path or ORPHEUS_MODEL_PATH
         self.n_gpu_layers = n_gpu_layers if n_gpu_layers is not None else MAIN_ORPHEUS_N_GPU_LAYERS
         self.verbose = verbose
         self.n_ctx = n_ctx
 
         self.instance_default_voice = default_voice_id if default_voice_id in self.AVAILABLE_VOICES else self.DEFAULT_VOICE
-        
+
         self.snac_model = None
         self.llm = None
-        self.snac_device = "cpu"
+        self.snac_device = None
         self._load_models()
 
     def _load_models(self):

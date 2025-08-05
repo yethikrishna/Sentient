@@ -33,6 +33,11 @@ def run_agent_interaction():
     print("\n--- Discord Agent Ready ---")
     print("You can now interact with your Discord account.")
     print("Type 'quit' or 'exit' to end the session.")
+    print("\nExample commands:")
+    print("  - list my discord servers")
+    print("  - what channels are in the server with ID '...'?")
+    print("  - send a message to the 'general' channel in my main server saying 'Hello from my agent!'")
+    print("-" * 25)
     messages = []
     while True:
         try:
@@ -45,6 +50,7 @@ def run_agent_interaction():
             
             last_assistant_text = ""
             final_response_from_run = None
+            final_assistant_message = None
             for response in agent.run(messages=messages):
                 if isinstance(response, list) and response and response[-1].get("role") == "assistant":
                     current_text = response[-1].get("content", "")
@@ -52,11 +58,11 @@ def run_agent_interaction():
                         delta = current_text[len(last_assistant_text):]
                         print(delta, end="", flush=True)
                         last_assistant_text = current_text
-                final_response_from_run = response
+                    final_assistant_message = response[-1]
             
             print() # Newline after agent's response
-            if final_response_from_run:
-                messages = final_response_from_run
+            if final_assistant_message:
+                messages.append(final_assistant_message)
             else:
                 print("I could not process that request.")
                 messages.pop()

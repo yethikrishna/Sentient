@@ -288,9 +288,8 @@ async def async_execute_task_plan(task_id: str, user_id: str):
                     update_to_push = {"type": "info", "content": f"Using tool: {tool_name}"}
                 elif msg.get('role') == 'function':
                     # This is a tool result
-                    result_content = json.loads(msg.get('content', '{}'))
-                    is_error = result_content.get("status") == "failure"
-                    update_to_push = {"type": "tool_result", "tool_name": msg.get('name'), "result": result_content.get("result", result_content.get("error")), "is_error": is_error}
+                    result_content = msg['content']
+                    update_to_push = {"type": "info", "content": f"Tool result received: {result_content}"}
 
                 if update_to_push:
                     await add_progress_update(db, task_id, run_id, user_id, update_to_push, block_id)

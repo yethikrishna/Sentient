@@ -278,8 +278,6 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
             user_profile = await mongo_manager.get_user_profile(user_id)
             is_proactivity_enabled = user_profile.get("userData", {}).get("preferences", {}).get("proactivityEnabled", False)
 
-            logger.info(f"User {user_id} connected {service_name}. Proactivity preference is: {is_proactivity_enabled}")
-
             # Create a state for the proactivity poller
             await mongo_manager.update_polling_state(
                 user_id,

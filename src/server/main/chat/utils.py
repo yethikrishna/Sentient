@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Callable, Coroutine, Union
 
 from qwen_agent.tools.base import BaseTool, register_tool
+from openai import OpenAI
 
 from main.chat.prompts import STAGE_1_SYSTEM_PROMPT, STAGE_2_SYSTEM_PROMPT
 from main.db import MongoManager
@@ -61,52 +62,36 @@ async def _get_stage1_response(messages: List[Dict[str, Any]], connected_tools_m
     Uses the Stage 1 LLM to detect topic changes and select relevant tools.
     Returns a dictionary containing a 'topic_changed' boolean and a 'tools' list.
     """
-    # Core tools for Stage 1 agent. No access given for now.
-    # core_tools = ["memory", "history", "tasks"]
-    # mcp_servers_for_stage1 = {}
-    # for tool_name in core_tools:
-    #     config = INTEGRATIONS_CONFIG.get(tool_name, {})
-    #     if config:
-    #         mcp_config = config.get("mcp_server_config", {})
-    #         if mcp_config and mcp_config.get("url") and mcp_config.get("name"):
-    #             mcp_servers_for_stage1[mcp_config["name"]] = {
-    #                 "url": mcp_config["url"],
-    #                 "headers": {"X-User-ID": user_id},
-    #                 "transport": "sse"
-    #             }
-    # tools_for_agent = [{"mcpServers": mcp_servers_for_stage1}]
     
-    # The above section allows adding history, memory and tasks tools to the Stage 1 agent. Commented out for weaker models.
-
-    tools_for_agent = []
-
-    # Format history for the prompt
-    # Expand messages so each history item is a separate message dict
+    print ("Using OpenAI Client for Stage 1 LLM call...")
+    client = OpenAI(
+        base_url=os.getenv("OPENAI_API_BASE_URL", "https://openrouter.ai/api/v1/"),
+        api_key=os.getenv("OPENAI_API_KEY", ""),
+    )
     
-    print(f"Stage 1 LLM input for user {user_id}: {messages}")
-    expanded_messages = []
+    print ("STAGE 1 MESSAGES:", messages)
+
+    # Format messages for the OpenAI client, including the system prompt
+    formatted_messages = [
+        {"role": "system", "content": STAGE_1_SYSTEM_PROMPT}
+    ]
     for msg in messages:
-        expanded_messages.append({
-            "role": msg.get("role", "user"),
-            "content": msg.get("content", "")
-        })
-        
-    print(f"Expanded messages for Stage 1 LLM for user {user_id}: {expanded_messages}")
+        # The OpenAI API expects 'role' and 'content'. Filter for those keys.
+        if 'role' in msg and 'content' in msg:
+            formatted_messages.append({
+                "role": msg["role"],
+                "content": msg["content"]
+            })
 
-    def _run_stage1_sync():
-        final_content_str = ""
-        for chunk in run_agent_with_fallback(system_message=STAGE_1_SYSTEM_PROMPT, function_list=tools_for_agent, messages=expanded_messages):
-            if isinstance(chunk, list) and chunk:
-                last_message = chunk[-1]
-                if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
-                    final_content_str = last_message["content"]
-        return final_content_str
+    completion = client.chat.completions.create(
+        model=os.getenv("OPENAI_MODEL_NAME", "google/gemini-2.5-flash-lite"),
+        messages=formatted_messages,
+    )
 
-    final_content_str = await asyncio.to_thread(_run_stage1_sync)
+    final_content_str = completion.choices[0].message.content
     
     print(f"Stage 1 LLM output for user {user_id}: {final_content_str}")
-
-    # Now, parse the output. Is it a JSON list or a text response?
+    
     cleaned_output = clean_llm_output(final_content_str)
     
     print(f"Cleaned Stage 1 output for user {user_id}: {cleaned_output}")
@@ -115,22 +100,35 @@ async def _get_stage1_response(messages: List[Dict[str, Any]], connected_tools_m
     stage1_result = JsonExtractor.extract_valid_json(cleaned_output)
 
     if isinstance(stage1_result, dict) and "topic_changed" in stage1_result and "tools" in stage1_result:
-        # Validate that the selected tools are from the available list
         selected_tools = stage1_result.get("tools", [])
-        valid_tools = [tool for tool in selected_tools if tool in connected_tools_map]
-        stage1_result["tools"] = valid_tools
-        logger.info(f"Stage 1 triage result: {stage1_result}")
-        return stage1_result
+
+        # Separate into connected and disconnected
+        connected_tools_selected = [tool for tool in selected_tools if tool in connected_tools_map]
+        disconnected_tools_selected = [tool for tool in selected_tools if tool in disconnected_tools_map]
+
+        final_result = {
+            "topic_changed": stage1_result.get("topic_changed", False),
+            "connected_tools": connected_tools_selected,
+            "disconnected_tools": disconnected_tools_selected
+        }
+        logger.info(f"Stage 1 triage result: {final_result}")
+        return final_result
 
     # Fallback logic if the LLM fails to produce the correct JSON object
     logger.warning(f"Stage 1 failed to produce valid JSON object. Falling back to simple tool detection. Output: {cleaned_output}")
     # Try to see if it just returned a list (old behavior)
     if isinstance(stage1_result, list):
-        valid_tools = [tool for tool in stage1_result if tool in connected_tools_map]
-        return {"topic_changed": False, "tools": valid_tools}
+        connected_tools_selected = [tool for tool in stage1_result if tool in connected_tools_map]
+        disconnected_tools_selected = [tool for tool in stage1_result if tool in disconnected_tools_map]
+        return {
+            "topic_changed": False,
+            "connected_tools": connected_tools_selected,
+            "disconnected_tools": disconnected_tools_selected
+        }
 
     # If all else fails, assume no topic change and no tools.
-    return {"topic_changed": False, "tools": []}
+    return {"topic_changed": False, "connected_tools": [], "disconnected_tools": []}
+
 
 def _extract_answer_from_llm_response(llm_output: str) -> str:
     """
@@ -205,8 +203,9 @@ async def generate_chat_llm_stream(
         # --- STAGE 1 ---
         stage1_result = await _get_stage1_response(messages, connected_tools, disconnected_tools, user_id)
 
-        topic_changed = stage1_result.get("topic_changed", False)
-        relevant_tool_names = stage1_result.get("tools", [])
+        topic_changed = stage1_result.get("topic_changed", False) # noqa
+        relevant_tool_names = stage1_result.get("connected_tools", [])
+        disconnected_requested_tools = stage1_result.get("disconnected_tools", [])
 
         # --- TOOL SELECTION & HISTORY TRUNCATION, PROCEED TO STAGE 2 ---
         tool_display_names = [INTEGRATIONS_CONFIG.get(t, {}).get('display_name', t) for t in relevant_tool_names if t != 'memory']
@@ -268,6 +267,21 @@ async def generate_chat_llm_stream(
             "role": last_message.get("role", "user"),
             "content": last_message.get("content", "Hello.")
         })
+
+    # Inject a system note if some requested tools are disconnected
+    if disconnected_requested_tools:
+        disconnected_display_names = [INTEGRATIONS_CONFIG.get(t, {}).get('display_name', t) for t in disconnected_requested_tools]
+        system_note = (
+            f"System Note: The user's request mentioned functionality requiring the following tools which are currently disconnected: "
+            f"{', '.join(disconnected_display_names)}. You MUST inform the user that you cannot complete that part of the request "
+            f"and suggest they connect the tool(s) in the Integrations page. Then, proceed with the rest of the request using the available tools."
+        )
+        # Prepend this note to the user's last message to make it highly visible to the agent.
+        if stage_2_expanded_messages and stage_2_expanded_messages[-1]['role'] == 'user':
+            stage_2_expanded_messages[-1]['content'] = f"{system_note}\n\nUser's original message: {stage_2_expanded_messages[-1]['content']}"
+        else:
+            # This case is unlikely but safe to handle.
+            stage_2_expanded_messages.append({'role': 'system', 'content': system_note})
 
     system_prompt = STAGE_2_SYSTEM_PROMPT.format(
         username=username,

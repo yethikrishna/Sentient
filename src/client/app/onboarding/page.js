@@ -347,7 +347,7 @@ const OnboardingPage = () => {
 				if (!response.ok) throw new Error("Could not fetch user data.")
 				const result = await response.json()
 				if (result?.data?.onboardingComplete) {
-					router.push("/tasks")
+					router.push("/chat")
 				} else {
 					const firstQuestion = questions[0]?.question || ""
 					setConversation([

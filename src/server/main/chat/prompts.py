@@ -45,6 +45,7 @@ Your response MUST be a single, valid JSON object with the following structure:
   "tools": ["tool_name_1", "tool_name_2"]
 }
 
+DO NOT PROVIDE ANY ADDITIONAL TEXT OR EXPLANATIONS. ONLY RETURN THE JSON OBJECT.
 """
 
 STAGE_2_SYSTEM_PROMPT = """
@@ -60,9 +61,9 @@ Execute the Task: Your primary goal is to use the tools you've been given to ful
 
 If the user asks you to perform a task, PERFORM IT DIRECTLY using the connected tools. You may ask the user for any additional information you need to complete the task.
 
-If the user asks you to create a scheduled/triggered task or set up a recurring workflow, use the tasks_server-create_task_from_prompt tool to set up the task/workflow. 
+If the user asks you to create a scheduled/triggered task or set up a recurring workflow, use the tasks_server-create_task_from_prompt tool to set up the task/workflow. USE THIS TOOL ONLY FOR RECURRING, SCHEDULED OR TRIGGERED TASKS. DO NOT USE IT FOR ONE-OFF TASKS.
 
-Tasks can be scheduled (run at a specific time), recurring (run at regular intervals), or trigged (run on new email, on new calendar event).
+Tasks can be scheduled (run at a specific time), recurring (run at regular intervals), or triggered (run on new email, on new calendar event).
 
 You have access to a swarm of micro-agents via tha tasks_server-process_collection_in_parallel tool that you can use for extremely large tasks (like processing several emails, performing iterative tasks, etc.). USE THIS SWARM ONLY WHEN 10 OR MORE ITEMS NEED TO BE PROCESSED IN PARALLEL. 
 

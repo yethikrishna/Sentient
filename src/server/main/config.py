@@ -439,12 +439,6 @@ ELEVENLABS_API_KEYS = list(filter(None, [
     os.getenv("ELEVENLABS_API_KEY_FALLBACK_2"),
 ]))
 
-GEMINI_API_KEYS = list(filter(None, [
-    os.getenv("GEMINI_API_KEY"),
-    os.getenv("GEMINI_API_KEY_FALLBACK_1"),
-    os.getenv("GEMINI_API_KEY_FALLBACK_2"),
-]))
-
 # For Orpheus (Dev TTS)
 ORPHEUS_MODEL_PATH = os.getenv("ORPHEUS_MODEL_PATH", os.path.join(os.path.dirname(__file__), "voice", "models", "orpheus-3b-0.1-ft-q4_k_m.gguf"))
 ORPHEUS_N_GPU_LAYERS = int(os.getenv("ORPHEUS_N_GPU_LAYERS", 30))

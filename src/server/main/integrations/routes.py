@@ -273,27 +273,31 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
         if not success:
             raise HTTPException(status_code=500, detail="Failed to save integration credentials.")
         
-        # Create the polling state document to enable the poller for this service
         if service_name == 'gmail' or service_name == 'gcalendar':
+            # Check user's proactivity preference before enabling polling
+            user_profile = await mongo_manager.get_user_profile(user_id)
+            is_proactivity_enabled = user_profile.get("userData", {}).get("preferences", {}).get("proactivityEnabled", False)
+
+            logger.info(f"User {user_id} connected {service_name}. Proactivity preference is: {is_proactivity_enabled}")
+
             # Create a state for the proactivity poller
             await mongo_manager.update_polling_state(
                 user_id,
                 service_name,
                 "proactivity",
                 {
-                    "is_enabled": True,
+                    "is_enabled": is_proactivity_enabled,
                     "is_currently_polling": False,
                     "next_scheduled_poll_time": datetime.datetime.now(datetime.timezone.utc), # Poll immediately
                     "last_successful_poll_timestamp_unix": None,
                 }
             )
-            # Create a separate state for the trigger poller
             await mongo_manager.update_polling_state(
                 user_id,
                 service_name,
                 "triggers",
                 {
-                    "is_enabled": True,
+                    "is_enabled": is_proactivity_enabled,
                     "is_currently_polling": False,
                     "next_scheduled_poll_time": datetime.datetime.now(datetime.timezone.utc), # Poll immediately
                     "last_successful_poll_timestamp_unix": None,

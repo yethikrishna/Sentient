@@ -11,6 +11,7 @@ from pgvector.asyncpg import register_vector
 
 from . import db, llm
 from .prompts import (
+    fact_relevance_user_prompt_template,
     fact_summarization_user_prompt_template,
     fact_extraction_user_prompt_template,
     cud_decision_user_prompt_template,
@@ -44,6 +45,7 @@ def initialize_agents():
             "fact_extraction": llm.get_fact_extraction_agent(),
             "fact_analysis": llm.get_fact_analysis_agent(),
             "cud_decision": llm.get_cud_decision_agent(),
+            "fact_relevance": llm.get_fact_relevance_agent(),
         }
 
 def parse_duration(duration_str: Optional[str]) -> Optional[datetime]:
@@ -124,14 +126,14 @@ def _get_normalized_embedding(text: str, task_type: str) -> np.ndarray:
     normalized_embedding = embedding_np / norm
     return normalized_embedding
 
-async def search_memory(user_id: str, query: str) -> str:
-    """Searches memory by performing a direct semantic search and summarizing results."""
+async def search_memory(user_id: str, query: str) -> str: # noqa: E501
+    """Searches memory by performing a semantic search, filtering for relevance, and summarizing results."""
     logger.info(f"Executing search_memory for user_id='{user_id}' with query: '{query}'")
     pool = await db.get_db_pool()
     async with pool.acquire() as conn:
         await register_vector(conn)
         
-        logger.info("Step 1/2: Performing direct semantic search in database.")
+        logger.info("Step 1/4: Performing semantic search in database.")
         query_embedding = _get_normalized_embedding(query, task_type="RETRIEVAL_QUERY")
         
         records = await conn.fetch(
@@ -143,17 +145,39 @@ async def search_memory(user_id: str, query: str) -> str:
             LIMIT 5;
             """, user_id, query_embedding
         )
-        
-        found_facts = {r['id']: r['content'] for r in records}
-        logger.info(f"Found {len(found_facts)} relevant facts from search.")
     
+        found_facts = [r['content'] for r in records]
+        logger.info(f"Found {len(found_facts)} potentially relevant facts from vector search.")
+
     if not found_facts:
-        logger.info("No relevant facts found. Returning message to user.")
+        logger.info("No facts found from vector search. Returning.")
         return "No relevant information found in your memory."
 
-    logger.info("Step 2/2: Summarizing search results into a coherent paragraph.")
-    facts_list = list(found_facts.values())
-    prompt = fact_summarization_user_prompt_template.format(facts=json.dumps(facts_list))
+    # Step 2: Relevance Checking
+    logger.info("Step 2/4: Checking relevance of found facts.")
+    relevant_facts = []
+    for fact in found_facts:
+        prompt = fact_relevance_user_prompt_template.format(query=query, fact=fact)
+        relevance_raw = llm.run_agent_with_prompt(agents["fact_relevance"], prompt)
+        try:
+            relevance_json = json.loads(clean_llm_output(relevance_raw))
+            if relevance_json.get("is_relevant") is True:
+                relevant_facts.append(fact)
+                logger.debug(f"Fact '{fact[:50]}...' is RELEVANT.")
+            else:
+                logger.debug(f"Fact '{fact[:50]}...' is NOT relevant.")
+        except (json.JSONDecodeError, AttributeError):
+            logger.warning(f"Could not parse relevance check response: {relevance_raw}")
+
+    logger.info(f"Step 3/4: Found {len(relevant_facts)} truly relevant facts after filtering.")
+
+    if not relevant_facts:
+        logger.info("No relevant facts remained after filtering. Returning message to user.")
+        return "No relevant information found in your memory."
+
+    # Step 4: Summarization
+    logger.info("Step 4/4: Summarizing relevant facts into a coherent paragraph.")
+    prompt = fact_summarization_user_prompt_template.format(query=query, facts=json.dumps(relevant_facts))
     summary_raw = llm.run_agent_with_prompt(agents["fact_summarization"], prompt)
     summary = clean_llm_output(summary_raw)
     

@@ -21,6 +21,11 @@ def _get_base_llm_config() -> Dict[str, Any]:
     logger.debug(f"Using LLM config: model={config['model']}, server={config['model_server']}")
     return config
 
+def get_fact_relevance_agent() -> Assistant:
+    """Initializes an agent for checking if a fact is relevant to a query."""
+    logger.debug("Initializing 'FactRelevanceAgent'.")
+    return {"system_message": prompts.fact_relevance_system_prompt_template, "name": "FactRelevanceAgent"}
+
 def get_fact_summarization_agent() -> Assistant:
     """Initializes an agent for summarizing a list of facts into a paragraph."""
     logger.debug("Initializing 'FactSummarizationAgent'.")

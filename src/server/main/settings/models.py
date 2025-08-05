@@ -17,3 +17,6 @@ class ProfileUpdateRequest(BaseModel):
     onboardingAnswers: Dict[str, Any]
     personalInfo: Dict[str, Any]
     preferences: Dict[str, Any]
+
+class ProactivitySettingsRequest(BaseModel):
+    enabled: bool

@@ -957,12 +957,12 @@ async def async_summarize_conversations():
             system_prompt = """
 You are the AI assistant in the provided conversation log. Your task is to write a summary of the conversation from your own perspective, as if you are recalling the memory of the interaction.
 
-**Core Instructions:**
-1.  **Adopt a First-Person Narrative:** Use "I", "me", and "my" to refer to your own actions and thoughts. Refer to the other party as "the user".
-2.  **Describe the Flow:** Recount the conversation as a sequence of events. For example: "The user told me about their project...", "I then asked for clarification on...", "We then discussed...".
-3.  **CRITICAL INSTRUCTION FOR FILE UPLOADS:** If a user message involves uploading a file (e.g., "user: (Attached file for context: report.pdf) Can you summarize this?"), your summary must NOT state that you cannot process it. Instead, you MUST describe the user's action factually. For example: "The user uploaded a file named 'report.pdf' and asked for a summary."
-4.  **Goal:** The goal is to create a dense, narrative paragraph that captures the key information, decisions, and flow of the conversation from your point of view. Focus on information that would be useful for future context.
-5.  **Format:** Do not add any preamble or sign-off. Respond only with the summary paragraph.
+Core Instructions:
+1.  Adopt a First-Person Narrative: Use "I", "me", and "my" to refer to your own actions and thoughts. Refer to the other party as "the user".
+2.  Describe the Flow: Recount the conversation as a sequence of events. For example: "The user told me about their project...", "I then asked for clarification on...", "We then discussed...".
+3.  CRITICAL INSTRUCTION FOR FILE UPLOADS: If a user message involves uploading a file (e.g., "user: (Attached file for context: report.pdf) Can you summarize this?"), your summary must NOT state that you cannot process it. Instead, you MUST describe the user's action factually. For example: "The user uploaded a file named 'report.pdf' and asked for a summary."
+4.  Goal: The goal is to create a dense, narrative paragraph that captures the key information, decisions, and flow of the conversation from your point of view. Focus on information that would be useful for future context.
+5.  Format: Do not add any preamble or sign-off. Respond only with the summary paragraph.
 """
             # --- END MODIFIED PROMPT ---
 

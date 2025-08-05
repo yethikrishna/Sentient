@@ -25,3 +25,24 @@ export const GET = withAuth(async function GET(request, { authHeader }) {
 		return NextResponse.json({ error: error.message }, { status: 500 })
 	}
 })
+
+export const POST = withAuth(async function POST(request, { authHeader }) {
+	const backendUrl = new URL(`${appServerUrl}/api/memories/`)
+	try {
+		const body = await request.json()
+		const response = await fetch(backendUrl.toString(), {
+			method: "POST",
+			headers: { "Content-Type": "application/json", ...authHeader },
+			body: JSON.stringify(body)
+		})
+
+		const data = await response.json()
+		if (!response.ok) {
+			throw new Error(data.detail || "Failed to create memory")
+		}
+		return NextResponse.json(data, { status: response.status })
+	} catch (error) {
+		console.error("API Error in /api/memories (POST):", error)
+		return NextResponse.json({ error: error.message }, { status: 500 })
+	}
+})

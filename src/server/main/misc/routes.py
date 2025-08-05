@@ -65,6 +65,7 @@ async def save_onboarding_data_endpoint(
             "onboardingComplete": True,
             "privacyFilters": default_privacy_filters,
             "preferences": {
+                "proactivityEnabled": False
             }
         }
 

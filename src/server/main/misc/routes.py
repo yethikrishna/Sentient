@@ -106,7 +106,6 @@ async def save_onboarding_data_endpoint(
                 "timezone": "The user's timezone is {}",
                 "professional-context": "Professionally, the user has shared: {}",
                 "personal-context": "Personally, the user is interested in: {}",
-                "professional-context": "Professionally, the user has shared: {}",
             }
             onboarding_facts = []
             for key, value in onboarding_data.items():

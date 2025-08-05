@@ -18,6 +18,7 @@ from .prompts import (
     fact_analysis_user_prompt_template,
 )
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # --- Module-level state (initialized by lifespan event) ---
@@ -128,7 +129,7 @@ def _get_normalized_embedding(text: str, task_type: str) -> np.ndarray:
 
 async def search_memory(user_id: str, query: str) -> str: # noqa: E501
     """Searches memory by performing a semantic search, filtering for relevance, and summarizing results."""
-    logger.info(f"Executing search_memory for user_id='{user_id}' with query: '{query}'")
+    print(f"Executing search_memory for user_id='{user_id}' with query: '{query}'")
     pool = await db.get_db_pool()
     async with pool.acquire() as conn:
         await register_vector(conn)
@@ -147,7 +148,7 @@ async def search_memory(user_id: str, query: str) -> str: # noqa: E501
         )
     
         found_facts = [r['content'] for r in records]
-        logger.info(f"Found {len(found_facts)} potentially relevant facts from vector search.")
+        print(f"Found {found_facts} potentially relevant facts from vector search.")
 
     if not found_facts:
         logger.info("No facts found from vector search. Returning.")
@@ -169,10 +170,10 @@ async def search_memory(user_id: str, query: str) -> str: # noqa: E501
         except (json.JSONDecodeError, AttributeError):
             logger.warning(f"Could not parse relevance check response: {relevance_raw}")
 
-    logger.info(f"Step 3/4: Found {len(relevant_facts)} truly relevant facts after filtering.")
+    print(f"Step 3/4: Found {relevant_facts} truly relevant facts after filtering.")
 
     if not relevant_facts:
-        logger.info("No relevant facts remained after filtering. Returning message to user.")
+        print("No relevant facts remained after filtering. Returning message to user.")
         return "No relevant information found in your memory."
 
     # Step 4: Summarization
@@ -180,7 +181,9 @@ async def search_memory(user_id: str, query: str) -> str: # noqa: E501
     prompt = fact_summarization_user_prompt_template.format(query=query, facts=json.dumps(relevant_facts))
     summary_raw = llm.run_agent_with_prompt(agents["fact_summarization"], prompt)
     summary = clean_llm_output(summary_raw)
-    
+
+    print(f"Summary generated: {summary}")
+
     logger.info("Search complete. Returning summary.")
     return summary if isinstance(summary, str) and summary else "Could not generate a summary from the retrieved information."
 
@@ -334,14 +337,18 @@ async def _process_single_fact_cud(conn, user_id: str, fact_content: str, source
             logger.error(f"Fallback ADD failed due to analysis JSON error. Output: {analysis_cleaned}")
             return f"Failed to process fact '{fact_content}' due to an internal analysis error."
 
-async def cud_memory(user_id: str, information: str, source: Optional[str] = None) -> str:
+async def cud_memory(user_id: str, information: str, source: Optional[str] = None, username: Optional[str] = None) -> str:
     """Breaks down information into atomic facts, then for each fact, decides whether to add, update, or delete it in memory."""
     logger.info(f"Executing cud_memory for user_id='{user_id}' with source='{source}'.")
     logger.debug(f"CUD information: \"{information}\"")
-
+    
     # Step 1: Extract atomic facts from the information.
     logger.info("Step 1/N: Extracting atomic facts from the provided information.")
-    prompt = fact_extraction_user_prompt_template.format(username=user_id, paragraph=information)
+    
+    # Use the provided username for the prompt, fallback to user_id if not available.
+    name_for_prompt = username if username else user_id
+    prompt = fact_extraction_user_prompt_template.format(username=name_for_prompt, paragraph=information)
+    
     facts_raw = llm.run_agent_with_prompt(agents["fact_extraction"], prompt)
     cleaned_output = clean_llm_output(facts_raw)
     facts = []

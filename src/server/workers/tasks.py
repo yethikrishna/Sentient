@@ -124,9 +124,24 @@ def cud_memory_task(user_id: str, information: str, source: Optional[str] = None
     This runs the core memory management logic asynchronously.
     """
     logger.info(f"Celery worker received cud_memory_task for user_id: {user_id}")
+
+    # --- NEW: Fetch user's name before calling cud_memory ---
+    db_manager = MongoManager()
+    username = user_id # Default fallback
+    try:
+        user_profile = run_async(db_manager.get_user_profile(user_id))
+        if user_profile:
+            username = user_profile.get("userData", {}).get("personalInfo", {}).get("name", user_id)
+    except Exception as e:
+        logger.error(f"Failed to fetch user profile for {user_id} in cud_memory_task: {e}")
+    finally:
+        run_async(db_manager.close())
+    # --- END NEW ---
+
     initialize_embedding_model()
     initialize_agents()
-    run_async(cud_memory(user_id, information, source))
+    # Pass the fetched username to the cud_memory function
+    run_async(cud_memory(user_id, information, source, username))
 
 @celery_app.task(name="create_task_from_suggestion")
 def create_task_from_suggestion(user_id: str, suggestion_payload: Dict[str, Any], context: Optional[Dict[str, Any]] = None):

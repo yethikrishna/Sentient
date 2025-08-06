@@ -52,6 +52,8 @@ def run_agent_with_fallback(system_message: str, function_list: list, messages: 
             'model_server': OPENAI_API_BASE_URL,
             'api_key': key,
         }
+        
+        print ("RUNNING AGENT WITH FALLBACK USING SYSTEM MESSAGE:", system_message, "FUNCTION LIST:", function_list, "MESSAGES:", messages)
 
         try:
             logger.info(f"Attempting to run agent with API key #{i+1}")

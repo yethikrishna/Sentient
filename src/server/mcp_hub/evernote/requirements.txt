@@ -1,6 +1,0 @@
-fastmcp
-python-dotenv
-motor
-cryptography
-httpx
-evernote3

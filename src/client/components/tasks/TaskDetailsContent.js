@@ -43,8 +43,9 @@ const TaskChatSection = ({ task, onSendChatMessage }) => {
 				{(task.chat_history || []).map((msg, index) => (
 					<ChatBubble
 						key={index}
-						message={msg.content}
-						isUser={msg.role === "user"}
+						role={msg.role}
+						content={msg.content}
+						message={msg}
 					/>
 				))}
 				<div ref={chatEndRef} />

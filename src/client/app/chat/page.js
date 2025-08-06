@@ -138,9 +138,12 @@ export default function ChatPage() {
 			const res = await fetch("/api/chat/history?limit=50")
 			if (!res.ok) throw new Error("Failed to fetch messages")
 			const data = await res.json()
-			const fetchedMessages = data.messages || []
+			const fetchedMessages = (data.messages || []).map((m) => ({
+				...m,
+				id: m.message_id
+			}))
 			setDisplayedMessages(fetchedMessages)
-			setHasMoreMessages(fetchedMessages.length === 50)
+			setHasMoreMessages((data.messages || []).length === 50)
 		} catch (error) {
 			toast.error(error.message)
 		} finally {
@@ -240,7 +243,11 @@ export default function ChatPage() {
 				const scrollContainer = scrollContainerRef.current
 				const oldScrollHeight = scrollContainer.scrollHeight
 
-				setDisplayedMessages((prev) => [...data.messages, ...prev])
+				const olderMessages = data.messages.map((m) => ({
+					...m,
+					id: m.message_id
+				}))
+				setDisplayedMessages((prev) => [...olderMessages, ...prev])
 				setHasMoreMessages(data.messages.length === 50)
 
 				setTimeout(() => {
@@ -595,7 +602,7 @@ export default function ChatPage() {
 
 		const answerParts = []
 		const regex =
-			/(<think>[\s\S]*?<\/think>|<tool_code[^>]*>[\s\S]*?<\/tool_code>|<tool_result[^>]*>[\s\S]*?<\/tool_result>|<answer>[\s\S]*?<\/answer>)/g
+			/(<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>|<tool_code[^>]*>[\s\S]*?<\/tool_code>|<tool_result[^>]*>[\s\S]*?<\/tool_result>|<answer>[\s\S]*?<\/answer>)/g
 		let lastIndex = 0
 		let inToolCallPhase = false
 

@@ -244,7 +244,7 @@ const ChatBubble = ({
 
 		const contentParts = []
 		const regex =
-			/(<think>[\s\S]*?<\/think>|<tool_(?:code|call)[^>]*>[\s\S]*?<\/tool_code>|<tool_result[^>]*>[\s\S]*?<\/tool_result>|<answer>[\s\S]*?<\/answer>)/g
+			/(<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>|<tool_(?:code|call)[^>]*>[\s\S]*?<\/tool_code>|<tool_result[^>]*>[\s\S]*?<\/tool_result>|<answer>[\s\S]*?<\/answer>)/g
 		let lastIndex = 0
 		let inToolCallPhase = false
 
@@ -263,8 +263,8 @@ const ChatBubble = ({
 			const tag = match[0]
 			let subMatch
 
-			if ((subMatch = tag.match(/<think>([\s\S]*?)<\/think>/))) {
-				const thinkContent = subMatch[1].trim()
+			if ((subMatch = tag.match(/<think(?:ing)?>([\s\S]*?)<\/think(?:ing)?>/))) {
+				const thinkContent = subMatch[1]?.trim()
 				if (thinkContent) {
 					contentParts.push({ type: "think", content: thinkContent })
 				}
@@ -381,7 +381,7 @@ const ChatBubble = ({
 
 		const answerParts = []
 		const regex =
-			/(<think>[\s\S]*?<\/think>|<tool_code[^>]*>[\s\S]*?<\/tool_code>|<tool_result[^>]*>[\s\S]*?<\/tool_result>|<answer>[\s\S]*?<\/answer>)/g
+			/(<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>|<tool_code[^>]*>[\s\S]*?<\/tool_code>|<tool_result[^>]*>[\s\S]*?<\/tool_result>|<answer>[\s\S]*?<\/answer>)/g
 		let lastIndex = 0
 		let inToolCallPhase = false // To ignore raw text between tool_code and tool_result
 
@@ -486,14 +486,16 @@ const ChatBubble = ({
 				)}
 
 				{/* Delete button for both user and assistant */}
-				<button
-					onClick={() => onDelete(message.id)}
-					className="p-1.5 rounded-full text-neutral-400 hover:bg-neutral-700 hover:text-red-400"
-					data-tooltip-id="chat-bubble-tooltip"
-					data-tooltip-content="Delete"
-				>
-					<IconTrash size={16} />
-				</button>
+				{onDelete && (
+					<button
+						onClick={() => onDelete(message.id)}
+						className="p-1.5 rounded-full text-neutral-400 hover:bg-neutral-700 hover:text-red-400"
+						data-tooltip-id="chat-bubble-tooltip"
+						data-tooltip-content="Delete"
+					>
+						<IconTrash size={16} />
+					</button>
+				)}
 			</div>
 		</div>
 	)

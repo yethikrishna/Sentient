@@ -53,8 +53,21 @@ from main.memories.routes import router as memories_router
 from main.files.routes import router as files_router
 # FIX: Import both router and stream from voice.routes
 from main.voice.routes import router as voice_router, stream as voice_stream
-from main.voice.stt import BaseSTT, FasterWhisperSTT, ElevenLabsSTT
-from main.voice.tts import BaseTTS, ElevenLabsTTS as ElevenLabsTTSImpl, OrpheusTTS
+from main.voice.stt.base import BaseSTT
+from main.voice.stt.elevenlabs import ElevenLabsSTT
+from main.voice.tts.base import BaseTTS
+from main.voice.tts.elevenlabs import ElevenLabsTTS as ElevenLabsTTSImpl
+
+# Conditionally import heavy voice models only if they are selected
+if STT_PROVIDER == "FASTER_WHISPER":
+    from main.voice.stt.faster_whisper import FasterWhisperSTT
+else:
+    FasterWhisperSTT = None
+
+if TTS_PROVIDER == "ORPHEUS":
+    from main.voice.tts.orpheus import OrpheusTTS
+else:
+    OrpheusTTS = None
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__) 
@@ -71,7 +84,7 @@ def initialize_stt():
     logger.info(f"Initializing STT model provider: {STT_PROVIDER}")
     if STT_PROVIDER == "FASTER_WHISPER":
         try:
-            if FasterWhisperSTT:
+            if FasterWhisperSTT: # Check if the import was successful
                 stt_model_instance = FasterWhisperSTT(
                     model_size=FASTER_WHISPER_MODEL_SIZE, device=FASTER_WHISPER_DEVICE,
                     compute_type=FASTER_WHISPER_COMPUTE_TYPE

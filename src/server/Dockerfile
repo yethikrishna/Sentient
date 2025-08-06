@@ -1,18 +1,12 @@
 # Use a slim Python base image
 FROM python:3.11-slim
 
-# --- Build Arguments ---
-# These arguments are passed from docker-compose.yaml or the `docker build` command.
-ARG OPENAI_API_KEY
-ARG OPENAI_MODEL_NAME
-
-# Set environment variables
+# Set early environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
-    DEBIAN_FRONTEND=noninteractive
-# Set Ollama to listen on all interfaces within the container
-ENV OLLAMA_HOST=0.0.0.0
+    DEBIAN_FRONTEND=noninteractive \
+    OLLAMA_HOST=0.0.0.0
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -23,16 +17,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     gnupg \
     python3-pip \
-    # Add textract dependencies
     antiword \
     poppler-utils \
     tesseract-ocr \
     unrtf \
     && rm -rf /var/lib/apt/lists/*
 
-# --- Conditional Ollama Installation ---
-# This checks if the API key is set to 'ollama'. If so, install Ollama and pull the specified model.
-# This is checked during the 'docker build' process.
+# Set working directory early
+WORKDIR /app
+
+# Only copy and install Python requirements first to enable caching
+COPY requirements.txt ./
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+# Install Playwright browsers and dependencies
+RUN playwright install --with-deps
+
+# --- Build Arguments for Ollama ---
+ARG OPENAI_API_KEY
+ARG OPENAI_MODEL_NAME
+
+# Install Ollama conditionally (this layer is built later)
 RUN if [ "$OPENAI_API_KEY" = "ollama" ]; then \
     echo "Ollama API key detected. Installing Ollama..."; \
     curl -fsSL https://ollama.com/install.sh | sh; \
@@ -42,38 +48,26 @@ RUN if [ "$OPENAI_API_KEY" = "ollama" ]; then \
     echo "Ollama configuration not detected. Skipping installation."; \
     fi
 
-# Create required directories
-RUN mkdir -p /etc/supervisor/conf.d /var/log/supervisor
-
-# Remove default Nginx site configuration
-RUN rm -f /etc/nginx/sites-enabled/default
-
-# Set working directory
-WORKDIR /app
-
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
-
-# Install Playwright browsers and dependencies
-RUN playwright install --with-deps
-
-# Copy configuration files and server code
-COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-COPY nginx.conf /etc/nginx/sites-available/sentient
+# Copy project files after installing deps
 COPY . .
 
-# Fix line endings for .env and start.sh (if present)
+# Fix line endings for .env and start.sh (if they exist)
 RUN if [ -f /app/.env ]; then dos2unix /app/.env; fi \
     && dos2unix /app/start.sh \
     && chmod +x /app/start.sh
 
-# Enable custom Nginx site
-RUN ln -s /etc/nginx/sites-available/sentient /etc/nginx/sites-enabled/sentient
+# Remove default Nginx site and add custom config
+RUN rm -f /etc/nginx/sites-enabled/default \
+    && cp /etc/nginx/sites-available/sentient /etc/nginx/sites-enabled/sentient
 
-# Expose port
+# Create necessary directories
+RUN mkdir -p /etc/supervisor/conf.d /var/log/supervisor
+
+# Copy supervisord config
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Expose application port
 EXPOSE 5000
 
-# Start our processes using supervisord
+# Run app
 CMD ["/app/start.sh"]

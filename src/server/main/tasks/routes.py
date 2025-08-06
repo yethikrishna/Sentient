@@ -133,38 +133,11 @@ async def update_task(
     if 'assignee' in update_data and update_data['assignee'] == 'ai':
         if task.get('status') == 'pending': # Assuming 'pending' is the status for user-assigned tasks
             update_data['status'] = 'planning'
-            generate_plan_from_context.delay(request.taskId)
+            generate_plan_from_context.delay(request.taskId, user_id)
             logger.info(f"Task {request.taskId} reassigned to AI. Triggering planning.")
 
-    # *** NEW LOGIC: Handle plan updates within the 'runs' array ***
-    if 'plan' in update_data:
-        # The update is for the plan, so we need to target the latest run.
-        # We use dot notation with an array filter to update the nested document.
-
-        # We create a separate payload for the nested update.
-        nested_update_payload = {
-            "runs.$[run].plan": update_data['plan'],
-            "updated_at": datetime.now(timezone.utc)
-        }
-
-        # Remove the top-level 'plan' from the main update_data to avoid conflicts
-        # and to stop updating the old, now-deprecated top-level field.
-        del update_data['plan']
-
-        # Add any other top-level updates to the nested payload if needed
-        for key, value in update_data.items():
-            nested_update_payload[key] = value
-
-        result = await mongo_manager.task_collection.update_one(
-            {"task_id": request.taskId},
-            {"$set": nested_update_payload},
-            array_filters=[{"run.run_id": task["runs"][-1]["run_id"]}]
-        )
-        if result.modified_count == 0:
-             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found or no updates applied to the latest run.")
-        return {"message": "Task plan updated successfully."}
-    # *** END NEW LOGIC ***
-
+    # The plan is now a top-level field, so a simple update is sufficient.
+    # The special logic for updating a plan within a run is no longer needed.
     success = await mongo_manager.update_task(request.taskId, update_data)
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found or no updates applied.")
@@ -213,9 +186,28 @@ async def task_action(
         if not task:
             raise HTTPException(status_code=400, detail="Failed to execute task immediately.")
 
-        # Trigger the Celery task
-        execute_task_plan.delay(request.taskId, user_id)
+        # Create a new run object before dispatching
+        now = datetime.now(timezone.utc)
+        new_run = {
+            "run_id": str(uuid.uuid4()),
+            "status": "processing", # Set run status immediately
+            "created_at": now,
+            "execution_start_time": now
+        }
 
+        # Update the task in the DB with the new run and set top-level status
+        await mongo_manager.task_collection.update_one(
+            {"task_id": request.taskId},
+            {
+                "$push": {"runs": new_run},
+                "$set": {
+                    "status": "processing",
+                    "last_execution_at": now
+                }
+            }
+        )
+        # Trigger the Celery task with the new run_id
+        execute_task_plan.delay(request.taskId, user_id, new_run['run_id'])
         return JSONResponse(content={"message": "Task execution has been initiated."})
     else:
         raise HTTPException(status_code=400, detail="Invalid task action.")
@@ -286,76 +278,55 @@ async def approve_task(
     if not task_doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found or user does not have permission.")
 
-    if not task_doc.get("runs"):
-        raise HTTPException(status_code=500, detail="Task has no runs to approve.")
-
-    # Target the latest run for status updates
-    latest_run_id = task_doc["runs"][-1]["run_id"]
+    if not task_doc.get("plan"):
+        raise HTTPException(status_code=500, detail="Task has no plan to approve.")
 
     update_data = {}
     schedule_data = task_doc.get("schedule") or {}
 
     if schedule_data.get("type") == "recurring":
-        # The schedule object should contain the user's timezone, added when the task was created/updated.
+        # Activate the task. The scheduler will create runs.
         next_run, _ = calculate_next_run(schedule_data)
         if next_run:
             update_data["next_execution_at"] = next_run
             update_data["status"] = "active"
             update_data["enabled"] = True
-            update_data["runs.$[run].status"] = "pending"
         else:
             update_data["status"] = "error"
             update_data["error"] = "Could not calculate next run time for recurring task."
-            update_data["runs.$[run].status"] = "error"
     elif schedule_data.get("type") == "triggered":
-        # This is a workflow that runs on an event. Activating it means it's now listening.
+        # Activate the task. The trigger poller will create runs.
         update_data["status"] = "active"
         update_data["enabled"] = True
-        update_data["runs.$[run].status"] = "pending" # The run is pending a trigger
-        # No next_execution_at for triggered tasks as they are event-driven
         logger.info(f"Approving triggered task {task_id}. Setting status to 'active'.")
-    elif schedule_data.get("type") == "once" and schedule_data.get("run_at"):
-        run_at_time_str = schedule_data.get("run_at")
-        # Append :00 if seconds are missing for robust parsing
-        if len(run_at_time_str) == 16: # Format is YYYY-MM-DDTHH:MM
-            run_at_time_str += ":00"
-        user_timezone_str = schedule_data.get("timezone", "UTC")
-        try:
-            user_tz = ZoneInfo(user_timezone_str)
-        except ZoneInfoNotFoundError:
-            logger.warning(f"Invalid timezone '{user_timezone_str}' for task {task_id}. Defaulting to UTC.")
-            user_tz = ZoneInfo("UTC")
-
-        naive_run_at_time = datetime.fromisoformat(run_at_time_str)
-        utc_run_at_time = naive_run_at_time.replace(tzinfo=user_tz).astimezone(timezone.utc)
-
-        if utc_run_at_time > datetime.now(timezone.utc):
-            update_data["next_execution_at"] = utc_run_at_time
-            update_data["status"] = "pending"
-            update_data["runs.$[run].status"] = "pending"
+    else: # One-off task
+        update_data["status"] = "pending"
+        run_at_time = None
+        if schedule_data.get("type") == "once" and schedule_data.get("run_at"):
+            # This logic to parse local time to UTC is important
+            run_at_time_str = schedule_data.get("run_at")
+            if len(run_at_time_str) == 16: run_at_time_str += ":00"
+            user_timezone_str = schedule_data.get("timezone", "UTC")
+            try:
+                user_tz = ZoneInfo(user_timezone_str)
+            except ZoneInfoNotFoundError:
+                user_tz = ZoneInfo("UTC")
+            naive_run_at_time = datetime.fromisoformat(run_at_time_str)
+            utc_run_at_time = naive_run_at_time.replace(tzinfo=user_tz).astimezone(timezone.utc)
+            run_at_time = utc_run_at_time
+        
+        # If scheduled in the future, set next_execution_at. Otherwise, it will be null and run_due_tasks will pick it up immediately.
+        if run_at_time and run_at_time > datetime.now(timezone.utc):
+            update_data["next_execution_at"] = run_at_time
         else:
-            # Task is due now or in the past, execute immediately and update status
-            update_data["status"] = "processing"
-            update_data["runs.$[run].status"] = "processing"
-            execute_task_plan.delay(task_id, user_id)
-    else: # Default case: not scheduled, run immediately
-        update_data["status"] = "processing"
-        update_data["runs.$[run].status"] = "processing"
-        execute_task_plan.delay(task_id, user_id)
+            update_data["next_execution_at"] = datetime.now(timezone.utc) # Set to now to be picked up by next scheduler run
     
     if update_data:
-        # Use a direct update with array_filters to target the specific run's status
-        result = await mongo_manager.task_collection.update_one(
-            {"task_id": task_id},
-            {"$set": update_data},
-            array_filters=[{"run.run_id": latest_run_id}]
-        )
-        if result.modified_count == 0:
-            # This might happen if the task was already approved in another tab, which is not a critical error.
-            # Log it for debugging but don't fail the request.
-            logger.warning(f"Approve task for task_id {task_id} resulted in 0 modified documents. It might have been actioned already.")
+        success = await mongo_manager.update_task(task_id, update_data)
+        if not success:
+            logger.warning(f"Approve task for {task_id} resulted in 0 modified documents.")
             
-    return JSONResponse(content={"message": "Task approved and scheduled/executed."})
+    return JSONResponse(content={"message": "Task approved and scheduled."})
 
 @router.post("/task-chat", status_code=status.HTTP_200_OK)
 async def task_chat(
@@ -371,20 +342,6 @@ async def task_chat(
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
 
-    # --- Migration logic for older tasks ---
-    if "runs" not in task:
-        # First change request on an old task, migrate top-level fields to the first run
-        first_run = {
-            "run_id": str(uuid.uuid4()),
-            "status": "completed",
-            "plan": task.get("plan", []),
-            "clarifying_questions": task.get("clarifying_questions", []),
-            "progress_updates": task.get("progress_updates", []),
-            "result": task.get("result"),
-            "error": task.get("error")
-        }
-        await mongo_manager.update_task(task_id, {"runs": [first_run]})
-
     # Append user message to top-level chat history
     new_message = {
         "role": "user",
@@ -392,16 +349,15 @@ async def task_chat(
         "timestamp": datetime.now(timezone.utc)
     }
     
-    # Create a new run for the change request
-    new_run = {
-        "run_id": str(uuid.uuid4()),
-        "status": "planning",
-        "prompt": request.message # Store the prompt that initiated this run
-    }
-
+    # Put the task back into planning state for re-evaluation.
+    # The planner will see the chat history and the original context.
+    # It will NOT create a new run. It will overwrite the top-level plan.
     await mongo_manager.task_collection.update_one(
         {"task_id": task_id},
-        {"$set": {"status": "planning"}, "$push": {"chat_history": new_message, "runs": new_run}}
+        {
+            "$set": {"status": "planning"},
+            "$push": {"chat_history": new_message}
+        }
     )
 
     # Re-trigger the planner for the same task

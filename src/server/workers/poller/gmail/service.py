@@ -124,7 +124,7 @@ class GmailPollingService:
                     logger.info(f"Email {email['id']} for user {user_id} was discarded by the main pre-filter.")
                     continue
 
-                if not await self.db_manager.is_item_processed(user_id, self.service_name, email_item_id): # noqa
+                if not await self.db_manager.is_item_processed(user_id, self.service_name, email_item_id, mode): # noqa
                     from workers.tasks import cud_memory_task, proactive_reasoning_pipeline, execute_triggered_task # noqa
 
                     if mode == 'proactivity':
@@ -149,7 +149,7 @@ class GmailPollingService:
                             event_type="new_email", event_data=email
                         )
 
-                    await self.db_manager.log_processed_item(user_id, self.service_name, email_item_id)
+                    await self.db_manager.log_processed_item(user_id, self.service_name, email_item_id, mode)
                     processed_count += 1
 
             if processed_count > 0:

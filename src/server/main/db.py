@@ -58,7 +58,7 @@ class MongoManager:
             self.polling_state_collection: [
                 IndexModel([("user_id", ASCENDING), ("service_name", ASCENDING), ("poll_type", ASCENDING)], unique=True, name="polling_user_service_type_unique_idx"),
                 IndexModel([
-                    ("is_enabled", ASCENDING), ("next_scheduled_poll_time", ASCENDING), 
+                    ("is_enabled", ASCENDING), ("next_scheduled_poll_time", ASCENDING),
                     ("is_currently_polling", ASCENDING), ("error_backoff_until_timestamp", ASCENDING)
                 ], name="polling_due_tasks_idx"),
                 IndexModel([("is_currently_polling", ASCENDING), ("last_attempted_poll_timestamp", ASCENDING)], name="polling_stale_locks_idx")
@@ -261,6 +261,14 @@ class MongoManager:
         )
         return result.matched_count > 0 or result.upserted_id is not None
 
+    async def delete_polling_state_by_service(self, user_id: str, service_name: str) -> int:
+        """Deletes all polling state documents for a user and a specific service."""
+        if not user_id or not service_name:
+            return 0
+        query = {"user_id": user_id, "service_name": service_name}
+        result = await self.polling_state_collection.delete_many(query)
+        return result.deleted_count
+
     # --- Task Methods ---
     async def add_task(self, user_id: str, task_data: dict) -> str:
         """Creates a new task document and returns its ID."""
@@ -274,17 +282,6 @@ class MongoManager:
             except json.JSONDecodeError:
                 schedule = None
 
-        initial_run = {
-            "run_id": str(uuid.uuid4()),
-            "status": "planning",
-            "plan": [],
-            "clarifying_questions": [],
-            "progress_updates": [],
-            "result": None,
-            "error": None,
-            "prompt": task_data.get("description") or task_data.get("name")
-        }
-
         task_doc = {
             "task_id": task_id,
             "user_id": user_id,
@@ -293,7 +290,8 @@ class MongoManager:
             "status": "planning",
             "assignee": "ai",
             "priority": task_data.get("priority", 1),
-            "runs": [initial_run],
+            "plan": [],
+            "runs": [],
             "schedule": schedule,
             "enabled": True,
             "original_context": task_data.get("original_context", {"source": "manual_creation"}),
@@ -332,31 +330,23 @@ class MongoManager:
         if not task:
             return False
 
-        runs = task.get("runs", [])
-        if not runs:
-            # Fallback for older task structure without runs
-            current_questions = task.get("clarifying_questions", [])
-            for answer_data in answers:
-                for question in current_questions:
-                    if question.get("question_id") == answer_data.get("question_id"):
-                        question["answer"] = answer_data.get("answer_text")
-            return await self.update_task(task_id, {"clarifying_questions": current_questions})
+        current_questions = task.get("clarifying_questions", [])
+        if not current_questions:
+            # Fallback for legacy tasks where questions might be in the last run
+            if task.get("runs"):
+                current_questions = task["runs"][-1].get("clarifying_questions", [])
+            if not current_questions:
+                logger.warning(f"add_answers_to_task called for task {task_id}, but no questions found.")
+                return False # Nothing to update
 
-        # New logic for tasks with runs
-        latest_run = runs[-1]
-        if "clarifying_questions" not in latest_run:
-            return False # Nothing to update
-
-        current_questions = latest_run["clarifying_questions"]
         answer_map = {ans.get("question_id"): ans.get("answer_text") for ans in answers}
 
-        for answer_data in answers:
-            for question in current_questions:
-                q_id = question.get("question_id")
-                if q_id in answer_map:
-                    question["answer"] = answer_map[q_id]
-
-        return await self.update_task(task_id, {"runs": runs})
+        for question in current_questions:
+            q_id = question.get("question_id")
+            if q_id in answer_map:
+                question["answer"] = answer_map[q_id]
+        # Always write back to the top-level field for consistency
+        return await self.update_task(task_id, {"clarifying_questions": current_questions})
 
     async def delete_task(self, task_id: str, user_id: str) -> str:
         """Deletes a task."""
@@ -367,6 +357,18 @@ class MongoManager:
         """Declines a task by setting its status to 'declined'."""
         success = await self.update_task(task_id, {"status": "declined"})
         return "Task declined." if success else None
+
+    async def delete_tasks_by_tool(self, user_id: str, tool_name: str) -> int:
+        """
+        Deletes all tasks for a user that have a plan step using a specific tool.
+        This is used when an integration is disconnected.
+        """
+        if not user_id or not tool_name:
+            return 0
+        query = {"user_id": user_id, "runs.plan.tool": tool_name}
+        result = await self.task_collection.delete_many(query)
+        logger.info(f"Deleted {result.deleted_count} tasks for user {user_id} using tool '{tool_name}'.")
+        return result.deleted_count
 
     async def cancel_latest_run(self, task_id: str) -> bool:
         """Pops the last run from the array and reverts the task status to completed."""

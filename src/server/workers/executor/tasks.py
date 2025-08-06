@@ -1,4 +1,3 @@
-
 ### `src\server\workers\executor\tasks.py`
 
 import os
@@ -158,18 +157,18 @@ def parse_agent_string_to_updates(content: str) -> List[Dict[str, Any]]:
     return updates
 
 @celery_app.task(name="execute_task_plan")
-def execute_task_plan(task_id: str, user_id: str):
-    logger.info(f"Celery worker received task 'execute_task_plan' for task_id: {task_id}, user_id: {user_id}")
+def execute_task_plan(task_id: str, user_id: str, run_id: str):
+    logger.info(f"Celery worker received task 'execute_task_plan' for task_id: {task_id}, run_id: {run_id}")
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
     
-    return loop.run_until_complete(async_execute_task_plan(task_id, user_id))
+    return loop.run_until_complete(async_execute_task_plan(task_id, user_id, run_id))
 
 
-async def async_execute_task_plan(task_id: str, user_id: str):
+async def async_execute_task_plan(task_id: str, user_id: str, run_id: str):
     db = get_db_client()
     task = await db.tasks.find_one({"task_id": task_id, "user_id": user_id})
 
@@ -177,12 +176,11 @@ async def async_execute_task_plan(task_id: str, user_id: str):
         logger.error(f"Executor: Task {task_id} not found for user {user_id}.")
         return {"status": "error", "message": "Task not found."}
 
-    if not task.get("runs"):
-        logger.error(f"Executor: Task {task_id} has no runs. Aborting.")
-        return {"status": "error", "message": "Task has no execution runs."}
-
-    latest_run = task["runs"][-1]
-    run_id = latest_run["run_id"]
+    # Find the specific run to execute
+    current_run = next((r for r in task.get("runs", []) if r["run_id"] == run_id), None)
+    if not current_run:
+        logger.error(f"Executor: Run {run_id} not found for task {task_id}. Aborting.")
+        return {"status": "error", "message": f"Run ID {run_id} not found."}
 
     original_context_data = task.get("original_context", {})
     block_id = None
@@ -203,7 +201,7 @@ async def async_execute_task_plan(task_id: str, user_id: str):
     else:
         user_location = user_location_raw
 
-    required_tools_from_plan = {step['tool'] for step in latest_run.get('plan', [])}
+    required_tools_from_plan = {step['tool'] for step in task.get('plan', [])}
     logger.info(f"Task {task_id}: Plan requires tools: {required_tools_from_plan}")
     
     user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
@@ -248,7 +246,7 @@ async def async_execute_task_plan(task_id: str, user_id: str):
         f"Your task ID is '{task_id}' and the current run ID is '{run_id}'.\n\n"
         f"The original context that triggered this plan is:\n---BEGIN CONTEXT---\n{original_context_str}\n---END CONTEXT---\n\n"
         f"**Primary Objective:** '{plan_description}'\n\n"
-        f"**The Plan to Execute:**\n" + "\n".join([f"- Step {i+1}: Use the '{step['tool']}' tool to '{step['description']}'" for i, step in enumerate(latest_run.get("plan", []))]) + "\n\n" # noqa
+        f"**The Plan to Execute:**\n" + "\n".join([f"- Step {i+1}: Use the '{step['tool']}' tool to '{step['description']}'" for i, step in enumerate(task.get("plan", []))]) + "\n\n" # noqa
         "**EXECUTION STRATEGY:**\n"
         "1.  **Execution Flow:** You MUST start by executing the first step of the plan. Do not summarize the plan or provide a final answer until you have executed all steps. Follow the plan sequentially.\n"
         "2.  **Map Plan to Tools:** The plan provides a high-level tool name (e.g., 'gmail', 'gdrive'). You must map this to the specific functions available to you (e.g., `gmail_server-sendEmail`, `gdrive_server-gdrive_search`).\n"
@@ -299,8 +297,30 @@ async def async_execute_task_plan(task_id: str, user_id: str):
         final_content = final_answer_content or "Task completed. Check the execution log for details."
         logger.info(f"Task {task_id}: Final result: {final_content}")
         await add_progress_update(db, task_id, run_id, user_id, {"type": "info", "content": "Execution script finished."}, block_id=block_id)
-        capture_event(user_id, "task_execution_succeeded", {"task_id": task_id})
+        capture_event(user_id, "task_execution_succeeded", {"task_id": task_id, "run_id": run_id})
         await update_task_run_status(db, task_id, run_id, "completed", user_id, details={"result": final_content}, block_id=block_id)
+
+        # --- NEW RESCHEDULING LOGIC ---
+        from workers.tasks import calculate_next_run
+        schedule_type = task.get('schedule', {}).get('type')
+        if schedule_type == 'recurring':
+            next_run_time, _ = calculate_next_run(task['schedule'], last_run=datetime.datetime.now(datetime.timezone.utc))
+            await db.tasks.update_one(
+                {"_id": task["_id"]},
+                {"$set": {"status": "active", "next_execution_at": next_run_time}}
+            )
+            logger.info(f"Executor: Rescheduled recurring task {task_id} for {next_run_time}.")
+        elif schedule_type == 'triggered':
+            await db.tasks.update_one(
+                {"_id": task["_id"]},
+                {"$set": {"status": "active", "next_execution_at": None}}
+            )
+            logger.info(f"Executor: Reset triggered task {task_id} to 'active' state.")
+        else: # One-off task
+            await db.tasks.update_one(
+                {"_id": task["_id"]},
+                {"$set": {"status": "completed", "next_execution_at": None}}
+            )
 
         return {"status": "success", "result": final_content}
 
@@ -309,6 +329,30 @@ async def async_execute_task_plan(task_id: str, user_id: str):
         logger.error(f"Task {task_id}: {error_message}", exc_info=True)
         await add_progress_update(db, task_id, run_id, user_id, {"type": "error", "content": f"An error occurred during execution: {error_message}"}, block_id=block_id)
         await update_task_run_status(db, task_id, run_id, "error", user_id, details={"error": error_message}, block_id=block_id)
+        
+        # Also update parent task status on failure
+        from workers.tasks import calculate_next_run
+        schedule_type = task.get('schedule', {}).get('type')
+        if schedule_type == 'recurring':
+            # It failed, but we should still reschedule it. The failure is logged in the run.
+            next_run_time, _ = calculate_next_run(task['schedule'], last_run=datetime.datetime.now(datetime.timezone.utc))
+            await db.tasks.update_one(
+                {"_id": task["_id"]},
+                {"$set": {"status": "active", "next_execution_at": next_run_time}}
+            )
+        elif schedule_type == 'triggered':
+            # If a triggered run fails, it should also go back to 'active' to wait for the next trigger.
+            # The error is logged in the specific run.
+            await db.tasks.update_one(
+                {"_id": task["_id"]},
+                {"$set": {"status": "active", "next_execution_at": None}}
+            )
+            logger.info(f"Executor: Reset failed triggered task {task_id} to 'active' state.")
+        else:
+            await db.tasks.update_one(
+                {"_id": task["_id"]},
+                {"$set": {"status": "error", "next_execution_at": None}}
+            )
         return {"status": "error", "message": error_message}
 
 @celery_app.task(name="aggregate_results_callback")

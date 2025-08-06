@@ -10,6 +10,7 @@ import toast from "react-hot-toast"
 import { IconLoader } from "@tabler/icons-react"
 
 // New component for handling clarification questions
+// New component for handling clarification questions
 const QnaSection = ({
 	questions,
 	task,
@@ -104,16 +105,14 @@ const QnaSection = ({
 	)
 }
 
-const RecurringTaskDetails = ({ task, onAnswerClarifications }) => {
+const TriggeredTaskDetails = ({ task, onAnswerClarifications }) => {
 	if (!task) return null
 
 	const statusInfo = taskStatusColors[task.status] || taskStatusColors.default
 	const priorityInfo = priorityMap[task.priority] || priorityMap.default
 	const schedule = task.schedule || {}
-	const scheduleText =
-		schedule.frequency === "daily"
-			? `Recurring: Daily at ${schedule.time}`
-			: `Recurring: Weekly on ${schedule.days?.join(", ") || "selected days"} at ${schedule.time}`
+	const filterText = JSON.stringify(schedule.filter || {})
+	const scheduleText = `Triggered: On ${schedule.source} event '${schedule.event}' matching ${filterText}`
 
 	return (
 		<div className="space-y-6">
@@ -248,47 +247,6 @@ const RecurringTaskDetails = ({ task, onAnswerClarifications }) => {
 										defaultOpen={index === 0}
 									>
 										<div className="bg-neutral-800/50 p-4 rounded-lg border border-neutral-700/50 space-y-4 mt-2">
-											{run.plan &&
-												run.plan.length > 0 && (
-													<div>
-														<h4 className="font-semibold text-neutral-300 mb-2">
-															Plan
-														</h4>
-														<div className="space-y-2">
-															{run.plan.map(
-																(
-																	step,
-																	index
-																) => (
-																	<div
-																		key={
-																			index
-																		}
-																		className="flex items-start gap-3 p-3 bg-neutral-900/50 rounded-lg border border-neutral-700/50"
-																	>
-																		<div className="flex-shrink-0 w-5 h-5 bg-neutral-700 rounded-full flex items-center justify-center text-xs font-bold">
-																			{index +
-																				1}
-																		</div>
-																		<div>
-																			<p className="text-sm font-medium text-neutral-100">
-																				{
-																					step.tool
-																				}
-																			</p>
-																			<p className="text-sm text-neutral-400">
-																				{
-																					step.description
-																				}
-																			</p>
-																		</div>
-																	</div>
-																)
-															)}
-														</div>
-													</div>
-												)}
-
 											{run.progress_updates &&
 											run.progress_updates.length > 0 ? (
 												run.progress_updates.map(
@@ -316,5 +274,4 @@ const RecurringTaskDetails = ({ task, onAnswerClarifications }) => {
 	)
 }
 
-export default RecurringTaskDetails
-
+export default TriggeredTaskDetails

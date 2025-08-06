@@ -112,7 +112,7 @@ class GCalendarPollingService:
                     logger.info(f"Event {event_id} for user {user_id} was discarded by the main pre-filter.")
                     continue
 
-                if not await self.db_manager.is_item_processed(user_id, self.service_name, event_id):
+                if not await self.db_manager.is_item_processed(user_id, self.service_name, event_id, mode):
                     from workers.tasks import cud_memory_task, proactive_reasoning_pipeline, execute_triggered_task
 
                     if mode == 'proactivity':
@@ -136,7 +136,7 @@ class GCalendarPollingService:
                             user_id=user_id, source=self.service_name,
                             event_type="new_event", event_data=event
                         )
-                    await self.db_manager.log_processed_item(user_id, self.service_name, event_id)
+                    await self.db_manager.log_processed_item(user_id, self.service_name, event_id, mode)
                     processed_count += 1
 
             if processed_count > 0:

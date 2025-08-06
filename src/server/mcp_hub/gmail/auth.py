@@ -11,7 +11,7 @@ from googleapiclient.discovery import build, Resource
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
 
-from typing import Optional
+from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 
 # Load .env file for 'dev-local' environment.

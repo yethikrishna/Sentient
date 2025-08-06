@@ -64,15 +64,60 @@ class PollerMongoManager:
 
     async def get_due_polling_tasks_for_service(self, service_name: str, poll_type: str) -> List[Dict[str, Any]]:
         now_utc = datetime.datetime.now(timezone.utc)
-        query = {
-            "service_name": service_name, "poll_type": poll_type,
-            "is_enabled": True,
-            "next_scheduled_poll_time": {"$lte": now_utc},
-            "is_currently_polling": False,
-            "$or": [{"error_backoff_until_timestamp": None}, {"error_backoff_until_timestamp": {"$lte": now_utc}}]
-        }
-        cursor = self.polling_state_collection.find(query).sort("next_scheduled_poll_time", ASCENDING)
-        return await cursor.to_list(length=None)
+
+        # For 'triggers', we only want to poll users who have active triggered tasks.
+        if poll_type == 'triggers':
+            pipeline = [
+                # Stage 1: Find due polling states
+                {
+                    "$match": {
+                        "service_name": service_name,
+                        "poll_type": poll_type,
+                        "is_enabled": True,
+                        "next_scheduled_poll_time": {"$lte": now_utc},
+                        "is_currently_polling": False,
+                        "$or": [
+                            {"error_backoff_until_timestamp": None},
+                            {"error_backoff_until_timestamp": {"$lte": now_utc}}
+                        ]
+                    }
+                },
+                # Stage 2: Join with tasks collection to check for active triggers
+                {
+                    "$lookup": {
+                        "from": "tasks", # The name of the tasks collection
+                        "localField": "user_id",
+                        "foreignField": "user_id",
+                        "as": "user_tasks"
+                    }
+                },
+                # Stage 3: Filter for users who have at least one active triggered task for this specific service
+                {
+                    "$match": {
+                        "user_tasks": {
+                            "$elemMatch": {
+                                "status": "active",
+                                "schedule.type": "triggered",
+                                "schedule.source": service_name
+                            }
+                        }
+                    }
+                },
+                {"$sort": {"next_scheduled_poll_time": ASCENDING}}
+            ]
+            cursor = self.polling_state_collection.aggregate(pipeline)
+            return await cursor.to_list(length=None)
+        else:
+            # Original logic for other poll types like 'proactivity'
+            query = {
+                "service_name": service_name, "poll_type": poll_type,
+                "is_enabled": True,
+                "next_scheduled_poll_time": {"$lte": now_utc},
+                "is_currently_polling": False,
+                "$or": [{"error_backoff_until_timestamp": None}, {"error_backoff_until_timestamp": {"$lte": now_utc}}]
+            }
+            cursor = self.polling_state_collection.find(query).sort("next_scheduled_poll_time", ASCENDING)
+            return await cursor.to_list(length=None)
 
     async def set_polling_status_and_get(self, user_id: str, service_name: str, poll_type: str) -> Optional[Dict[str, Any]]:
         now_utc = datetime.datetime.now(timezone.utc)
@@ -95,24 +140,33 @@ class PollerMongoManager:
         if result.modified_count > 0:
             print(f"[{datetime.datetime.now()}] [GmailPoller_MongoManager] Reset {result.modified_count} stale GMAIL polling locks.")
 
-
-    async def log_processed_item(self, user_id: str, service_name: str, item_id: str) -> bool:
+    async def log_processed_item(self, user_id: str, service_name: str, item_id: str, processor: str) -> bool:
+        """Logs that an item has been processed by a specific system (e.g., 'proactivity', 'triggers')."""
         try:
-            await self.processed_items_collection.insert_one({
-                "user_id": user_id, "service_name": service_name, "item_id": item_id,
-                "processing_timestamp": datetime.datetime.now(timezone.utc)
-            })
+            await self.processed_items_collection.update_one(
+                {"user_id": user_id, "service_name": service_name, "item_id": item_id},
+                {
+                    "$addToSet": {"processed_by": processor},
+                    "$setOnInsert": {
+                        "user_id": user_id, "service_name": service_name, "item_id": item_id,
+                        "processing_timestamp": datetime.datetime.now(timezone.utc)
+                    }
+                },
+                upsert=True
+            )
             return True
-        except DuplicateKeyError: return True # Already processed
         except Exception as e:
-            print(f"[{datetime.datetime.now()}] [GmailPoller_DB_ERROR] Logging processed item {user_id}/{service_name}/{item_id}: {e}")
+            print(f"[{datetime.datetime.now()}] [GmailPoller_DB_ERROR] Logging processed item {user_id}/{service_name}/{item_id} by {processor}: {e}")
             return False
 
-    async def is_item_processed(self, user_id: str, service_name: str, item_id: str) -> bool:
-        count = await self.processed_items_collection.count_documents(
+    async def is_item_processed(self, user_id: str, service_name: str, item_id: str, processor: str) -> bool:
+        """Checks if an item has already been processed by a specific system."""
+        doc = await self.processed_items_collection.find_one(
             {"user_id": user_id, "service_name": service_name, "item_id": item_id}
         )
-        return count > 0
+        if doc and processor in doc.get("processed_by", []):
+            return True
+        return False
 
     async def close(self):
         if self.client:

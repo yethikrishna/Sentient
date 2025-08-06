@@ -13,11 +13,12 @@ import {
 	IconCircleCheck,
 	IconClipboardList
 } from "@tabler/icons-react"
-import TaskDetailsContent from "./TaskDetailsContent"
 import { getDisplayName } from "@utils/taskUtils"
 import RecurringTaskDetails from "./RecurringTaskDetails"
 import ConnectToolButton from "./ConnectToolButton"
 import { cn } from "@utils/cn"
+import TaskDetailsContent from "./TaskDetailsContent"
+import TriggeredTaskDetails from "./TriggeredTaskDetails"
 
 const TaskDetailsPanel = ({
 	task,
@@ -35,9 +36,7 @@ const TaskDetailsPanel = ({
 }) => {
 	const [isEditing, setIsEditing] = useState(false)
 	const [editableTask, setEditableTask] = useState(task)
-	const isRecurringOrTriggered =
-		task?.schedule?.type === "recurring" ||
-		task?.schedule?.type === "triggered"
+	const scheduleType = task?.schedule?.type
 
 	const missingTools = useMemo(() => {
 		if (!task || !integrations) {
@@ -191,7 +190,7 @@ const TaskDetailsPanel = ({
 					{/* --- CONTENT --- */}
 					<main className="flex-1 overflow-y-auto custom-scrollbar p-6">
 						{isEditing ? (
-							<TaskDetailsContent
+							<TaskDetailsContent // Use the one-time editor for all types for now
 								task={task}
 								isEditing={isEditing}
 								editableTask={editableTask}
@@ -205,8 +204,13 @@ const TaskDetailsPanel = ({
 								onAnswerClarifications={onAnswerClarifications}
 								onSendChatMessage={onSendChatMessage}
 							/>
-						) : isRecurringOrTriggered ? (
+						) : scheduleType === "recurring" ? (
 							<RecurringTaskDetails
+								task={task}
+								onAnswerClarifications={onAnswerClarifications}
+							/>
+						) : scheduleType === "triggered" ? (
+							<TriggeredTaskDetails
 								task={task}
 								onAnswerClarifications={onAnswerClarifications}
 							/>

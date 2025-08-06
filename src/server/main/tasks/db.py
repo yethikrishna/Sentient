@@ -61,9 +61,12 @@ class TaskDatabase:
         logger.info(f"Created new manual task {task_id} for user {user_id} with status 'planning'.")
         return task_doc
 
-    async def get_task(self, task_id: str) -> Optional[Dict]:
-        """Fetches a single task by its ID."""
-        return await self.task_collection.find_one({"task_id": task_id})
+    async def get_task(self, task_id: str, user_id: Optional[str] = None) -> Optional[Dict]:
+        """Fetches a single task by its ID, optionally filtered by user_id."""
+        query = {"task_id": task_id}
+        if user_id:
+            query["user_id"] = user_id
+        return await self.task_collection.find_one(query)
 
     async def get_tasks_for_user(self, user_id: str, status: Optional[str] = None) -> List[Dict]:
         """Fetches all tasks for a given user, optionally filtered by status."""
@@ -86,16 +89,26 @@ class TaskDatabase:
 
         return result.modified_count > 0 or result.upserted_id is not None
 
-    async def add_answers_to_task(self, task_id: str, answers: List[Dict], user_id: str) -> bool:
-        """Finds a task and updates its clarifying questions with user answers."""
-        task = await self.get_task(task_id)
-        if not task or task.get("user_id") != user_id:
+    async def add_answers_to_task(self, task_id: str, answers: List[Dict], user_id: str) -> bool: # noqa
+        """Finds a task and updates its top-level clarifying questions with user answers."""
+        task = await self.get_task(task_id, user_id)
+        if not task:
             return False
 
         current_questions = task.get("clarifying_questions", [])
-        for answer_data in answers:
-            for question in current_questions:
-                if question.get("question_id") == answer_data.get("question_id"):
-                    question["answer"] = answer_data.get("answer_text")
-                    break
+        if not current_questions:
+            # Fallback for legacy tasks where questions might be in the last run
+            if task.get("runs"):
+                current_questions = task["runs"][-1].get("clarifying_questions", [])
+            if not current_questions:
+                logger.warning(f"add_answers_to_task called for task {task_id}, but no questions found.")
+                return False # Nothing to update
+
+        answer_map = {ans.get("question_id"): ans.get("answer_text") for ans in answers}
+
+        for question in current_questions:
+            q_id = question.get("question_id")
+            if q_id in answer_map:
+                question["answer"] = answer_map[q_id]
+        # Always write back to the top-level field for consistency
         return await self.update_task(task_id, {"clarifying_questions": current_questions})

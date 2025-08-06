@@ -413,8 +413,8 @@ async def async_generate_plan(task_id: str, user_id: str):
             logger.error(f"Cannot generate plan: Task {task_id} not found.")
             return
 
-        if not task.get("runs"):
-             logger.error(f"Cannot generate plan: Task {task_id} has no 'runs' array.")
+        if task.get("runs") is None:
+             logger.error(f"Cannot generate plan: Task {task_id} is malformed (missing 'runs' array).")
              await db_manager.update_task_status(task_id, "error", {"error": "Task data is malformed: missing 'runs' array."})
              return
 
@@ -426,9 +426,6 @@ async def async_generate_plan(task_id: str, user_id: str):
         if task.get("status") not in plannable_statuses:
              logger.warning(f"Task {task_id} is not in a plannable state (current: {task.get('status')}). Aborting plan generation.")
              return
-
-        latest_run = task["runs"][-1]
-        run_id = latest_run["run_id"]
 
         # Trust the user_id passed to the Celery task.
         # If the document is missing it for some reason, log a warning and proceed.
@@ -447,19 +444,16 @@ async def async_generate_plan(task_id: str, user_id: str):
 
         task_description = task.get("description", "")
 
-        # If the task is in the 'planning' state, check if clarification is needed.
-        if latest_run.get("status") == "planning":
+        if task.get("status") == "planning":
             questions_list = await get_clarifying_questions(user_id, task_description, task.get("topics", []), original_context, db_manager) # noqa
             if questions_list and isinstance(questions_list, list) and len(questions_list) > 0:
                 logger.info(f"Task {task_id}: Needs clarification. Questions: {questions_list}")
                 questions_for_db = [{"question_id": str(uuid.uuid4()), "text": q.strip(), "answer": None} for q in questions_list]
-
+                # Store questions at the top level, not in the run.
                 await db_manager.tasks_collection.update_one(
                     {"task_id": task_id},
-                    {"$set": {
-                        "status": "clarification_pending", "runs.$[run].status": "clarification_pending", "runs.$[run].clarifying_questions": questions_for_db
-                    }},
-                    array_filters=[{"run.run_id": run_id}])
+                    {"$set": {"status": "clarification_pending", "clarifying_questions": questions_for_db}}
+                )
                 await notify_user(user_id, f"I have a few questions to help me plan: '{task_description[:50]}...'", task_id, notification_type="taskNeedsApproval")
                 capture_event(user_id, "clarification_needed", {"task_id": task_id, "question_count": len(questions_list)})
                 logger.info(f"Task {task_id} moved to 'clarification_pending'.")
@@ -499,13 +493,15 @@ async def async_generate_plan(task_id: str, user_id: str):
 
         current_user_time = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
 
-        retrieved_context = latest_run.get("found_context", {}) # This field doesn't exist yet, but is good for future use
+        # Define latest_run safely before it's used. For new tasks, runs will be empty.
+        latest_run = task["runs"][-1] if task.get("runs") else {}
+        retrieved_context = latest_run.get("found_context", {})
+
         action_items = task.get("action_items", [])
         if not action_items:
             # This is likely a manually created task. Use its description as the action item.
             logger.info(f"Task {task_id}: No 'action_items' field found. Using main description as the action.")
             action_items = [task.get("description", "")]
-        # ** NEW ** Add answered questions to the context
         answered_questions = []
         if latest_run.get("clarifying_questions"):
             for q in latest_run["clarifying_questions"]:
@@ -534,7 +530,7 @@ async def async_generate_plan(task_id: str, user_id: str):
         if not plan_data or "plan" not in plan_data:
             raise Exception(f"Planner agent returned invalid JSON: {final_response_str}")
 
-        await db_manager.update_task_with_plan(task_id, run_id, plan_data, is_change_request)
+        await db_manager.update_task_with_plan(task_id, plan_data, is_change_request)
         capture_event(user_id, "proactive_task_generated", {
             "task_id": task_id,
             "source": task.get("original_context", {}).get("source", "unknown"),
@@ -547,8 +543,9 @@ async def async_generate_plan(task_id: str, user_id: str):
             notification_type="taskNeedsApproval"
         )
 
-        # CRITICAL: Notify the frontend to refresh its task list
-        await push_task_list_update(user_id, task_id, run_id)
+        # CRITICAL: Notify the frontend to refresh its task list.
+        # A run_id doesn't exist yet, as this is the planning stage. We pass a placeholder.
+        await push_task_list_update(user_id, task_id, "plan_generated")
         logger.info(f"Sent task_list_updated push notification for user {user_id}")
 
 
@@ -608,44 +605,74 @@ async def async_refine_task_details(task_id: str):
     finally:
         await db_manager.close()
 
-def _event_matches_filter(event_data: Dict[str, Any], task_filter: Dict[str, Any], source: str) -> bool:
+def _event_matches_filter(event_data: Dict[str, Any], task_filter: Dict[str, Any], source: str) -> bool: # noqa
     """
     Checks if an event's data matches the conditions defined in a task's filter.
+    Supports complex, MongoDB-like query syntax including $or, $and, $not,
+    and operators like $eq, $ne, $in, $nin, $contains, $regex.
     """
     if not task_filter:
-        return True # No filter means it matches all events of this type
+        return True  # An empty filter matches everything.
 
-    for key, value in task_filter.items():
-        if source == 'gmail':
-            # Special handling for gmail 'from' field which can be "Name <email@example.com>"
-            if key == 'from':
-                from_header = event_data.get('from', '').lower()
-                if value.lower() not in from_header:
-                    return False
-            # Special handling for subject contains
-            elif key == 'subject_contains':
-                subject = event_data.get('subject', '').lower()
-                if value.lower() not in subject:
-                    return False
-            else:
-                # Generic key-value check for other fields
-                event_value = event_data.get(key)
-                if isinstance(event_value, str) and value.lower() not in event_value.lower():
-                    return False
-                elif isinstance(event_value, list) and value not in event_value:
-                    return False
-                elif event_value != value:
-                    return False
-        # Add logic for other sources like 'slack' here
-        # elif source == 'slack':
-        #     if key == 'channel' and event_data.get('channel_name') != value:
-        #         return False
-        else:
-            # Default simple matching
-            if event_data.get(key) != value:
-                return False
+    def _extract_email(header_string: str) -> str:
+        """Extracts the email address from a header string like 'Name <email@example.com>'."""
+        if not isinstance(header_string, str):
+            return ""
+        match = re.search(r'<(.+?)>', header_string)
+        if match:
+            return match.group(1).lower().strip()
+        return header_string.lower().strip()
 
-    return True
+    def _evaluate(condition: Any, data: Dict[str, Any]) -> bool:
+        if not isinstance(condition, dict):
+            return False
+
+        # Check for top-level logical operators first
+        if "$or" in condition:
+            if not isinstance(condition["$or"], list): return False
+            return any(_evaluate(sub_cond, data) for sub_cond in condition["$or"])
+        if "$and" in condition:
+            if not isinstance(condition["$and"], list): return False
+            return all(_evaluate(sub_cond, data) for sub_cond in condition["$and"])
+        if "$not" in condition:
+            return not _evaluate(condition["$not"], data)
+
+        # If no logical operators, it's an implicit AND of field conditions
+        for field, query in condition.items():
+            event_value = data.get(field)
+
+            # Special handling for 'from' field
+            if field == 'from' and source == 'gmail' and isinstance(event_value, str):
+                event_value = _extract_email(event_value)
+
+            if isinstance(query, dict): # Field has operators like {$contains: ...}
+                for op, op_val in query.items():
+                    if op == "$eq":
+                        if (field == 'from' and source == 'gmail' and isinstance(op_val, str) and event_value != op_val.lower().strip()) or \
+                           (not (field == 'from' and source == 'gmail') and event_value != op_val):
+                            return False
+                    elif op == "$ne":
+                        if event_value == op_val: return False
+                    elif op == "$in":
+                        if not isinstance(op_val, list) or event_value not in op_val: return False
+                    elif op == "$nin":
+                        if not isinstance(op_val, list) or event_value in op_val: return False
+                    elif op == "$contains":
+                        if not isinstance(event_value, str) or not isinstance(op_val, str) or op_val.lower() not in event_value.lower(): return False
+                    elif op == "$regex":
+                        if not isinstance(event_value, str): return False
+                        try:
+                            if not re.search(op_val, event_value, re.IGNORECASE): return False
+                        except re.error: return False
+                    else: return False
+            else: # Simple equality check
+                if field == 'from' and source == 'gmail' and isinstance(query, str):
+                    if event_value != query.lower().strip(): return False
+                elif event_value != query: return False
+
+        return True
+
+    return _evaluate(task_filter, event_data)
 
 async def async_execute_triggered_task(user_id: str, source: str, event_type: str, event_data: Dict[str, Any]):
     db_manager = MongoManager()
@@ -680,19 +707,22 @@ async def async_execute_triggered_task(user_id: str, source: str, event_type: st
                 # We need to create a new "run" for this triggered execution.
                 new_run = {
                     "run_id": str(uuid.uuid4()),
-                    "status": "processing", # Start execution immediately
-                    "plan": task.get("plan", []), # Use the main plan
+                    "status": "processing",
                     "trigger_event_data": event_data,
-                    "created_at": datetime.datetime.now(datetime.timezone.utc)
+                    "created_at": datetime.datetime.now(datetime.timezone.utc),
+                    "execution_start_time": datetime.datetime.now(datetime.timezone.utc)
                 }
 
                 await db_manager.task_collection.update_one(
                     {"task_id": task_id},
-                    {"$push": {"runs": new_run}}
+                    {
+                        "$push": {"runs": new_run},
+                        "$set": {"status": "processing"} # Set parent to processing
+                    }
                 )
 
                 # Queue the executor with the new run_id
-                execute_task_plan.delay(task_id, user_id)
+                execute_task_plan.delay(task_id, user_id, new_run['run_id'])
             else:
                 logger.debug(f"Event did not match filter for triggered task {task_id}.")
 
@@ -845,8 +875,8 @@ async def async_run_due_tasks():
             "enabled": True,
             "next_execution_at": {"$lte": now}
         }
-        due_tasks_cursor = db_manager.tasks_collection.find(query)
-        due_tasks = await due_tasks_cursor.to_list(length=None)
+        due_tasks_cursor = db_manager.tasks_collection.find(query).sort("next_execution_at", 1)
+        due_tasks = await due_tasks_cursor.to_list(length=100) # Process up to 100 at a time
 
         if not due_tasks:
             logger.info("Scheduler: No user-defined tasks are due.")
@@ -854,51 +884,31 @@ async def async_run_due_tasks():
 
         logger.info(f"Scheduler: Found {len(due_tasks)} due user-defined tasks.")
         for task in due_tasks:
-            logger.info(f"Scheduler: Queuing user-defined task {task['task_id']} for execution.")
-            
-            # --- NEW LOGIC: Create a new run for recurring tasks ---
-            if task.get('schedule', {}).get('type') == 'recurring':
-                # The plan is copied from the latest existing run, which is the approved template.
-                latest_run_plan = task.get("runs", [{}])[-1].get("plan", [])
-                new_run = {
-                    "run_id": str(uuid.uuid4()),
-                    "status": "processing", # Start execution immediately
-                    "plan": latest_run_plan, # Use the approved plan
-                    "created_at": datetime.datetime.now(datetime.timezone.utc)
-                }
-                
-                # Atomically push the new run and update the top-level task status
-                await db_manager.task_collection.update_one(
-                    {"_id": task["_id"]},
-                    {
-                        "$push": {"runs": new_run},
-                        "$set": {"status": "processing"}
-                    }
-                )
-                logger.info(f"Created new run {new_run['run_id']} for recurring task {task['task_id']}.")
-            # --- END NEW LOGIC ---
+            # Try to lock this task
+            lock_result = await db_manager.tasks_collection.update_one(
+                {"_id": task["_id"], "status": {"$in": ["active", "pending"]}}, # Ensure it hasn't been picked up
+                {"$set": {"status": "processing", "last_execution_at": now}}
+            )
 
-            execute_task_plan.delay(task['task_id'], task['user_id'])
+            if lock_result.modified_count == 0:
+                logger.info(f"Scheduler: Task {task['_id']} was already picked up by another worker. Skipping.")
+                continue
 
-            # For recurring tasks, calculate the next run time.
-            # For one-off tasks, this will effectively be cleared.
-            next_run_time = None
-            if task.get('schedule', {}).get('type') == 'recurring':
-                next_run_time, _ = calculate_next_run(task['schedule'], last_run=now)
+            task_id = task['task_id']
+            user_id = task['user_id']
+            logger.info(f"Scheduler: Locked and queuing task {task_id} for execution.")
 
-            update_fields = {
-                "last_execution_at": now,
-                "next_execution_at": next_run_time
+            new_run = {
+                "run_id": str(uuid.uuid4()),
+                "status": "processing",
+                "created_at": now,
+                "execution_start_time": now
             }
-            # One-off tasks have their next_execution_at set to None, so they won't run again.
-            # Their status will be updated to 'processing' -> 'completed'/'error' by the executor.
-
             await db_manager.tasks_collection.update_one(
                 {"_id": task["_id"]},
-                {"$set": update_fields}
+                {"$push": {"runs": new_run}}
             )
-            if next_run_time:
-                 logger.info(f"Scheduler: Rescheduled user-defined task {task['task_id']} for {next_run_time}.")
+            execute_task_plan.delay(task_id, user_id, new_run['run_id'])
 
     except Exception as e:
         logger.error(f"Scheduler: An error occurred checking user-defined tasks: {e}", exc_info=True)

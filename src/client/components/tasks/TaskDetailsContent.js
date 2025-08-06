@@ -71,16 +71,17 @@ const TaskChatSection = ({ task, onSendChatMessage }) => {
 }
 
 // New component for handling clarification questions
-const ClarificationInputSection = ({ run, task, onAnswerClarifications }) => {
+const QnaSection = ({ questions, task, onAnswerClarifications }) => {
 	const [answers, setAnswers] = useState({})
 	const [isSubmitting, setIsSubmitting] = useState(false)
+	const isInputMode = task.status === "clarification_pending"
 
 	const handleAnswerChange = (questionId, text) => {
 		setAnswers((prev) => ({ ...prev, [questionId]: text }))
 	}
 
 	const handleSubmit = async () => {
-		const unansweredQuestions = run.clarifying_questions.filter(
+		const unansweredQuestions = questions.filter(
 			(q) => !answers[q.question_id]?.trim()
 		)
 		if (unansweredQuestions.length > 0) {
@@ -105,38 +106,60 @@ const ClarificationInputSection = ({ run, task, onAnswerClarifications }) => {
 			<h4 className="font-semibold text-neutral-300 mb-2">
 				Clarifying Questions
 			</h4>
-			<div className="space-y-4 bg-yellow-500/10 border border-yellow-500/20 p-4 rounded-lg">
-				{run.clarifying_questions.map((q, index) => (
+			<div
+				className={cn(
+					"space-y-4 p-4 rounded-lg border",
+					isInputMode
+						? "bg-yellow-500/10 border-yellow-500/20"
+						: "bg-neutral-800/20 border-neutral-700/50"
+				)}
+			>
+				{questions.map((q, index) => (
 					<div key={q.question_id || index}>
-						<label className="block text-sm font-medium text-yellow-200 mb-2">
+						<label className="block text-sm font-medium text-neutral-300 mb-2">
 							{q.text}
 						</label>
-						<textarea
-							value={answers[q.question_id] || ""}
-							onChange={(e) =>
-								handleAnswerChange(
-									q.question_id,
-									e.target.value
-								)
-							}
-							rows={2}
-							className="w-full p-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm text-white transition-colors focus:border-yellow-400 focus:ring-0"
-							placeholder="Your answer..."
-						/>
+						{isInputMode ? (
+							<textarea
+								value={answers[q.question_id] || ""}
+								onChange={(e) =>
+									handleAnswerChange(
+										q.question_id,
+										e.target.value
+									)
+								}
+								rows={2}
+								className="w-full p-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm text-white transition-colors focus:border-yellow-400 focus:ring-0"
+								placeholder="Your answer..."
+							/>
+						) : (
+							<p className="text-sm text-neutral-100 p-2 bg-neutral-900/50 rounded-md whitespace-pre-wrap">
+								{q.answer || (
+									<span className="italic text-neutral-500">
+										No answer provided.
+									</span>
+								)}
+							</p>
+						)}
 					</div>
 				))}
-				<div className="flex justify-end">
-					<button
-						onClick={handleSubmit}
-						disabled={isSubmitting}
-						className="px-4 py-2 text-sm font-semibold bg-yellow-400 text-black rounded-md hover:bg-yellow-300 disabled:opacity-50 flex items-center gap-2"
-					>
-						{isSubmitting && (
-							<IconLoader size={16} className="animate-spin" />
-						)}
-						{isSubmitting ? "Submitting..." : "Submit Answers"}
-					</button>
-				</div>
+				{isInputMode && (
+					<div className="flex justify-end">
+						<button
+							onClick={handleSubmit}
+							disabled={isSubmitting}
+							className="px-4 py-2 text-sm font-semibold bg-yellow-400 text-black rounded-md hover:bg-yellow-300 disabled:opacity-50 flex items-center gap-2"
+						>
+							{isSubmitting && (
+								<IconLoader
+									size={16}
+									className="animate-spin"
+								/>
+							)}
+							{isSubmitting ? "Submitting..." : "Submit Answers"}
+						</button>
+					</div>
+				)}
 			</div>
 		</div>
 	)
@@ -240,6 +263,16 @@ const TaskDetailsContent = ({
 					</div>
 				</div>
 			</div>
+
+			{/* --- NEW: Q&A Section --- */}
+			{displayTask.clarifying_questions &&
+				displayTask.clarifying_questions.length > 0 && (
+					<QnaSection
+						questions={displayTask.clarifying_questions}
+						task={displayTask}
+						onAnswerClarifications={onAnswerClarifications}
+					/>
+				)}
 
 			{/* --- DESCRIPTION --- */}
 			<div>
@@ -380,41 +413,6 @@ const TaskDetailsContent = ({
 								</div>
 							</div>
 						)}
-						{run.clarifying_questions &&
-						run.clarifying_questions.length > 0 &&
-						task.status === "clarification_pending" ? (
-							<ClarificationInputSection
-								run={run}
-								task={task}
-								onAnswerClarifications={onAnswerClarifications}
-							/>
-						) : run.clarifying_questions &&
-						  run.clarifying_questions.length > 0 ? (
-							<div>
-								<h4 className="font-semibold text-neutral-300 mb-2">
-									Clarifying Questions
-								</h4>
-								<div className="space-y-2">
-									{run.clarifying_questions.map(
-										(q, index) => (
-											<div
-												key={q.question_id || index}
-												className="p-3 bg-neutral-800/50 border border-neutral-700/50 rounded-lg text-sm"
-											>
-												<p className="text-yellow-300">
-													{q.text}
-												</p>
-												{q.answer && (
-													<p className="mt-2 pt-2 border-t border-neutral-700 text-neutral-300 italic">
-														Your Answer: {q.answer}
-													</p>
-												)}
-											</div>
-										)
-									)}
-								</div>
-							</div>
-						) : null}
 						{run.progress_updates &&
 							run.progress_updates.length > 0 && (
 								<div>

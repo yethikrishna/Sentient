@@ -1,3 +1,8 @@
 from .base import BaseTTS, TTSOptionsBase
 from .elevenlabs import ElevenLabsTTS
-from .orpheus import OrpheusTTS
+from main.config import TTS_PROVIDER
+
+if TTS_PROVIDER == "ORPHEUS":
+    from .orpheus import OrpheusTTS
+else:
+    OrpheusTTS = None

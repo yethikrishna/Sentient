@@ -24,7 +24,7 @@ pgvector
 # --- AI & Machine Learning ---
 qwen-agent
 google-genai
-elevenlabs
+elevenlabs 
 librosa
 llama-cpp-python
 faster-whisper

@@ -34,11 +34,11 @@ jobs:
       - name: Run GitLeaks (Secret Scanning)
         uses: gitleaks/gitleaks-action@v2
         with:
-          config-path: ../gitleaks.toml
+          config-path: .github/gitleaks.toml
           fail: true
 
       - name: Run Dependabot Security Audit (JS/TS)
-        working-directory: src/interface
+        working-directory: src/client
         run: npm audit --audit-level=high || true
 
   linting:
@@ -52,18 +52,18 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
 
       - name: Install JS/TS dependencies
-        working-directory: src/interface
+        working-directory: src/client
         run: npm ci
 
       - name: Run ESLint (JavaScript/TypeScript)
-        working-directory: src/interface
+        working-directory: src/client
         run: npm run lint
 
       - name: Run Prettier Check
-        working-directory: src/interface
+        working-directory: src/client
         run: npm run format:check
 
       - name: Set up Python
@@ -72,11 +72,11 @@ jobs:
           python-version: "3.11"
 
       - name: Install Python dependencies
-        working-directory: src/model
+        working-directory: src/server
         run: |
           python -m pip install --upgrade pip
-          pip install black flake8
+          pip install ruff
 
       - name: Run Ruff (Python Linting & Formatting)
-        working-directory: src/model
+        working-directory: src/server
         run: ruff check . && ruff format --check .

@@ -56,6 +56,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
+# Install Playwright browsers and dependencies
+RUN playwright install --with-deps
+
 # Copy configuration files and server code
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY nginx.conf /etc/nginx/sites-available/sentient

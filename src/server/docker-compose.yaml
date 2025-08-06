@@ -1,7 +1,7 @@
 # src/server/docker-compose.yaml
-
-# This file defines how to run your application using Docker Compose.
-# It now orchestrates the main application, Redis, and the WAHA service.
+# This docker-compose file is intended for a production-like deployment on a single VM.
+# It orchestrates the main application server along with all its required backend services
+# (Redis, WAHA for WhatsApp, PostgreSQL for Memory, and ChromaDB for vector storage).
 
 services:
     # 1. The Main Sentient Application (FastAPI, Nginx, Celery, MCPs)
@@ -22,6 +22,8 @@ services:
             # This is the primary public-facing port for your entire application.
             - "5000:80"
         depends_on:
+            - postgres
+            - chroma
             - redis
             - waha
         networks:
@@ -59,6 +61,33 @@ services:
             - "8000:3000"
         # No ports are exposed to the host. The sentient-app communicates with it internally.
 
+    # 4. PostgreSQL for Memory MCP
+    postgres:
+        image: pgvector/pgvector:pg16
+        container_name: sentient-postgres-prod
+        restart: unless-stopped
+        environment:
+            # These variables should be defined in your .env file
+            POSTGRES_USER: ${POSTGRES_USER}
+            POSTGRES_PASSWORD: ${POSTGRES_PASS}
+            POSTGRES_DB: ${POSTGRES_DB}
+        volumes:
+            - postgres-data:/var/lib/postgresql/data
+        networks:
+            - sentient_network
+
+    # 5. ChromaDB for Vector Storage
+    chroma:
+        image: chromadb/chroma
+        container_name: sentient-chroma-prod
+        restart: unless-stopped
+        ports:
+            - "8002:8000" # Expose Chroma's port for debugging if needed
+        volumes:
+            - chroma-data:/chroma/.chroma/index
+        networks:
+            - sentient_network
+
 # Defines the shared network for all services
 networks:
     sentient_network:
@@ -68,3 +97,5 @@ networks:
 volumes:
     redis-data:
     waha-sessions:
+    postgres-data:
+    chroma-data:

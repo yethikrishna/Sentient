@@ -7,7 +7,7 @@ const appServerUrl =
 		: process.env.NEXT_PUBLIC_APP_SERVER_URL
 
 export const GET = withAuth(async function GET(request, { authHeader }) {
-	const backendUrl = new URL(`${appServerUrl}/api/memories/`)
+	const backendUrl = new URL(`${appServerUrl}/api/memories`)
 
 	try {
 		const response = await fetch(backendUrl.toString(), {
@@ -27,7 +27,7 @@ export const GET = withAuth(async function GET(request, { authHeader }) {
 })
 
 export const POST = withAuth(async function POST(request, { authHeader }) {
-	const backendUrl = new URL(`${appServerUrl}/api/memories/`)
+	const backendUrl = new URL(`${appServerUrl}/api/memories`)
 	try {
 		const body = await request.json()
 		const response = await fetch(backendUrl.toString(), {

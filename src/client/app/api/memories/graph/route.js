@@ -8,7 +8,7 @@ const appServerUrl =
 
 export const GET = withAuth(async function GET(request, { authHeader }) {
 	// This new backend endpoint is assumed to exist and return { nodes: [], edges: [] }.
-	const backendUrl = new URL(`${appServerUrl}/api/memories/graph/`)
+	const backendUrl = new URL(`${appServerUrl}/api/memories/graph`)
 
 	try {
 		const response = await fetch(backendUrl.toString(), {

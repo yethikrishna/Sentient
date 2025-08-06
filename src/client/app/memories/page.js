@@ -489,7 +489,7 @@ export default function MemoriesPage() {
 				const data = await response.json()
 				setMemories(data.memories || [])
 			} else {
-				const response = await fetch("/api/memories/graph/")
+				const response = await fetch("/api/memories/graph")
 				if (!response.ok)
 					throw new Error("Failed to fetch memory graph data.")
 				const data = await response.json()

@@ -1,5 +1,6 @@
 from .base import BaseSTT
-from .elevenlabs import ElevenLabsSTTfrom main.config import STT_PROVIDER
+from .elevenlabs import ElevenLabsSTT
+from main.config import STT_PROVIDER
 
 # Conditionally import FasterWhisper to avoid loading heavy dependencies if not used.
 if STT_PROVIDER == "FASTER_WHISPER":

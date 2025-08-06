@@ -15,7 +15,6 @@ Here is the complete list of available tools you can select from:
     "file_management": "Use this for reading, writing and listing files from your internal storage.",
     "accuweather": "Use this tool to get weather information for a specific location.",
     "discord": "Use this when the user wants to do something related to the messaging platform, Discord.",
-    "evernote": "Use this tool for note-taking and organization within the Evernote app.",
     "gcalendar": "Use this tool to manage events in Google Calendar.",
     "gdocs": "Use this tool for creating and editing documents in Google Docs.",
     "gdrive": "Use this tool to search and read files in Google Drive.",

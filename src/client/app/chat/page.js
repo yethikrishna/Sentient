@@ -33,7 +33,6 @@ import {
 	IconNews,
 	IconListCheck,
 	IconBrandDiscord,
-	IconBrandEvernote,
 	IconBrandWhatsapp,
 	IconCalendarEvent
 } from "@tabler/icons-react"
@@ -77,7 +76,6 @@ const toolIcons = {
 	news: IconNews,
 	todoist: IconListCheck,
 	discord: IconBrandDiscord,
-	evernote: IconBrandEvernote,
 	whatsapp: IconBrandWhatsapp,
 	gcalendar_alt: IconCalendarEvent,
 	default: IconTool

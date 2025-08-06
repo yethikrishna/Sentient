@@ -34,7 +34,6 @@ import {
 	IconCalendarEvent,
 	IconWorldSearch,
 	IconSearch,
-	IconBrandEvernote,
 	IconSparkles,
 	IconBrandLinkedin,
 	IconAlertTriangle,
@@ -82,7 +81,6 @@ const integrationColorIcons = {
 	news: IconNews,
 	todoist: IconBrandTodoist,
 	discord: IconBrandDiscord,
-	evernote: IconBrandEvernote,
 	whatsapp: IconBrandWhatsapp,
 	file_management: IconFile,
 	linkedin: IconBrandLinkedin
@@ -758,50 +756,7 @@ const IntegrationsPage = () => {
 				const permissions = "580851377359936"
 				authUrl = `https://discord.com/api/oauth2/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
 					redirectUri
-				)}&response_type=code&scope=${encodeURIComponent(
-					scope
-				)}&permissions=${permissions}&state=${serviceName}`
-			} else if (serviceName === "evernote") {
-				// Evernote uses OAuth 1.0a, which requires a server-side flow to start.
-				// We call our backend to get the authorization URL, then redirect.
-				const startEvernoteAuth = async () => {
-					try {
-						const redirectUriForEvernote = `${window.location.origin}/api/settings/integrations/connect/oauth1/callback`
-
-						const response = await fetch(
-							"/api/settings/integrations/connect/oauth1/start",
-							{
-								method: "POST",
-								headers: { "Content-Type": "application/json" },
-								body: JSON.stringify({
-									service_name: "evernote",
-									redirect_uri: redirectUriForEvernote
-								})
-							}
-						)
-
-						if (!response.ok) {
-							const errorData = await response.json()
-							throw new Error(
-								errorData.detail ||
-									"Failed to start Evernote connection."
-							)
-						}
-
-						const { authorization_url } = await response.json()
-						if (authorization_url) {
-							window.location.href = authorization_url
-						} else {
-							throw new Error(
-								"Authorization URL not received from server."
-							)
-						}
-					} catch (error) {
-						toast.error(error.message)
-					}
-				}
-				startEvernoteAuth()
-				return // Stop execution here to prevent falling through
+				)}&response_type=code&scope=${encodeURIComponent(scope)}&permissions=${permissions}&state=${serviceName}`
 			}
 			if (authUrl) window.location.href = authUrl
 			else

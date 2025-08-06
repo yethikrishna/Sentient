@@ -13,7 +13,6 @@ cryptography
 httpx
 requests
 requests-oauthlib
-evernote3
 
 # --- Database & Caching ---
 motor

@@ -63,9 +63,6 @@ NOTION_CLIENT_ID = os.getenv("NOTION_CLIENT_ID")
 NOTION_CLIENT_SECRET = os.getenv("NOTION_CLIENT_SECRET")
 DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
-EVERNOTE_CLIENT_ID = os.getenv("EVERNOTE_CLIENT_ID")
-EVERNOTE_CLIENT_SECRET = os.getenv("EVERNOTE_CLIENT_SECRET")
-EVERNOTE_SANDBOX = os.getenv("EVERNOTE_SANDBOX", "False").lower() in ('true', '1', 't')
 TODOIST_CLIENT_ID = os.getenv("TODOIST_CLIENT_ID")
 TODOIST_CLIENT_SECRET = os.getenv("TODOIST_CLIENT_SECRET")
 TRELLO_CLIENT_ID = os.getenv("TRELLO_CLIENT_ID")
@@ -295,17 +292,6 @@ INTEGRATIONS_CONFIG = {
         "mcp_server_config": {
             "name": "discord_server",
             "url": os.getenv("DISCORD_MCP_SERVER_URL", "http://localhost:9022/sse")
-        }
-    },
-    "evernote": {
-        "display_name": "Evernote",
-        "description": "Create and manage notes in Evernote. The agent can create notes with titles and content, and list existing notebooks.",
-        "auth_type": "oauth",
-        "icon": "IconBrandEvernote",
-        "category": "Productivity",
-        "mcp_server_config": {
-            "name": "evernote_server",
-            "url": os.getenv("EVERNOTE_MCP_SERVER_URL", "http://localhost:9023/sse")
         }
     },
     "file_management": {

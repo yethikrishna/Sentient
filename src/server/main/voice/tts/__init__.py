@@ -9,4 +9,5 @@ if TTS_PROVIDER == "ORPHEUS":
         from .orpheus import OrpheusTTS
     except ImportError:
         print("Could not import OrpheusTTS. Ensure all dependencies are installed.")
-        OrpheusTTS = None # type: ignore
+        OrpheusTTS = None # type: ignoreelse:
+    OrpheusTTS = None

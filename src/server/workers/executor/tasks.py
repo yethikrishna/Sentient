@@ -9,6 +9,7 @@ import logging
 from typing import Dict, Any, List, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import re
+from json_extractor import JsonExtractor
 
 from main.analytics import capture_event
 from qwen_agent.agents import Assistant
@@ -130,9 +131,8 @@ def parse_agent_string_to_updates(content: str) -> List[Dict[str, Any]]:
         if tool_result_match:
             tool_name = tool_result_match.group(1)
             result_str = tool_result_match.group(2).strip()
-            try:
-                result_content = json.loads(result_str)
-            except (json.JSONDecodeError, TypeError):
+            result_content = JsonExtractor.extract_valid_json(result_str)
+            if not result_content:
                 result_content = {"raw_result": result_str}
             is_error = isinstance(result_content, dict) and result_content.get("status") == "failure"
             updates.append({
@@ -434,20 +434,19 @@ async def async_run_single_item_worker(user_id: str, item: Any, worker_prompt: s
         answer_match = re.search(r'<answer>([\s\S]*?)</answer>', final_content, re.DOTALL)
         if answer_match:
             result_str = answer_match.group(1).strip()
-            try:
-                return json.loads(result_str)
-            except json.JSONDecodeError:
-                if result_str.lower() == 'null':
-                    return None
-                return result_str
+            parsed_result = JsonExtractor.extract_valid_json(result_str)
+            if parsed_result is not None:
+                return parsed_result
+            if result_str.lower() == 'null':
+                return None
+            return result_str
         
         last_message = final_response_list[-1] if final_response_list else {}
         if last_message.get("role") == "function":
-            try:
-                tool_result = json.loads(last_message.get("content", "{}"))
+            tool_result = JsonExtractor.extract_valid_json(last_message.get("content", "{}"))
+            if isinstance(tool_result, dict):
                 return tool_result.get("result")
-            except (json.JSONDecodeError, AttributeError):
-                return last_message.get("content")
+            return last_message.get("content")
 
         cleaned_content = clean_llm_output(final_content)
         if cleaned_content.lower() == 'null':

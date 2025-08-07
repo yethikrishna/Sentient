@@ -14,6 +14,7 @@ from jose import jwt, JWTError
 from jose.exceptions import JOSEError
 from fastapi import HTTPException, status, Depends, WebSocket, WebSocketDisconnect
 from fastapi.security import OAuth2PasswordBearer
+from json_extractor import JsonExtractor
 
 from main.config import (
     ENVIRONMENT, SELF_HOST_AUTH_SECRET,
@@ -122,9 +123,9 @@ class AuthHelper:
     async def ws_authenticate_with_data(self, websocket: WebSocket) -> Optional[Dict]:
         try:
             auth_message_str = await websocket.receive_text()
-            auth_message = json.loads(auth_message_str)
+            auth_message = JsonExtractor.extract_valid_json(auth_message_str)
             
-            if auth_message.get("type") != "auth" or not auth_message.get("token"):
+            if not auth_message or not isinstance(auth_message, dict) or auth_message.get("type") != "auth" or not auth_message.get("token"):
                 await websocket.send_json({"type": "auth_failure", "message": "Invalid auth message format."})
                 await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
                 return None
@@ -148,10 +149,6 @@ class AuthHelper:
             return auth_data
         except WebSocketDisconnect:
             print(f"[{datetime.datetime.now()}] [WS_AUTH] WebSocket disconnected during auth.")
-            return None
-        except json.JSONDecodeError:
-            await websocket.send_json({"type": "auth_failure", "message": "Auth message must be JSON."})
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return None
         except HTTPException as e:
             await websocket.send_json({"type": "auth_failure", "message": f"Token validation failed: {e.detail}"})

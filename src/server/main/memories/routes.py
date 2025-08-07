@@ -24,7 +24,7 @@ async def startup_event():
 
 @router.get("/", summary="Get all memories for a user")
 async def get_all_memories(
-    user_id: str = Depends(PermissionChecker(required_permissions=["read:profile"]))
+    user_id: str = Depends(PermissionChecker(required_permissions=["read:memory"]))
 ):
     pool = None
     try:
@@ -55,7 +55,7 @@ async def get_all_memories(
 
 @router.get("/graph", summary="Get memory graph data for a user")
 async def get_memory_graph(
-    user_id: str = Depends(PermissionChecker(required_permissions=["read:profile"]))
+    user_id: str = Depends(PermissionChecker(required_permissions=["read:memory"]))
 ):
     try:
         graph_data = await utils.create_memory_graph(user_id)
@@ -67,7 +67,7 @@ async def get_memory_graph(
 @router.post("/", summary="Create a new memory for a user")
 async def create_memory(
     request: CreateMemoryRequest,
-    user_id: str = Depends(PermissionChecker(required_permissions=["write:profile"]))
+    user_id: str = Depends(PermissionChecker(required_permissions=["write:memory"]))
 ):
     try:
         result_message = await utils.create_memory(user_id, request.content, request.source)
@@ -80,7 +80,7 @@ async def create_memory(
 async def update_memory(
     memory_id: int,
     request: UpdateMemoryRequest,
-    user_id: str = Depends(PermissionChecker(required_permissions=["write:profile"]))
+    user_id: str = Depends(PermissionChecker(required_permissions=["write:memory"]))
 ):
     try:
         result_message = await utils.update_memory(user_id, memory_id, request.content)
@@ -94,7 +94,7 @@ async def update_memory(
 @router.delete("/{memory_id}", summary="Delete a memory")
 async def delete_memory(
     memory_id: int,
-    user_id: str = Depends(PermissionChecker(required_permissions=["write:profile"]))
+    user_id: str = Depends(PermissionChecker(required_permissions=["write:memory"]))
 ):
     try:
         result_message = await utils.delete_memory(user_id, memory_id)

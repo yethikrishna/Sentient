@@ -10,6 +10,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build, Resource
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
+from json_extractor import JsonExtractor
 
 from typing import Optional, Dict, Any
 from dotenv import load_dotenv
@@ -93,7 +94,9 @@ async def get_google_creds(user_id: str) -> Credentials:
 
     try:
         decrypted_creds_str = aes_decrypt(gmail_data["credentials"])
-        token_info = json.loads(decrypted_creds_str)
+        token_info = JsonExtractor.extract_valid_json(decrypted_creds_str)
+        if not token_info:
+            raise ToolError("Failed to parse decrypted credentials for Gmail.")
         return Credentials.from_authorized_user_info(token_info)
     except Exception as e:
         raise ToolError(f"Failed to decrypt or parse default OAuth token for Gmail: {e}")

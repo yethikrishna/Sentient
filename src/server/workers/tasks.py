@@ -301,6 +301,9 @@ async def async_process_change_request(task_id: str, user_id: str, user_message:
         # 4. Create a consolidated context for the planner
         # This is similar to the initial context creation but includes much more history
         original_context = task.get("original_context", {})
+        if isinstance(original_context, str):
+            original_context = JsonExtractor.extract_valid_json(original_context) or {"source": "unknown", "raw_context": original_context}
+
         original_context["previous_plan"] = task.get("plan", [])
         original_context["previous_result"] = task.get("result", "")
         original_context["chat_history"] = chat_history

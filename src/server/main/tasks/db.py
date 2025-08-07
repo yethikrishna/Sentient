@@ -2,6 +2,7 @@ import motor.motor_asyncio
 import datetime
 import uuid
 import json
+from json_extractor import JsonExtractor
 from typing import Dict, List, Optional
 import logging
 
@@ -32,10 +33,7 @@ class TaskDatabase:
         
         schedule = task_data.get("schedule")
         if isinstance(schedule, str):
-            try:
-                schedule = json.loads(schedule)
-            except json.JSONDecodeError:
-                schedule = None
+            schedule = JsonExtractor.extract_valid_json(schedule)
 
         task_doc = {
             "task_id": task_id,

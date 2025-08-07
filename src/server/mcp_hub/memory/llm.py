@@ -4,7 +4,6 @@ from typing import Dict, Any
 import json
 
 from . import prompts
-from main.llm import run_agent_with_fallback
 from fastmcp.utilities.logging import get_logger
 
 logger = get_logger(__name__)
@@ -55,7 +54,10 @@ def run_agent_with_prompt(agent_config: Dict[str, Any], user_prompt: str) -> str
     logger.debug(f"Agent '{agent_name}' user prompt:\n---PROMPT START---\n{user_prompt}\n---PROMPT END---")
     messages = [{'role': 'user', 'content': user_prompt}]
     final_content = ""
-
+    
+    # Import here to avoid circular dependency issues at module load time
+    from main.llm import run_agent_with_fallback
+    
     try:
         for chunk in run_agent_with_fallback(system_message=system_message, function_list=[], messages=messages):
             if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":

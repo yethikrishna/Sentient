@@ -12,6 +12,7 @@ from github import Github
 from dotenv import load_dotenv
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
+from json_extractor import JsonExtractor
 
 # Load .env file for 'dev-local' environment.
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
@@ -68,9 +69,12 @@ async def get_github_token(user_id: str) -> str:
 
     try:
         decrypted_creds_str = aes_decrypt(github_data["credentials"])
-        token_info = json.loads(decrypted_creds_str)
+        token_info = JsonExtractor.extract_valid_json(decrypted_creds_str)
     except Exception as e:
         raise ToolError(f"Failed to decrypt or parse token for GitHub: {e}")
+
+    if not token_info:
+        raise ToolError("Failed to parse decrypted credentials for GitHub.")
 
     if "access_token" not in token_info:
         raise ToolError("Invalid token data in database for GitHub. Re-authentication may be required.")

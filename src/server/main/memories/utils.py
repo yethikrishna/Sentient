@@ -8,6 +8,7 @@ from typing import Dict, List, Any, Optional
 
 import google.generativeai as genai
 from pgvector.asyncpg import register_vector
+from json_extractor import JsonExtractor
 
 from . import db, llm
 from .prompts import fact_analysis_user_prompt_template
@@ -110,9 +111,8 @@ async def create_memory(user_id: str, content: str, source: Optional[str] = "man
         prompt = fact_analysis_user_prompt_template.format(text=content)
         analysis_raw = llm.run_agent_with_prompt(agents["fact_analysis"], prompt)
         analysis_cleaned = clean_llm_output(analysis_raw)
-        try:
-            analysis = json.loads(analysis_cleaned)
-        except json.JSONDecodeError:
+        analysis = JsonExtractor.extract_valid_json(analysis_cleaned)
+        if not analysis:
             logger.error(f"Create memory failed due to analysis JSON error. Output: {analysis_cleaned}")
             raise ValueError("Failed to analyze memory content.")
         return await _insert_fact_with_analysis(conn, user_id, content, source, analysis)
@@ -130,9 +130,8 @@ async def update_memory(user_id: str, memory_id: int, new_content: str) -> str:
         prompt = fact_analysis_user_prompt_template.format(text=new_content)
         analysis_raw = llm.run_agent_with_prompt(agents["fact_analysis"], prompt)
         analysis_cleaned = clean_llm_output(analysis_raw)
-        try:
-            analysis = json.loads(analysis_cleaned)
-        except json.JSONDecodeError:
+        analysis = JsonExtractor.extract_valid_json(analysis_cleaned)
+        if not analysis:
             raise ValueError("Failed to analyze updated memory content.")
 
         new_embedding = _get_normalized_embedding(new_content, task_type="RETRIEVAL_DOCUMENT")

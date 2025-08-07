@@ -4,6 +4,7 @@ from typing import Dict, Any, Optional
 
 from main.db import MongoManager
 from main.auth.utils import aes_encrypt, aes_decrypt
+from json_extractor import JsonExtractor
 
 async def store_encrypted_integration_token(user_id: str, service_name: str, token_data: Dict[str, Any], db_manager: MongoManager) -> bool:
     """Encrypts and stores the entire token object for a service."""
@@ -40,7 +41,7 @@ async def get_decrypted_integration_token(user_id: str, service_name: str, db_ma
         
     try:
         decrypted_token_str = aes_decrypt(integration_data["encrypted_token"])
-        return json.loads(decrypted_token_str)
+        return JsonExtractor.extract_valid_json(decrypted_token_str)
     except Exception:
         # Handle decryption or JSON parsing errors
         return None

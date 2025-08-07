@@ -41,7 +41,9 @@ class JsonValidatorTool(BaseTool):
             if isinstance(params, dict):
                  parsed_params = params
             else:
-                 parsed_params = json.loads(params)
+                 parsed_params = JsonExtractor.extract_valid_json(params)
+            if not parsed_params:
+                return json.dumps({"status": "failure", "error": "Invalid JSON in params."})
             json_string_to_validate = parsed_params.get('json_string', '')
             if not json_string_to_validate:
                 return json.dumps({"status": "failure", "error": "Input json_string is empty."})
@@ -339,12 +341,16 @@ async def generate_chat_llm_stream(
 def msg_to_str(msg: Dict[str, Any]) -> str:
     if msg.get('role') == 'assistant' and msg.get('function_call'):
         args_str = msg['function_call'].get('arguments', '')
-        try: args_pretty = json.dumps(json.loads(args_str), indent=2)
+        try:
+            parsed_args = JsonExtractor.extract_valid_json(args_str)
+            args_pretty = json.dumps(parsed_args, indent=2) if parsed_args else args_str
         except: args_pretty = args_str
         return f"<tool_code name=\"{msg['function_call'].get('name')}\">\n{args_pretty}\n</tool_code>\n"
     elif msg.get('role') == 'function':
         content = msg.get('content', '')
-        try: content_pretty = json.dumps(json.loads(content), indent=2)
+        try:
+            parsed_content = JsonExtractor.extract_valid_json(content)
+            content_pretty = json.dumps(parsed_content, indent=2) if parsed_content else content
         except: content_pretty = content
         return f"<tool_result tool_name=\"{msg.get('name')}\">\n{content_pretty}\n</tool_result>\n"
     elif msg.get('role') == 'assistant' and msg.get('content'):

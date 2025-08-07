@@ -8,6 +8,7 @@ from fastmcp import FastMCP, Context
 from fastmcp.exceptions import ToolError
 from fastmcp.prompts.prompt import Message
 from notion_client.helpers import is_full_page_or_database
+from json_extractor import JsonExtractor
 
 from . import auth, prompts, utils
 
@@ -89,8 +90,8 @@ async def _get_workspace_async(client):
     response = await client.users.me()
     return response.get("bot", {}).get("owner", {})
 
-async def _update_page_async(client, page_id: str, properties_json: str):
-    properties = json.loads(properties_json)
+async def _update_page_async(client, page_id: str, properties: Dict): # Changed properties_json: str to properties: Dict
+    # properties = json.loads(properties_json) # Removed this line
     response = await client.pages.update(page_id=page_id, properties=properties)
     return {"page_id": response.get("id"), "url": response.get("url")}
 
@@ -133,10 +134,11 @@ async def createPage(ctx: Context, title: str, parent_page_id: str, content_bloc
     Creates a new page in Notion. Requires a `title` and a parent (`parent_page_id`). If parent page ID is not provided, ask the user to provide the title of the parent page, then use the `search_pages` tool to find its ID.
     Optionally, you can add body content by providing a `content_blocks_json` string, which is a list of Notion block objects.
     """
-    try:
-        content_blocks = json.loads(content_blocks_json) if content_blocks_json else []
-    except (json.JSONDecodeError, TypeError):
-        raise ToolError("Invalid `content_blocks_json`. It must be a valid JSON string representing a list of block objects.")
+    content_blocks = []
+    if content_blocks_json:
+        content_blocks = JsonExtractor.extract_valid_json(content_blocks_json)
+        if not isinstance(content_blocks, list):
+            raise ToolError("Invalid `content_blocks_json`. It must be a valid JSON string representing a list of block objects.")
     return await _execute_tool(ctx, _create_page_async, parent_page_id=parent_page_id, title=title, content=content_blocks)
 
 @mcp.tool
@@ -160,14 +162,17 @@ async def queryDatabase(ctx: Context, database_id: str, filter_json: Optional[st
     """
     Retrieves pages from a specific database. Requires the `database_id` and can be filtered using a Notion API `filter_json` string.
     """
-    return await _execute_tool(ctx, _query_database_async, database_id=database_id, filter_json=filter_json)
+    filter_obj = JsonExtractor.extract_valid_json(filter_json) if filter_json else None
+    return await _execute_tool(ctx, _query_database_async, database_id=database_id, filter_json=filter_obj)
 
 @mcp.tool
 async def updateBlock(ctx: Context, block_id: str, content_json: str) -> Dict:
     """
     Updates the content of an existing block. Requires the `block_id` and a `content_json` string representing the new block content (e.g., '{"paragraph":...}').
     """
-    content = json.loads(content_json)
+    content = JsonExtractor.extract_valid_json(content_json)
+    if not content:
+        raise ToolError("Invalid `content_json` provided.")
     return await _execute_tool(ctx, _update_block_async, block_id=block_id, content=content)
 
 @mcp.tool
@@ -190,7 +195,10 @@ async def getWorkspace(ctx: Context) -> Dict:
 @mcp.tool
 async def updatePage(ctx: Context, page_id: str, properties_json: str) -> Dict:
     """Update an existing Notion page by modifying its properties."""
-    return await _execute_tool(ctx, _update_page_async, page_id=page_id, properties_json=properties_json)
+    properties = JsonExtractor.extract_valid_json(properties_json)
+    if not properties:
+        raise ToolError("Invalid `properties_json` provided.")
+    return await _execute_tool(ctx, _update_page_async, page_id=page_id, properties=properties)
 
 @mcp.tool
 async def getDatabases(ctx: Context, query: Optional[str] = None) -> Dict:
@@ -200,7 +208,9 @@ async def getDatabases(ctx: Context, query: Optional[str] = None) -> Dict:
 @mcp.tool
 async def createBlock(ctx: Context, parent_block_id: str, content_blocks_json: str) -> Dict:
     """Add content blocks to an existing page or block."""
-    content_blocks = json.loads(content_blocks_json)
+    content_blocks = JsonExtractor.extract_valid_json(content_blocks_json)
+    if not content_blocks:
+        raise ToolError("Invalid `content_blocks_json` provided.")
     return await _execute_tool(ctx, _create_block_async, parent_block_id=parent_block_id, content_blocks=content_blocks)
 
 @mcp.tool

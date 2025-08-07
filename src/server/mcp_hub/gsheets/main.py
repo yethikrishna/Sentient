@@ -89,7 +89,9 @@ async def execute_sheet_creation(ctx: Context, title: str, sheets_json: str) -> 
         creds = await auth.get_google_creds(user_id)
         service = auth.authenticate_gsheets(creds)
         
-        sheets_data = json.loads(sheets_json)
+        sheets_data = JsonExtractor.extract_valid_json(sheets_json)
+        if not sheets_data:
+            raise ToolError("Invalid sheets_json provided.")
 
         spreadsheet_result = await asyncio.to_thread(
             utils.create_spreadsheet_with_data, service, title, sheets_data

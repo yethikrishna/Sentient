@@ -12,6 +12,7 @@ from notion_client import AsyncClient
 from dotenv import load_dotenv
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
+from json_extractor import JsonExtractor
 
 # Load .env file for 'dev-local' environment.
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
@@ -67,9 +68,12 @@ async def get_notion_creds(user_id: str) -> Dict[str, str]:
 
     try:
         decrypted_creds_str = aes_decrypt(notion_data["credentials"])
-        token_info = json.loads(decrypted_creds_str)
+        token_info = JsonExtractor.extract_valid_json(decrypted_creds_str)
     except Exception as e:
         raise ToolError(f"Failed to decrypt or parse token for Notion: {e}")
+
+    if not token_info:
+        raise ToolError("Failed to parse decrypted credentials for Notion.")
 
     access_token = token_info.get("access_token")
     if not access_token:

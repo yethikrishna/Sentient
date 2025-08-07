@@ -11,6 +11,7 @@ import motor.motor_asyncio
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
 from dotenv import load_dotenv
+from json_extractor import JsonExtractor
 
 
 # Load .env file for 'dev-local' environment.
@@ -68,9 +69,12 @@ async def get_slack_creds(user_id: str) -> Dict[str, str]:
 
     try:
         decrypted_creds_str = aes_decrypt(slack_data["credentials"])
-        token_info = json.loads(decrypted_creds_str)
+        token_info = JsonExtractor.extract_valid_json(decrypted_creds_str)
     except Exception as e:
         raise ToolError(f"Failed to decrypt or parse Slack credentials: {e}")
+
+    if not token_info:
+        raise ToolError("Failed to parse decrypted credentials for Slack.")
 
     authed_user = token_info.get("authed_user", {})
     access_token = authed_user.get("access_token")

@@ -88,7 +88,9 @@ async def execute_presentation_creation(ctx: Context, outline_json: str) -> Dict
         slides_service = auth.authenticate_gslides(creds)
         drive_service = auth.authenticate_gdrive(creds)
         
-        outline = json.loads(outline_json)
+        outline = JsonExtractor.extract_valid_json(outline_json)
+        if not outline:
+            raise ToolError("Invalid outline_json provided.")
 
         presentation_result = await utils.create_presentation_from_outline(
             slides_service, drive_service, outline

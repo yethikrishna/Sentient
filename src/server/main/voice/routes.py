@@ -30,7 +30,8 @@ async def initiate_voice_session(
     user_id: str = Depends(PermissionChecker(required_permissions=["read:chat"]))
 ):
     """
-    Generates a short-lived, single-use token for authenticating a WebRTC/WebSocket voice stream.
+    Generates a short-lived, single-use token for authenticating a WebRTC/WebSocket voice stream
+    and provides the necessary ICE server configuration.
     """
     # Clean up expired tokens to prevent the cache from growing indefinitely
     now = time.time()
@@ -43,8 +44,11 @@ async def initiate_voice_session(
     expires_at = now + TOKEN_EXPIRATION_SECONDS
     rtc_token_cache[rtc_token] = {"user_id": user_id, "expires_at": expires_at}
     
+    # Get TURN credentials to send to the client
+    ice_servers_config = get_credentials()
+
     logger.info(f"Initiated voice session for user {user_id} with token {rtc_token}")
-    return {"rtc_token": rtc_token}
+    return {"rtc_token": rtc_token, "ice_servers": ice_servers_config}
 
 
 class MyVoiceChatHandler(ReplyOnPause):

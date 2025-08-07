@@ -10,6 +10,7 @@ export class WebRTCClient {
 		this.animationFrameId = null
 		this.serverUrl =
 			process.env.NEXT_PUBLIC_APP_SERVER_URL || "http://localhost:5000"
+		this.iceServers = options.iceServers || [] // Store iceServers from options
 
 		// --- MODIFICATION: Add a queue for ICE candidates ---
 		this.iceCandidateQueue = []
@@ -33,7 +34,13 @@ export class WebRTCClient {
 		this.iceCandidateQueue = []
 
 		try {
-			this.peerConnection = new RTCPeerConnection()
+			this.peerConnection = new RTCPeerConnection({
+				iceServers: this.iceServers
+			})
+			console.log("Created RTCPeerConnection with config:", {
+				iceServers: this.iceServers
+			})
+
 			console.log("Created RTCPeerConnection:", this.peerConnection)
 
 			// --- MODIFICATION: Queue ICE candidates instead of sending immediately ---

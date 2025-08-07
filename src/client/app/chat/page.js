@@ -730,7 +730,7 @@ export default function ChatPage() {
 			)
 			if (!rtcTokenResponse.ok)
 				throw new Error("Could not initiate voice session.")
-			const { rtc_token } = await rtcTokenResponse.json()
+			const { rtc_token, ice_servers } = await rtcTokenResponse.json()
 
 			// Step 3: Create and connect WebRTCClient directly
 			if (webrtcClientRef.current) {
@@ -753,7 +753,8 @@ export default function ChatPage() {
 					}
 				},
 				onAudioLevel: handleAudioLevel,
-				onEvent: handleVoiceEvent
+				onEvent: handleVoiceEvent,
+				iceServers: ice_servers.iceServers
 			})
 			webrtcClientRef.current = client
 

@@ -84,7 +84,7 @@ async def _get_stage1_response(messages: List[Dict[str, Any]], connected_tools_m
             })
 
     completion = client.chat.completions.create(
-        model=os.getenv("OPENAI_MODEL_NAME", "google/gemini-2.5-flash-lite"),
+        model=os.getenv("OPENAI_MODEL_NAME", "google/gemini-2.5-flash"),
         messages=formatted_messages,
     )
 

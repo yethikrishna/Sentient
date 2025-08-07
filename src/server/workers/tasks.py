@@ -229,6 +229,15 @@ async def async_refine_and_plan_ai_task(task_id: str, user_id: str):
         parsed_data = JsonExtractor.extract_valid_json(clean_llm_output(response_str))
         if parsed_data:
             # Safeguard: never allow the refiner to nullify or change the user_id
+            # --- ADD POSTHOG EVENT TRACKING ---
+            schedule_type = parsed_data.get("schedule", {}).get("type", "once")
+            capture_event(
+                user_id,
+                "task_created",
+                {"task_id": task_id, "schedule_type": schedule_type, "source": "prompt"}
+            )
+            # --- END POSTHOG EVENT TRACKING ---
+
             if "user_id" in parsed_data:
                 del parsed_data["user_id"]
 

@@ -7,6 +7,7 @@ from main.auth.utils import PermissionChecker
 from main.proactivity.models import SuggestionActionRequest
 from main.proactivity.learning import record_user_feedback
 from workers.tasks import create_task_from_suggestion
+from main.analytics import capture_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter(
@@ -45,6 +46,13 @@ async def handle_suggestion_action(
     if request.user_action == "approved":
         logger.info(f"User '{user_id}' approved suggestion '{request.notification_id}' of type '{suggestion_type}'.")
 
+        # --- ADD POSTHOG EVENT TRACKING ---
+        capture_event(
+            user_id,
+            "proactive_suggestion_approved",
+            {"suggestion_type": suggestion_type}
+        )
+        # --- END POSTHOG EVENT TRACKING ---
         # Re-extract with default for robustness, as suggested by diff
         suggestion_payload = notification.get("suggestion_payload", {})
         gathered_context = suggestion_payload.get("gathered_context")
@@ -64,6 +72,13 @@ async def handle_suggestion_action(
     elif request.user_action == "dismissed":
         logger.info(f"User '{user_id}' dismissed suggestion '{request.notification_id}' of type '{suggestion_type}'.")
 
+        # --- ADD POSTHOG EVENT TRACKING ---
+        capture_event(
+            user_id,
+            "proactive_suggestion_dismissed",
+            {"suggestion_type": suggestion_type}
+        )
+        # --- END POSTHOG EVENT TRACKING ---
         # 3c. Record negative feedback
         await record_user_feedback(user_id, suggestion_type, "negative")
 

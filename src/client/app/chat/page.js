@@ -129,6 +129,7 @@ export default function ChatPage() {
 	const ringtoneAudioRef = useRef(null)
 	const connectedAudioRef = useRef(null)
 	const remoteAudioRef = useRef(null)
+	const voiceModeStartTimeRef = useRef(null)
 
 	const fetchInitialMessages = useCallback(async () => {
 		setIsLoading(true)
@@ -848,6 +849,16 @@ export default function ChatPage() {
 
 		webrtcClientRef.current?.disconnect()
 
+		// --- ADD POSTHOG EVENT TRACKING ---
+		if (voiceModeStartTimeRef.current) {
+			const duration_seconds = Math.round(
+				(Date.now() - voiceModeStartTimeRef.current) / 1000
+			)
+			posthog?.capture("voice_mode_used", { duration_seconds })
+			voiceModeStartTimeRef.current = null // Reset after tracking
+		}
+		// --- END POSTHOG EVENT TRACKING ---
+
 		// 2. Immediately stop any playing audio.
 		if (ringtoneAudioRef.current) {
 			ringtoneAudioRef.current.pause()
@@ -872,6 +883,10 @@ export default function ChatPage() {
 			// Switching TO voice mode, first get permissions
 			const permissionsGranted = await initializeVoiceMode()
 			if (permissionsGranted) {
+				// --- ADD POSTHOG EVENT TRACKING ---
+				posthog?.capture("voice_mode_activated")
+				voiceModeStartTimeRef.current = Date.now() // Set start time
+				// --- END POSTHOG EVENT TRACKING ---
 				setIsVoiceMode(true)
 			}
 		}

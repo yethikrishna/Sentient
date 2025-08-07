@@ -23,6 +23,7 @@ import {
 } from "@tabler/icons-react"
 import { useState, useEffect, useCallback, Fragment } from "react"
 import { Tooltip } from "react-tooltip"
+import { usePostHog } from "posthog-js/react"
 import { cn } from "@utils/cn"
 import { Switch } from "@headlessui/react"
 
@@ -686,6 +687,7 @@ const TestingTools = () => {
 const ProactivitySettings = () => {
 	const [isEnabled, setIsEnabled] = useState(false)
 	const [isLoading, setIsLoading] = useState(true)
+	const posthog = usePostHog()
 
 	useEffect(() => {
 		const fetchStatus = async () => {
@@ -709,6 +711,12 @@ const ProactivitySettings = () => {
 		const toastId = toast.loading(
 			enabled ? "Enabling proactivity..." : "Disabling proactivity..."
 		)
+
+		// --- ADD POSTHOG EVENT TRACKING ---
+		if (enabled) {
+			posthog?.capture("proactive_assistance_enabled")
+		}
+		// --- END POSTHOG EVENT TRACKING ---
 		try {
 			const response = await fetch("/api/settings/proactivity", {
 				method: "POST",

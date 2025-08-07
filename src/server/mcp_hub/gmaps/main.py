@@ -17,7 +17,7 @@ if ENVIRONMENT == 'dev-local':
         load_dotenv(dotenv_path=dotenv_path)
 mcp = FastMCP(
     name="GMapsServer",
-    instructions="This server provides tools to get information from Google Maps, such as searching for places and getting directions.",
+    instructions="Provides tools to search for places and get directions using the Google Maps API.",
 )
 
 @mcp.resource("prompt://gmaps-agent-system")
@@ -47,16 +47,15 @@ async def _execute_tool(ctx: Context, func, **kwargs) -> Dict[str, Any]:
 @mcp.tool
 async def search_places(ctx: Context, query: str) -> Dict:
     """
-    Searches for places like restaurants, landmarks, or addresses.
-    Returns a list of matching places with their names, addresses, and IDs.
+    Searches for a location (like a restaurant, landmark, or address) based on a text `query`. Returns a list of potential matches with their name, address, and ID.
     """
     return await _execute_tool(ctx, utils.search_places_util, query=query)
 
 @mcp.tool
 async def get_directions(ctx: Context, origin: str, destination: str, mode: Optional[str] = "DRIVING") -> Dict:
     """
-    Gets directions between an origin and a destination.
-    The 'mode' can be 'DRIVING', 'WALKING', 'BICYCLING', or 'TRANSIT'.
+    Calculates a route between an `origin` and a `destination`.
+    The travel `mode` can be specified as 'DRIVING', 'WALKING', 'BICYCLING', or 'TRANSIT'.
     """
     return await _execute_tool(ctx, utils.get_directions_util, origin=origin, destination=destination, mode=mode)
 

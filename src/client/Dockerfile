@@ -22,7 +22,6 @@ ARG AUTH0_AUDIENCE
 ARG AUTH0_SCOPE
 ARG NEXT_PUBLIC_POSTHOG_KEY
 ARG NEXT_PUBLIC_POSTHOG_HOST
-ARG NEXT_PUBLIC_POSTHOG_KEY
 
 # Set them as environment variables for the build process
 ENV NEXT_PUBLIC_APP_SERVER_URL=$NEXT_PUBLIC_APP_SERVER_URL
@@ -39,12 +38,11 @@ ENV AUTH0_AUDIENCE=$AUTH0_AUDIENCE
 ENV AUTH0_SCOPE=$AUTH0_SCOPE
 ENV NEXT_PUBLIC_POSTHOG_KEY=$NEXT_PUBLIC_POSTHOG_KEY
 ENV NEXT_PUBLIC_POSTHOG_HOST=$NEXT_PUBLIC_POSTHOG_HOST
-ENV NEXT_PUBLIC_POSTHOG_KEY=$NEXT_PUBLIC_POSTHOG_KEY
 # --------------------------
 
 # Copy package.json and lock file to leverage Docker cache
-COPY package.json ./
-RUN npm install
+COPY package*.json ./
+RUN npm ci
 
 # Copy the rest of the application source code
 COPY . .

@@ -10,8 +10,12 @@ from dotenv import load_dotenv
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
 if ENVIRONMENT == 'dev-local':
     dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
-    if os.path.exists(dotenv_path):
-        load_dotenv(dotenv_path=dotenv_path)
+    dotenv_local_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env.local')
+    if os.path.exists(dotenv_local_path):
+        load_dotenv(dotenv_path=dotenv_local_path)
+    elif os.path.exists(dotenv_path):
+        load_dotenv(dotenv_path=dotenv_path, override=True)
+
 AES_SECRET_KEY_HEX = os.getenv("AES_SECRET_KEY")
 AES_IV_HEX = os.getenv("AES_IV")
 

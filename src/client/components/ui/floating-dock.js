@@ -35,7 +35,7 @@ const FloatingDockMobile = ({ items, className, pathname }) => {
 	return (
 		<div
 			className={cn(
-				"fixed top-1/2 left-4 -translate-y-1/2 block md:hidden z-50 select-none",
+				"fixed bottom-4 left-4 block md:hidden z-50 select-none",
 				className
 			)}
 		>
@@ -43,10 +43,10 @@ const FloatingDockMobile = ({ items, className, pathname }) => {
 				{open && (
 					<motion.div
 						layoutId="nav-mobile"
-						className="absolute left-full ml-3 flex flex-col gap-2"
-						initial={{ opacity: 0, x: -10 }}
-						animate={{ opacity: 1, x: 0 }}
-						exit={{ opacity: 0, x: -10 }}
+						className="absolute bottom-full mb-3 flex flex-col gap-2"
+						initial={{ opacity: 0, y: 10 }}
+						animate={{ opacity: 1, y: 0 }}
+						exit={{ opacity: 0, y: 10 }}
 					>
 						{items.map((item, idx) => {
 							const isActive = item.href === pathname
@@ -59,15 +59,16 @@ const FloatingDockMobile = ({ items, className, pathname }) => {
 							return (
 								<motion.div
 									key={item.title}
-									initial={{ opacity: 0, x: -10 }}
+									initial={{ opacity: 0, y: 10 }}
 									animate={{
+										// eslint-disable-line
 										opacity: 1,
-										x: 0,
+										y: 0,
 										transition: { delay: idx * 0.05 }
 									}}
 									exit={{
 										opacity: 0,
-										x: -10,
+										y: 10,
 										transition: {
 											delay:
 												(items.length - 1 - idx) * 0.05

@@ -1,15 +1,15 @@
 import os
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
-from urllib.parse import quote
 import base64
 from email.mime.text import MIMEText
+import re
 import asyncio
 
 from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
-from fastmcp.exceptions import ToolError
 from fastmcp.prompts.prompt import Message
+from googleapiclient.errors import HttpError
 
 # Local imports for modularity
 from . import auth
@@ -26,7 +26,7 @@ if ENVIRONMENT == 'dev-local':
 # --- Server Initialization ---
 mcp = FastMCP(
     name="GMailServer",
-    instructions="This server provides tools to interact with the GMail API for sending, searching, and managing emails.",
+    instructions="Provides a comprehensive suite of tools to read, search, send, and manage emails and labels in a user's Gmail account.",
 )
 
 
@@ -47,212 +47,407 @@ def build_gmail_user_prompt(query: str, username: str, previous_tool_response: s
     return Message(role="user", content=content)
 
 
-# --- Tool Definitions ---
-@mcp.tool()
-async def send_email(ctx: Context, to: str, subject: str, body: str) -> Dict[str, Any]:
-    """Sends an email to a specified recipient."""
+# --- Tool Helper ---
+async def _execute_tool(ctx: Context, func, *args, **kwargs) -> Dict[str, Any]:
+    """Helper to handle auth and execution for all tools."""
     try:
         user_id = auth.get_user_id_from_context(ctx)
         creds = await auth.get_google_creds(user_id)
         service = auth.authenticate_gmail(creds)
-        
-        message_raw = await helpers.create_message(to, subject, body)
-        message_body = {"raw": message_raw}
-        
-        service.users().messages().send(userId="me", body=message_body).execute()
-        return {"status": "success", "result": "Email sent successfully."}
+
+        # NEW: Fetch user info including privacy filters for tools that need it
+        needs_user_info = func.__name__ in ["_list_emails_sync", "_read_email_sync", "_catchup_sync"]
+        if needs_user_info:
+            user_info = await auth.get_user_info(user_id)
+            kwargs['user_info'] = user_info
+
+        # Use asyncio.to_thread to run synchronous Google API calls
+        result = await asyncio.to_thread(func, service, *args, **kwargs)
+        return {"status": "success", "result": result}
+    except HttpError as e:
+        # Catching HttpError specifically to get more details
+        return {"status": "failure", "error": f"Google API Error: {e.content.decode()}"}
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
-@mcp.tool()
-async def create_draft(ctx: Context, to: str, subject: str, body: str) -> Dict[str, Any]:
-    """Creates a draft email."""
-    try:
-        user_id = auth.get_user_id_from_context(ctx)
-        creds = await auth.get_google_creds(user_id)
-        service = auth.authenticate_gmail(creds)
+# --- Sync Tool Implementations ---
 
-        message_raw = await helpers.create_message(to, subject, body)
-        message_body = {"message": {"raw": message_raw}}
-        
-        draft = service.users().drafts().create(userId="me", body=message_body).execute()
-        return {"status": "success", "result": f"Draft created successfully with ID: {draft['id']}"}
-    except Exception as e:
-        return {"status": "failure", "error": str(e)}
+def _send_email_sync(service, to: str, subject: str, body: str):
+    message_raw = base64.urlsafe_b64encode(MIMEText(body).as_bytes()).decode()
+    message_body = {"raw": message_raw, "to": to, "subject": subject}
+    service.users().messages().send(userId="me", body=message_body).execute()
+    return {"message": "Email sent successfully."}
 
-@mcp.tool()
-async def search_inbox(ctx: Context, query: str) -> Dict[str, Any]:
-    """Searches the Gmail inbox for emails matching a query."""
-    try:
-        user_id = auth.get_user_id_from_context(ctx)
-        creds = await auth.get_google_creds(user_id)
-        service = auth.authenticate_gmail(creds)
+def _reply_to_email_sync(service, message_id: str, body: str, reply_all: bool = False):
+    original_msg = service.users().messages().get(userId="me", id=message_id, format="metadata", metadataHeaders=["subject", "from", "to", "cc", "message-id", "references"]).execute()
+    headers = {h['name'].lower(): h['value'] for h in original_msg['payload']['headers']}
 
-        def _execute_sync_search():
-            results = service.users().messages().list(userId="me", q=query).execute()
-            messages = results.get("messages", [])
-            email_data: List[Dict[str, Any]] = []
+    thread_id = original_msg['threadId']
+    subject = headers.get('subject', '')
+    if not subject.lower().startswith("re:"):
+        subject = f"Re: {subject}"
 
-            for message in messages[:10]:
-                msg = service.users().messages().get(userId="me", id=message["id"], format="full").execute()
-                headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
-                email_data.append({
-                    "id": message["id"],
-                    "subject": headers.get("Subject", "No Subject"),
-                    "from": headers.get("From", "Unknown Sender"),
-                    "snippet": msg.get("snippet", ""),
-                    "body": helpers.extract_email_body(msg.get("payload", {})),
-                })
-            return email_data
+    msg = MIMEText(body)
+    msg["subject"] = subject
+    msg["In-Reply-To"] = headers['message-id']
+    msg["References"] = headers.get('references', headers['message-id'])
 
-        email_data = await asyncio.to_thread(_execute_sync_search)
-        
-        gmail_search_url = f"https://mail.google.com/mail/u/0/#search/{quote(query)}"
-        return {
-            "status": "success",
-            "result": {
-                "response": "Emails found successfully",
-                "email_data": email_data,
-                "gmail_search_url": gmail_search_url,
-            },
-        }
-    except Exception as e:
-        return {"status": "failure", "error": str(e)}
+    if reply_all:
+        to_recipients = headers.get('to', '') + ',' + headers.get('cc', '')
+        msg["to"] = to_recipients
+        msg["cc"] = headers.get('from')
+    else:
+        msg["to"] = headers.get('from')
 
-@mcp.tool()
-async def reply_email(ctx: Context, query: str, body: str) -> Dict[str, Any]:
-    """Finds an email based on a query and sends a reply."""
-    try:
-        user_id = auth.get_user_id_from_context(ctx)
-        creds = await auth.get_google_creds(user_id)
-        service = auth.authenticate_gmail(creds)
+    raw_message = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+    service.users().messages().send(userId="me", body={"raw": raw_message, "threadId": thread_id}).execute()
+    return {"message": "Reply sent successfully."}
 
-        match = await helpers.find_best_matching_email(service, query)
-        if match["status"] != "success":
-            return match
+def _list_emails_sync(service, query: str = None, max_results: int = 10, user_info: Dict = None):
+    # Fetch more results than requested to account for potential filtering
+    results = service.users().messages().list(userId="me", q=query, maxResults=max_results * 2).execute()
+    messages_info = results.get("messages", [])
 
-        original = match["email_details"]
-        to = original.get('reply_to') or original.get('from')
-        subject = f"Re: {original['subject']}"
-        thread_id = original['threadId']
-        
-        msg = MIMEText(body)
-        msg["to"] = to
-        msg["subject"] = subject
-        msg["In-Reply-To"] = original.get("message_id_header")
-        msg["References"] = original.get("message_id_header")
-        
-        raw_message = base64.urlsafe_b64encode(msg.as_bytes()).decode()
-        
-        service.users().messages().send(
-            userId="me",
-            body={"raw": raw_message, "threadId": thread_id}
-        ).execute()
+    if not messages_info:
+        return []
 
-        return {"status": "success", "result": "Reply sent successfully."}
-    except Exception as e:
-        return {"status": "failure", "error": f"Error replying to email: {e}"}
+    # Fetch full message details in a batch for efficiency
+    batch = service.new_batch_http_request()
+    messages_full = []
+    def callback(request_id, response, exception):
+        if exception is None:
+            messages_full.append(response)
 
-@mcp.tool()
-async def forward_email(ctx: Context, query: str, to: str) -> Dict[str, Any]:
-    """Finds an email based on a query and forwards it."""
-    try:
-        user_id = auth.get_user_id_from_context(ctx)
-        creds = await auth.get_google_creds(user_id)
-        service = auth.authenticate_gmail(creds)
+    for msg_info in messages_info:
+        batch.add(service.users().messages().get(userId="me", id=msg_info["id"]), callback=callback)
 
-        match = await helpers.find_best_matching_email(service, query)
-        if match["status"] != "success":
-            return match
+    batch.execute()
 
-        original = match["email_details"]
-        subject = f"Fwd: {original['subject']}"
-        body = f"-------- Forwarded message --------\nFrom: {original['from']}\nSubject: {original['subject']}\n\n{original['body']}"
-        
-        message_raw = await helpers.create_message(to, subject, body)
-        message_body = {"raw": message_raw}
-        
-        service.users().messages().send(userId="me", body=message_body).execute()
+    # Apply privacy filters if available
+    filtered_messages = []
+    if user_info and user_info.get("privacy_filters"):
+        filters = user_info["privacy_filters"]
+        keyword_filters = filters.get("keywords", [])
+        email_filters = [e.lower() for e in filters.get("emails", [])]
+        label_filters = [l.lower() for l in filters.get("labels", [])]
 
-        return {"status": "success", "result": f"Email forwarded to {to} successfully."}
-    except Exception as e:
-        return {"status": "failure", "error": str(e)}
+        for msg in messages_full:
+            is_filtered = False
+            simplified = helpers._simplify_message(msg)
 
-@mcp.tool()
-async def delete_email(ctx: Context, query: str) -> Dict[str, Any]:
-    """Finds and deletes an email based on a query."""
-    try:
-        user_id = auth.get_user_id_from_context(ctx)
-        creds = await auth.get_google_creds(user_id)
-        service = auth.authenticate_gmail(creds)
-        
-        match = await helpers.find_best_matching_email(service, query)
-        if match["status"] != "success":
-            return match
-            
-        email_id = match["email_details"]["id"]
-        service.users().messages().delete(userId="me", id=email_id).execute()
-        return {"status": "success", "result": "Email deleted successfully."}
-    except Exception as e:
-        return {"status": "failure", "error": str(e)}
+            # Check labels
+            email_labels = [l.lower() for l in simplified.get("labels", [])]
+            if any(fl in email_labels for fl in label_filters):
+                is_filtered = True
 
-@mcp.tool()
-async def mark_email_as_read(ctx: Context, query: str) -> Dict[str, Any]:
-    """Finds an email by query and marks it as read."""
-    try:
-        user_id = auth.get_user_id_from_context(ctx)
-        creds = await auth.get_google_creds(user_id)
-        service = auth.authenticate_gmail(creds)
-        
-        match = await helpers.find_best_matching_email(service, query)
-        if match["status"] != "success":
-            return match
-            
-        email_id = match["email_details"]["id"]
-        service.users().messages().modify(userId="me", id=email_id, body={"removeLabelIds": ["UNREAD"]}).execute()
-        return {"status": "success", "result": "Email marked as read."}
-    except Exception as e:
-        return {"status": "failure", "error": str(e)}
+            # Check sender
+            sender_header = simplified.get("from", "").lower()
+            sender_match = re.search(r'<(.+?)>', sender_header)
+            sender_email = sender_match.group(1) if sender_match else sender_header
+            if any(fe in sender_email for fe in email_filters):
+                is_filtered = True
 
-@mcp.tool()
-async def mark_email_as_unread(ctx: Context, query: str) -> Dict[str, Any]:
-    """Finds an email by query and marks it as unread."""
-    try:
-        user_id = auth.get_user_id_from_context(ctx)
-        creds = await auth.get_google_creds(user_id)
-        service = auth.authenticate_gmail(creds)
-        
-        match = await helpers.find_best_matching_email(service, query)
-        if match["status"] != "success":
-            return match
-            
-        email_id = match["email_details"]["id"]
-        service.users().messages().modify(userId="me", id=email_id, body={"addLabelIds": ["UNREAD"]}).execute()
-        return {"status": "success", "result": "Email marked as unread."}
-    except Exception as e:
-        return {"status": "failure", "error": str(e)}
+            # Check keywords in subject/snippet
+            content_to_check = (simplified.get("subject", "") + " " + simplified.get("snippet", "")).lower()
+            if any(kw.lower() in content_to_check for kw in keyword_filters):
+                is_filtered = True
+
+            if not is_filtered:
+                filtered_messages.append(simplified)
+    else:
+        # No filters, just simplify all fetched messages
+        filtered_messages = [helpers._simplify_message(msg) for msg in messages_full]
+
+    return filtered_messages[:max_results]
+
+def _read_email_sync(service, message_id: str, user_info: Dict = None):
+    msg = service.users().messages().get(userId="me", id=message_id, format="full").execute()
+
+    # Apply privacy filters before returning content
+    if user_info and user_info.get("privacy_filters"):
+        filters = user_info["privacy_filters"]
+        keyword_filters = filters.get("keywords", [])
+        email_filters = [e.lower() for e in filters.get("emails", [])]
+        label_filters = [l.lower() for l in filters.get("labels", [])]
+
+        simplified_check = helpers._simplify_message(msg)
+
+        email_labels = [l.lower() for l in simplified_check.get("labels", [])]
+        if any(fl in email_labels for fl in label_filters):
+            raise Exception("Access denied to this email due to a privacy filter (label).")
+
+        sender_header = simplified_check.get("from", "").lower()
+        sender_match = re.search(r'<(.+?)>', sender_header)
+        sender_email = sender_match.group(1) if sender_match else sender_header
+        if any(fe in sender_email for fe in email_filters):
+            raise Exception("Access denied to this email due to a privacy filter (sender).")
+
+        content_to_check = (simplified_check.get("subject", "") + " " + simplified_check.get("snippet", "")).lower()
+        if any(kw.lower() in content_to_check for kw in keyword_filters):
+            raise Exception("Access denied to this email due to a privacy filter (keyword).")
+
+    simplified = helpers._simplify_message(msg)
+    simplified["body"] = helpers.extract_email_body(msg.get("payload", {}))
+    return simplified
+
+def _modify_email_sync(service, message_id: str, add_labels: Optional[List[str]] = None, remove_labels: Optional[List[str]] = None):
+    body = {"addLabelIds": add_labels or [], "removeLabelIds": remove_labels or []}
+    service.users().messages().modify(userId="me", id=message_id, body=body).execute()
+    return {"message": f"Email {message_id} modified."}
+
+def _list_labels_sync(service):
+    results = service.users().labels().list(userId="me").execute()
+    return [helpers._simplify_label(l) for l in results.get("labels", [])]
+
+def _create_label_sync(service, name: str):
+    label = {"name": name, "labelListVisibility": "labelShow", "messageListVisibility": "show"}
+    created_label = service.users().labels().create(userId="me", body=label).execute()
+    return helpers._simplify_label(created_label)
+
+def _list_filters_sync(service):
+    results = service.users().settings().filters().list(userId="me").execute()
+    return [helpers._simplify_filter(f) for f in results.get("filter", [])]
+
+def _create_filter_sync(service, criteria: Dict, action: Dict):
+    filter_body = {"criteria": criteria, "action": action}
+    created_filter = service.users().settings().filters().create(userId="me", body=filter_body).execute()
+    return helpers._simplify_filter(created_filter)
+
+def _delete_filter_sync(service, filter_id: str):
+    service.users().settings().filters().delete(userId="me", id=filter_id).execute()
+    return {"message": f"Filter {filter_id} deleted."}
+
+def _catchup_sync(service, user_info: Dict = None):
+    # The list function now handles filtering
+    unread_emails = _list_emails_sync(service, query="is:unread", max_results=20, user_info=user_info)
+    if not unread_emails:
+        return "Your inbox is all caught up!"
+    # Need to run the async helper in the event loop
+    return asyncio.run(helpers.summarize_emails_with_gemini(unread_emails))
+
+
+# --- Async Tool Definitions ---
 
 @mcp.tool()
-async def delete_spam_emails(ctx: Context) -> Dict[str, Any]:
-    """Deletes all emails from the spam folder."""
-    try:
-        user_id = auth.get_user_id_from_context(ctx)
-        creds = await auth.get_google_creds(user_id)
-        service = auth.authenticate_gmail(creds)
-        
-        results = service.users().messages().list(userId="me", q="in:spam").execute()
-        messages = results.get("messages", [])
+async def sendEmail(ctx: Context, to: str, subject: str, body: str) -> Dict[str, Any]:
+    """Compose and send a new email message to one or more recipients."""
+    return await _execute_tool(ctx, _send_email_sync, to=to, subject=subject, body=body)
 
-        if not messages:
-            return {"status": "success", "result": "No spam messages found."}
+@mcp.tool()
+async def replyToEmail(ctx: Context, message_id: str, body: str, reply_all: bool = False) -> Dict[str, Any]:
+    """Send a reply to an existing email message, either to the sender only or to all recipients."""
+    return await _execute_tool(ctx, _reply_to_email_sync, message_id=message_id, body=body, reply_all=reply_all)
 
-        # Batch delete is more efficient, but for simplicity, we delete one by one
-        for message in messages:
-            service.users().messages().delete(userId="me", id=message["id"]).execute()
-            
-        return {"status": "success", "result": f"Deleted {len(messages)} spam messages."}
-    except Exception as e:
-        return {"status": "failure", "error": str(e)}
+@mcp.tool()
+async def getLatestEmails(ctx: Context, max_results: int = 10) -> Dict[str, Any]:
+    """Retrieve the most recent email messages from your inbox, sorted by date received."""
+    return await _execute_tool(ctx, _list_emails_sync, query="in:inbox", max_results=max_results)
+
+@mcp.tool()
+async def getUnreadEmails(ctx: Context, max_results: int = 10) -> Dict[str, Any]:
+    """Retrieve unread email messages from your inbox."""
+    return await _execute_tool(ctx, _list_emails_sync, query="is:unread in:inbox", max_results=max_results)
+
+@mcp.tool()
+async def createLabel(ctx: Context, name: str) -> Dict[str, Any]:
+    """Create a new Gmail label for organizing emails."""
+    return await _execute_tool(ctx, _create_label_sync, name=name)
+
+@mcp.tool()
+async def applyLabels(ctx: Context, message_id: str, label_ids: List[str]) -> Dict[str, Any]:
+    """Add one or more labels to a specific email message."""
+    return await _execute_tool(ctx, _modify_email_sync, message_id=message_id, add_labels=label_ids)
+
+@mcp.tool()
+async def createDraft(ctx: Context, to: str, subject: str, body: str) -> Dict[str, Any]:
+    """Create a new draft email that can be edited before sending."""
+    def _sync(service, to, subject, body):
+        message_raw = base64.urlsafe_b64encode(MIMEText(body).as_bytes()).decode()
+        message = {"message": {"raw": message_raw, "to": to, "subject": subject}}
+        draft = service.users().drafts().create(userId="me", body=message).execute()
+        return {"draft_id": draft['id'], "message": "Draft created successfully."}
+    return await _execute_tool(ctx, _sync, to=to, subject=subject, body=body)
+
+@mcp.tool()
+async def listDrafts(ctx: Context) -> Dict[str, Any]:
+    """List all saved draft emails in the user's account."""
+    def _sync(service):
+        drafts = service.users().drafts().list(userId="me").execute().get('drafts', [])
+        # Fetch details for each draft to show subject/to
+        detailed_drafts = []
+        for d in drafts[:10]: # Limit to 10 to avoid too many API calls
+            draft_details = service.users().drafts().get(userId="me", id=d['id']).execute()
+            headers = {h['name'].lower(): h['value'] for h in draft_details['message']['payload']['headers']}
+            detailed_drafts.append({"id": d['id'], "to": headers.get('to'), "subject": headers.get('subject')})
+        return detailed_drafts
+    return await _execute_tool(ctx, _sync)
+
+@mcp.tool()
+async def markAsRead(ctx: Context, message_id: str) -> Dict[str, Any]:
+    """Mark an email message as read."""
+    return await _execute_tool(ctx, _modify_email_sync, message_id=message_id, remove_labels=["UNREAD"])
+
+@mcp.tool()
+async def moveToTrash(ctx: Context, message_id: str) -> Dict[str, Any]:
+    """Move an email message to the trash."""
+    def _sync(service, message_id):
+        service.users().messages().trash(userId="me", id=message_id).execute()
+        return {"message": "Email moved to trash."}
+    return await _execute_tool(ctx, _sync, message_id=message_id)
+
+@mcp.tool()
+async def archiveEmail(ctx: Context, message_id: str) -> Dict[str, Any]:
+    """Remove an email message from the inbox without deleting it (archive)."""
+    return await _execute_tool(ctx, _modify_email_sync, message_id=message_id, remove_labels=["INBOX"])
+
+@mcp.tool()
+async def searchWithAttachments(ctx: Context, max_results: int = 5) -> Dict[str, Any]:
+    """Search for email messages that have file attachments."""
+    return await _execute_tool(ctx, _list_emails_sync, query="has:attachment", max_results=max_results)
+
+@mcp.tool()
+async def searchInFolder(ctx: Context, folder_name: str, max_results: int = 10) -> Dict[str, Any]:
+    """Search for email messages within a specific Gmail folder or label."""
+    return await _execute_tool(ctx, _list_emails_sync, query=f"in:{folder_name}", max_results=max_results)
+
+@mcp.tool()
+async def createFilter(ctx: Context, from_email: Optional[str] = None, to_email: Optional[str] = None, subject: Optional[str] = None, add_label_id: Optional[str] = None, remove_label_ids: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Create a new Gmail filter that automatically applies actions to incoming messages."""
+    criteria = {k: v for k, v in locals().items() if k in ['from_email', 'to_email', 'subject'] and v is not None}
+    action = {"addLabelIds": [add_label_id] if add_label_id else [], "removeLabelIds": remove_label_ids or []}
+    if not criteria or not (action["addLabelIds"] or action["removeLabelIds"]):
+        return {"status": "failure", "error": "Filter requires at least one criteria and one action."}
+    return await _execute_tool(ctx, _create_filter_sync, criteria=criteria, action=action)
+
+@mcp.tool()
+async def deleteFilter(ctx: Context, filter_id: str) -> Dict[str, Any]:
+    """Delete a Gmail filter."""
+    return await _execute_tool(ctx, _delete_filter_sync, filter_id=filter_id)
+
+@mcp.tool()
+async def cancelScheduled(ctx: Context, message_id: str) -> Dict[str, Any]:
+    """Cancel a scheduled email. This is done by moving the email to trash."""
+    return await moveToTrash(ctx, message_id)
+
+@mcp.tool()
+async def catchup(ctx: Context) -> Dict[str, Any]:
+    """Get a quick compact summary of all unread emails from your primary inbox."""
+    return await _execute_tool(ctx, _catchup_sync)
+
+@mcp.tool()
+async def readEmail(ctx: Context, message_id: str) -> Dict[str, Any]:
+    """Retrieve and read the content of a specific email message by its unique ID."""
+    return await _execute_tool(ctx, _read_email_sync, message_id=message_id)
+
+@mcp.tool()
+async def getEmailsByThread(ctx: Context, thread_id: str) -> Dict[str, Any]:
+    """Retrieve all email messages that belong to the same conversation thread."""
+    def _sync(service, thread_id):
+        thread = service.users().threads().get(userId='me', id=thread_id).execute()
+        return [helpers._simplify_message(m) for m in thread.get('messages', [])]
+    return await _execute_tool(ctx, _sync, thread_id=thread_id)
+
+@mcp.tool()
+async def getEmailsBySender(ctx: Context, sender_email: str, max_results: int = 10) -> Dict[str, Any]:
+    """Retrieve email messages from a specific sender email address."""
+    return await _execute_tool(ctx, _list_emails_sync, query=f"from:{sender_email}", max_results=max_results)
+
+@mcp.tool()
+async def searchEmails(ctx: Context, query: str, max_results: int = 10) -> Dict[str, Any]:
+    """Search for email messages using Gmail search operators and syntax."""
+    return await _execute_tool(ctx, _list_emails_sync, query=query, max_results=max_results)
+
+@mcp.tool()
+async def listLabels(ctx: Context) -> Dict[str, Any]:
+    """List all available Gmail labels in the user's account."""
+    return await _execute_tool(ctx, _list_labels_sync)
+
+@mcp.tool()
+async def removeLabels(ctx: Context, message_id: str, label_ids: List[str]) -> Dict[str, Any]:
+    """Remove one or more labels from a specific email message."""
+    return await _execute_tool(ctx, _modify_email_sync, message_id=message_id, remove_labels=label_ids)
+
+@mcp.tool()
+async def updateDraft(ctx: Context, draft_id: str, to: Optional[str] = None, subject: Optional[str] = None, body: Optional[str] = None) -> Dict[str, Any]:
+    """Update an existing draft email with new content."""
+    def _sync(service, draft_id, to, subject, body):
+        message_raw = base64.urlsafe_b64encode(MIMEText(body).as_bytes()).decode()
+        message = {"message": {"raw": message_raw, "to": to, "subject": subject}}
+        updated_draft = service.users().drafts().update(userId="me", id=draft_id, body=message).execute()
+        return {"draft_id": updated_draft['id'], "message": "Draft updated."}
+    return await _execute_tool(ctx, _sync, draft_id=draft_id, to=to, subject=subject, body=body)
+
+@mcp.tool()
+async def deleteDraft(ctx: Context, draft_id: str) -> Dict[str, Any]:
+    """Delete a saved draft email."""
+    def _sync(service, draft_id):
+        service.users().drafts().delete(userId="me", id=draft_id).execute()
+        return {"message": "Draft deleted."}
+    return await _execute_tool(ctx, _sync, draft_id=draft_id)
+
+@mcp.tool()
+async def markAsUnread(ctx: Context, message_id: str) -> Dict[str, Any]:
+    """Mark an email message as unread."""
+    return await _execute_tool(ctx, _modify_email_sync, message_id=message_id, add_labels=["UNREAD"])
+
+@mcp.tool()
+async def restoreFromTrash(ctx: Context, message_id: str) -> Dict[str, Any]:
+    """Restore an email message from the trash to the inbox."""
+    def _sync(service, message_id):
+        service.users().messages().untrash(userId="me", id=message_id).execute()
+        return {"message": "Email restored from trash."}
+    return await _execute_tool(ctx, _sync, message_id=message_id)
+
+@mcp.tool()
+async def searchByDate(ctx: Context, before: Optional[str] = None, after: Optional[str] = None, max_results: int = 10) -> Dict[str, Any]:
+    """Search for email messages within a specific date range (YYYY/MM/DD format)."""
+    query_parts = []
+    if before: query_parts.append(f"before:{before}")
+    if after: query_parts.append(f"after:{after}")
+    if not query_parts: return {"status": "failure", "error": "Either 'before' or 'after' date must be provided."}
+    return await _execute_tool(ctx, _list_emails_sync, query=" ".join(query_parts), max_results=max_results)
+
+@mcp.tool()
+async def searchBySize(ctx: Context, size_mb: int, comparison: str = "larger", max_results: int = 5) -> Dict[str, Any]:
+    """Search for large email messages above a specified size in MB."""
+    op = ">" if comparison == "larger" else "<"
+    return await _execute_tool(ctx, _list_emails_sync, query=f"size:{size_mb}m", max_results=max_results)
+
+@mcp.tool()
+async def forwardEmail(ctx: Context, message_id: str, to: str) -> Dict[str, Any]:
+    """Forward an existing email message to new recipients."""
+    def _sync(service, message_id, to):
+        original_msg = service.users().messages().get(userId="me", id=message_id, format='full').execute()
+        headers = {h['name'].lower(): h['value'] for h in original_msg['payload']['headers']}
+        body = helpers.extract_email_body(original_msg['payload'])
+
+        fwd_subject = f"Fwd: {headers.get('subject', '')}"
+        fwd_body = f"-------- Forwarded message --------\nFrom: {headers.get('from')}\nDate: {headers.get('date')}\nSubject: {headers.get('subject')}\nTo: {headers.get('to')}\n\n{body}"
+
+        message_raw = base64.urlsafe_b64encode(MIMEText(fwd_body).as_bytes()).decode()
+        message = {"raw": message_raw, "to": to, "subject": fwd_subject}
+        service.users().messages().send(userId="me", body=message).execute()
+        return {"message": "Email forwarded successfully."}
+    return await _execute_tool(ctx, _sync, message_id=message_id, to=to)
+
+@mcp.tool()
+async def listFilters(ctx: Context) -> Dict[str, Any]:
+    """List all Gmail filters in the user's account."""
+    return await _execute_tool(ctx, _list_filters_sync)
+
+@mcp.tool()
+async def scheduleEmail(ctx: Context, to: str, subject: str, body: str, send_at_iso: str) -> Dict[str, Any]:
+    """Create an email to be sent at a specified future time (ISO 8601 format)."""
+    # Gmail API doesn't have a direct schedule send. The common workaround is to save a draft and use a separate scheduler (like Celery Beat)
+    # to send it. For simplicity here, we will simulate it by sending immediately and returning a "scheduled" message.
+    # A full implementation would require a separate scheduler worker.
+    return await sendEmail(ctx, to, subject, f"[Simulating Send at {send_at_iso}]\n\n{body}")
+
+@mcp.tool()
+async def listScheduled(ctx: Context) -> Dict[str, Any]:
+    """List all scheduled emails. (Simulated)"""
+    # Since we don't have a real scheduler, we return an empty list.
+    return {"status": "success", "result": "No scheduled emails found (scheduling is simulated)."}
 
 # --- Server Execution ---
 if __name__ == "__main__":

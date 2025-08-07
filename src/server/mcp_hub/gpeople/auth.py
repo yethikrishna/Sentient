@@ -10,6 +10,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build, Resource
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
+from json_extractor import JsonExtractor
 
 from typing import Optional
 from dotenv import load_dotenv
@@ -19,7 +20,7 @@ ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
 if ENVIRONMENT == 'dev-local':
     dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
     if os.path.exists(dotenv_path):
-        load_dotenv(dotenv_path=dotenv_path)
+        load_dotenv(dotenv_path=dotenv_path, override=True)
 
 MONGO_URI = os.getenv("MONGO_URI")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
@@ -63,12 +64,14 @@ async def get_google_creds(user_id: str) -> Credentials:
     
     user_data = user_doc["userData"]
     gpeople_data = user_data.get("integrations", {}).get("gpeople")
-    if not gpeople_data or not gpeople_data.get("connected") or "credentials" not in gpeople_data:
+    if not gpeople_data or not gpeople_data.get("connected") or not gpeople_data.get("credentials"):
         raise ToolError(f"Google People integration not connected. Please use the default connect flow.")
 
     try:
         decrypted_creds_str = aes_decrypt(gpeople_data["credentials"])
-        token_info = json.loads(decrypted_creds_str)
+        token_info = JsonExtractor.extract_valid_json(decrypted_creds_str)
+        if not token_info:
+            raise ToolError("Failed to parse decrypted credentials for Google People.")
         return Credentials.from_authorized_user_info(token_info)
     except Exception as e:
         raise ToolError(f"Failed to decrypt or parse default OAuth token for Google People: {e}")

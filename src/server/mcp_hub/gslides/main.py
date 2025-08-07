@@ -17,7 +17,7 @@ if ENVIRONMENT == 'dev-local':
     if os.path.exists(dotenv_path):
         load_dotenv(dotenv_path=dotenv_path)
 
-OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL", "http://localhost:11434")
+OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL", "http://localhost:11434/v1/")
 OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "qwen3:4b")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ollama")
 
@@ -32,7 +32,7 @@ def get_generator_agent(username: str):
 
 mcp = FastMCP(
     name="GSlidesServer",
-    instructions="This server provides tools to create Google Slides presentations in a two-step process.",
+    instructions="Provides a two-step workflow to generate and create complete Google Slides presentations from a simple topic.",
 )
 
 @mcp.resource("prompt://gslides-agent-system")
@@ -42,9 +42,8 @@ def get_gslides_system_prompt() -> str:
 @mcp.tool()
 async def generate_presentation_json(ctx: Context, topic: str, previous_tool_response: Optional[str] = "{}") -> Dict[str, Any]:
     """
-    Step 1: Generates the structured JSON outline needed to create a Google Slides presentation.
-    Provide a topic and optionally the JSON result from a previous tool. This tool will use an internal AI to create the detailed JSON for the presentation.
-    The output of this tool should be passed directly to the `execute_presentation_creation` tool.
+    Step 1 of 2 for creating a presentation. Generates a structured JSON outline for a presentation based on a given `topic`.
+    An internal AI designs the slide titles, content, and suggests images or charts. The output is used by `execute_presentation_creation`.
     """
     try:
         user_id = auth.get_user_id_from_context(ctx)
@@ -81,8 +80,7 @@ async def generate_presentation_json(ctx: Context, topic: str, previous_tool_res
 @mcp.tool()
 async def execute_presentation_creation(ctx: Context, outline_json: str) -> Dict[str, Any]:
     """
-    Step 2: Creates the actual Google Slides presentation from the structured JSON outline.
-    This tool takes the JSON output from `generate_presentation_json` and creates the file.
+    Step 2 of 2 for creating a presentation. Takes the `outline_json` from `generate_presentation_json` and builds the actual Google Slides file, populating it with titles, content, and images.
     """
     try:
         user_id = auth.get_user_id_from_context(ctx)
@@ -90,7 +88,9 @@ async def execute_presentation_creation(ctx: Context, outline_json: str) -> Dict
         slides_service = auth.authenticate_gslides(creds)
         drive_service = auth.authenticate_gdrive(creds)
         
-        outline = json.loads(outline_json)
+        outline = JsonExtractor.extract_valid_json(outline_json)
+        if not outline:
+            raise ToolError("Invalid outline_json provided.")
 
         presentation_result = await utils.create_presentation_from_outline(
             slides_service, drive_service, outline

@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any
 import datetime
 
 from main.dependencies import mongo_manager, websocket_manager
@@ -7,15 +7,32 @@ from main.notifications.whatsapp_client import send_whatsapp_message # Import th
 
 logger = logging.getLogger(__name__)
 
-async def create_and_push_notification(user_id: str, message: str, task_id: Optional[str] = None):
+async def create_and_push_notification(user_id: str, message: str, task_id: Optional[str] = None, notification_type: str = "general", payload: Optional[Dict[str, Any]] = None):
     """
     Saves a notification to the database, pushes it via WebSocket, and sends it via WhatsApp if configured.
+    Handles different notification types.
     """
-    notification_data = {
-        "message": message,
-        "task_id": task_id,
-        "read": False
-    }
+
+    notification_data = {}
+
+    if notification_type == "proactive_suggestion" and payload:
+        notification_data = {
+            "type": "proactive_suggestion",
+            "message": message,
+            "is_actioned": False,
+            "suggestion_payload": {
+                "suggestion_type": payload.get("suggestion_type"),
+                "action_details": payload.get("action_details"),
+                "gathered_context": payload.get("gathered_context")
+            }
+        }
+    else: # Default, general notification
+        notification_data = {
+            "type": "general",
+            "message": message,
+            "task_id": task_id,
+            "read": False
+        }
 
     try:
         # 1. Save to DB
@@ -38,15 +55,16 @@ async def create_and_push_notification(user_id: str, message: str, task_id: Opti
         )
         logger.info(f"Pushed new notification to user {user_id} via WebSocket.")
 
-        # 3. Send via WhatsApp
-        user_profile = await mongo_manager.get_user_profile(user_id)
-        if user_profile:
-            wa_prefs = user_profile.get("userData", {}).get("notificationPreferences", {}).get("whatsapp", {})
-            if wa_prefs.get("enabled") and wa_prefs.get("chatId"):
-                logger.info(f"Attempting to send WhatsApp notification to user {user_id}")
-                await send_whatsapp_message(wa_prefs["chatId"], message)
-            else:
-                logger.info(f"WhatsApp notifications disabled or not configured for user {user_id}.")
+        # 3. Send via WhatsApp (only for general notifications for now)
+        if notification_type == "general":
+            user_profile = await mongo_manager.get_user_profile(user_id)
+            if user_profile:
+                wa_prefs = user_profile.get("userData", {}).get("notificationPreferences", {}).get("whatsapp", {})
+                if wa_prefs.get("enabled") and wa_prefs.get("chatId"):
+                    logger.info(f"Attempting to send WhatsApp notification to user {user_id}")
+                    await send_whatsapp_message(wa_prefs["chatId"], message)
+                else:
+                    logger.info(f"WhatsApp notifications disabled or not configured for user {user_id}.")
 
     except Exception as e:
         logger.error(f"Error creating/pushing notification for user {user_id}: {e}", exc_info=True)

@@ -4,54 +4,69 @@ import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@utils/cn"
 import toast from "react-hot-toast"
 import { usePostHog } from "posthog-js/react"
-import Typewriter from "typewriter-effect"
 import { useRouter } from "next/navigation"
 import {
 	IconLoader,
-	IconMapPin,
-	IconMapPinFilled,
-	IconMoodHappy,
-	IconBriefcase,
-	IconHeart,
-	IconUser,
-	IconClock,
-	IconListCheck,
 	IconCheck,
-	IconBrandWhatsapp,
-	IconPlugConnected,
-	IconBook,
-	IconMessageChatbot,
-	IconArrowRight,
 	IconSparkles,
-	IconLink
+	IconHeart
 } from "@tabler/icons-react"
+import AnimatedBackground from "@components/onboarding/AnimatedBackground"
+import ProgressBar from "@components/onboarding/ProgressBar"
+import SparkleEffect from "@components/ui/SparkleEffect"
+import { GridBackground } from "@components/ui/GridBackground"
+import { UseCaseCarousel } from "@components/onboarding/UseCaseCarousel"
 
 // --- Helper Components ---
 
-const CheckFilled = ({ className }) => (
-	<svg
-		xmlns="http://www.w3.org/2000/svg"
-		viewBox="0 0 24 24"
-		fill="currentColor"
-		className={cn("w-6 h-6", className)}
+const TypingIndicator = () => (
+	<motion.div
+		initial={{ opacity: 0 }}
+		animate={{ opacity: 1 }}
+		exit={{ opacity: 0 }}
+		className="flex items-center gap-2"
 	>
-		<path
-			fillRule="evenodd"
-			d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12Zm13.36-1.814a.75.75 0 1 0-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z"
-			clipRule="evenodd"
+		<span className="text-brand-orange">[SENTIENT]:</span>
+		<motion.div
+			className="w-2 h-4 bg-brand-orange"
+			animate={{ opacity: [0, 1, 0] }}
+			transition={{ duration: 1, repeat: Infinity, ease: "easeInOut" }}
 		/>
-	</svg>
+	</motion.div>
 )
 
-const BlinkingInstructions = ({ text }) => (
-	<motion.p
-		className="text-center text-sm text-neutral-500 mt-8"
-		initial={{ opacity: 0.4 }}
-		animate={{ opacity: [0.4, 1, 0.4] }}
-		transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-	>
-		{text}
-	</motion.p>
+const NavigationHint = ({ onBack, onNext, isNextDisabled }) => (
+	<div className="mt-6 text-center">
+		{/* Mobile Buttons */}
+		<div className="md:hidden flex justify-center gap-4">
+			<button
+				onClick={onBack}
+				className="py-2 px-5 rounded-md bg-neutral-700 hover:bg-neutral-600 text-sm font-semibold"
+			>
+				Back
+			</button>
+			<button
+				onClick={onNext}
+				disabled={isNextDisabled}
+				className="py-2 px-5 rounded-md bg-brand-orange/80 hover:bg-brand-orange text-brand-black text-sm font-semibold disabled:opacity-50"
+			>
+				Next
+			</button>
+		</div>
+
+		{/* Desktop Hint */}
+		<p className="hidden md:block text-xs text-neutral-500">
+			Press{" "}
+			<kbd className="px-2 py-1 text-xs font-semibold text-neutral-400 bg-neutral-800 border border-neutral-700 rounded-md">
+				Enter
+			</kbd>{" "}
+			to continue, or{" "}
+			<kbd className="px-2 py-1 text-xs font-semibold text-neutral-400 bg-neutral-800 border border-neutral-700 rounded-md">
+				←
+			</kbd>{" "}
+			to go back.
+		</p>
+	</div>
 )
 
 // --- Onboarding Data ---
@@ -59,33 +74,18 @@ const BlinkingInstructions = ({ text }) => (
 const questions = [
 	{
 		id: "user-name",
-		sentientComment:
-			"To get started, I just need to ask a few questions to personalize your experience. First things first...",
-		question: "What should I call you?",
+		question: "First, what should I call you?",
 		type: "text-input",
 		required: true,
-		placeholder: "e.g., Alex",
-		icon: <IconUser />
-	},
-	{
-		id: "agent-name",
-		sentientComment:
-			"Great to meet you, {user-name}! I'm your personal AI. You can call me Sentient, or you can give me a name of your own.",
-		question: "What would you like to call me? (Optional)",
-		type: "text-input",
-		required: false,
-		placeholder: "e.g., Jarvis, Athena, Friday",
-		icon: <IconMessageChatbot />
+		placeholder: "e.g., Alex"
 	},
 	{
 		id: "timezone",
-		sentientComment:
-			"Great to meet you, {user-name}! To make sure I'm always on your time...",
 		question: "What's your timezone?",
 		type: "select",
 		required: true,
 		options: [
-			{ value: "", label: "Select your timezone...", disabled: true },
+			{ value: "", label: "Select your timezone..." },
 			{ value: "America/New_York", label: "Eastern Time (US & Canada)" },
 			{ value: "America/Chicago", label: "Central Time (US & Canada)" },
 			{ value: "America/Denver", label: "Mountain Time (US & Canada)" },
@@ -93,119 +93,67 @@ const questions = [
 				value: "America/Los_Angeles",
 				label: "Pacific Time (US & Canada)"
 			},
+			{
+				value: "America/St_Johns",
+				label: "Newfoundland (NDT)"
+			},
 			{ value: "Europe/London", label: "London, Dublin (GMT/BST)" },
 			{ value: "Europe/Berlin", label: "Berlin, Paris (CET)" },
 			{ value: "Asia/Kolkata", label: "India (IST)" },
 			{ value: "Asia/Singapore", label: "Singapore (SGT)" },
 			{ value: "UTC", label: "Coordinated Universal Time (UTC)" }
-		],
-		icon: <IconClock />
-	},
-	{
-		id: "whatsapp_number",
-		sentientComment:
-			"Got it. I can also send you important notifications on WhatsApp if you'd like.",
-		question: "WhatsApp Number (Optional)",
-		description:
-			"Enter your number with country code (e.g., +14155552671).",
-		type: "text-input",
-		required: false,
-		placeholder: "+14155552671",
-		icon: <IconBrandWhatsapp />
+		]
 	},
 	{
 		id: "location",
-		sentientComment:
-			"Perfect. Now, to help with local info like weather and places...",
 		question: "Where are you located?",
 		description:
-			"Share your location for automatic updates, or type your city.",
+			"This helps with local info like weather. You can type a city or detect automatically.",
 		type: "location",
-		icon: <IconMapPin />
+		required: true
 	},
 	{
 		id: "professional-context",
-		sentientComment:
-			"This helps me understand your professional goals and context.",
 		question: "What's your professional world like?",
 		type: "textarea",
-		placeholder: "e.g., I'm a software developer at a startup...",
-		icon: <IconBriefcase />
+		required: true,
+		placeholder: "e.g., I'm a software developer at a startup..."
 	},
 	{
 		id: "personal-context",
-		sentientComment:
-			"And when you're not working? Tell me about your hobbies.",
 		question: "What about your personal life and interests?",
 		type: "textarea",
+		required: true,
 		placeholder: "e.g., I enjoy hiking, learning guitar, and soccer.",
 		icon: <IconHeart />
-	},
-	{
-		id: "linkedin-url",
-		sentientComment:
-			"To get a better professional snapshot, you can also provide your LinkedIn profile URL. This is optional.",
-		question: "What is your LinkedIn Profile URL? (Optional)",
-		type: "text-input",
-		required: false,
-		placeholder: "https://www.linkedin.com/in/your-profile",
-		icon: <IconLink />
-	},
-	{
-		id: "response-verbosity",
-		sentientComment:
-			"This is really helpful! Let's set the right tone for our chats. When I give you an answer, how much detail do you prefer?",
-		question: "Choose your preferred level of detail",
-		type: "single-choice",
-		required: true,
-		options: ["Concise", "Balanced", "Detailed"],
-		icon: <IconMoodHappy />
-	},
-	{
-		id: "communication-style",
-		sentientComment:
-			"This is really helpful! Let's set the right tone for our chats.",
-		question: "How should I communicate with you?",
-		type: "single-choice",
-		required: true,
-		options: [
-			"Casual & Friendly",
-			"Professional & Formal",
-			"Concise & To-the-point",
-			"Enthusiastic & Witty"
-		],
-		icon: <IconMoodHappy />
-	},
-	{
-		id: "core-priorities",
-		sentientComment:
-			"Last one! To help me focus on what's truly important to you...",
-		question: "What are your top 3 priorities right now?",
-		type: "multi-choice",
-		limit: 3,
-		options: [
-			"Career Growth",
-			"Health & Wellness",
-			"Family & Relationships",
-			"Learning & Personal Growth",
-			"Financial Stability",
-			"Hobbies & Leisure"
-		],
-		icon: <IconListCheck />
 	}
+]
+
+const sentientComments = [
+	"To get started, I just need to ask a few questions to personalize your experience.",
+	"Great to meet you, {user-name}! To make sure I'm always on your time...",
+	"Perfect. Now, to help with local info like weather and places...",
+	"This helps me understand your professional goals and context.",
+	"And when you're not working? Tell me about your hobbies.",
+	"Awesome! That's everything I need for now. Let's get you set up."
 ]
 
 // --- Main Component ---
 
 const OnboardingPage = () => {
-	const [stage, setStage] = useState("intro") // 'intro', 'questions', 'submitting', 'whatsNext', 'complete'
+	const [stage, setStage] = useState("intro") // 'intro', 'questions', 'submitting', 'complete'
 	const [answers, setAnswers] = useState({})
 	const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
 	const [isLoading, setIsLoading] = useState(true)
-	const [isInputVisible, setIsInputVisible] = useState(false) // prettier-ignore
-	const [fullyTyped, setFullyTyped] = useState({})
+	const [conversation, setConversation] = useState([])
+	const [score, setScore] = useState(0)
+	const [maxQuestionIndexReached, setMaxQuestionIndexReached] = useState(0)
+	const [sparkleTrigger, setSparkleTrigger] = useState(0)
+	const [isAiTyping, setIsAiTyping] = useState(false)
 	const posthog = usePostHog()
 	const router = useRouter()
+	const chatEndRef = useRef(null)
+	const statusChecked = useRef(false)
 
 	const [locationState, setLocationState] = useState({
 		loading: false,
@@ -213,24 +161,33 @@ const OnboardingPage = () => {
 		error: null
 	})
 
-	const handleTypingComplete = useCallback(() => {
-		setIsInputVisible(true)
-	}, [])
+	const addAiMessage = useCallback(
+		(index) => {
+			let message = sentientComments[index]
+			if (message.includes("{user-name}")) {
+				message = message.replace(
+					"{user-name}",
+					answers["user-name"] || "friend"
+				)
+			}
+			// Append the question text if it exists for the current step
+			if (index < questions.length) {
+				const question = questions[index]
+				if (question) {
+					message += `\n\n${question.question}`
+				}
+			}
+
+			setConversation((prev) => [
+				...prev,
+				{ sender: "ai", text: message }
+			])
+		},
+		[answers]
+	)
 
 	const handleAnswer = (questionId, answer) => {
 		setAnswers((prev) => ({ ...prev, [questionId]: answer }))
-		// Auto-advance for single-choice questions to improve flow
-		const currentQuestion = questions[currentQuestionIndex]
-		if (currentQuestion.type === "single-choice") {
-			// Use a small timeout to let the user see their selection
-			setTimeout(() => {
-				if (currentQuestionIndex < questions.length - 1) {
-					handleNext()
-				} else {
-					handleSubmit()
-				}
-			}, 400)
-		}
 	}
 
 	const handleMultiChoice = (questionId, option) => {
@@ -277,7 +234,8 @@ const OnboardingPage = () => {
 	}
 
 	const isCurrentQuestionAnswered = useCallback(() => {
-		if (stage !== "questions") return false
+		if (stage !== "questions" || currentQuestionIndex >= questions.length)
+			return false
 		const currentQuestion = questions[currentQuestionIndex]
 		if (!currentQuestion.required) return true
 		const answer = answers[currentQuestion.id]
@@ -285,13 +243,11 @@ const OnboardingPage = () => {
 			return false
 		if (Array.isArray(answer) && answer.length === 0) return false
 		return true
-	}, [answers, currentQuestionIndex, stage])
+	}, [answers, currentQuestionIndex, stage, questions.length])
 
 	const handleSubmit = async () => {
 		setStage("submitting")
-		const whatsappNumber = answers["whatsapp_number"]
 		const mainOnboardingData = { ...answers }
-		delete mainOnboardingData["whatsapp_number"]
 
 		try {
 			const response = await fetch("/api/onboarding", {
@@ -305,16 +261,8 @@ const OnboardingPage = () => {
 					result.message || "Failed to save onboarding data"
 				)
 			}
-			if (whatsappNumber && whatsappNumber.trim()) {
-				await fetch("/api/settings/whatsapp", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ whatsapp_number: whatsappNumber })
-				})
-			}
 			posthog?.capture("onboarding_completed")
-			setStage("whatsNext") // Go to the new "What's Next" screen
-			// setTimeout(() => router.push("/home"), 2500) // Removed auto-redirect
+			router.push("/chat")
 		} catch (error) {
 			toast.error(`Error: ${error.message}`)
 			setStage("questions") // Go back to questions on error
@@ -322,37 +270,92 @@ const OnboardingPage = () => {
 	}
 
 	const handleNext = useCallback(() => {
-		if (!isCurrentQuestionAnswered()) return
-		if (currentQuestionIndex < questions.length - 1) {
-			setFullyTyped((prev) => ({
-				...prev,
-				[currentQuestionIndex]: true
-			}))
-			setIsInputVisible(false)
-			setCurrentQuestionIndex((prev) => prev + 1)
-		} else {
-			handleSubmit()
+		if (!isCurrentQuestionAnswered() || isAiTyping) return
+
+		// Slice conversation history to the correct point before adding the new answer.
+		// This ensures that if a user goes back and changes an answer, the subsequent
+		// conversation history is cleared.
+		const conversationSliceIndex = 1 + currentQuestionIndex * 2
+		const currentQuestion = questions[currentQuestionIndex]
+		const answer = answers[currentQuestion.id]
+
+		// Format answer for display
+		let displayAnswer = answer
+		if (currentQuestion.type === "location") {
+			displayAnswer = locationState.data ? "Shared my location" : answer
+		} else if (Array.isArray(answer)) {
+			displayAnswer = answer.join(", ")
 		}
-	}, [currentQuestionIndex, answers, isCurrentQuestionAnswered, handleSubmit])
+
+		setConversation((prev) => {
+			const slicedPrev = prev.slice(0, conversationSliceIndex)
+			return [...slicedPrev, { sender: "user", text: displayAnswer }]
+		})
+
+		if (currentQuestionIndex >= maxQuestionIndexReached) {
+			setScore((s) => s + 10)
+			setMaxQuestionIndexReached(currentQuestionIndex + 1)
+		}
+
+		setSparkleTrigger((c) => c + 1)
+		setIsAiTyping(true)
+
+		setTimeout(() => {
+			setIsAiTyping(false)
+			if (currentQuestionIndex < questions.length - 1) {
+				setCurrentQuestionIndex((prev) => prev + 1)
+				addAiMessage(currentQuestionIndex + 1)
+			} else {
+				addAiMessage(questions.length) // Final comment
+				setTimeout(handleSubmit, 1500)
+			}
+		}, 1500) // 1.5 second typing delay
+	}, [
+		currentQuestionIndex,
+		answers,
+		isCurrentQuestionAnswered,
+		handleSubmit,
+		addAiMessage,
+		locationState.data,
+		maxQuestionIndexReached,
+		isAiTyping
+	])
 
 	const handleBack = useCallback(() => {
-		if (currentQuestionIndex > 0) {
-			setIsInputVisible(true) // Show input immediately when going back
-			setCurrentQuestionIndex((prev) => prev - 1)
+		if (currentQuestionIndex > 0 && !isAiTyping) {
+			setCurrentQuestionIndex((prev) => {
+				const newIndex = prev - 1
+				// Slice conversation to remove the last user answer and the AI question that followed.
+				const conversationSliceIndex = 1 + newIndex * 2
+				setConversation((prevConv) =>
+					prevConv.slice(0, conversationSliceIndex)
+				)
+				return newIndex
+			})
 		}
-	}, [currentQuestionIndex])
+	}, [currentQuestionIndex, isAiTyping])
 
 	// --- Effects ---
 
 	useEffect(() => {
+		if (statusChecked.current) return
+		statusChecked.current = true
+
 		const checkStatus = async () => {
 			try {
 				const response = await fetch("/api/user/data")
 				if (!response.ok) throw new Error("Could not fetch user data.")
 				const result = await response.json()
 				if (result?.data?.onboardingComplete) {
-					router.push("/home")
+					router.push("/chat")
 				} else {
+					const firstQuestion = questions[0]?.question || ""
+					setConversation([
+						{
+							sender: "ai",
+							text: `${sentientComments[0]}\n\n${firstQuestion}`
+						}
+					])
 					setIsLoading(false)
 				}
 			} catch (error) {
@@ -361,6 +364,7 @@ const OnboardingPage = () => {
 			}
 		}
 		checkStatus()
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [router])
 
 	useEffect(() => {
@@ -379,8 +383,10 @@ const OnboardingPage = () => {
 				e.preventDefault()
 				setStage("questions")
 			} else if (stage === "questions") {
-				if (e.key === "ArrowLeft") handleBack()
-				else if (e.key === "Enter") {
+				if (e.key === "ArrowLeft") {
+					e.preventDefault()
+					handleBack()
+				} else if (e.key === "Enter") {
 					const currentQuestion = questions[currentQuestionIndex]
 					if (currentQuestion.type === "textarea" && e.shiftKey) {
 						return
@@ -395,11 +401,15 @@ const OnboardingPage = () => {
 		return () => window.removeEventListener("keydown", handleKeyDown)
 	}, [stage, handleBack, handleNext, currentQuestionIndex])
 
+	useEffect(() => {
+		chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
+	}, [conversation, isAiTyping])
+
 	// --- Render Logic ---
 
 	if (isLoading) {
 		return (
-			<div className="flex flex-col items-center justify-center min-h-screen bg-black">
+			<div className="flex flex-col items-center justify-center min-h-screen bg-brand-black text-brand-white">
 				<IconLoader className="w-10 h-10 animate-spin text-[var(--color-accent-blue)]" />
 			</div>
 		)
@@ -439,431 +449,114 @@ const OnboardingPage = () => {
 						<motion.div variants={itemVariants} className="mb-8">
 							<IconSparkles
 								size={80}
-								className="mx-auto text-[var(--color-accent-blue)] drop-shadow-[0_0_15px_rgba(59,130,246,0.5)]"
+								className="mx-auto text-brand-orange drop-shadow-[0_0_15px_rgba(0,173,181,0.5)]"
 							/>
 						</motion.div>
 						<motion.h1
 							variants={itemVariants}
-							className="text-5xl md:text-6xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-b from-neutral-50 to-neutral-400"
+							className="text-4xl sm:text-5xl md:text-6xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-b from-neutral-50 to-neutral-400"
 						>
 							Welcome. I'm Sentient.
 						</motion.h1>
 						<motion.p
 							variants={itemVariants}
-							className="text-xl text-neutral-300 max-w-xl mx-auto"
+							className="text-lg md:text-xl text-neutral-300 max-w-xl mx-auto"
 						>
 							Your proactive AI, ready to get to know you.
 						</motion.p>
-						<motion.div variants={itemVariants}>
-							<BlinkingInstructions text="Press Enter to begin" />
+						<motion.div
+							variants={itemVariants}
+							className="mt-12 flex flex-col items-center gap-4"
+						>
+							<motion.button
+								onClick={() => {
+									setStage("questions")
+								}}
+								className="rounded-xl bg-brand-orange/80 px-8 py-3 text-lg font-semibold text-brand-white transition-colors hover:bg-opacity-80"
+								whileHover={{ scale: 1.05 }}
+								whileTap={{ scale: 0.95 }}
+							>
+								Let's Begin
+							</motion.button>
 						</motion.div>
 					</motion.div>
 				)
 
 			case "questions":
-				const currentQuestion = questions[currentQuestionIndex]
-				const isRevisiting = !!fullyTyped[currentQuestionIndex]
-				let sentientComment = currentQuestion.sentientComment || ""
-				if (sentientComment.includes("{user-name}")) {
-					sentientComment = sentientComment.replace(
-						"{user-name}",
-						answers["user-name"] || "friend"
-					)
-				}
+				const currentQuestion = questions[currentQuestionIndex] ?? null
 				return (
 					<motion.div
 						key="questions"
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
 						exit={{ opacity: 0 }}
-						className="w-full"
+						className="w-full h-full flex flex-col font-mono"
 					>
-						<AnimatePresence mode="wait">
-							<motion.div
-								key={currentQuestionIndex}
-								initial={{ opacity: 0, y: 20 }}
-								animate={{ opacity: 1, y: 0 }}
-								exit={{ opacity: 0, y: -20 }}
-								transition={{
-									duration: 0.4,
-									ease: "easeInOut"
-								}}
-								className="w-full max-w-3xl mx-auto flex flex-col items-center"
-							>
-								<div className="w-full flex gap-4 mb-8 items-start">
-									<div className="w-12 h-12 flex-shrink-0 bg-neutral-800 rounded-full flex items-center justify-center border-2 border-neutral-700">
-										<IconSparkles className="text-[var(--color-accent-blue)]" />
-									</div>
-									<div className="bg-neutral-800 p-4 rounded-xl rounded-tl-none min-h-[60px] w-full">
-										<div className="text-lg text-neutral-300">
-											{isRevisiting ? (
-												<p>{sentientComment}</p>
-											) : (
-												<Typewriter
-													onInit={(typewriter) => {
-														typewriter
-															.typeString(
-																sentientComment
-															)
-															.callFunction(
-																() => {
-																	handleTypingComplete()
-																}
-															)
-															.start()
-													}}
-													options={{
-														delay: 30,
-														cursor: ""
-													}}
-												/>
-											)}
-										</div>
-									</div>
-								</div>
-
-								<AnimatePresence>
-									{isInputVisible && (
-										<motion.div
-											initial={{ opacity: 0, y: 20 }}
-											animate={{ opacity: 1, y: 0 }}
-											exit={{ opacity: 0 }}
-											transition={{
-												duration: 0.5,
-												delay: 0.2
-											}}
-											className="bg-neutral-800/50 border border-neutral-700 p-8 rounded-2xl w-full"
-										>
-											<label className="block text-2xl font-semibold mb-3 flex items-center gap-4 text-neutral-100">
-												<span className="text-neutral-500">
-													{currentQuestion.icon}
-												</span>
-												{currentQuestion.question}
-											</label>
-											{currentQuestion.description && (
-												<p className="text-base text-neutral-400 mb-6 ml-12">
-													{
-														currentQuestion.description
-													}
-												</p>
-											)}
-											<div className="mt-4 ml-12">
-												{(() => {
-													switch (
-														currentQuestion.type
-													) {
-														case "text-input":
-															return (
-																<input
-																	type="text"
-																	value={
-																		answers[
-																			currentQuestion
-																				.id
-																		] || ""
-																	}
-																	onChange={(
-																		e
-																	) =>
-																		handleAnswer(
-																			currentQuestion.id,
-																			e
-																				.target
-																				.value
-																		)
-																	}
-																	className="w-full py-3 px-4 text-lg rounded-xl bg-neutral-900 text-white border border-neutral-600 focus:ring-2 focus:ring-[var(--color-accent-blue)]/50 placeholder:text-neutral-500 transition-all"
-																	placeholder={
-																		currentQuestion.placeholder
-																	}
-																	required={
-																		currentQuestion.required
-																	}
-																	autoFocus
-																/>
-															)
-														case "select":
-															return (
-																<select
-																	value={
-																		answers[
-																			currentQuestion
-																				.id
-																		] || ""
-																	}
-																	onChange={(
-																		e
-																	) =>
-																		handleAnswer(
-																			currentQuestion.id,
-																			e
-																				.target
-																				.value
-																		)
-																	}
-																	className="w-full px-4 py-3 text-lg rounded-xl bg-neutral-900 text-white border border-neutral-600 focus:ring-2 focus:ring-[var(--color-accent-blue)]/50 appearance-none"
-																	required={
-																		currentQuestion.required
-																	}
-																>
-																	{currentQuestion.options.map(
-																		(
-																			option
-																		) => (
-																			<option
-																				key={
-																					option.value
-																				}
-																				value={
-																					option.value
-																				}
-																				disabled={
-																					option.disabled
-																				}
-																				className="text-black bg-white"
-																			>
-																				{
-																					option.label
-																				}
-																			</option>
-																		)
-																	)}
-																</select>
-															)
-														case "textarea":
-															return (
-																<textarea
-																	value={
-																		answers[
-																			currentQuestion
-																				.id
-																		] || ""
-																	}
-																	onChange={(
-																		e
-																	) =>
-																		handleAnswer(
-																			currentQuestion.id,
-																			e
-																				.target
-																				.value
-																		)
-																	}
-																	className="w-full px-4 py-3 text-lg rounded-xl bg-neutral-900 text-white border border-neutral-600 focus:ring-2 focus:ring-[var(--color-accent-blue)]/50 placeholder:text-neutral-500 min-h-[140px] resize-y"
-																	placeholder={
-																		currentQuestion.placeholder
-																	}
-																	autoFocus
-																/>
-															)
-														case "location":
-															return (
-																<div className="space-y-4">
-																	<input
-																		type="text"
-																		placeholder="Or enter Locality, City, State..."
-																		value={
-																			typeof answers[
-																				currentQuestion
-																					.id
-																			] ===
-																			"string"
-																				? answers[
-																						currentQuestion
-																							.id
-																					]
-																				: ""
-																		}
-																		onChange={(
-																			e
-																		) =>
-																			handleAnswer(
-																				"location",
-																				e
-																					.target
-																					.value
-																			)
-																		}
-																		className="w-full py-3 px-4 text-lg rounded-xl bg-neutral-900 text-white border border-neutral-600 focus:ring-2 focus:ring-[var(--color-accent-blue)]/50 placeholder:text-neutral-500 transition-all"
-																	/>
-																	<div className="flex items-center gap-4">
-																		<hr className="flex-grow border-neutral-700" />
-																		<span className="text-neutral-500 text-sm">
-																			OR
-																		</span>
-																		<hr className="flex-grow border-neutral-700" />
-																	</div>
-																	<button
-																		type="button"
-																		onClick={
-																			handleGetLocation
-																		}
-																		disabled={
-																			locationState.loading
-																		}
-																		className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-xl bg-neutral-700 text-white hover:bg-neutral-600 transition-colors disabled:opacity-50"
-																	>
-																		{locationState.loading ? (
-																			<IconLoader
-																				className="animate-spin"
-																				size={
-																					20
-																				}
-																			/>
-																		) : (
-																			<IconMapPin
-																				size={
-																					20
-																				}
-																			/>
-																		)}
-																		<span>
-																			Share
-																			Current
-																			Location
-																		</span>
-																	</button>
-																	{locationState.data &&
-																		!locationState.loading && (
-																			<div className="flex items-center justify-center gap-2 text-[var(--color-accent-green)] text-sm">
-																				<IconMapPinFilled
-																					size={
-																						16
-																					}
-																				/>
-																				<span>
-																					Location
-																					captured!
-																				</span>
-																			</div>
-																		)}
-																</div>
-															)
-														case "single-choice":
-															return (
-																<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-																	{currentQuestion.options.map(
-																		(
-																			option
-																		) => {
-																			const optionValue =
-																				typeof option ===
-																				"object"
-																					? option.value
-																					: option
-																			const optionLabel =
-																				typeof option ===
-																				"object"
-																					? option.label
-																					: option
-
-																			return (
-																				<button
-																					type="button"
-																					key={
-																						optionValue
-																					}
-																					onClick={() =>
-																						handleAnswer(
-																							currentQuestion.id,
-																							option
-																						)
-																					}
-																					className={cn(
-																						"p-5 rounded-xl border-2 text-center font-semibold transition-all duration-200 text-lg",
-																						answers[
-																							currentQuestion
-																								.id
-																						] ===
-																							optionValue
-																							? "bg-[var(--color-accent-blue)] border-[var(--color-accent-blue)] text-white"
-																							: "bg-transparent border-neutral-600 hover:border-blue-500/50"
-																					)}
-																				>
-																					{
-																						optionLabel
-																					}
-																				</button>
-																			)
-																		}
-																	)}
-																</div>
-															)
-														case "multi-choice":
-															return (
-																<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-																	{currentQuestion.options.map(
-																		(
-																			option
-																		) => (
-																			<button
-																				type="button"
-																				key={
-																					option
-																				}
-																				onClick={() =>
-																					handleMultiChoice(
-																						currentQuestion.id,
-																						option
-																					)
-																				}
-																				className={cn(
-																					"p-5 rounded-xl border-2 text-center font-semibold transition-all duration-200 flex items-center justify-center gap-2 text-lg",
-																					(
-																						answers[
-																							currentQuestion
-																								.id
-																						] ||
-																						[]
-																					).includes(
-																						option
-																					)
-																						? "bg-[var(--color-accent-blue)] border-[var(--color-accent-blue)] text-white"
-																						: "bg-transparent border-neutral-600 hover:border-blue-500/50"
-																				)}
-																			>
-																				{(
-																					answers[
-																						currentQuestion
-																							.id
-																					] ||
-																					[]
-																				).includes(
-																					option
-																				) && (
-																					<IconCheck
-																						size={
-																							20
-																						}
-																					/>
-																				)}
-																				{
-																					option
-																				}
-																			</button>
-																		)
-																	)}
-																</div>
-															)
-														default:
-															return null
-													}
-												})()}
-											</div>
-										</motion.div>
+						<div className="pt-8 pb-4 flex-shrink-0">
+							<ProgressBar
+								score={score}
+								totalQuestions={questions.length}
+							/>
+						</div>
+						<div className="flex-1 w-full max-w-4xl mx-auto overflow-y-auto custom-scrollbar p-4 space-y-2 text-sm md:text-base bg-black/30 border border-brand-gray rounded-lg">
+							{conversation.map((msg, index) => (
+								<div key={index}>
+									{msg.sender === "ai" ? (
+										<p className="whitespace-pre-wrap">
+											<span className="text-brand-orange">
+												[SENTIENT]:
+											</span>
+											<span className="text-brand-white">
+												{" "}
+												{msg.text}
+											</span>
+										</p>
+									) : (
+										<p className="whitespace-pre-wrap">
+											<span className="text-green-400">
+												[YOU]:
+											</span>
+											<span className="text-neutral-300">
+												{" "}
+												{msg.text}
+											</span>
+										</p>
 									)}
-								</AnimatePresence>
-								{isInputVisible && (
-									<BlinkingInstructions
-										text={
-											currentQuestion.type === "textarea"
-												? "Press Shift + Enter for a new line"
-												: "Press Enter to continue • ← to go back"
-										}
-									/>
+								</div>
+							))}
+							{isAiTyping && <TypingIndicator />}
+							<div ref={chatEndRef} />
+						</div>
+						<div className="w-full max-w-4xl mx-auto p-4 flex-shrink-0">
+							<AnimatePresence mode="wait">
+								{currentQuestion && !isAiTyping && (
+									<motion.div
+										key={currentQuestionIndex}
+										initial={{ opacity: 0, y: 20 }}
+										animate={{ opacity: 1, y: 0 }}
+										exit={{ opacity: 0, y: -20 }}
+									>
+										<div className="flex items-center gap-2">
+											<span className="text-green-400">
+												{">"}
+											</span>
+											<div className="flex-1">
+												{renderInput(currentQuestion)}
+											</div>
+										</div>
+									</motion.div>
 								)}
-							</motion.div>
-						</AnimatePresence>
+							</AnimatePresence>
+							{currentQuestion && !isAiTyping && (
+								<NavigationHint
+									onBack={handleBack}
+									onNext={handleNext}
+									isNextDisabled={
+										!isCurrentQuestionAnswered()
+									}
+								/>
+							)}
+						</div>
 					</motion.div>
 				)
 
@@ -876,7 +569,7 @@ const OnboardingPage = () => {
 						exit={{ opacity: 0 }}
 						className="text-center"
 					>
-						<IconLoader className="w-16 h-16 animate-spin text-[var(--color-accent-blue)] mx-auto mb-6" />
+						<IconLoader className="w-16 h-16 animate-spin text-brand-orange mx-auto mb-6" />
 						<h1 className="text-3xl font-bold">
 							Personalizing your experience...
 						</h1>
@@ -884,94 +577,9 @@ const OnboardingPage = () => {
 				)
 
 			case "whatsNext":
-				const nextStepCards = [
-					{
-						icon: (
-							<IconPlugConnected
-								size={32}
-								className="text-blue-400"
-							/>
-						),
-						title: "Connect Your Apps",
-						description:
-							"Unlock Sentient's full power by connecting to Gmail, Calendar, and more.",
-						buttonText: "Go to Integrations",
-						onClick: () => router.push("/integrations")
-					},
-					{
-						icon: (
-							<IconBook size={32} className="text-purple-400" />
-						),
-						title: "Start Your First Journal",
-						description:
-							"Write down your thoughts and let Sentient proactively manage your day.",
-						buttonText: "Go to Organizer",
-						onClick: () => router.push("/journal")
-					},
-					{
-						icon: (
-							<IconSparkles
-								size={32}
-								className="text-yellow-400"
-							/>
-						),
-						title: "Explore What's Possible",
-						description:
-							"See examples of what you can automate and achieve with your new AI.",
-						buttonText: "See Use Cases",
-						onClick: () => router.push("/home")
-					}
-				]
-				return (
-					<motion.div
-						key="whatsNext"
-						initial={{ opacity: 0, y: 20 }}
-						animate={{ opacity: 1, y: 0 }}
-						className="text-center max-w-4xl"
-					>
-						<h1 className="text-5xl font-bold mb-4">
-							You're All Set, {answers["user-name"] || "Friend"}!
-						</h1>
-						<p className="text-xl text-neutral-400 mb-12">
-							Here are a few things you can do to get started.
-						</p>
-						<div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
-							{nextStepCards.map((card, i) => (
-								<motion.div
-									key={card.title}
-									initial={{ opacity: 0, y: 20 }}
-									animate={{
-										opacity: 1,
-										y: 0,
-										transition: { delay: 0.2 + i * 0.15 }
-									}}
-									className="bg-neutral-800/50 border border-neutral-700 p-6 rounded-2xl flex flex-col items-center text-center"
-								>
-									<div className="mb-4">{card.icon}</div>
-									<h3 className="text-xl font-semibold mb-2">
-										{card.title}
-									</h3>
-									<p className="text-neutral-400 text-sm flex-grow mb-6">
-										{card.description}
-									</p>
-									<button
-										onClick={card.onClick}
-										className="mt-auto w-full py-2.5 px-4 rounded-lg bg-neutral-700 hover:bg-[var(--color-accent-blue)] text-white font-medium transition-colors flex items-center justify-center gap-2"
-									>
-										{card.buttonText}{" "}
-										<IconArrowRight size={16} />
-									</button>
-								</motion.div>
-							))}
-						</div>
-						<button
-							onClick={() => router.push("/home")}
-							className="text-neutral-400 hover:text-white underline"
-						>
-							Or, just take me to the app
-						</button>
-					</motion.div>
-				)
+				// This stage is removed as per the simplified flow.
+				// The app will redirect directly after submitting.
+				return null
 
 			case "complete":
 				return (
@@ -981,7 +589,7 @@ const OnboardingPage = () => {
 						animate={{ opacity: 1, y: 0 }}
 						className="text-center"
 					>
-						<CheckFilled className="w-24 h-24 text-[var(--color-accent-green)] mx-auto mb-6" />
+						<IconCheck className="w-24 h-24 text-brand-green mx-auto mb-6" />
 						<h1 className="text-5xl font-bold mb-4">
 							All Set, {answers["user-name"] || "Friend"}!
 						</h1>
@@ -999,12 +607,124 @@ const OnboardingPage = () => {
 		}
 	}
 
-	return (
-		<div className="relative flex flex-col items-center justify-center min-h-screen w-full bg-black text-white p-4 overflow-hidden">
-			{/* Lamp Glow Effect */}
-			<div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-full max-w-screen-lg h-[300px] bg-[var(--color-accent-blue)]/10 rounded-full blur-3xl pointer-events-none" />
+	const renderInput = (currentQuestion) => {
+		switch (currentQuestion.type) {
+			case "text-input":
+				return (
+					<input
+						type="text"
+						value={answers[currentQuestion.id] || ""}
+						onChange={(e) =>
+							handleAnswer(currentQuestion.id, e.target.value)
+						}
+						placeholder={currentQuestion.placeholder}
+						required={currentQuestion.required}
+						autoFocus
+						className="w-full px-4 py-2 bg-transparent text-brand-white placeholder:text-neutral-500 focus:ring-0 border-none p-0"
+					/>
+				)
+			case "select":
+				return (
+					<select
+						value={answers[currentQuestion.id] || ""}
+						onChange={(e) =>
+							handleAnswer(currentQuestion.id, e.target.value)
+						}
+						required={currentQuestion.required}
+						className="w-full px-4 py-2 bg-transparent text-brand-white placeholder:text-neutral-500 focus:ring-0 border-none p-0 appearance-none"
+					>
+						{currentQuestion.options.map((option) => (
+							<option
+								key={option.value}
+								value={option.value}
+								disabled={option.disabled}
+								className="bg-brand-gray text-brand-white"
+							>
+								{option.label}
+							</option>
+						))}
+					</select>
+				)
+			case "textarea":
+				return (
+					<textarea
+						value={answers[currentQuestion.id] || ""}
+						onChange={(e) =>
+							handleAnswer(currentQuestion.id, e.target.value)
+						}
+						className="w-full px-4 py-2 bg-transparent text-brand-white placeholder:text-neutral-500 focus:ring-0 border-none p-0 resize-none"
+						placeholder={currentQuestion.placeholder}
+						autoFocus
+						rows={1}
+					/>
+				)
+			case "location":
+				return (
+					<div className="flex flex-col sm:flex-row gap-4 items-start">
+						<input
+							type="text"
+							placeholder="Or enter Locality, City, State..."
+							value={
+								typeof answers[currentQuestion.id] === "string"
+									? answers[currentQuestion.id]
+									: ""
+							}
+							onChange={(e) =>
+								handleAnswer("location", e.target.value)
+							}
+							className="w-full px-4 py-2 bg-transparent text-brand-white placeholder:text-neutral-500 focus:ring-0 border-none p-0"
+						/>
+						<button
+							type="button"
+							onClick={handleGetLocation}
+							disabled={locationState.loading}
+							className="translate-y-3 text-sm text-center text-brand-orange hover:underline whitespace-nowrap"
+						>
+							{locationState.loading
+								? "Detecting..."
+								: "or [Detect Current Location]"}
+						</button>
+						{locationState.data && !isAiTyping && (
+							<p className="text-sm text-green-400">
+								Location captured!
+							</p>
+						)}
+					</div>
+				)
+			default:
+				return null
+		}
+	}
 
-			<AnimatePresence mode="wait">{renderContent()}</AnimatePresence>
+	return (
+		<div className="grid md:grid-cols-20 min-h-screen w-full bg-brand-black text-brand-white overflow-hidden">
+			{/* Left Column: Onboarding Flow */}
+			<div className="relative flex flex-col items-center justify-center w-full p-4 sm:p-8 overflow-hidden md:col-span-13">
+				<AnimatedBackground />
+				<div className="relative z-10 w-full h-full flex flex-col items-center justify-center">
+					<SparkleEffect trigger={sparkleTrigger} />
+					<AnimatePresence mode="wait">
+						{renderContent()}
+					</AnimatePresence>
+				</div>
+			</div>
+
+			{/* Right Column: Use Case Carousel (Desktop Only) */}
+			<div className="hidden md:flex flex-col items-center justify-center relative md:col-span-7">
+				<GridBackground>
+					<motion.div
+						initial={{ opacity: 0, scale: 0.9 }}
+						animate={{ opacity: 1, scale: 1 }}
+						transition={{
+							duration: 0.5,
+							delay: 0.2,
+							ease: "easeOut"
+						}}
+					>
+						<UseCaseCarousel />
+					</motion.div>
+				</GridBackground>
+			</div>
 		</div>
 	)
 }

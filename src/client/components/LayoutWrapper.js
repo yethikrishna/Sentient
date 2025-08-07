@@ -1,207 +1,220 @@
 "use client"
-import React, { useState, useEffect, useCallback } from "react"
-import ChatOverlay from "@components/ChatOverlay"
-import NotificationsOverlay from "@components/NotificationsOverlay"
-import FloatingNav from "@components/FloatingNav"
-import {
-	IconMessage,
-	IconKeyboard,
-	IconCommand,
-	IconX
-} from "@tabler/icons-react"
+import React, { useState, useEffect, useCallback, useRef } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "framer-motion"
-
-const ShortcutLegendModal = ({ onClose }) => {
-	const shortcuts = {
-		Global: [
-			{ keys: ["Ctrl", "M"], description: "Open Chat" },
-			{ keys: ["Ctrl", "B"], description: "Toggle Notifications" },
-			{ keys: ["Ctrl", "?"], description: "Toggle Shortcuts Legend" },
-			{ keys: ["Esc"], description: "Close Modal / Chat" }
-		],
-		Navigation: [
-			{ keys: ["Ctrl", "H"], description: "Go to Home" },
-			{ keys: ["Ctrl", "J"], description: "Go to Organizer" },
-			{ keys: ["Ctrl", "A"], description: "Go to Tasks" },
-			{ keys: ["Ctrl", "I"], description: "Go to Integrations" },
-			{ keys: ["Ctrl", "S"], description: "Go to Settings" }
-		]
-	}
-
-	return (
-		<div
-			className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-[100] p-4"
-			onClick={onClose}
-		>
-			<motion.div
-				initial={{ scale: 0.9, opacity: 0 }}
-				animate={{ scale: 1, opacity: 1 }}
-				exit={{ scale: 0.9, opacity: 0 }}
-				transition={{ type: "spring", stiffness: 400, damping: 30 }}
-				className="bg-gradient-to-br from-[var(--color-primary-surface)] to-[var(--color-primary-background)] p-6 rounded-2xl shadow-xl w-full max-w-2xl border border-[var(--color-primary-surface-elevated)]"
-				onClick={(e) => e.stopPropagation()}
-			>
-				<div className="flex justify-between items-center mb-6">
-					<h2 className="text-2xl font-bold text-white flex items-center gap-3">
-						<IconKeyboard />
-						Keyboard Shortcuts
-					</h2>
-					<button
-						onClick={onClose}
-						className="p-1 rounded-full hover:bg-[var(--color-primary-surface-elevated)]"
-					>
-						<IconX />
-					</button>
-				</div>
-				<div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-					{Object.entries(shortcuts).map(([category, list]) => (
-						<div key={category}>
-							<h3 className="text-lg font-semibold text-[var(--color-accent-blue)] mb-4">
-								{category}
-							</h3>
-							<div className="space-y-3">
-								{list.map((shortcut) => (
-									<div
-										key={shortcut.description}
-										className="flex justify-between items-center text-sm"
-									>
-										<span className="text-neutral-300">
-											{shortcut.description}
-										</span>
-										<div className="flex items-center gap-2">
-											{shortcut.keys.map((key) => (
-												<kbd
-													key={key}
-													className="px-2 py-1.5 text-xs font-semibold text-gray-300 bg-neutral-700 border border-neutral-600 rounded-md"
-												>
-													{key}
-												</kbd>
-											))}
-										</div>
-									</div>
-								))}
-							</div>
-						</div>
-					))}
-				</div>
-			</motion.div>
-		</div>
-	)
-}
-
-const ShortcutIndicator = ({ onClick }) => (
-	<button
-		onClick={onClick}
-		className="fixed bottom-5 right-5 z-40 items-center gap-2 px-3 py-2 bg-[var(--color-primary-surface)]/80 backdrop-blur-md text-neutral-400 border border-[var(--color-primary-surface-elevated)] rounded-full shadow-lg hover:bg-[var(--color-accent-blue)] hover:text-white transition-all duration-200 group hidden md:flex"
-		aria-label="Show keyboard shortcuts"
-	>
-		<IconKeyboard
-			size={20}
-			className="group-hover:scale-110 transition-transform"
-		/>
-		<div className="flex items-center gap-1">
-			<kbd className="px-1.5 py-0.5 text-xs font-semibold text-gray-300 bg-neutral-900/50 border border-neutral-600 rounded-md">
-				Ctrl
-			</kbd>
-			<span className="text-xs">+</span>
-			<kbd className="px-1.5 py-0.5 text-xs font-semibold text-gray-300 bg-neutral-900/50 border-neutral-600 rounded-md">
-				?
-			</kbd>
-		</div>
-	</button>
-)
+import NotificationsOverlay from "@components/NotificationsOverlay"
+import { IconBell, IconMenu2, IconLoader } from "@tabler/icons-react"
+import Sidebar from "@components/Sidebar"
+import CommandPalette from "./CommandPallete" // Corrected import path
+import { useGlobalShortcuts } from "@hooks/useGlobalShortcuts"
+import { cn } from "@utils/cn"
+import toast from "react-hot-toast"
 
 export default function LayoutWrapper({ children }) {
-	const [isChatOpen, setChatOpen] = useState(false)
-	const [isLegendOpen, setLegendOpen] = useState(false)
 	const [isNotificationsOpen, setNotificationsOpen] = useState(false)
+	const [isCommandPaletteOpen, setCommandPaletteOpen] = useState(false)
+	const [isSidebarCollapsed, setSidebarCollapsed] = useState(true)
+	const [isMobileNavOpen, setMobileNavOpen] = useState(false)
+	const [unreadCount, setUnreadCount] = useState(0)
+	const [userDetails, setUserDetails] = useState(null)
+	const wsRef = useRef(null)
 	const pathname = usePathname()
 	const router = useRouter()
 
-	const showChatButton = pathname !== "/onboarding" && pathname !== "/"
+	// State for onboarding check
+	const [isLoading, setIsLoading] = useState(true)
+	const [isAllowed, setIsAllowed] = useState(false)
 
-	const handleKeyDown = useCallback(
-		(e) => {
-			if (e.ctrlKey) {
-				switch (e.key.toLowerCase()) {
-					case "h":
-						router.push("/home")
-						break
-					case "j":
-						router.push("/journal")
-						break
-					case "t":
-						router.push("/tasks")
-						break
-					case "i":
-						router.push("/integrations")
-						break
-					case "s":
-						router.push("/settings/profile")
-						break
-					case "b":
-						setNotificationsOpen(true)
-						break
-					case "m":
-						setChatOpen(true)
-						break
-					case "/":
-					case "?":
-						e.preventDefault()
-						setLegendOpen((prev) => !prev)
-						break
-					default:
-						return
+	const showNav = !["/", "/onboarding"].includes(pathname)
+
+	useEffect(() => {
+		if (!showNav) {
+			setIsLoading(false)
+			setIsAllowed(true) // Allow rendering for public pages like '/' and '/onboarding'
+			return
+		}
+
+		const checkStatus = async () => {
+			setIsLoading(true)
+			try {
+				const res = await fetch("/api/user/data")
+				if (!res.ok) {
+					throw new Error("Session error. Please log in again.")
 				}
-				e.preventDefault()
-			} else if (e.key === "Escape") {
-				if (isChatOpen) setChatOpen(false)
-				if (isLegendOpen) setLegendOpen(false)
-				if (isNotificationsOpen) setNotificationsOpen(false)
+				const data = await res.json()
+				if (data?.data?.onboardingComplete) {
+					setIsAllowed(true)
+				} else {
+					toast.error("Please complete onboarding first.")
+					router.push("/onboarding")
+					// isAllowed remains false, content won't flash
+				}
+			} catch (error) {
+				toast.error(error.message || "Failed to verify user status.")
+				router.push("/") // Redirect to home on error
+			} finally {
+				setIsLoading(false)
 			}
-		},
-		[router, isChatOpen, isLegendOpen, isNotificationsOpen]
+		}
+
+		checkStatus()
+	}, [pathname, router, showNav])
+
+	useEffect(() => {
+		fetch("/api/user/profile")
+			.then((res) => (res.ok ? res.json() : null))
+			.then((data) => setUserDetails(data))
+	}, [])
+
+	useEffect(() => {
+		if (!userDetails?.sub) return
+
+		const connectWebSocket = async () => {
+			if (wsRef.current && wsRef.current.readyState < 2) return
+
+			try {
+				const tokenResponse = await fetch("/api/auth/token")
+				if (!tokenResponse.ok) {
+					setTimeout(connectWebSocket, 5000)
+					return
+				}
+				const { accessToken } = await tokenResponse.json()
+				const wsProtocol =
+					window.location.protocol === "https:" ? "wss" : "ws"
+				const serverUrlHttp =
+					process.env.NEXT_PUBLIC_APP_SERVER_URL ||
+					"http://localhost:5000"
+				const serverHost = serverUrlHttp.replace(/^https?:\/\//, "")
+				const wsUrl = `${wsProtocol}://${serverHost}/api/ws/notifications`
+
+				const ws = new WebSocket(wsUrl)
+				ws.isCleaningUp = false
+				wsRef.current = ws
+
+				ws.onopen = () =>
+					ws.send(
+						JSON.stringify({ type: "auth", token: accessToken })
+					)
+				ws.onmessage = (event) => {
+					const data = JSON.parse(event.data)
+					if (data.type === "task_progress_update") {
+						// Dispatch a custom event that the tasks page can listen for
+						window.dispatchEvent(
+							new CustomEvent("taskProgressUpdate", {
+								detail: data.payload
+							})
+						)
+					} else if (data.type === "task_list_updated") {
+						// This is a generic event telling the app that tasks have changed
+						// on the backend and the UI should refetch them.
+						window.dispatchEvent(
+							new CustomEvent("tasksUpdatedFromBackend")
+						)
+					}
+				}
+				ws.onclose = () => {
+					if (!ws.isCleaningUp) {
+						wsRef.current = null
+						setTimeout(connectWebSocket, 5000)
+					}
+				}
+				ws.onerror = () => ws.close()
+			} catch (error) {
+				setTimeout(connectWebSocket, 5000)
+			}
+		}
+		connectWebSocket()
+
+		return () => {
+			if (wsRef.current) {
+				wsRef.current.isCleaningUp = true
+				wsRef.current.close()
+				wsRef.current = null
+			}
+		}
+	}, [userDetails?.sub])
+
+	const handleNotificationsOpen = useCallback(() => {
+		setNotificationsOpen(true)
+		setUnreadCount(0)
+	}, [])
+
+	// Use the new custom hook for shortcuts
+	useGlobalShortcuts(handleNotificationsOpen, () =>
+		setCommandPaletteOpen((prev) => !prev)
 	)
 
 	useEffect(() => {
-		window.addEventListener("keydown", handleKeyDown)
-		return () => window.removeEventListener("keydown", handleKeyDown)
-	}, [handleKeyDown])
+		const handleEscape = (e) => {
+			if (e.key === "Escape") {
+				if (isNotificationsOpen) setNotificationsOpen(false)
+				if (isCommandPaletteOpen) setCommandPaletteOpen(false)
+			}
+		}
+		window.addEventListener("keydown", handleEscape)
+		return () => window.removeEventListener("keydown", handleEscape)
+	}, [isNotificationsOpen, isCommandPaletteOpen])
 
+	if (isLoading) {
+		return (
+			<div className="flex-1 flex h-screen bg-black text-white overflow-hidden justify-center items-center">
+				<IconLoader className="w-10 h-10 animate-spin text-brand-orange" />
+			</div>
+		)
+	}
+
+	if (!isAllowed) {
+		// This will be shown briefly during the redirect to /onboarding
+		return (
+			<div className="flex-1 flex h-screen bg-black text-white overflow-hidden justify-center items-center">
+				<IconLoader className="w-10 h-10 animate-spin text-brand-orange" />
+			</div>
+		)
+	}
 	return (
 		<>
-			<FloatingNav
-				onChatOpen={() => setChatOpen(true)}
-				onNotificationsOpen={() => setNotificationsOpen(true)}
-			/>
-			{children}
-			<AnimatePresence>
-				{isChatOpen && (
-					<ChatOverlay
-						key="chat-overlay"
-						onClose={() => setChatOpen(false)}
+			{showNav && (
+				<>
+					<Sidebar
+						isCollapsed={isSidebarCollapsed}
+						onToggle={() =>
+							setSidebarCollapsed(!isSidebarCollapsed)
+						}
+						onNotificationsOpen={handleNotificationsOpen}
+						unreadCount={unreadCount}
+						isMobileOpen={isMobileNavOpen}
+						onMobileClose={() => setMobileNavOpen(false)}
 					/>
+					<button
+						onClick={() => setMobileNavOpen(true)}
+						className="md:hidden fixed top-4 left-4 z-30 p-2 rounded-full bg-neutral-800/50 backdrop-blur-sm text-white"
+					>
+						<IconMenu2 size={20} />
+					</button>
+				</>
+			)}
+			{showNav && (
+				<CommandPalette
+					open={isCommandPaletteOpen}
+					setOpen={setCommandPaletteOpen}
+				/>
+			)}
+			<div
+				className={cn(
+					"flex-1 transition-[padding-left] duration-300 ease-in-out",
+					showNav &&
+						(isSidebarCollapsed ? "md:pl-20" : "md:pl-[260px]")
 				)}
+			>
+				{children}
+			</div>
+			<AnimatePresence>
 				{isNotificationsOpen && (
 					<NotificationsOverlay
-						key="notifications-overlay"
 						onClose={() => setNotificationsOpen(false)}
 					/>
 				)}
-				{isLegendOpen && (
-					<ShortcutLegendModal
-						key="shortcut-legend"
-						onClose={() => setLegendOpen(false)}
-					/>
-				)}
 			</AnimatePresence>
-			{showChatButton &&
-				!isLegendOpen &&
-				!isChatOpen &&
-				!isNotificationsOpen && (
-					<ShortcutIndicator onClick={() => setLegendOpen(true)} />
-				)}
 		</>
 	)
 }

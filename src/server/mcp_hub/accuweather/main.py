@@ -18,7 +18,7 @@ from . import auth, prompts, utils
 
 mcp = FastMCP(
     name="AccuWeatherServer",
-    instructions="A server for getting weather information from AccuWeather.",
+    instructions="Provides tools to get current weather conditions and daily forecasts using the AccuWeather API.",
 )
 
 # --- Prompt Registration ---
@@ -37,7 +37,9 @@ def build_weather_user_prompt(query: str, username: str, previous_tool_response:
 
 @mcp.tool
 async def getCurrentWeather(ctx: Context, location: str) -> Dict[str, Any]:
-    """Get current weather conditions for a specific location."""
+    """
+    Fetches the current weather conditions for a given location, including temperature, 'real feel' temperature, humidity, wind speed, and UV index.
+    """
     try:
         api_key = auth.get_accuweather_api_key()
         location_details = await utils.get_location_details(location, api_key)
@@ -61,7 +63,9 @@ async def getCurrentWeather(ctx: Context, location: str) -> Dict[str, Any]:
 
 @mcp.tool
 async def getForecast(ctx: Context, location: str, days: int = 1) -> Dict[str, Any]:
-    """Get the daily weather forecast for a location for the next 1-5 days."""
+    """
+    Retrieves the daily weather forecast for a specified location for up to 5 days. The forecast includes minimum and maximum temperatures and day/night weather conditions.
+    """
     try:
         if not 1 <= days <= 5:
             raise ToolError("Forecast can only be retrieved for 1 to 5 days.")

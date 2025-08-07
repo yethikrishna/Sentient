@@ -2,10 +2,10 @@
 
 import toast from "react-hot-toast"
 import {
+	// ICONS
 	IconLoader,
 	IconDeviceLaptop,
 	IconWorld,
-	IconPalette,
 	IconUser,
 	IconClock,
 	IconHeart,
@@ -13,25 +13,29 @@ import {
 	IconMoodHappy,
 	IconListCheck,
 	IconMapPin,
-	IconChevronDown,
 	IconX,
 	IconFlask,
 	IconPlus,
 	IconMessageChatbot,
 	IconBrandWhatsapp,
-	IconBrandLinkedin,
-	IconHelpCircle
+	IconHelpCircle,
+	IconKeyboard
 } from "@tabler/icons-react"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, Fragment } from "react"
 import { Tooltip } from "react-tooltip"
+import { usePostHog } from "posthog-js/react"
 import { cn } from "@utils/cn"
+import { Switch } from "@headlessui/react"
+
+import InteractiveNetworkBackground from "@components/ui/InteractiveNetworkBackground"
+import CollapsibleSection from "@components/tasks/CollapsibleSection"
 
 const HelpTooltip = ({ content }) => (
-	<div className="absolute top-6 right-6 z-40">
+	<div className="fixed bottom-6 left-6 z-40">
 		<button
 			data-tooltip-id="page-help-tooltip"
 			data-tooltip-content={content}
-			className="p-1.5 rounded-full text-neutral-500 hover:text-white hover:bg-[var(--color-primary-surface)] pulse-glow-animation"
+			className="p-1.5 rounded-full text-neutral-500 hover:text-white hover:bg-neutral-800/50 pulse-glow-animation"
 		>
 			<IconHelpCircle size={22} />
 		</button>
@@ -45,11 +49,7 @@ const questionSections = {
 	},
 	context: {
 		title: "About You",
-		icon: <IconWorld />
-	},
-	personality: {
-		title: "AI Personality",
-		icon: <IconPalette />
+		icon: <IconUser />
 	}
 }
 
@@ -76,6 +76,10 @@ const questions = [
 			{
 				value: "America/Los_Angeles",
 				label: "Pacific Time (US & Canada)"
+			},
+			{
+				value: "America/St_Johns",
+				label: "Newfoundland (NDT)"
 			},
 			{ value: "Europe/London", label: "London, Dublin (GMT/BST)" },
 			{ value: "Europe/Berlin", label: "Berlin, Paris (CET)" },
@@ -110,76 +114,53 @@ const questions = [
 			"e.g., I enjoy hiking on weekends, I'm learning to play the guitar...",
 		section: "context",
 		icon: <IconHeart />
-	},
-	{
-		id: "communication-style",
-		question: "How would you like me to communicate with you?",
-		type: "single-choice",
-		required: true,
-		options: [
-			"Casual & Friendly",
-			"Professional & Formal",
-			"Concise & To-the-point",
-			"Enthusiastic & Witty"
-		],
-		section: "personality",
-		icon: <IconMoodHappy />
-	},
-	{
-		id: "core-priorities",
-		question: "What are your top priorities? (Select up to 3)",
-		type: "multi-choice",
-		limit: 3,
-		options: [
-			"Career Growth",
-			"Health & Wellness",
-			"Family & Relationships",
-			"Learning & Personal Growth",
-			"Financial Stability",
-			"Hobbies & Leisure"
-		],
-		section: "personality",
-		icon: <IconListCheck />
 	}
 ]
 
 const WhatsAppSettings = () => {
-	const [whatsappNumber, setWhatsappNumber] = useState("")
-	const [isLoading, setIsLoading] = useState(true)
+	// State for System Notifications
+	const [notificationNumber, setNotificationNumber] = useState("")
+	const [isNotifLoading, setIsNotifLoading] = useState(true)
 	const [isSaving, setIsSaving] = useState(false)
 
-	const fetchWhatsAppNumber = useCallback(async () => {
-		setIsLoading(true)
+	const fetchNotificationSettings = useCallback(async () => {
+		setIsNotifLoading(true)
 		try {
-			const response = await fetch("/api/settings/whatsapp")
+			const response = await fetch("/api/settings/whatsapp-notifications") // prettier-ignore
 			if (!response.ok)
-				throw new Error("Failed to fetch WhatsApp number.")
+				throw new Error(
+					"Failed to fetch WhatsApp notification settings."
+				)
 			const data = await response.json()
-			setWhatsappNumber(data.whatsapp_number || "")
+			setNotificationNumber(data.whatsapp_notifications_number || "")
 		} catch (error) {
 			toast.error(error.message)
 		} finally {
-			setIsLoading(false)
+			setIsNotifLoading(false)
 		}
 	}, [])
 
 	useEffect(() => {
-		fetchWhatsAppNumber()
-	}, [fetchWhatsAppNumber])
+		fetchNotificationSettings()
+	}, [fetchNotificationSettings])
 
-	const handleSave = async () => {
+	const handleSaveNotifNumber = async () => {
 		setIsSaving(true)
 		try {
-			const response = await fetch("/api/settings/whatsapp", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ whatsapp_number: whatsappNumber })
-			})
+			const response = await fetch(
+				"/api/settings/whatsapp-notifications",
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						whatsapp_notifications_number: notificationNumber
+					})
+				}
+			)
 			const data = await response.json()
-			if (!response.ok) {
-				throw new Error(data.error || "Failed to save number.")
-			}
-			toast.success("WhatsApp number saved successfully!")
+			if (!response.ok)
+				throw new Error(data.detail || "Failed to save number.")
+			toast.success("Notifications enabled for this number!")
 		} catch (error) {
 			toast.error(error.message)
 		} finally {
@@ -187,204 +168,162 @@ const WhatsAppSettings = () => {
 		}
 	}
 
-	const handleRemove = async () => {
+	const handleRemoveNotifNumber = async () => {
 		setIsSaving(true)
 		try {
-			const response = await fetch("/api/settings/whatsapp", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ whatsapp_number: "" }) // Send empty string to remove
-			})
+			const response = await fetch(
+				"/api/settings/whatsapp-notifications",
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ whatsapp_notifications_number: "" })
+				}
+			)
 			if (!response.ok) throw new Error("Failed to remove number.")
-			setWhatsappNumber("")
-			toast.success("WhatsApp notifications disabled.")
+			setNotificationNumber("")
+			toast.success("Notification number removed.")
 		} catch (error) {
 			toast.error(error.message)
 		} finally {
 			setIsSaving(false)
 		}
 	}
+
+	const hasNotifNumber =
+		notificationNumber && notificationNumber.trim() !== ""
 
 	return (
 		<section>
-			<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2">
+			<h2 className="text-2xl font-bold mb-2 text-white flex items-center gap-3">
+				<IconBrandWhatsapp />
 				WhatsApp Notifications
 			</h2>
-			<div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)]">
-				<p className="text-gray-400 text-sm mb-4">
-					Receive important notifications directly to your WhatsApp.
-					Enter your number including the country code (e.g.,
-					14155552671).
-				</p>
-				{isLoading ? (
-					<div className="flex justify-center mt-4">
-						<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)]" />
-					</div>
-				) : (
-					<div className="flex flex-col sm:flex-row gap-2">
-						<div className="relative flex-grow">
-							<IconBrandWhatsapp
-								className="absolute left-3 top-1/2 -translate-y-1/2 text-green-500"
-								size={20}
-							/>
-							<input
-								type="tel"
-								value={whatsappNumber}
-								onChange={(e) =>
-									setWhatsappNumber(e.target.value)
-								}
-								placeholder="Enter WhatsApp Number"
-								className="w-full pl-10 pr-4 bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
-							/>
+			<p className="text-neutral-400 mb-6">
+				Receive important system notifications on WhatsApp.
+			</p>
+			<div className="bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800">
+				<div className="space-y-4">
+					<p className="text-neutral-400 text-sm">
+						Receive important system notifications (e.g., task
+						completions) on WhatsApp. Enter your number including
+						the country code (e.g., +14155552671).
+					</p>
+					{isNotifLoading ? (
+						<div className="flex justify-center mt-4">
+							<IconLoader className="w-6 h-6 animate-spin text-brand-orange" />
 						</div>
-						<div className="flex gap-2 justify-end">
-							<button
-								onClick={handleSave}
-								disabled={isSaving}
-								className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors"
-							>
-								{isSaving ? (
-									<IconLoader className="w-4 h-4 mr-2 animate-spin" />
-								) : (
-									<IconPlus className="w-4 h-4 mr-2" />
-								)}
-								Save
-							</button>
-							{whatsappNumber && (
-								<button
-									onClick={handleRemove}
-									disabled={isSaving}
-									className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-red)]/80 hover:bg-[var(--color-accent-red)] text-white font-medium transition-colors"
-								>
-									<IconX className="w-4 h-4 mr-2" /> Remove
-								</button>
-							)}
+					) : (
+						<div className="space-y-4">
+							<div className="flex flex-col sm:flex-row gap-2">
+								<div className="relative flex-grow">
+									<IconBrandWhatsapp
+										className="absolute left-3 top-1/2 -translate-y-1/2 text-green-500"
+										size={20}
+									/>
+									<input
+										type="tel"
+										value={notificationNumber}
+										onChange={(e) =>
+											setNotificationNumber(
+												e.target.value
+											)
+										}
+										placeholder="+14155552671"
+										className="w-full pl-10 pr-4 bg-neutral-800/50 border font-mono border-neutral-700 rounded-lg py-2 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-brand-orange"
+									/>
+								</div>
+								<div className="flex gap-2 justify-end">
+									<button
+										onClick={handleSaveNotifNumber}
+										disabled={
+											isSaving ||
+											!notificationNumber.trim()
+										}
+										className="flex items-center py-2 px-4 rounded-lg bg-brand-orange hover:bg-brand-orange/70 text-white font-medium transition-colors disabled:opacity-50"
+									>
+										{isSaving ? (
+											<IconLoader className="w-4 h-4 mr-2 animate-spin" />
+										) : (
+											<IconPlus className="w-4 h-4 mr-2" />
+										)}{" "}
+										{hasNotifNumber ? "Update" : "Save"}
+									</button>
+									{hasNotifNumber && (
+										<button
+											onClick={handleRemoveNotifNumber}
+											disabled={isSaving}
+											className="flex items-center py-2 px-4 rounded-lg bg-red-600/80 hover:bg-red-600 text-white font-medium transition-colors"
+										>
+											<IconX className="w-4 h-4 mr-2" />{" "}
+											Remove
+										</button>
+									)}
+								</div>
+							</div>
 						</div>
-					</div>
-				)}
+					)}
+				</div>
 			</div>
 		</section>
 	)
 }
 
-const LinkedInSettings = () => {
-	const [linkedinUrl, setLinkedinUrl] = useState("")
-	const [isLoading, setIsLoading] = useState(true)
-	const [isSaving, setIsSaving] = useState(false)
-
-	const fetchLinkedInUrl = useCallback(async () => {
-		setIsLoading(true)
-		try {
-			const response = await fetch("/api/settings/linkedin")
-			if (!response.ok) throw new Error("Failed to fetch LinkedIn URL.")
-			const data = await response.json()
-			setLinkedinUrl(data.linkedin_url || "")
-		} catch (error) {
-			toast.error(error.message)
-		} finally {
-			setIsLoading(false)
-		}
-	}, [])
-
-	useEffect(() => {
-		fetchLinkedInUrl()
-	}, [fetchLinkedInUrl])
-
-	const handleSave = async () => {
-		setIsSaving(true)
-		try {
-			const response = await fetch("/api/settings/linkedin", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ linkedin_url: linkedinUrl })
-			})
-			const data = await response.json()
-			if (!response.ok) {
-				throw new Error(data.error || "Failed to save LinkedIn URL.")
-			}
-			toast.success(data.message || "LinkedIn URL saved successfully!")
-		} catch (error) {
-			toast.error(error.message)
-		} finally {
-			setIsSaving(false)
-		}
+const ShortcutsSettings = () => {
+	const shortcuts = {
+		Global: [
+			{ keys: ["Ctrl", "M"], description: "Open Chat" },
+			{ keys: ["Ctrl", "B"], description: "Toggle Notifications" },
+			{ keys: ["Esc"], description: "Close Modal / Chat" },
+			{ keys: ["Ctrl", "K"], description: "Open Command Palette" }
+		],
+		Navigation: [
+			{ keys: ["Ctrl", "H"], description: "Go to Chat" },
+			{ keys: ["Ctrl", "J"], description: "Go to Notes" },
+			{ keys: ["Ctrl", "A"], description: "Go to Tasks" },
+			{ keys: ["Ctrl", "I"], description: "Go to Integrations" },
+			{ keys: ["Ctrl", "S"], description: "Go to Settings" }
+		]
 	}
-
-	const handleRemove = async () => {
-		setIsSaving(true)
-		try {
-			const response = await fetch("/api/settings/linkedin", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ linkedin_url: "" }) // Send empty string to remove
-			})
-			if (!response.ok) throw new Error("Failed to remove URL.")
-			setLinkedinUrl("")
-			toast.success("LinkedIn URL removed.")
-		} catch (error) {
-			toast.error(error.message)
-		} finally {
-			setIsSaving(false)
-		}
-	}
-
-	const hasUrl = linkedinUrl && linkedinUrl.trim() !== ""
 
 	return (
 		<section>
-			<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2">
-				LinkedIn Profile
+			<h2 className="text-2xl font-bold mb-6 text-white flex items-center gap-3">
+				<IconKeyboard />
+				Keyboard Shortcuts
 			</h2>
-			<div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)]">
-				<p className="text-gray-400 text-sm mb-4">
-					Connect your LinkedIn profile to help Sentient understand
-					your professional background. This will be used to enrich
-					your personal memory.
-				</p>
-				{isLoading ? (
-					<div className="flex justify-center mt-4">
-						<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)]" />
-					</div>
-				) : (
-					<div className="flex flex-col sm:flex-row gap-2">
-						<div className="relative flex-grow">
-							<IconBrandLinkedin
-								className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-400"
-								size={20}
-							/>
-							<input
-								type="url"
-								value={linkedinUrl}
-								onChange={(e) => setLinkedinUrl(e.target.value)}
-								placeholder="https://www.linkedin.com/in/your-profile"
-								className="w-full pl-10 pr-4 bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
-							/>
+
+			<div className="bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800">
+				<div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+					{Object.entries(shortcuts).map(([category, list]) => (
+						<div key={category}>
+							<h3 className="text-lg font-semibold text-brand-orange mb-4">
+								{category}
+							</h3>
+							<div className="space-y-3">
+								{list.map((shortcut) => (
+									<div
+										key={shortcut.description}
+										className="flex justify-between items-center text-sm"
+									>
+										<span className="text-neutral-300">
+											{shortcut.description}
+										</span>
+										<div className="flex items-center gap-2">
+											{shortcut.keys.map((key) => (
+												<kbd
+													key={key}
+													className="px-2 py-1.5 text-xs font-semibold text-neutral-300 bg-neutral-700 border border-neutral-600 rounded-md"
+												>
+													{key}
+												</kbd>
+											))}
+										</div>
+									</div>
+								))}
+							</div>
 						</div>
-						<div className="flex gap-2 justify-end">
-							<button
-								onClick={handleSave}
-								disabled={isSaving}
-								className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors"
-							>
-								{isSaving ? (
-									<IconLoader className="w-4 h-4 mr-2 animate-spin" />
-								) : (
-									<IconPlus className="w-4 h-4 mr-2" />
-								)}
-								{hasUrl ? "Update" : "Save"}
-							</button>
-							{hasUrl && (
-								<button
-									onClick={handleRemove}
-									disabled={isSaving}
-									className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-red)]/80 hover:bg-[var(--color-accent-red)] text-white font-medium transition-colors"
-								>
-									<IconX className="w-4 h-4 mr-2" /> Remove
-								</button>
-							)}
-						</div>
-					</div>
-				)}
+					))}
+				</div>
 			</div>
 		</section>
 	)
@@ -443,12 +382,10 @@ const TestingTools = () => {
 			setEventData(
 				'{\n  "summary": "Finalize Q3 report",\n  "description": "Need to finalize the Q3 sales report with Sarah before the end of the week."\n}'
 			)
-		} else if (newService === "journal_block") {
-			setEventData(
-				'{\n  "content": "Remind me to call the dentist tomorrow to book an appointment.",\n  "page_date": "2024-07-26"\n}'
-			)
 		}
 	}
+	const [isTriggeringScheduler, setIsTriggeringScheduler] = useState(false)
+	const [isTriggeringPoller, setIsTriggeringPoller] = useState(false)
 
 	const [whatsAppNumber, setWhatsAppNumber] = useState("")
 	const [isVerifying, setIsVerifying] = useState(false)
@@ -457,6 +394,41 @@ const TestingTools = () => {
 		status: null,
 		message: ""
 	})
+
+	const handleTriggerScheduler = async () => {
+		setIsTriggeringScheduler(true)
+		try {
+			const response = await fetch("/api/testing/trigger-scheduler", {
+				method: "POST"
+			})
+			const result = await response.json()
+			if (!response.ok) {
+				throw new Error(result.detail || "Failed to trigger scheduler.")
+			}
+			toast.success(result.message)
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsTriggeringScheduler(false)
+		}
+	}
+	const handleTriggerPoller = async () => {
+		setIsTriggeringPoller(true)
+		try {
+			const response = await fetch("/api/testing/trigger-poller", {
+				method: "POST"
+			})
+			const result = await response.json()
+			if (!response.ok) {
+				throw new Error(result.detail || "Failed to trigger poller.")
+			}
+			toast.success(result.message)
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsTriggeringPoller(false)
+		}
+	}
 
 	const handleVerifyWhatsApp = async () => {
 		if (!whatsAppNumber) {
@@ -526,11 +498,12 @@ const TestingTools = () => {
 
 	return (
 		<section>
-			<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2 flex items-center gap-2">
+			<h2 className="text-2xl font-bold mb-6 text-white flex items-center gap-3">
 				<IconFlask />
 				Developer Tools
 			</h2>
-			<div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)]">
+
+			<div className="bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800">
 				<h3 className="font-semibold text-lg text-white mb-2">
 					Inject Context Event
 				</h3>
@@ -551,11 +524,10 @@ const TestingTools = () => {
 							id="serviceName"
 							value={serviceName}
 							onChange={handleServiceChange}
-							className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+							className="w-full bg-neutral-800/50 border font-mono border-neutral-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
 						>
 							<option value="gmail">Gmail</option>
 							<option value="gcalendar">Google Calendar</option>
-							<option value="journal_block">Journal</option>
 						</select>
 					</div>
 					<div>
@@ -570,7 +542,7 @@ const TestingTools = () => {
 							value={eventData}
 							onChange={(e) => setEventData(e.target.value)}
 							rows={8}
-							className="w-full font-mono text-xs bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+							className="w-full font-mono text-xs bg-neutral-800/50 border border-neutral-700 rounded-lg px-3 py-2 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-brand-orange"
 							placeholder='e.g., { "subject": "Hello", "body": "World" }'
 						/>
 					</div>
@@ -578,7 +550,7 @@ const TestingTools = () => {
 						<button
 							type="submit"
 							disabled={isSubmitting}
-							className="flex items-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors disabled:opacity-50"
+							className="flex items-center py-2 px-4 rounded-lg bg-brand-orange hover:bg-brand-orange/70 text-white font-medium transition-colors disabled:opacity-50"
 						>
 							{isSubmitting ? (
 								<IconLoader className="w-5 h-5 animate-spin" />
@@ -590,7 +562,7 @@ const TestingTools = () => {
 				</form>
 			</div>
 			{/* WhatsApp Test Tools */}
-			<div className="bg-[var(--color-primary-surface)]/50 p-4 md:p-6 rounded-lg border border-[var(--color-primary-surface-elevated)] mt-6">
+			<div className="bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800 mt-6">
 				<h3 className="font-semibold text-lg text-white mb-2">
 					Test WhatsApp Integration
 				</h3>
@@ -616,7 +588,7 @@ const TestingTools = () => {
 								}) // Reset on change
 							}}
 							placeholder="Enter WhatsApp Number with country code"
-							className="w-full pl-10 pr-4 bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+							className="w-full pl-10 pr-4 bg-neutral-800/50 border font-mono border-neutral-700 rounded-lg py-2 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-brand-orange"
 						/>
 					</div>
 					<div className="flex gap-2 justify-end">
@@ -634,7 +606,7 @@ const TestingTools = () => {
 						<button
 							onClick={handleSendTestWhatsApp}
 							disabled={isSending || isVerifying}
-							className="flex items-center justify-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors disabled:opacity-50"
+							className="flex items-center justify-center py-2 px-4 rounded-lg bg-brand-orange hover:bg-brand-orange/70 text-white font-medium transition-colors disabled:opacity-50"
 						>
 							{isSending ? (
 								<IconLoader className="w-5 h-5 animate-spin" />
@@ -657,320 +629,151 @@ const TestingTools = () => {
 					</p>
 				)}
 			</div>
+			{/* Poller Test Tool */}
+			<div className="bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800 mt-6">
+				<h3 className="font-semibold text-lg text-white mb-2">
+					Trigger Proactive Poller
+				</h3>
+				<p className="text-gray-400 text-sm mb-4">
+					Manually run the Celery Beat scheduler task
+					(`schedule_all_polling`) to immediately check for any users
+					who are due for a Gmail or Google Calendar poll. This is
+					useful for testing the proactive pipeline without waiting
+					for the hourly interval.
+				</p>
+				<div className="flex justify-end">
+					<button
+						onClick={handleTriggerPoller}
+						disabled={isTriggeringPoller}
+						className="flex items-center py-2 px-4 rounded-md bg-purple-600 hover:bg-purple-500 text-white font-medium transition-colors disabled:opacity-50"
+					>
+						{isTriggeringPoller ? (
+							<IconLoader className="w-5 h-5 animate-spin" />
+						) : (
+							"Run Poller Now"
+						)}
+					</button>
+				</div>
+			</div>
+			{/* Scheduler Test Tool */}
+			<div className="bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800 mt-6">
+				<h3 className="font-semibold text-lg text-white mb-2">
+					Trigger Task Scheduler
+				</h3>
+				<p className="text-gray-400 text-sm mb-4">
+					Manually run the Celery Beat scheduler task
+					(`run_due_tasks`) to immediately check for and execute any
+					due scheduled or recurring tasks. This is useful for testing
+					without waiting for the 5-minute interval.
+				</p>
+				<div className="flex justify-end">
+					<button
+						onClick={handleTriggerScheduler}
+						disabled={isTriggeringScheduler}
+						className="flex items-center py-2 px-4 rounded-md bg-purple-600 hover:bg-purple-500 text-white font-medium transition-colors disabled:opacity-50"
+					>
+						{isTriggeringScheduler ? (
+							<IconLoader className="w-5 h-5 animate-spin" />
+						) : (
+							"Run Scheduler Now"
+						)}
+					</button>
+				</div>
+			</div>
 		</section>
 	)
 }
 
-const AIPersonalitySettings = () => {
-	const [settings, setSettings] = useState({
-		agentName: "Sentient",
-		responseVerbosity: "Balanced",
-		humorLevel: "Balanced",
-		useEmojis: true,
-		quietHours: { enabled: false, start: "22:00", end: "08:00" },
-		notificationControls: {
-			taskNeedsApproval: true,
-			taskCompleted: true,
-			taskFailed: false,
-			proactiveSummary: false,
-			importantInsights: false
-		}
-	})
+const ProactivitySettings = () => {
+	const [isEnabled, setIsEnabled] = useState(false)
 	const [isLoading, setIsLoading] = useState(true)
-	const [isSaving, setIsSaving] = useState(false)
-	const [isOpen, setIsOpen] = useState(true)
-
-	const fetchSettings = useCallback(async () => {
-		setIsLoading(true)
-		try {
-			const response = await fetch("/api/settings/ai-personality")
-			if (!response.ok) throw new Error("Failed to fetch AI settings.")
-			const data = await response.json()
-			setSettings(data)
-		} catch (error) {
-			toast.error(error.message)
-		} finally {
-			setIsLoading(false)
-		}
-	}, [])
+	const posthog = usePostHog()
 
 	useEffect(() => {
-		fetchSettings()
-	}, [fetchSettings])
+		const fetchStatus = async () => {
+			setIsLoading(true)
+			try {
+				const res = await fetch("/api/settings/proactivity")
+				if (!res.ok) throw new Error("Failed to fetch status")
+				const data = await res.json()
+				setIsEnabled(data.enabled)
+			} catch (error) {
+				toast.error("Could not load proactivity settings.")
+			} finally {
+				setIsLoading(false)
+			}
+		}
+		fetchStatus()
+	}, [])
 
-	const handleSave = async () => {
-		setIsSaving(true)
+	const handleToggle = async (enabled) => {
+		setIsEnabled(enabled) // Optimistic update
+		const toastId = toast.loading(
+			enabled ? "Enabling proactivity..." : "Disabling proactivity..."
+		)
+
+		// --- ADD POSTHOG EVENT TRACKING ---
+		if (enabled) {
+			posthog?.capture("proactive_assistance_enabled")
+		}
+		// --- END POSTHOG EVENT TRACKING ---
 		try {
-			const response = await fetch("/api/settings/ai-personality", {
+			const response = await fetch("/api/settings/proactivity", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(settings)
+				body: JSON.stringify({ enabled })
 			})
-			if (!response.ok) {
-				const errorData = await response.json()
-				throw new Error(errorData.error || "Failed to save settings.")
-			}
-			toast.success("AI settings updated successfully!")
+			const data = await response.json()
+			if (!response.ok)
+				throw new Error(data.error || "Failed to update setting.")
+			toast.success(data.message, { id: toastId })
 		} catch (error) {
-			toast.error(error.message)
-		} finally {
-			setIsSaving(false)
+			toast.error(`Error: ${error.message}`, { id: toastId })
+			setIsEnabled(!enabled) // Revert on error
 		}
-	}
-
-	const handleInputChange = (field, value) => {
-		setSettings((prev) => ({ ...prev, [field]: value }))
-	}
-
-	const handleQuietHoursChange = (field, value) => {
-		setSettings((prev) => ({
-			...prev,
-			quietHours: { ...prev.quietHours, [field]: value }
-		}))
-	}
-
-	const handleNotificationChange = (field) => {
-		setSettings((prev) => ({
-			...prev,
-			notificationControls: {
-				...prev.notificationControls,
-				[field]: !prev.notificationControls[field]
-			}
-		}))
-	}
-
-	if (isLoading) {
-		return (
-			<div className="flex justify-center items-center p-8">
-				<IconLoader className="animate-spin" />
-			</div>
-		)
 	}
 
 	return (
-		<section>
-			<div className="flex justify-between items-center mb-5">
-				<button
-					onClick={() => setIsOpen(!isOpen)}
-					className="w-full flex justify-between items-center py-2 text-left"
+		<Switch.Group as="div" className="flex items-center justify-between">
+			<span className="flex-grow flex flex-col">
+				<Switch.Label
+					as="span"
+					className="font-semibold text-lg text-white"
+					passive
 				>
-					<h2 className="text-xl font-semibold text-gray-300 flex items-center gap-3">
-						<IconMessageChatbot /> AI Behavior & Personality
-					</h2>
-					<IconChevronDown
-						className={cn(
-							"transition-transform duration-200",
-							isOpen && "rotate-180"
-						)}
-					/>
-				</button>
-			</div>
-			{isOpen && (
-				<div className="space-y-6">
-					{/* Persona Settings */}
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-						<div>
-							<label className="block text-sm font-medium text-gray-200 mb-2">
-								Agent Name
-							</label>
-							<input
-								type="text"
-								value={settings.agentName}
-								onChange={(e) =>
-									handleInputChange(
-										"agentName",
-										e.target.value
-									)
-								}
-								className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400"
-							/>
-						</div>
-						<div>
-							<label className="block text-sm font-medium text-gray-200 mb-2">
-								Response Verbosity
-							</label>
-							<select
-								value={settings.responseVerbosity}
-								onChange={(e) =>
-									handleInputChange(
-										"responseVerbosity",
-										e.target.value
-									)
-								}
-								className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white"
-							>
-								<option value="Concise">Concise</option>
-								<option value="Balanced">Balanced</option>
-								<option value="Detailed">Detailed</option>
-							</select>
-						</div>
-						<div>
-							<label className="block text-sm font-medium text-gray-200 mb-2">
-								Humor & Formality
-							</label>
-							<select
-								value={settings.humorLevel}
-								onChange={(e) =>
-									handleInputChange(
-										"humorLevel",
-										e.target.value
-									)
-								}
-								className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white"
-							>
-								<option value="Strictly Formal">
-									Strictly Formal
-								</option>
-								<option value="Balanced">Balanced</option>
-								<option value="Witty & Humorous">
-									Witty & Humorous
-								</option>
-							</select>
-						</div>
-						<div>
-							<label className="block text-sm font-medium text-gray-200 mb-2">
-								Emoji Usage
-							</label>
-							<div className="flex items-center gap-2 p-2 bg-[var(--color-primary-surface-elevated)] rounded-md">
-								<input
-									type="checkbox"
-									id="emoji-toggle"
-									checked={settings.useEmojis}
-									onChange={(e) =>
-										handleInputChange(
-											"useEmojis",
-											e.target.checked
-										)
-									}
-									className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-								/>
-								<label
-									htmlFor="emoji-toggle"
-									className="text-white"
-								>
-									Use emojis in conversations
-								</label>
-							</div>
-						</div>
-					</div>
-					{/* Quiet Hours */}
-					<div>
-						<label className="block text-sm font-medium text-gray-200 mb-2">
-							Quiet Hours (Do Not Disturb)
-						</label>
-						<div className="flex items-center gap-4 bg-[var(--color-primary-surface-elevated)] p-3 rounded-md">
-							<input
-								type="checkbox"
-								id="quiet-hours-toggle"
-								checked={settings.quietHours.enabled}
-								onChange={(e) =>
-									handleQuietHoursChange(
-										"enabled",
-										e.target.checked
-									)
-								}
-								className="h-4 w-4 rounded border-gray-300"
-							/>
-							<label
-								htmlFor="quiet-hours-toggle"
-								className="text-white"
-							>
-								Enable Quiet Hours
-							</label>
-							{settings.quietHours.enabled && (
-								<div className="flex items-center gap-2">
-									<input
-										type="time"
-										value={settings.quietHours.start}
-										onChange={(e) =>
-											handleQuietHoursChange(
-												"start",
-												e.target.value
-											)
-										}
-										className="bg-neutral-700 border border-neutral-600 rounded-md px-2 py-1 text-white"
-									/>
-									<span className="text-gray-400">to</span>
-									<input
-										type="time"
-										value={settings.quietHours.end}
-										onChange={(e) =>
-											handleQuietHoursChange(
-												"end",
-												e.target.value
-											)
-										}
-										className="bg-neutral-700 border border-neutral-600 rounded-md px-2 py-1 text-white"
-									/>
-								</div>
-							)}
-						</div>
-					</div>
-					{/* Notification Controls */}
-					<div>
-						<label className="block text-sm font-medium text-gray-200 mb-2">
-							Granular Notification Controls
-						</label>
-						<div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 bg-[var(--color-primary-surface-elevated)] p-4 rounded-md">
-							{Object.entries({
-								taskNeedsApproval:
-									"When a task needs my approval",
-								taskCompleted:
-									"When a task is completed successfully",
-								taskFailed: "When a task fails",
-								proactiveSummary: "Proactive daily summary",
-								importantInsights:
-									"Important insights found in my data"
-							}).map(([key, label]) => (
-								<div
-									key={key}
-									className="flex items-center gap-2"
-								>
-									<input
-										type="checkbox"
-										id={key}
-										checked={
-											settings.notificationControls[key]
-										}
-										onChange={() =>
-											handleNotificationChange(key)
-										}
-										className="h-4 w-4 rounded border-gray-300"
-									/>
-									<label htmlFor={key} className="text-white">
-										{label}
-									</label>
-								</div>
-							))}
-						</div>
-					</div>
-					{/* Save Button */}
-					<div className="flex justify-end mt-6">
-						<button
-							onClick={handleSave}
-							disabled={isSaving}
-							className="py-2 px-6 rounded-md bg-[var(--color-accent-green)] hover:bg-[var(--color-accent-green-hover)] text-white font-medium transition-colors flex items-center"
-						>
-							{isSaving ? (
-								<IconLoader className="w-5 h-5 animate-spin" />
-							) : (
-								"Save AI Settings"
-							)}
-						</button>
-					</div>
-				</div>
-			)}
-		</section>
+					Proactive Assistance
+				</Switch.Label>
+				<Switch.Description
+					as="span"
+					className="text-neutral-400 text-sm mt-1 max-w-md"
+				>
+					Allow Sentient to monitor connected apps (like Gmail and
+					Calendar) in the background to find opportunities and
+					suggest tasks for you.
+				</Switch.Description>
+			</span>
+			<Switch
+				checked={isEnabled}
+				onChange={handleToggle}
+				className={cn(
+					isEnabled ? "bg-green-600" : "bg-neutral-700",
+					"relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-orange focus:ring-offset-2 focus:ring-offset-neutral-900"
+				)}
+			>
+				<span
+					aria-hidden="true"
+					className={cn(
+						isEnabled ? "translate-x-5" : "translate-x-0",
+						"pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+					)}
+				/>
+			</Switch>
+		</Switch.Group>
 	)
 }
 
 const ProfileSettings = ({ initialData, onSave, isSaving }) => {
 	const [formData, setFormData] = useState(initialData || {})
-	const [openSections, setOpenSections] = useState({
-		essentials: true,
-		context: true,
-		personality: true
-	})
 
 	useEffect(() => {
 		setFormData(initialData || {})
@@ -980,27 +783,23 @@ const ProfileSettings = ({ initialData, onSave, isSaving }) => {
 		setFormData((prev) => ({ ...prev, [questionId]: answer }))
 	}
 
-	const handleMultiChoice = (questionId, option) => {
-		const currentAnswers = formData[questionId] || []
-		const limit = questions.find((q) => q.id === questionId)?.limit || 1
-		const newAnswers = currentAnswers.includes(option)
-			? currentAnswers.filter((item) => item !== option)
-			: currentAnswers.length < limit
-				? [...currentAnswers, option]
-				: currentAnswers
-		setFormData((prev) => ({ ...prev, [questionId]: newAnswers }))
-	}
-
 	return (
 		<section>
-			<div className="flex justify-between items-center">
-				<h2 className="text-xl font-semibold text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2 flex-grow">
-					About You
-				</h2>
+			<div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
+				<div>
+					<h2 className="text-2xl font-bold text-white flex items-center gap-3">
+						<IconUser />
+						Your Profile
+					</h2>
+					<p className="text-neutral-400 mt-1">
+						This information helps me personalize my responses and
+						actions for you.
+					</p>
+				</div>
 				<button
 					onClick={() => onSave(formData)}
 					disabled={isSaving}
-					className="ml-4 py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors flex items-center"
+					className="mt-4 sm:mt-0 py-2 px-5 rounded-lg bg-brand-orange hover:bg-brand-orange/70 text-white font-medium transition-colors flex items-center gap-2 disabled:opacity-50"
 				>
 					{isSaving ? (
 						<IconLoader className="w-5 h-5 animate-spin" />
@@ -1009,247 +808,163 @@ const ProfileSettings = ({ initialData, onSave, isSaving }) => {
 					)}
 				</button>
 			</div>
-			<p className="text-gray-400 text-sm mt-2 mb-6">
-				This information helps me personalize my responses and actions
-				for you.
-			</p>
 
-			<div className="space-y-8">
+			<div className="space-y-10 bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800">
 				{Object.entries(questionSections).map(
 					([key, { title, icon }]) => (
-						<div key={key}>
-							<button
-								onClick={() =>
-									setOpenSections((p) => ({
-										...p,
-										[key]: !p[key]
-									}))
-								}
-								className="w-full flex justify-between items-center py-2 text-left"
-							>
-								<h3 className="text-lg font-semibold text-gray-300 flex items-center gap-3">
-									{icon}
-									{title}
+						<CollapsibleSection
+							key={key}
+							title={
+								<h3 className="text-lg font-semibold text-neutral-200 flex items-center gap-3">
+									{icon} {title}
 								</h3>
-								<IconChevronDown
-									className={cn(
-										"transition-transform duration-200",
-										openSections[key] && "rotate-180"
-									)}
-								/>
-							</button>
-							{openSections[key] && (
-								<div className="space-y-6 mt-4 pl-8 border-l-2 border-[var(--color-primary-surface-elevated)]">
-									{questions
-										.filter((q) => q.section === key)
-										.map((q) => (
-											<div
-												key={q.id}
-												className="min-h-[68px]"
-											>
-												<label className="block text-sm font-medium text-gray-200 mb-2">
-													{q.question}
-												</label>
-												{(() => {
-													switch (q.type) {
-														case "text-input":
+							}
+							defaultOpen={true}
+						>
+							<div className="space-y-6 mt-4 pl-4 md:pl-8 border-l-2 border-neutral-800">
+								{questions
+									.filter((q) => q.section === key)
+									.map((q) => (
+										<div
+											key={q.id}
+											className="min-h-[68px]"
+										>
+											<label className="block text-sm font-medium text-neutral-300 mb-2 font-sans">
+												{q.question}
+											</label>
+											{(() => {
+												switch (q.type) {
+													case "text-input":
+														return (
+															// eslint-disable-line
+															<input
+																type="text"
+																value={
+																	formData[
+																		q.id
+																	] || ""
+																}
+																onChange={(e) =>
+																	handleAnswer(
+																		q.id,
+																		e.target
+																			.value
+																	)
+																}
+																className="w-full bg-neutral-800/50 border font-mono border-neutral-700 rounded-lg px-3 py-2 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-brand-orange"
+																placeholder={
+																	q.placeholder
+																}
+															/>
+														)
+													case "textarea":
+														return (
+															// eslint-disable-line
+															<textarea
+																value={
+																	formData[
+																		q.id
+																	] || ""
+																}
+																onChange={(e) =>
+																	handleAnswer(
+																		q.id,
+																		e.target
+																			.value
+																	)
+																}
+																rows={4}
+																className="w-full bg-neutral-800/50 border font-mono border-neutral-700 rounded-lg px-3 py-2 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-brand-orange"
+																placeholder={
+																	q.placeholder
+																}
+															/>
+														)
+													case "select":
+														return (
+															// eslint-disable-line
+															<select
+																value={
+																	formData[
+																		q.id
+																	] || ""
+																}
+																onChange={(e) =>
+																	handleAnswer(
+																		q.id,
+																		e.target
+																			.value
+																	)
+																}
+																className="w-full bg-neutral-800/50 border font-mono border-neutral-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-brand-orange appearance-none"
+															>
+																{q.options.map(
+																	(opt) => (
+																		<option
+																			key={
+																				opt.value
+																			}
+																			value={
+																				opt.value
+																			}
+																		>
+																			{
+																				opt.label
+																			}
+																		</option>
+																	)
+																)}
+															</select>
+														)
+													case "location": // Simplified for now
+														const locationValue =
+															formData[q.id]
+														const isGpsLocation =
+															typeof locationValue ===
+																"object" &&
+															locationValue !==
+																null &&
+															locationValue.latitude
+
+														if (isGpsLocation) {
 															return (
-																// eslint-disable-line
-																<input
-																	type="text"
-																	value={
-																		formData[
-																			q.id
-																		] || ""
-																	}
-																	onChange={(
-																		e
-																	) =>
-																		handleAnswer(
-																			q.id,
-																			e
-																				.target
-																				.value
-																		)
-																	}
-																	className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
-																	placeholder={
-																		q.placeholder
-																	}
-																/>
-															)
-														case "textarea":
-															return (
-																// eslint-disable-line
-																<textarea
-																	value={
-																		formData[
-																			q.id
-																		] || ""
-																	}
-																	onChange={(
-																		e
-																	) =>
-																		handleAnswer(
-																			q.id,
-																			e
-																				.target
-																				.value
-																		)
-																	}
-																	rows={3}
-																	className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
-																	placeholder={
-																		q.placeholder
-																	}
-																/>
-															)
-														case "select":
-															return (
-																// eslint-disable-line
-																<select
-																	value={
-																		formData[
-																			q.id
-																		] || ""
-																	}
-																	onChange={(
-																		e
-																	) =>
-																		handleAnswer(
-																			q.id,
-																			e
-																				.target
-																				.value
-																		)
-																	}
-																	className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
-																>
-																	{q.options.map(
-																		(
-																			opt
-																		) => (
-																			<option
-																				key={
-																					opt.value
-																				}
-																				value={
-																					opt.value
-																				}
-																			>
-																				{
-																					opt.label
-																				}
-																			</option>
-																		)
-																	)}
-																</select>
-															)
-														case "single-choice":
-														case "multi-choice":
-															return (
-																<div className="flex flex-wrap gap-2">
-																	{q.options.map(
-																		(
-																			opt
-																		) => (
-																			<button
-																				key={
-																					opt
-																				}
-																				onClick={() =>
-																					q.type ===
-																					"single-choice"
-																						? handleAnswer(
-																								q.id,
-																								opt
-																							)
-																						: handleMultiChoice(
-																								q.id,
-																								opt
-																							)
-																				}
-																				className={cn(
-																					"px-3 py-1.5 rounded-full text-sm font-medium border-2 transition-colors",
-																					(
-																						Array.isArray(
-																							formData[
-																								q
-																									.id
-																							]
-																						)
-																							? formData[
-																									q
-																										.id
-																								].includes(
-																									opt
-																								)
-																							: formData[
-																									q
-																										.id
-																								] ===
-																								opt
-																					)
-																						? "bg-[var(--color-accent-blue)] border-[var(--color-accent-blue)] text-white"
-																						: "bg-transparent border-[var(--color-primary-surface-elevated)] text-gray-300 hover:border-[var(--color-accent-blue)]"
-																				)}
-																			>
-																				{
-																					opt
-																				}
-																			</button>
-																		)
-																	)}
+																<div className="flex items-center gap-2 font-mono">
+																	<p className="w-full bg-neutral-800/50 border border-neutral-700 rounded-lg px-3 py-2 text-neutral-300">
+																		{`Lat: ${locationValue.latitude?.toFixed(
+																			4
+																		)}, Lon: ${locationValue.longitude?.toFixed(
+																			4
+																		)} (Detected)`}
+																	</p>
+																	<button
+																		onClick={() =>
+																			handleAnswer(
+																				q.id,
+																				""
+																			)
+																		}
+																		className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-700 rounded-md"
+																		title="Clear and enter manually"
+																	>
+																		<IconX
+																			size={
+																				18
+																			}
+																		/>
+																	</button>
 																</div>
 															)
-														case "location": // Simplified for now
-															const locationValue =
-																formData[q.id]
-															const isGpsLocation =
-																typeof locationValue ===
-																	"object" &&
-																locationValue !==
-																	null &&
-																locationValue.latitude
-
-															if (isGpsLocation) {
-																return (
-																	<div className="flex items-center gap-2">
-																		<p className="w-full bg-[var(--color-primary-surface)] border border-neutral-700 rounded-md px-3 py-2 text-gray-300">
-																			{`Lat: ${locationValue.latitude?.toFixed(
-																				4
-																			)}, Lon: ${locationValue.longitude?.toFixed(
-																				4
-																			)} (Detected)`}
-																		</p>
-																		<button
-																			onClick={() =>
-																				handleAnswer(
-																					q.id,
-																					""
-																				)
-																			}
-																			className="p-2 text-gray-400 hover:text-white hover:bg-neutral-600 rounded-md"
-																			title="Clear and enter manually"
-																		>
-																			<IconX
-																				size={
-																					18
-																				}
-																			/>
-																		</button>
-																	</div>
-																)
-															}
-															return (
-																<input
-																	type="text"
-																	value={
-																		formData[
-																			q.id
-																		] || ""
-																	}
-																	onChange={(
+														}
+														return (
+															<input
+																type="text"
+																value={
+																	formData[
+																		q.id
+																	] || ""
+																}
+																onChange={
+																	(
 																		e
 																	) =>
 																		handleAnswer(
@@ -1257,21 +972,20 @@ const ProfileSettings = ({ initialData, onSave, isSaving }) => {
 																			e
 																				.target
 																				.value
-																		)
-																	}
-																	className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
-																	placeholder="City, Country"
-																/>
-															)
-														default:
-															return null
-													}
-												})()}
-											</div>
-										))}
-								</div>
-							)}
-						</div>
+																		) // prettier-ignore
+																}
+																className="w-full bg-neutral-800/50 border font-mono border-neutral-700 rounded-lg px-3 py-2 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-brand-orange"
+																placeholder="City, Country"
+															/>
+														)
+													default:
+														return null
+												}
+											})()}
+										</div>
+									))}
+							</div>
+						</CollapsibleSection>
 					)
 				)}
 			</div>
@@ -1279,7 +993,7 @@ const ProfileSettings = ({ initialData, onSave, isSaving }) => {
 	)
 }
 
-const ProfilePage = () => {
+export default function SettingsPage() {
 	const [profileData, setProfileData] = useState(null)
 	const [isSavingProfile, setIsSavingProfile] = useState(false)
 
@@ -1293,11 +1007,7 @@ const ProfilePage = () => {
 					location: newOnboardingData["location"],
 					timezone: newOnboardingData["timezone"]
 				},
-				preferences: {
-					communicationStyle:
-						newOnboardingData["communication-style"],
-					corePriorities: newOnboardingData["core-priorities"]
-				}
+				preferences: {}
 			}
 
 			const response = await fetch("/api/settings/profile", {
@@ -1347,41 +1057,50 @@ const ProfilePage = () => {
 		fetchData()
 	}, [fetchData])
 
-	const ProfileHeader = () => (
-		<div className="flex items-center gap-6 mb-10">
-			<img
-				src={profileData?.picture || "/images/half-logo-dark.svg"}
-				alt="Profile"
-				className="w-24 h-24 rounded-full border-4 border-[var(--color-primary-surface-elevated)] shadow-lg"
-			/>
-			<div>
-				<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)]">
-					{profileData?.personalInfo?.name || "Your Profile"}
-				</h1>
-				<p className="text-[var(--color-text-secondary)] mt-1">
-					Manage your settings and how Sentient interacts with you.
-				</p>
-			</div>
-		</div>
-	)
-
 	return (
-		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
-			<Tooltip id="settings-tooltip" />
-			<Tooltip id="page-help-tooltip" />
-			<div className="flex-1 flex flex-col overflow-hidden relative">
-				<main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 custom-scrollbar">
-					<HelpTooltip content="Customize your experience here. Teach Sentient about yourself, change its personality, manage notifications, and connect your LinkedIn profile." />
-					<div className="w-full max-w-5xl mx-auto space-y-10">
-						<ProfileHeader />
+		<div className="flex-1 flex h-screen text-white overflow-x-hidden">
+			<Tooltip
+				id="page-help-tooltip"
+				place="right-start"
+				style={{ zIndex: 9999 }}
+			/>
+			<div className="flex-1 flex flex-col overflow-hidden relative w-full pt-16 md:pt-0">
+				<div className="absolute inset-0 z-[-1] network-grid-background">
+					<InteractiveNetworkBackground />
+				</div>
+				<div className="absolute -top-[250px] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-brand-orange/10 rounded-full blur-3xl -z-10" />
+
+				<header className="flex items-center justify-between p-4 sm:p-6 md:px-8 md:py-6 bg-transparent border-b border-neutral-800 shrink-0">
+					<div>
+						<h1 className="text-3xl lg:text-4xl font-bold text-white">
+							Settings
+						</h1>
+						<p className="text-neutral-400 mt-1">
+							Manage your profile, notifications, and developer
+							tools.
+						</p>
+					</div>
+				</header>
+
+				<main className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-10 pb-4 sm:pb-6 md:pb-10 custom-scrollbar">
+					<HelpTooltip content="Customize your experience here." />
+					<div className="w-full max-w-4xl mx-auto space-y-12 pt-8">
 						<ProfileSettings
 							initialData={profileData?.onboardingAnswers}
 							onSave={handleSaveProfile}
 							isSaving={isSavingProfile}
 						/>
-						<AIPersonalitySettings />
+						<section>
+							<h2 className="text-2xl font-bold mb-6 text-white flex items-center gap-3">
+								<IconFlask />
+								Experimental Features
+							</h2>
+							<div className="bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800">
+								<ProactivitySettings />
+							</div>
+						</section>
 						<WhatsAppSettings />
-						<LinkedInSettings />
+						<ShortcutsSettings />
 						{process.env.NEXT_PUBLIC_ENVIRONMENT !== "prod" && (
 							<TestingTools />
 						)}
@@ -1391,5 +1110,3 @@ const ProfilePage = () => {
 		</div>
 	)
 }
-
-export default ProfilePage

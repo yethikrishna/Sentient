@@ -21,7 +21,7 @@ if ENVIRONMENT == 'dev-local':
 # --- Server Initialization ---
 mcp = FastMCP(
     name="GoogleSearchServer",
-    instructions="This server provides a tool to search the web using the Google Custom Search API.",
+    instructions="Provides a tool to perform a web search using the Google Custom Search API, enabling access to real-time information.",
 )
 
 # --- Prompt Registration ---
@@ -42,7 +42,7 @@ def build_google_search_user_prompt(query: str, username: str, previous_tool_res
 @mcp.tool
 async def google_search(ctx: Context, query: str) -> Dict[str, Any]:
     """
-    Searches the web for information on a given query using the Google Search API.
+    Performs a web search for a given `query` using the Google Custom Search API. Returns a list of search results including titles, links, and snippets.
     """
     try:
         user_id = auth.get_user_id_from_context(ctx)

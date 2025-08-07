@@ -14,7 +14,7 @@ from main.auth.utils import PermissionChecker, AuthHelper, aes_encrypt, aes_decr
 from main.config import AUTH0_AUDIENCE
 from main.dependencies import mongo_manager, auth_helper, websocket_manager as main_websocket_manager
 from pydantic import BaseModel
-from workers.tasks import process_memory_item, process_linkedin_profile
+from workers.tasks import cud_memory_task
 
 # Google API libraries for validation
 from google.oauth2 import service_account
@@ -22,7 +22,6 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 # For dispatching memory tasks
-from workers.tasks import process_memory_item
 
 class UpdatePrivacyFiltersRequest(BaseModel):
     service: str
@@ -42,9 +41,6 @@ async def save_onboarding_data_endpoint(
 ):
     logger.info(f"[{datetime.datetime.now()}] [ONBOARDING] User {user_id}, Data keys: {list(request_body.data.keys())}")
     try:
-        # Generate and add supermemory_user_id
-        supermemory_user_id = secrets.token_urlsafe(16)
-
         default_privacy_filters = {
             "gmail": {
                 "keywords": [
@@ -63,36 +59,13 @@ async def save_onboarding_data_endpoint(
         }
 
         onboarding_data = request_body.data
-        # Sanitize empty optional fields
-        onboarding_data["agent-name"] = onboarding_data.get("agent-name", "").strip()
-
-        # --- Handle LinkedIn URL ---
-        linkedin_url = onboarding_data.get("linkedin-url")
-        if linkedin_url and isinstance(linkedin_url, str) and "linkedin.com/in/" in linkedin_url:
-            logger.info(f"LinkedIn URL provided for user {user_id}. Dispatching scraping task.")
-            try:
-                process_linkedin_profile.delay(user_id, linkedin_url)
-            except Exception as celery_dispatch_error:
-                logger.error(f"Failed to dispatch LinkedIn scraping task for user {user_id}: {celery_dispatch_error}", exc_info=True)
-                # This is fail-safe, so we just log and continue.
-
         # --- Prepare data for MongoDB ---
         user_data_to_set: Dict[str, Any] = {
             "onboardingAnswers": onboarding_data,
             "onboardingComplete": True,
-            "supermemory_user_id": supermemory_user_id,
             "privacyFilters": default_privacy_filters,
             "preferences": {
-                "agentName": onboarding_data.get("agent-name") or "Sentient",
-                "responseVerbosity": onboarding_data.get("response-verbosity", "Balanced"),
-                # Set defaults for settings not in onboarding
-                "humorLevel": "Balanced",
-                "useEmojis": True,
-                "quietHours": {"enabled": False, "start": "22:00", "end": "08:00"},
-                "notificationControls": {"taskNeedsApproval": True, "taskCompleted": True, "taskFailed": False, "proactiveSummary": False, "importantInsights": False,
-                },
-                "communicationStyle": onboarding_data.get("communication-style", "Casual & Friendly"),
-                "corePriorities": onboarding_data.get("core-priorities", [])
+                "proactivityEnabled": False
             }
         }
 
@@ -125,16 +98,14 @@ async def save_onboarding_data_endpoint(
         if not success:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to save onboarding data.")
 
-        # --- Dispatch facts to Supermemory ---
+        # --- Dispatch facts to memory ---
         try:
             fact_templates = {
                 "user-name": "The user's name is {}.",
                 "location": "The user's location is at latitude {latitude}, longitude {longitude}.",
-                "timezone": "The user's timezone is {}.",
+                "timezone": "The user's timezone is {}",
                 "professional-context": "Professionally, the user has shared: {}",
                 "personal-context": "Personally, the user is interested in: {}",
-                "communication-style": "The user prefers a {} communication style.",
-                "core-priorities": "The user's current life priorities are: {}."
             }
             onboarding_facts = []
             for key, value in onboarding_data.items():
@@ -148,8 +119,6 @@ async def save_onboarding_data_endpoint(
                     elif isinstance(value, str) and value.strip():
                         # Use a different phrasing for manual location
                         fact = f"The user's location is around '{value}'."
-                elif key == "core-priorities" and isinstance(value, list) and value:
-                    fact = fact_templates[key].format(", ".join(value))
                 elif isinstance(value, str) and value.strip():
                     fact = fact_templates[key].format(value)
 
@@ -157,7 +126,7 @@ async def save_onboarding_data_endpoint(
                     onboarding_facts.append(fact)
 
             for fact in onboarding_facts:
-                process_memory_item.delay(user_id, fact)
+                cud_memory_task.delay(user_id, fact, source="onboarding")
             
             logger.info(f"Dispatched {len(onboarding_facts)} onboarding facts to memory queue for user {user_id}")
         except Exception as celery_e:
@@ -229,23 +198,6 @@ async def get_role_from_claims_endpoint(payload: dict = Depends(auth_helper.get_
     CUSTOM_CLAIMS_NAMESPACE = f"{AUTH0_AUDIENCE}/" if not AUTH0_AUDIENCE.endswith('/') else AUTH0_AUDIENCE
     user_role = payload.get(f"{CUSTOM_CLAIMS_NAMESPACE}role", "free")
     return JSONResponse(status_code=status.HTTP_200_OK, content={"role": user_role})
-
-@router.post("/utils/authenticate-google", summary="Validate or Refresh Stored Google Token (Dummy)")
-async def authenticate_google_endpoint(user_id: str = Depends(PermissionChecker(required_permissions=["manage:google_auth"]))):
-    user_profile = await mongo_manager.get_user_profile(user_id)
-    
-    encrypted_google_refresh_token_gmail = (
-        user_profile.get("userData", {})
-        .get("google_services", {})
-        .get("gmail", {})
-        .get("encrypted_refresh_token")
-    ) if user_profile else None
-
-    if not encrypted_google_refresh_token_gmail:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google Gmail credentials not found for user. Please authenticate via client.")
-
-    print(f"[{datetime.datetime.now()}] [GOOGLE_AUTH_DUMMY_VALIDATION] Found stored Google Gmail token for user {user_id}. Assuming valid for dummy purposes.")
-    return JSONResponse(content={"success": True, "message": "Google Gmail token present and assumed valid (dummy check)."})
 
 # === Activity Route ===
 @router.post("/activity/heartbeat", summary="User Activity Heartbeat")

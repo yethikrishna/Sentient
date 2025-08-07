@@ -1,362 +1,313 @@
 "use client"
-import { useRouter, usePathname } from "next/navigation"
-import React, { useEffect, useState, useRef } from "react"
+import React, { useState, useEffect } from "react"
+import { usePathname } from "next/navigation"
+import Link from "next/link"
 import {
 	IconAdjustments,
-	IconBell,
-	IconBook,
 	IconChecklist,
-	IconChevronDown,
-	IconHome,
-	IconLogout,
-	IconPlus,
-	IconSearch,
+	IconPlugConnected,
 	IconUser,
-	IconX,
-	IconPlugConnected
+	IconMessage,
+	IconBell,
+	IconBrain,
+	IconSearch,
+	IconLayoutSidebarLeftCollapse,
+	IconLayoutSidebarLeftExpand,
+	IconArrowUpCircle,
+	IconMessagePlus,
+	IconHeadphones,
+	IconDots
 } from "@tabler/icons-react"
-import toast from "react-hot-toast"
-import { AnimatePresence, motion } from "framer-motion"
 import { cn } from "@utils/cn"
-import { useSmoothScroll } from "@hooks/useSmoothScroll"
+import { motion, AnimatePresence } from "framer-motion"
 
-const Sidebar = ({ userDetails, setSidebarVisible, isSidebarVisible }) => {
-	const router = useRouter()
-	const wsRef = useRef(null) // Removed chat list state and handlers
-	const scrollRef = useRef(null)
+const SidebarContent = ({
+	isCollapsed,
+	onToggle,
+	onNotificationsOpen,
+	unreadCount,
+	isMobile = false,
+	onMobileClose = () => {}
+}) => {
+	const pathname = usePathname()
+	const [userDetails, setUserDetails] = useState(null)
 
-	useSmoothScroll(scrollRef)
-	const logout = () => {
-		router.push("/auth/logout")
-	}
-
-	// Removed chat-related handlers: fetchChats, handleRenameChat, handleDeleteChat
-
-	// Separate effect for fetching data, depends on userDetails
 	useEffect(() => {
-		if (!userDetails) {
-			return
+		fetch("/api/user/profile")
+			.then((res) => (res.ok ? res.json() : null))
+			.then((data) => setUserDetails(data))
+	}, [])
+
+	const navLinks = [
+		{ title: "Chat", href: "/chat", icon: <IconMessage size={20} /> },
+		{ title: "Tasks", href: "/tasks", icon: <IconChecklist size={20} /> },
+		{ title: "Memories", href: "/memories", icon: <IconBrain size={20} /> },
+		{
+			title: "Integrations",
+			href: "/integrations",
+			icon: <IconPlugConnected size={20} />
+		},
+		{
+			title: "Settings",
+			href: "/settings",
+			icon: <IconAdjustments size={20} />
 		}
-	}, [userDetails]) // Separate effect for fetching data, depends on userDetails
-
-	// Separate, dedicated effect for WebSocket lifecycle management
-	useEffect(() => {
-		// Guard clause: Do not run WebSocket logic if userDetails.sub is not yet available.
-		if (!userDetails?.sub) {
-			return
-		}
-
-		const connectWebSocket = async () => {
-			if (wsRef.current && wsRef.current.readyState < 2) {
-				// 0=CONNECTING, 1=OPEN
-				console.log(
-					"Sidebar WS: A connection is already open or connecting."
-				)
-				return
-			}
-
-			try {
-				const tokenResponse = await fetch("/api/auth/token")
-				if (!tokenResponse.ok) {
-					console.error(
-						"Sidebar WS: Could not get auth token for WebSocket."
-					)
-					// Retry after a delay if token fetch fails
-					setTimeout(connectWebSocket, 5000)
-					return
-				}
-				const { accessToken } = await tokenResponse.json()
-
-				const serverUrlHttp =
-					process.env.NEXT_PUBLIC_APP_SERVER_URL ||
-					"http://localhost:5000"
-				const wsProtocol =
-					window.location.protocol === "https:" ? "wss" : "ws"
-				// Strip the protocol from the server URL to get just the host and port
-				const serverHost = serverUrlHttp.replace(/^https?:\/\//, "")
-				const wsUrl = `${wsProtocol}://${serverHost}/api/ws/notifications`
-
-				const ws = new WebSocket(wsUrl)
-				ws.isCleaningUp = false // Custom flag on the instance itself
-				wsRef.current = ws
-
-				ws.onopen = () => {
-					console.log("Sidebar: Notification WebSocket connected.")
-					ws.send(
-						JSON.stringify({ type: "auth", token: accessToken })
-					)
-				}
-
-				ws.onmessage = (event) => {
-					const data = JSON.parse(event.data)
-					if (data.type === "new_notification" && data.notification) {
-						toast.custom(
-							(t) => (
-								<div
-									className={`${t.visible ? "animate-enter" : "animate-leave"} max-w-md w-full bg-neutral-800 shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5 border border-neutral-700`}
-								>
-									<div className="flex-1 w-0 p-4">
-										<div className="flex items-start">
-											<div className="flex-shrink-0 pt-0.5">
-												<IconBell className="h-6 w-6 text-lightblue" />
-											</div>
-											<div className="ml-3 flex-1">
-												<p className="text-sm font-medium text-white">
-													New Notification
-												</p>
-												<p className="mt-1 text-sm text-gray-400">
-													{data.notification.message}
-												</p>
-											</div>
-										</div>
-									</div>
-									<div className="flex border-l border-neutral-700">
-										<button
-											onClick={() => {
-												router.push("/tasks")
-												toast.dismiss(t.id)
-											}}
-											className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-sm font-medium text-lightblue hover:text-blue-400 focus:outline-none focus:ring-2 focus:ring-lightblue"
-										>
-											View
-										</button>
-									</div>
-								</div>
-							),
-							{ duration: 10000 }
-						)
-					}
-				}
-
-				ws.onclose = () => {
-					// IMPORTANT: Check the flag on the instance that was closed, NOT the ref.
-					if (ws.isCleaningUp) {
-						console.log(
-							"Sidebar: WebSocket closed intentionally on cleanup."
-						)
-					} else {
-						console.log(
-							"Sidebar: Notification WebSocket disconnected unexpectedly. Reconnecting..."
-						)
-						// Clear the ref to allow a new connection to be made.
-						wsRef.current = null
-						setTimeout(connectWebSocket, 5000) // Attempt to reconnect
-					}
-				}
-
-				ws.onerror = (error) => {
-					console.error(
-						"Sidebar: Notification WebSocket error:",
-						error
-					)
-					// The onclose event will fire after an error, triggering the reconnect logic if needed.
-					ws.close()
-				}
-			} catch (error) {
-				console.error(
-					"Sidebar WS: Failed to initiate connection:",
-					error
-				)
-				setTimeout(connectWebSocket, 5000)
-			}
-		}
-
-		connectWebSocket()
-
-		// This cleanup function runs when the component unmounts or dependencies change
-		return () => {
-			if (wsRef.current) {
-				console.log(
-					"Sidebar: Cleaning up WebSocket connection for effect re-run or unmount."
-				)
-				wsRef.current.isCleaningUp = true // Mark for intentional close
-				wsRef.current.close()
-			}
-		}
-	}, [userDetails?.sub, router]) // Depend only on the stable user ID
-
-	const NavLink = ({ href, icon, label }) => {
-		const pathname = usePathname() ?? ""
-		const isActive = pathname === href
-
-		return (
-			<motion.button
-				onClick={() => router.push(href)}
-				whileHover={{
-					backgroundColor: "rgba(17, 24, 39, 0.5)" // Equivalent to bg-gray-900/50
-				}}
-				whileTap={{ scale: 0.98 }}
-				className={cn(
-					"flex items-center gap-4 w-full text-left p-3.5 rounded-xl text-base font-semibold transition-all duration-200 group",
-					isActive
-						? "bg-darkblue text-white hover:bg-lightblue"
-						: "text-neutral-400 hover:text-white hover:bg-lightblue"
-				)}
-			>
-				<motion.div
-					className={cn(
-						"transition-colors",
-						isActive ? "text-lightblue" : "text-neutral-500"
-					)}
-				>
-					{React.cloneElement(icon, { size: 24 })}
-				</motion.div>
-				<span className="group-hover:translate-x-0.5 transition-transform duration-150">
-					{label}
-				</span>
-			</motion.button>
-		)
-	}
-
-	const [isProfileOpen, setProfileOpen] = useState(false)
+	]
 
 	return (
-		<>
-			<motion.div
-				initial={{ x: -320 }}
-				animate={{ x: isSidebarVisible ? 0 : -321 }}
-				transition={{ type: "spring", stiffness: 300, damping: 30 }}
-				className="fixed flex flex-col inset-y-0 left-0 z-50 w-[320px] bg-matteblack border-r border-neutral-800/50 font-Poppins"
-				onMouseLeave={() =>
-					window.innerWidth > 768 && setSidebarVisible(false)
-				}
+		<div className="flex flex-col h-full w-full overflow-y-auto custom-scrollbar">
+			{/* Header */}
+			<div
+				className={cn(
+					"flex items-center justify-between mb-4 px-2",
+					isCollapsed && "justify-center"
+				)}
 			>
-				<div
-					ref={scrollRef}
-					className="flex-1 flex flex-col p-5 overflow-y-auto no-scrollbar"
-				>
-					<motion.button
-						onClick={() => setSidebarVisible(false)}
-						className="absolute top-4 right-4 text-neutral-400 hover:text-white md:hidden p-1 hover:bg-lightblue rounded-lg transition-colors duration-150"
-						whileHover={{ scale: 1.1 }}
-						whileTap={{ scale: 0.9 }}
-					>
-						<IconX size={22} />
-					</motion.button>
-
-					{/* Sentient Logo section */}
-					<div className="flex items-center gap-3 mb-10 px-2">
-						<img
-							src="/images/half-logo-dark.svg"
-							alt="Logo"
-							className="w-9 h-9 opacity-80"
-						/>
-						<span className="text-2xl font-bold text-neutral-200">
-							Sentient
-						</span>
-					</div>
-
-					{/* Primary Actions */}
-					<div className="flex items-center gap-3 mb-8 px-1">
-						<button
-							onClick={() => router.push("/tasks?action=add")}
-							className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-darkblue text-white text-base font-semibold hover:bg-lightblue transition-colors shadow-lg shadow-blue-900/20"
+				<Link href="/chat" className="flex items-center gap-2">
+					<img
+						src="/images/half-logo-dark.svg"
+						alt="Logo"
+						className="w-7 h-7"
+					/>
+				</Link>
+				<AnimatePresence>
+					{!isCollapsed && (
+						<motion.div
+							initial={{ opacity: 0, x: -10 }}
+							animate={{ opacity: 1, x: 0 }}
+							exit={{ opacity: 0, x: -10 }}
+							transition={{ duration: 0.2, delay: 0.1 }}
+							className="flex items-center gap-1"
 						>
-							<IconPlus size={20} />
-							Add task
-						</button>
-						<button className="p-3 text-neutral-400 hover:bg-lightblue rounded-xl transition-colors">
-							<IconSearch size={22} />
-						</button>
-					</div>
+							<button className="p-1.5 rounded-md hover:bg-neutral-800 text-neutral-400 hover:text-white">
+								<IconSearch size={18} />
+							</button>
+						</motion.div>
+					)}
+				</AnimatePresence>
+			</div>
 
-					{/* Main Navigation */}
-					<nav className="flex flex-col gap-2.5 mb-6">
-						<NavLink
-							href="/home"
-							icon={<IconHome />}
-							label="Home"
-						/>
-						<NavLink
-							href="/tasks"
-							icon={<IconChecklist />}
-							label="Tasks"
-						/>
-						<NavLink
-							href="/journal"
-							icon={<IconBook />}
-							label="Organizer"
-						/>
-						<NavLink
-							href="/integrations"
-							icon={<IconPlugConnected />}
-							label="Integrations"
-						/>
-						<NavLink
-							href="/notifications"
-							icon={<IconBell />}
-							label="Notifications"
-						/>
-						<NavLink
-							href="/settings"
-							icon={<IconAdjustments />}
-							label="Settings"
-						/>
-					</nav>
+			{/* Upgrade Button */}
+			<button
+				className={cn(
+					"w-full bg-neutral-800/40 border border-neutral-700/80 rounded-lg p-2.5 text-left mb-2 hover:bg-neutral-800/80 transition-colors",
+					isCollapsed && "flex justify-center"
+				)}
+			>
+				<div className="flex items-center gap-3">
+					<div className="bg-neutral-700/80 p-1 rounded-full">
+						<IconArrowUpCircle size={18} />
+					</div>
+					<AnimatePresence>
+						{!isCollapsed && (
+							<motion.div
+								initial={{ opacity: 0, width: 0 }}
+								animate={{ opacity: 1, width: "auto" }}
+								exit={{ opacity: 0, width: 0 }}
+								className="overflow-hidden whitespace-nowrap"
+							>
+								<p className="font-semibold text-sm text-white">
+									Upgrade to Pro
+								</p>
+								<p className="text-xs text-neutral-400">
+									All features & unlimited usage
+								</p>
+							</motion.div>
+						)}
+					</AnimatePresence>
 				</div>
-				<div className="p-3 border-t border-neutral-800/50">
-					<div className="relative">
-						<motion.button
-							onClick={() => setProfileOpen(!isProfileOpen)}
-							className="flex items-center w-full gap-3 p-2 rounded-xl hover:bg-lightblue transition-all duration-200 group"
-							whileHover={{ scale: 1.02 }}
-							whileTap={{ scale: 0.98 }}
-						>
-							{userDetails?.picture ? (
-								<motion.img
-									src={userDetails.picture}
-									alt="User"
-									className="w-10 h-10 rounded-full border-2 border-neutral-700"
-									whileHover={{ scale: 1.1 }}
-									transition={{ duration: 0.2 }}
-								/>
-							) : (
-								<motion.div
-									className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center border-2 border-neutral-700"
-									whileHover={{ scale: 1.1 }}
-									transition={{ duration: 0.2 }}
-								>
-									<IconUser className="w-5 h-5 text-white" />
-								</motion.div>
+			</button>
+
+			{/* Main Navigation */}
+			<nav className="flex flex-col gap-1 flex-grow overflow-hidden">
+				{navLinks.map((link) => {
+					const isActive = pathname.startsWith(link.href)
+					return (
+						<Link
+							href={link.href}
+							key={link.title}
+							className={cn(
+								"flex items-center gap-3 rounded-md p-2 transition-colors duration-200 text-sm",
+								isActive
+									? "text-white bg-neutral-800"
+									: "text-neutral-400 hover:text-white hover:bg-neutral-800/50",
+								isCollapsed && "justify-center"
 							)}
-							<span className="font-semibold text-white text-base flex-1 text-left group-hover:translate-x-0.5 transition-transform duration-150">
+						>
+							{link.icon}
+							{!isCollapsed && (
+								<span className="font-medium whitespace-nowrap">
+									{link.title}
+								</span>
+							)}
+						</Link>
+					)
+				})}
+				<hr className="border-neutral-800 my-2" />
+			</nav>
+			<button
+				onClick={onNotificationsOpen}
+				className={cn(
+					"flex items-center gap-3 rounded-md p-2 transition-colors duration-200 text-sm relative",
+					"text-neutral-400 hover:text-white hover:bg-neutral-800/50",
+					isCollapsed && "justify-center"
+				)}
+			>
+				<IconBell size={20} />
+				{!isCollapsed && (
+					<span className="font-medium">Notifications</span>
+				)}
+				{unreadCount > 0 && (
+					<div className="absolute top-1.5 right-1.5 h-2 w-2 bg-red-500 rounded-full" />
+				)}
+			</button>
+
+			{/* Footer */}
+			<div className="flex flex-col gap-2">
+				{isMobile ? (
+					<button
+						onClick={onMobileClose}
+						className="flex items-center gap-3 rounded-md p-2 transition-colors duration-200 text-sm text-neutral-400 hover:text-white hover:bg-neutral-800/50"
+					>
+						<IconLayoutSidebarLeftCollapse size={20} />
+						<span className="font-medium whitespace-nowrap">
+							Collapse
+						</span>
+					</button>
+				) : (
+					<button
+						onClick={onToggle}
+						className={cn(
+							"flex items-center gap-3 rounded-md p-2 transition-colors duration-200 text-sm",
+							"text-neutral-400 hover:text-white hover:bg-neutral-800/50",
+							isCollapsed && "justify-center"
+						)}
+					>
+						{isCollapsed ? (
+							<IconLayoutSidebarLeftExpand size={20} />
+						) : (
+							<IconLayoutSidebarLeftCollapse size={20} />
+						)}
+						{!isCollapsed && (
+							<span className="font-medium whitespace-nowrap">
+								Collapse
+							</span>
+						)}
+					</button>
+				)}
+				<button
+					className={cn(
+						"w-full flex items-center gap-3 bg-neutral-800/40 border border-neutral-700/80 rounded-lg p-2 text-left text-sm hover:bg-neutral-800/80 transition-colors",
+						isCollapsed && "justify-center"
+					)}
+				>
+					<IconHeadphones
+						size={20}
+						className="text-neutral-400 flex-shrink-0"
+					/>
+					{!isCollapsed && (
+						<span className="font-medium text-neutral-300 whitespace-nowrap">
+							Need help?
+						</span>
+					)}
+				</button>
+				<div
+					className={cn(
+						"flex items-center justify-between bg-neutral-800/40 border border-neutral-700/80 rounded-lg p-1.5",
+						isCollapsed && "flex-col gap-2"
+					)}
+				>
+					<Link
+						href="/settings"
+						className={cn(
+							"flex items-center gap-2 p-1 rounded-md hover:bg-neutral-800/80 flex-grow",
+							isCollapsed ? "w-full justify-center" : ""
+						)}
+					>
+						{userDetails?.picture ? (
+							<img
+								src={userDetails.picture}
+								alt="User"
+								className="w-7 h-7 rounded-full flex-shrink-0"
+							/>
+						) : (
+							<div className="w-7 h-7 rounded-full bg-neutral-700 flex items-center justify-center flex-shrink-0">
+								<IconUser size={16} />
+							</div>
+						)}
+						{!isCollapsed && (
+							<span className="font-semibold text-sm text-white whitespace-nowrap">
 								{userDetails?.given_name || "User"}
 							</span>
-							<motion.div
-								animate={{ rotate: isProfileOpen ? 180 : 0 }}
-								transition={{ duration: 0.2 }}
-							>
-								<IconChevronDown className="w-5 h-5 text-neutral-400 transition-colors duration-150" />
-							</motion.div>
-						</motion.button>
-						<AnimatePresence>
-							{isProfileOpen && (
-								<motion.div
-									initial={{ opacity: 0, y: 10 }}
-									animate={{ opacity: 1, y: 0 }}
-									exit={{ opacity: 0, y: 10 }}
-									className="absolute bottom-full left-0 right-0 mb-3 bg-neutral-800 rounded-xl shadow-xl p-1 z-10"
-								>
-									<motion.button
-										onClick={logout}
-										className="flex items-center gap-3 w-full text-left px-3 py-2.5 rounded-lg text-base text-neutral-400 hover:bg-neutral-700 hover:text-white"
-									>
-										<IconLogout size={18} />
-										<span>Logout</span>
-									</motion.button>
-								</motion.div>
-							)}
-						</AnimatePresence>
-					</div>
+						)}
+					</Link>
+					{!isCollapsed && (
+						<button className="p-2 rounded-md hover:bg-neutral-700 text-neutral-400 hover:text-white">
+							<IconDots size={16} />
+						</button>
+					)}
 				</div>
-			</motion.div>
-			{/* Desktop hover trigger to show the sidebar */}
-			<div
-				className="hidden md:block fixed top-0 left-0 h-full w-5 z-40"
-				onMouseEnter={() => setSidebarVisible(true)}
-			/>
-		</>
+			</div>
+		</div>
 	)
 }
 
+const Sidebar = ({
+	isCollapsed,
+	onToggle,
+	onNotificationsOpen,
+	unreadCount,
+	isMobileOpen,
+	onMobileClose
+}) => (
+	<>
+		{/* Mobile Sidebar */}
+		<AnimatePresence>
+			{isMobileOpen && (
+				<>
+					<motion.div
+						className="fixed inset-0 bg-black/60 z-40 md:hidden"
+						initial={{ opacity: 0 }}
+						animate={{ opacity: 1 }}
+						exit={{ opacity: 0 }}
+						onClick={onMobileClose}
+					/>
+					<motion.div
+						className="fixed top-0 left-0 h-screen w-[260px] bg-black p-3 text-neutral-200 border-r border-neutral-800/50 z-50 md:hidden"
+						initial={{ x: "-100%" }}
+						animate={{ x: 0 }}
+						exit={{ x: "-100%" }}
+						transition={{
+							type: "spring",
+							stiffness: 300,
+							damping: 30
+						}}
+					>
+						<SidebarContent
+							isCollapsed={false}
+							onMobileClose={onMobileClose}
+							onNotificationsOpen={onNotificationsOpen}
+							unreadCount={unreadCount}
+							isMobile={true}
+						/>
+					</motion.div>
+				</>
+			)}
+		</AnimatePresence>
+
+		{/* Desktop Sidebar */}
+		<motion.div
+			animate={{ width: isCollapsed ? 80 : 260 }}
+			transition={{ type: "spring", stiffness: 300, damping: 30 }}
+			className="hidden md:flex fixed top-0 left-0 h-screen bg-black flex-col p-3 text-neutral-200 border-r border-neutral-800/50 z-40"
+		>
+			<SidebarContent
+				isCollapsed={isCollapsed}
+				onToggle={onToggle}
+				onNotificationsOpen={onNotificationsOpen}
+				unreadCount={unreadCount}
+			/>
+		</motion.div>
+	</>
+)
 export default Sidebar

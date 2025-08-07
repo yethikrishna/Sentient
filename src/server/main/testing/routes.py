@@ -1,11 +1,18 @@
-import uuid
 import logging
+import uuid
+import json
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from main.dependencies import auth_helper
-from workers.tasks import extract_from_context
+
 from main.config import ENVIRONMENT
+from main.dependencies import auth_helper
+from main.notifications.whatsapp_client import (check_phone_number_exists,
+                                                 send_whatsapp_message)
+from workers.tasks import (cud_memory_task, proactive_reasoning_pipeline, run_due_tasks,
+                           schedule_proactivity_polling, schedule_trigger_polling)
+
 from .models import ContextInjectionRequest, WhatsAppTestRequest
-from main.notifications.whatsapp_client import send_whatsapp_message, check_phone_number_exists
 
 logger = logging.getLogger(__name__)
 router = APIRouter(
@@ -13,16 +20,25 @@ router = APIRouter(
     tags=["Testing Utilities"]
 )
 
+def _check_allowed_environments(allowed_envs: List[str], detail_message: str):
+    """
+    Helper to enforce environment restrictions for endpoints.
+    """
+    if ENVIRONMENT not in allowed_envs:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=detail_message
+        )
+
 @router.post("/inject-context", summary="Manually inject a context event for processing")
 async def inject_context_event(
     request: ContextInjectionRequest,
     user_id: str = Depends(auth_helper.get_current_user_id)
 ):
-    if ENVIRONMENT not in ["dev-local", "selfhost"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="This endpoint is only available in development or self-host environments."
-        )
+    _check_allowed_environments(
+        ["dev-local", "selfhost"],
+        "This endpoint is only available in development or self-host environments."
+    )
 
     service_name = request.service_name
     event_data = request.event_data
@@ -33,7 +49,18 @@ async def inject_context_event(
     event_id = f"manual_injection_{uuid.uuid4()}"
 
     try:
-        extract_from_context.delay(user_id, service_name, event_id, event_data)
+        # 1. Send to memory
+        cud_memory_task.delay(
+            user_id=user_id,
+            information=json.dumps(event_data),
+            source=service_name
+        )
+        # 2. Send to proactive reasoning
+        proactive_reasoning_pipeline.delay(
+            user_id=user_id,
+            event_type=service_name,
+            event_data=event_data
+        )
         logger.info(f"Manually injected event '{event_id}' for user '{user_id}' into the context extraction pipeline.")
         return {"message": "Context event injected successfully.", "event_id": event_id}
     except Exception as e:
@@ -45,11 +72,10 @@ async def send_test_whatsapp(
     request: WhatsAppTestRequest,
     user_id: str = Depends(auth_helper.get_current_user_id)
 ):
-    if ENVIRONMENT not in ["dev-local", "selfhost"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="This endpoint is only available in development or self-host environments."
-        )
+    _check_allowed_environments(
+        ["dev-local", "selfhost"],
+        "This endpoint is only available in development or self-host environments."
+    )
 
     phone_number = request.phone_number
     if not phone_number:
@@ -57,7 +83,10 @@ async def send_test_whatsapp(
 
     try:
         validation_result = await check_phone_number_exists(phone_number)
-        if not validation_result or not validation_result.get("numberExists"):
+        if validation_result is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Could not connect to WhatsApp service to verify number.")
+        
+        if not validation_result.get("numberExists"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="This phone number does not appear to be on WhatsApp."
@@ -82,16 +111,52 @@ async def send_test_whatsapp(
             raise e
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
+@router.post("/trigger-scheduler", summary="Manually trigger the task scheduler")
+async def trigger_scheduler(
+    user_id: str = Depends(auth_helper.get_current_user_id)
+):
+    _check_allowed_environments(
+        ["dev-local", "selfhost"],
+        "This endpoint is only available in development or self-host environments."
+    )
+    try:
+        run_due_tasks.delay()
+        logger.info(f"Manually triggered task scheduler by user {user_id}")
+        return {"message": "Task scheduler (run_due_tasks) triggered successfully. Check Celery worker logs for execution."}
+    except Exception as e:
+        logger.error(f"Failed to manually trigger scheduler: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to trigger scheduler task.")
+
+@router.post("/trigger-poller", summary="Manually trigger the proactive polling scheduler")
+async def trigger_poller(
+    user_id: str = Depends(auth_helper.get_current_user_id)
+):
+    _check_allowed_environments(
+        ["dev-local", "selfhost"],
+        "This endpoint is only available in development or self-host environments."
+    )
+    try:
+        schedule_proactivity_polling.delay()
+        schedule_trigger_polling.delay()
+        logger.info(f"Manually triggered proactive poller by user {user_id}")
+        return {"message": "Proactive and trigger pollers triggered successfully. Check Celery worker logs for execution."}
+    except Exception as e:
+        logger.error(f"Failed to manually trigger poller: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to trigger poller task."
+        )
+
+
 @router.post("/whatsapp/verify", summary="Verify if a WhatsApp number exists")
 async def verify_whatsapp_number(
     request: WhatsAppTestRequest,
     user_id: str = Depends(auth_helper.get_current_user_id)
 ):
-    if ENVIRONMENT not in ["dev-local", "selfhost"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="This endpoint is only available in development environments."
-        )
+    _check_allowed_environments(
+        ["dev-local"],
+        "This endpoint is only available in development environments."
+    )
     
     phone_number = request.phone_number
     if not phone_number:
@@ -99,7 +164,7 @@ async def verify_whatsapp_number(
         
     try:
         validation_result = await check_phone_number_exists(phone_number)
-        if not validation_result:
+        if validation_result is None:
              raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Could not connect to WhatsApp service to verify number.")
         
         return validation_result

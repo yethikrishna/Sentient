@@ -44,6 +44,35 @@ def simplify_block_children(response: Dict) -> str:
             simplified_content.append(simplified_block)
     return "\n".join(simplified_content)
 
+def simplify_search_results(response: Dict) -> List[Dict]:
+    """Simplifies a list of pages or databases from a Notion search API response."""
+    simplified_items = []
+    for item in response.get("results", []):
+        item_type = item.get("object")
+        item_id = item.get("id")
+        title_list = []
+
+        if item_type == "page":
+            # Title for a page is inside properties
+            title_list = item.get("properties", {}).get("title", {}).get("title", [])
+        elif item_type == "database":
+            # Title for a database is at the top level
+            title_list = item.get("title", [])
+
+        title = _simplify_rich_text(title_list) if title_list else f"Untitled {item_type}"
+
+        simplified_item = {
+            "type": item_type,
+            "id": item_id,
+            "title": title,
+        }
+        if item.get("url"):
+            simplified_item["url"] = item.get("url")
+
+        simplified_items.append(simplified_item)
+    return simplified_items
+
+
 def _simplify_property(prop: Dict) -> Any:
     """Simplifies a single Notion database page property."""
     prop_type = prop.get("type")
@@ -88,3 +117,20 @@ def simplify_database_pages(response: Dict) -> List[Dict]:
             "properties": simplified_props,
         })
     return simplified_pages
+def _simplify_user(user: Dict) -> Dict:
+    """Simplifies a Notion user object."""
+    return {
+        "id": user.get("id"),
+        "name": user.get("name"),
+        "type": user.get("type"),
+        "email": user.get("person", {}).get("email") if user.get("type") == "person" else None
+    }
+
+def _simplify_comment(comment: Dict) -> Dict:
+    """Simplifies a Notion comment object."""
+    return {
+        "id": comment.get("id"),
+        "text": _simplify_rich_text(comment.get("rich_text", [])),
+        "created_by": _simplify_user(comment.get("created_by", {})),
+        "created_time": comment.get("created_time")
+    }

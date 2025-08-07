@@ -4,11 +4,9 @@ import os
 import base64
 from email.mime.text import MIMEText
 from typing import Dict, Any, List
+import logging
 
 from google import genai
-from google.genai import types
-import numpy as np
-
 from googleapiclient.discovery import Resource
 from googleapiclient.errors import HttpError
 
@@ -16,6 +14,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # Initialize the Gemini client
 client = genai.Client(api_key=GEMINI_API_KEY)
+logger = logging.getLogger(__name__)
 
 
 def extract_email_body(payload: Dict[str, Any]) -> str:
@@ -51,66 +50,48 @@ async def create_message(to: str, subject: str, message: str) -> str:
     msg["Subject"] = subject
     return base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
 
+def _simplify_message(msg: Dict) -> Dict:
+    """Simplifies a Gmail message resource for LLM consumption."""
+    headers = {h['name'].lower(): h['value'] for h in msg.get('payload', {}).get('headers', [])}
+    return {
+        "id": msg.get("id"),
+        "threadId": msg.get("threadId"),
+        "snippet": msg.get("snippet"),
+        "subject": headers.get("subject"),
+        "from": headers.get("from"),
+        "to": headers.get("to"),
+        "date": headers.get("date"),
+    }
 
-async def find_best_matching_email(service: Resource, query: str) -> Dict[str, Any]:
-    """
-    Searches the user's inbox and returns the email whose subject+body
-    is most semantically similar to the provided query, using Gemini embeddings.
-    """
+def _simplify_label(label: Dict) -> Dict:
+    """Simplifies a Gmail label resource."""
+    return {
+        "id": label.get("id"),
+        "name": label.get("name"),
+        "type": label.get("type"), # 'system' or 'user'
+    }
+
+def _simplify_filter(filter_obj: Dict) -> Dict:
+    """Simplifies a Gmail filter resource."""
+    return {
+        "id": filter_obj.get("id"),
+        "criteria": filter_obj.get("criteria"),
+        "action": filter_obj.get("action"),
+    }
+
+async def summarize_emails_with_gemini(emails: List[Dict]) -> str:
+    """Summarizes a list of emails using the Gemini API."""
+    if not GEMINI_API_KEY:
+        return "Cannot summarize emails: Gemini API key is not configured."
+    if not emails:
+        return "No emails to summarize."
+
+    prompt = "Please provide a concise, bulleted summary of the following unread emails. For each, mention the sender and a one-sentence summary of the content:\n\n"
+    for email in emails:
+        prompt += f"From: {email.get('from')}\nSubject: {email.get('subject')}\nSnippet: {email.get('snippet')}\n\n---\n\n"
+
     try:
-        # 1) List recent messages
-        resp = service.users().messages().list(userId="me", q="in:inbox").execute()
-        msgs = resp.get("messages", [])
-        if not msgs:
-            return {"status": "failure", "error": "No emails found in inbox."}
-
-        # 2) Fetch full details for up to 20 messages
-        email_data: List[Dict[str, Any]] = []
-        for m in msgs[:20]:
-            msg = service.users().messages().get(
-                userId="me", id=m["id"], format="full"
-            ).execute()
-            headers = {h["name"]: h["value"] for h in msg["payload"].get("headers", [])}
-            body = extract_email_body(msg["payload"])
-            email_data.append({
-                "id": m["id"],
-                "threadId": msg.get("threadId"),
-                "subject": headers.get("Subject", ""),
-                "from": headers.get("From", ""),
-                "to": headers.get("To"),
-                "body": body,
-            })
-
-        # 3) Prepare the texts to embed: query + each email's subject+body
-        docs = [f'{e["subject"]} {e["body"]}' for e in email_data]
-
-        # 4) Call Gemini embed_content in a single batch for all texts
-        #    This returns a list of ContentEmbedding objects in resp.embeddings
-        #    We extract the .values list from each one.
-        all_texts = [query] + docs
-        resp = client.models.embed_content(
-            model="gemini-embedding-exp-03-07",
-            contents=all_texts,
-            config=types.EmbedContentConfig(task_type="SEMANTIC_SIMILARITY")
-        )
-        embeddings = [ce.values for ce in resp.embeddings]
-
-        # 5) Separate query embedding and doc embeddings
-        q_emb = np.array(embeddings[0])
-        doc_embs = np.array(embeddings[1:])
-
-        # 6) Compute cosine similarities
-        norms = np.linalg.norm(doc_embs, axis=1) * np.linalg.norm(q_emb)
-        scores = (doc_embs @ q_emb) / norms
-        best_idx = int(np.argmax(scores))
-
-        # 7) Return the best matching email
-        return {
-            "status": "success",
-            "email_details": email_data[best_idx]
-        }
-
-    except HttpError as e:
-        return {"status": "failure", "error": f"Google API Error: {e}"}
+        response = client.generate_content(prompt)
+        return response.text
     except Exception as e:
         return {"status": "failure", "error": str(e)}

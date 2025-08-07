@@ -1,1371 +1,715 @@
 "use client"
 
-import React, { useState, useEffect, useRef, useCallback } from "react"
+import React, {
+	useState,
+	useEffect,
+	useCallback,
+	Suspense,
+	useMemo
+} from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import {
-	IconLoader,
-	IconPencil,
-	IconTrash,
-	IconX,
-	IconHelpCircle,
-	IconSearch,
-	IconRefresh,
-	IconClock,
-	IconPlayerPlay,
-	IconCircleCheck,
-	IconMailQuestion,
-	IconAlertTriangle,
-	IconAlertCircle,
-	IconFilter,
-	IconChevronUp,
-	IconGripVertical,
-	IconBrain,
-	IconBook,
-	IconMail,
-	IconCalendarEvent,
-	IconMessage,
-	IconPlugConnected,
-	IconChecklist,
-	IconHelpCircle as HelpIcon
-} from "@tabler/icons-react"
+	format,
+	isSameDay,
+	parseISO,
+	startOfMonth,
+	endOfMonth,
+	startOfWeek,
+	endOfWeek
+} from "date-fns"
+import { IconLoader, IconX } from "@tabler/icons-react"
+import { AnimatePresence, motion } from "framer-motion"
 import toast from "react-hot-toast"
-import { Tooltip } from "react-tooltip"
 import { cn } from "@utils/cn"
-import { motion, AnimatePresence } from "framer-motion"
-import { useRouter } from "next/navigation"
-import { usePostHog } from "posthog-js/react"
+import { Tooltip } from "react-tooltip"
+import { calculateNextRun } from "@utils/taskUtils"
 
-const HelpTooltip = ({ content }) => (
-	<div className="absolute top-6 right-6 z-40">
-		<button
-			data-tooltip-id="page-help-tooltip"
-			data-tooltip-content={content}
-			className="p-1.5 rounded-full text-neutral-500 hover:text-white hover:bg-[var(--color-primary-surface)] pulse-glow-animation"
-		>
-			<HelpIcon size={22} />
-		</button>
-	</div>
-)
+import TaskDetailsPanel from "@components/tasks/TaskDetailsPanel"
+import TaskViewSwitcher from "@components/tasks/TaskViewSwitcher"
+import ListView from "@components/tasks/ListView"
+import CalendarView from "@components/tasks/CalendarView"
+import GCalEventDetailsPanel from "@components/tasks/GCalEventCardDetailsPanel"
+import WelcomePanel from "@components/tasks/WelcomePanel"
+import CreateTaskInput from "@components/tasks/CreateTaskInput"
+import InteractiveNetworkBackground from "@components/ui/InteractiveNetworkBackground"
+import { IconSparkles } from "@tabler/icons-react"
+import DayDetailView from "@components/tasks/DayDetailView"
 
-const statusMap = {
-	pending: {
-		icon: IconClock,
-		color: "text-yellow-500",
-		borderColor: "border-yellow-500",
-		label: "Pending"
-	},
-	processing: {
-		icon: IconPlayerPlay,
-		color: "text-blue-500",
-		borderColor: "border-blue-500",
-		label: "Processing"
-	},
-	completed: {
-		icon: IconCircleCheck,
-		color: "text-green-500",
-		borderColor: "border-green-500",
-		label: "Completed"
-	},
-	error: {
-		icon: IconAlertCircle,
-		color: "text-red-500",
-		borderColor: "border-red-500",
-		label: "Error"
-	},
-	approval_pending: {
-		icon: IconMailQuestion,
-		color: "text-purple-500",
-		borderColor: "border-purple-500",
-		label: "Approval Pending"
-	},
-	active: {
-		icon: IconRefresh,
-		color: "text-green-500",
-		label: "Active"
-	},
-	cancelled: {
-		icon: IconX,
-		color: "text-gray-500",
-		borderColor: "border-gray-500",
-		label: "Cancelled"
-	},
-	default: {
-		icon: IconHelpCircle,
-		color: "text-gray-400",
-		borderColor: "border-gray-400",
-		label: "Unknown"
-	}
-}
+function TasksPageContent() {
+	const router = useRouter()
+	const searchParams = useSearchParams()
 
-const priorityMap = {
-	0: { label: "High", color: "text-red-400" },
-	1: { label: "Medium", color: "text-yellow-400" },
-	2: { label: "Low", color: "text-green-400" },
-	default: { label: "Unknown", color: "text-gray-400" }
-}
-
-const Tasks = () => {
-	const [tasks, setTasks] = useState([])
-	const [loading, setLoading] = useState(true)
-	const [error, setError] = useState(null)
-	const [editingTask, setEditingTask] = useState(null)
-	const [filterStatus, setFilterStatus] = useState("all")
-	const [searchTerm, setSearchTerm] = useState("")
-	const [viewingTask, setViewingTask] = useState(null)
-	const [openSections, setOpenSections] = useState({
-		active: false, // Recurring tasks are less frequently managed
-		approval_pending: true,
-		processing: true,
-		completed: true
-	})
-	const [allTools, setAllTools] = useState([])
+	// Raw tasks from API
+	const [allTasks, setAllTasks] = useState([])
+	// Processed tasks for different views
+	const [oneTimeTasks, setOneTimeTasks] = useState([])
+	const [recurringTasks, setRecurringTasks] = useState([])
+	const [triggeredTasks, setTriggeredTasks] = useState([])
+	const [recurringInstances, setRecurringInstances] = useState([])
 	const [integrations, setIntegrations] = useState([])
-	const [loadingIntegrations, setLoadingIntegrations] = useState(true)
-	const posthog = usePostHog()
+	const [allTools, setAllTools] = useState([])
+	const [isLoading, setIsLoading] = useState(true)
 
-	const fetchTasksData = useCallback(async () => {
-		setError(null)
-		try {
-			const response = await fetch("/api/tasks")
-			const data = await response.json()
-			if (!response.ok)
-				throw new Error(data.error || "Failed to fetch tasks")
-			if (Array.isArray(data.tasks)) {
-				const sortedTasks = data.tasks.sort((a, b) => {
-					const statusOrder = {
-						active: -2,
-						approval_pending: -1,
-						processing: 0,
-						pending: 1,
-						error: 2,
-						cancelled: 3,
-						completed: 4
-					}
-					const statusA = statusOrder[a.status] ?? 99
-					const statusB = statusOrder[b.status] ?? 99
-					if (statusA !== statusB) return statusA - statusB
-					if (a.priority !== b.priority)
-						return a.priority - b.priority
-					try {
-						const dateA = a.created_at
-							? new Date(a.created_at).getTime()
-							: 0
-						const dateB = b.created_at
-							? new Date(b.created_at).getTime()
-							: 0
-						return dateB - dateA
-					} catch (dateError) {
-						return 0
-					}
-				})
-				setTasks(sortedTasks)
+	// View control state
+	const [view, setView] = useState("list") // 'list' or 'calendar'
+	// MODIFIED: Change initial state to 'initial' to handle client-side screen size check
+	const [rightPanelContent, setRightPanelContent] = useState({
+		type: "initial",
+		data: null
+	}) // { type: 'initial' | 'hidden' | 'welcome' | 'task' | 'day', data: any }
+	const [gcalEvents, setGcalEvents] = useState([])
+	const [isGcalConnected, setIsGcalConnected] = useState(false)
+	const [currentCalendarDate, setCurrentCalendarDate] = useState(new Date()) // To track calendar view range
+	const [searchQuery, setSearchQuery] = useState("")
+	const [createTaskPrompt, setCreateTaskPrompt] = useState("")
+
+	useEffect(() => {
+		// On initial client-side load, determine the default panel state.
+		// On mobile, the panel is hidden. On desktop, it shows the welcome panel.
+		if (rightPanelContent.type === "initial") {
+			if (window.innerWidth < 768) {
+				setRightPanelContent({ type: "hidden", data: null })
 			} else {
-				throw new Error("Invalid tasks response format")
+				setRightPanelContent({ type: "welcome", data: null })
 			}
-		} catch (err) {
-			setError("Failed to fetch tasks: " + err.message)
-			setTasks([])
-		} finally {
-			setLoading(false)
 		}
-	}, [])
+	}, [rightPanelContent.type])
 
-	const fetchAllToolsAndIntegrations = async () => {
-		setLoadingIntegrations(true)
+	// Sync selectedTask with the main tasks list
+	useEffect(() => {
+		if (rightPanelContent.type === "task" && rightPanelContent.data) {
+			const updatedSelectedTask = allTasks.find(
+				(t) => t.task_id === rightPanelContent.data.task_id
+			)
+			if (updatedSelectedTask) {
+				// Preserve instance-specific data like scheduled_date if it exists
+				setRightPanelContent({
+					type: "task",
+					data: { ...rightPanelContent.data, ...updatedSelectedTask }
+				})
+			} else {
+				// If task disappears, hide panel on mobile, show welcome on desktop
+				const nextState = window.innerWidth < 768 ? "hidden" : "welcome"
+				setRightPanelContent({ type: nextState, data: null })
+			}
+		}
+	}, [allTasks, rightPanelContent.type, rightPanelContent.data?.task_id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+	const fetchTasks = useCallback(async () => {
+		setIsLoading(true)
 		try {
-			const response = await fetch("/api/settings/integrations")
-			if (!response.ok)
-				throw new Error("Failed to fetch integrations status")
-			const data = await response.json()
-			const allIntegrations = data.integrations || []
-			setIntegrations(allIntegrations)
-			const tools = allIntegrations.map((i) => ({
+			const tasksRes = await fetch("/api/tasks")
+			if (!tasksRes.ok) throw new Error("Failed to fetch tasks")
+			const tasksData = await tasksRes.json()
+			const rawTasks = Array.isArray(tasksData.tasks)
+				? tasksData.tasks
+				: []
+			setAllTasks(rawTasks)
+
+			// --- Process tasks for different views ---
+			const oneTime = []
+			const recurring = []
+			const triggered = []
+			const instances = []
+
+			rawTasks.forEach((task) => {
+				if (task.schedule?.type === "recurring") {
+					recurring.push(task)
+					// Process past runs from `runs` array
+					if (task.runs && Array.isArray(task.runs)) {
+						task.runs.forEach((run) => {
+							const runDate = run.execution_start_time
+								? parseISO(run.execution_start_time)
+								: null
+							if (runDate) {
+								instances.push({
+									...task,
+									status: run.status, // Use the run's specific status
+									scheduled_date: runDate,
+									instance_id: `${task.task_id}-${run.run_id}`
+								})
+							}
+						})
+					}
+					// Add next upcoming run
+					const nextRunDate = calculateNextRun(
+						task.schedule,
+						task.created_at,
+						task.runs
+					)
+					if (nextRunDate) {
+						instances.push({
+							...task,
+							status: "pending", // An upcoming run is pending
+							scheduled_date: nextRunDate,
+							instance_id: `${task.task_id}-next`
+						})
+					}
+				} else if (task.schedule?.type === "triggered") {
+					triggered.push(task)
+				} else {
+					// One-time tasks
+					const scheduledDate = task.schedule?.run_at
+						? parseISO(task.schedule.run_at)
+						: parseISO(task.created_at)
+					oneTime.push({
+						...task,
+						scheduled_date: scheduledDate,
+						instance_id: task.task_id
+					})
+				}
+			})
+
+			setOneTimeTasks(oneTime)
+			setRecurringTasks(recurring)
+			setTriggeredTasks(triggered)
+			setRecurringInstances(instances)
+
+			const integrationsRes = await fetch("/api/settings/integrations")
+			if (!integrationsRes.ok)
+				throw new Error("Failed to fetch integrations")
+			const integrationsData = await integrationsRes.json()
+			const tools = integrationsData.integrations.map((i) => ({
 				name: i.name,
 				display_name: i.display_name
 			}))
 			setAllTools(tools)
+			setIntegrations(integrationsData.integrations || [])
 		} catch (error) {
-			toast.error(error.message)
-			setIntegrations([])
-			setAllTools([])
+			toast.error(`Error fetching data: ${error.message}`)
 		} finally {
-			setLoadingIntegrations(false)
+			setIsLoading(false)
 		}
-	}
-
-	useEffect(() => {
-		fetchTasksData()
-		fetchAllToolsAndIntegrations()
-		const intervalId = setInterval(fetchTasksData, 60000)
-		return () => clearInterval(intervalId)
 	}, [])
 
-	const handleEditTask = (task) => setEditingTask({ ...task })
-	const handleUpdateTaskSchedule = async (taskId, schedule) => {
-		if (!taskId) return false
-		try {
-			const response = await fetch("/api/tasks/update", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ taskId, schedule })
-			})
-			if (!response.ok) throw new Error((await response.json()).error)
-			toast.success("Task schedule updated!")
-			await fetchTasksData() // Refresh data
-			return true // Indicate success
-		} catch (error) {
-			toast.error(`Failed to update schedule: ${error.message}`)
-			return false
-		}
-	}
-	const handleUpdateTask = async () => {
-		if (
-			!editingTask ||
-			!editingTask.description?.trim() ||
-			editingTask.plan.some(
-				(step) => !step.tool || !step.description?.trim()
+	useEffect(() => {
+		const gcal = integrations.find((i) => i.name === "gcalendar")
+		setIsGcalConnected(gcal?.connected || false)
+	}, [integrations])
+
+	// New useEffect for fetching GCal events
+	const fetchGcalEvents = useCallback(
+		async (date) => {
+			if (!isGcalConnected || view !== "calendar") return
+
+			// Calculate the visible date range for the calendar view
+			const monthStart = startOfMonth(date)
+			const monthEnd = endOfMonth(date)
+			const startDate = startOfWeek(monthStart)
+			const endDate = endOfWeek(monthEnd)
+
+			try {
+				const res = await fetch(
+					`/api/integrations/gcalendar/events?start_date=${startDate.toISOString()}&end_date=${endDate.toISOString()}`
+				)
+				if (!res.ok)
+					throw new Error("Failed to fetch Google Calendar events")
+				const data = await res.json()
+
+				// Add a type and parse dates
+				const formattedEvents = (data.events || []).map((event) => ({
+					...event,
+					type: "gcal",
+					scheduled_date: parseISO(event.start), // Use 'start' from GCal event
+					end_date: parseISO(event.end),
+					instance_id: `gcal-${event.id}` // Unique ID for React key
+				}))
+				setGcalEvents(formattedEvents)
+			} catch (error) {
+				toast.error(error.message)
+				setGcalEvents([]) // Clear on error
+			}
+		},
+		[isGcalConnected, view]
+	)
+
+	useEffect(() => {
+		fetchGcalEvents(currentCalendarDate)
+	}, [currentCalendarDate, fetchGcalEvents])
+
+	useEffect(() => {
+		fetchTasks()
+	}, [fetchTasks])
+
+	useEffect(() => {
+		const handleBackendUpdate = () => {
+			console.log(
+				"Received tasksUpdatedFromBackend event, fetching tasks..."
 			)
-		) {
-			return toast.error("Description and all plan steps are required.")
+			toast.success("Task list updated from backend.")
+			fetchTasks()
 		}
+		window.addEventListener("tasksUpdatedFromBackend", handleBackendUpdate)
+		return () =>
+			window.removeEventListener(
+				"tasksUpdatedFromBackend",
+				handleBackendUpdate
+			)
+	}, [fetchTasks])
 
-		try {
-			const schedulePayload =
-				editingTask.schedule?.type === "once"
-					? {
-							type: "once",
-							run_at: editingTask.schedule.run_at || null
-						}
-					: editingTask.schedule
-			const response = await fetch("/api/tasks/update", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					taskId: editingTask.task_id,
-					description: editingTask.description,
-					priority: editingTask.priority,
-					plan: editingTask.plan,
-					schedule: schedulePayload
-				})
-			})
-			if (!response.ok) throw new Error((await response.json()).error)
-			posthog?.capture("task_edited", {
-				task_id: editingTask.task_id,
-				is_recurring: editingTask.schedule?.type === "recurring"
-			})
-			if (!response.ok) throw new Error((await response.json()).error)
-			toast.success("Task updated successfully!")
-			setEditingTask(null)
-			await fetchTasksData()
-		} catch (error) {
-			toast.error(`Failed to update task: ${error.message}`)
-		}
-	}
-	const handleDeleteTask = async (taskId) => {
-		if (!taskId || !window.confirm("Delete this task forever?")) return
-		const taskToDelete = tasks.find((t) => t.task_id === taskId)
-		try {
-			const response = await fetch("/api/tasks/delete", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ taskId })
-			})
-			if (!response.ok) throw new Error((await response.json()).error)
-			toast.success("Task deleted!")
-			setViewingTask(null)
-			if (taskToDelete?.status === "approval_pending") {
-				posthog?.capture("task_disapproved", { task_id: taskId })
+	const handleAction = useCallback(
+		async (actionFn, successMessage, ...args) => {
+			const toastId = toast.loading("Processing...")
+			try {
+				const response = await actionFn(...args)
+				if (!response.ok) {
+					const errorData = await response.json()
+					throw new Error(errorData.error || "Action failed")
+				}
+				toast.success(successMessage, { id: toastId })
+				await fetchTasks()
+			} catch (error) {
+				toast.error(`Error: ${error.message}`, { id: toastId })
 			}
-			await fetchTasksData()
-		} catch (error) {
-			toast.error(`Failed to delete task: ${error.message}`)
-		}
-	}
-	const handleApproveTask = async (taskId) => {
-		if (!taskId) return
-		try {
-			const response = await fetch("/api/tasks/approve", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ taskId })
-			})
-			if (!response.ok) {
-				const errorData = await response.json()
-				if (response.status === 409)
-					toast.error(errorData.detail, { duration: 6000 })
-				else throw new Error(errorData.error || "Approval failed")
-			} else {
-				posthog?.capture("task_approved", { task_id: taskId })
-				toast.success("Plan approved and queued for execution.")
-			}
-			setViewingTask(null)
-			await fetchTasksData()
-		} catch (error) {
-			toast.error(`Error approving task: ${error.message}`)
-		}
-	}
-	const handleReRunTask = async (taskId) => {
-		if (
-			!taskId ||
-			!window.confirm("Create a new copy of this task to run again?")
-		)
-			return
-		try {
-			const response = await fetch("/api/tasks/rerun", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ taskId })
-			})
-			if (!response.ok) throw new Error((await response.json()).error)
-			posthog?.capture("task_rerun", { original_task_id: taskId })
-			toast.success("Task duplicated for approval.")
-			await fetchTasksData()
-		} catch (error) {
-			toast.error(`Failed to re-run task: ${error.message}`)
-		}
-	}
-
-	const filteredTasks = tasks.filter(
-		(task) =>
-			(filterStatus === "all" || task.status === filterStatus) &&
-			(!searchTerm ||
-				task.description
-					?.toLowerCase()
-					.includes(searchTerm.toLowerCase()))
+		},
+		[fetchTasks]
 	)
 
-	const groupedTasks = {
-		active: filteredTasks.filter((t) => t.status === "active"),
-		approval_pending: filteredTasks.filter(
-			(t) => t.status === "approval_pending"
-		),
-		processing: filteredTasks.filter((t) =>
-			["processing", "pending"].includes(t.status)
-		),
-		completed: filteredTasks.filter((t) =>
-			["completed", "error", "cancelled"].includes(t.status)
+	const handleUpdateTask = async (updatedTask) => {
+		await handleAction(
+			() =>
+				fetch("/api/tasks/update", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						...updatedTask,
+						taskId: updatedTask.task_id
+					})
+				}),
+			"Task updated!"
 		)
 	}
 
-	const toggleSection = (section) =>
-		setOpenSections((prev) => ({ ...prev, [section]: !prev[section] }))
-
-	return (
-		<div className="flex h-screen bg-gradient-to-br from-[var(--color-primary-background)] via-[var(--color-primary-background)] to-[var(--color-primary-surface)]/20 text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
-			<Tooltip id="tasks-tooltip" />
-			<Tooltip id="page-help-tooltip" />
-			<div className="flex-1 flex flex-col overflow-hidden relative">
-				<HelpTooltip content="This is the Tasks page. Here you can view all your tasks and approve new ones." />
-				<motion.header
-					initial={{ y: -20, opacity: 0 }}
-					animate={{ y: 0, opacity: 1 }}
-					transition={{ duration: 0.6, ease: "easeOut" }}
-					className="flex items-center justify-between p-4 md:px-8 md:py-6 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)]"
-				>
-					<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)] flex items-center gap-3">
-						Tasks
-					</h1>
-					<div className="w-full md:max-w-lg flex items-center space-x-2 sm:space-x-3 bg-[var(--color-primary-surface)]/80 backdrop-blur-sm rounded-full p-2 shadow-lg border border-[var(--color-primary-surface-elevated)]">
-						<IconSearch className="h-5 w-5 text-gray-400 ml-2 flex-shrink-0" />
-						<input
-							type="text"
-							placeholder="Search tasks by description..."
-							value={searchTerm}
-							onChange={(e) => setSearchTerm(e.target.value)}
-							className="bg-transparent text-white focus:outline-none w-full px-1 sm:px-2 text-sm"
-						/>
-						<div className="relative flex-shrink-0">
-							<select
-								value={filterStatus}
-								onChange={(e) =>
-									setFilterStatus(e.target.value)
-								}
-								className="appearance-none bg-[var(--color-primary-surface-elevated)] border border-[var(--color-primary-surface-elevated)] text-white text-xs rounded-full pl-3 pr-8 py-1.5 focus:outline-none focus:border-[var(--color-accent-blue)] cursor-pointer"
-							>
-								<option value="all">All</option>
-								<option value="active">Active</option>
-								<option value="pending">Pending</option>
-								<option value="processing">Processing</option>
-								<option value="approval_pending">
-									Approval
-								</option>
-								<option value="completed">Completed</option>
-								<option value="error">Error</option>
-								<option value="cancelled">Cancelled</option>
-							</select>
-							<IconFilter className="absolute right-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-						</div>
-						<button
-							onClick={() => fetchTasksData()}
-							className="p-1.5 rounded-full hover:bg-[var(--color-primary-surface-elevated)] transition-colors text-gray-300"
-							data-tooltip-id="tasks-tooltip"
-							data-tooltip-content="Refresh task list"
-							disabled={loading && tasks.length > 0}
-						>
-							{loading && tasks.length > 0 ? (
-								<IconLoader className="h-5 w-5 animate-spin" />
-							) : (
-								<IconRefresh className="h-5 w-5" />
-							)}
-						</button>
-					</div>
-				</motion.header>
-
-				<main className="flex-1 w-full max-w-3xl mx-auto flex flex-col overflow-y-auto custom-scrollbar px-4">
-					<div className="space-y-2 pt-6 pb-6">
-						{loading || loadingIntegrations ? (
-							<div className="flex justify-center items-center h-full">
-								<IconLoader className="w-12 h-12 animate-spin text-[var(--color-accent-blue)]" />
-							</div>
-						) : error ? (
-							<div className="text-red-400 text-center py-20">
-								{error}
-							</div>
-						) : filteredTasks.length === 0 ? (
-							<p className="text-gray-500 text-center py-20 mt-5">
-								No tasks found.
-							</p>
-						) : (
-							<>
-								<CollapsibleSection
-									title="Active"
-									tasks={groupedTasks.active}
-									isOpen={openSections.active}
-									toggleOpen={() => toggleSection("active")}
-									onViewDetails={setViewingTask}
-									onEditTask={handleEditTask}
-									onDeleteTask={handleDeleteTask}
-									onUpdateSchedule={handleUpdateTaskSchedule}
-								/>
-								<CollapsibleSection
-									title="Pending Approval"
-									tasks={groupedTasks.approval_pending}
-									isOpen={openSections.approval_pending}
-									toggleOpen={() =>
-										toggleSection("approval_pending")
-									}
-									onViewDetails={setViewingTask}
-									onEditTask={handleEditTask}
-									onDeleteTask={handleDeleteTask}
-									onApproveTask={handleApproveTask}
-									onUpdateSchedule={handleUpdateTaskSchedule}
-									integrations={integrations}
-								/>
-								<CollapsibleSection
-									title="Processing"
-									tasks={groupedTasks.processing}
-									isOpen={openSections.processing}
-									toggleOpen={() =>
-										toggleSection("processing")
-									}
-									onViewDetails={setViewingTask}
-								/>
-								<CollapsibleSection
-									title="Completed"
-									tasks={groupedTasks.completed}
-									isOpen={openSections.completed}
-									toggleOpen={() =>
-										toggleSection("completed")
-									}
-									onViewDetails={setViewingTask}
-									onDeleteTask={handleDeleteTask}
-									onReRunTask={handleReRunTask}
-								/>
-							</>
-						)}
-					</div>
-				</main>
-			</div>
-			{viewingTask && (
-				<TaskDetailsModal
-					task={viewingTask}
-					onClose={() => setViewingTask(null)}
-					onApprove={handleApproveTask}
-					integrations={integrations}
-				/>
-			)}
-			{editingTask && (
-				<EditTaskModal
-					task={editingTask}
-					onClose={() => setEditingTask(null)}
-					onSave={handleUpdateTask}
-					setTask={setEditingTask}
-					onUpdateSchedule={handleUpdateTaskSchedule}
-					allTools={allTools}
-					integrations={integrations}
-				/>
-			)}
-		</div>
-	)
-}
-
-const PlanEditor = ({
-	description,
-	setDescription,
-	priority,
-	setPriority,
-	plan,
-	setPlan,
-	schedule,
-	setSchedule,
-	allTools,
-	integrations
-}) => {
-	const handleAddStep = () =>
-		setPlan([...plan, { tool: "", description: "" }])
-	const handleRemoveStep = (index) =>
-		setPlan(plan.filter((_, i) => i !== index))
-	const handleStepChange = (index, field, value) => {
-		const newPlan = [...plan]
-		newPlan[index][field] = value
-		setPlan(newPlan)
+	const handleSelectItem = (item) => {
+		if (item.type === "gcal") {
+			setRightPanelContent({ type: "gcal", data: item })
+		} else {
+			setRightPanelContent({ type: "task", data: item })
+		}
 	}
 
+	const handleShowMoreClick = (date) => {
+		const tasksForDay = filteredCalendarTasks.filter(
+			(task) => isSameDay(task.scheduled_date, date) // prettier-ignore
+		)
+		const eventsForDay = gcalEvents.filter((event) =>
+			isSameDay(event.scheduled_date, date)
+		)
+		const allItemsForDay = [...tasksForDay, ...eventsForDay]
+		setRightPanelContent({
+			type: "day",
+			data: { date, tasks: allItemsForDay }
+		})
+	}
+
+	const handleCloseRightPanel = () => {
+		// On mobile, closing the panel should hide it completely.
+		// On desktop, it should revert to the welcome/examples panel.
+		const nextState = window.innerWidth < 768 ? "hidden" : "welcome"
+		setRightPanelContent({ type: nextState, data: null })
+	}
+
+	const handleCreateTaskFromEvent = async (event) => {
+		const prompt = `Help me prepare for this event from my calendar:
+
+Title: ${event.summary}
+Time: ${event.start} to ${event.end}
+Attendees: ${(event.attendees || []).join(", ")}
+Description: ${event.description || "No description."}`
+
+		await handleAction(
+			() =>
+				fetch("/api/tasks/add", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ prompt, assignee: "ai" })
+				}),
+			"Task created from calendar event!"
+		)
+		handleCloseRightPanel() // Close the panel after creating the task
+	}
+
+	const handleExampleClick = (prompt) => {
+		setCreateTaskPrompt(prompt)
+	}
+
+	const handleDayClick = (date) => {
+		const formattedDate = format(date, "MMMM do")
+		setCreateTaskPrompt(`Create a task for ${formattedDate}: `)
+	}
+
+	const filteredOneTimeTasks = useMemo(() => {
+		if (!searchQuery.trim()) {
+			return oneTimeTasks
+		}
+		return oneTimeTasks.filter(
+			(task) =>
+				task.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+				(task.description &&
+					task.description
+						.toLowerCase()
+						.includes(searchQuery.toLowerCase()))
+		)
+	}, [oneTimeTasks, searchQuery])
+
+	const filteredActiveWorkflows = useMemo(() => {
+		const allWorkflows = [...recurringTasks, ...triggeredTasks]
+		if (!searchQuery.trim()) {
+			return allWorkflows
+		}
+		return allWorkflows.filter(
+			(task) =>
+				task.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+				(task.description &&
+					task.description
+						.toLowerCase()
+						.includes(searchQuery.toLowerCase()))
+		)
+	}, [recurringTasks, triggeredTasks, searchQuery])
+
+	const filteredCalendarTasks = useMemo(() => {
+		const allCalendarTasks = [...oneTimeTasks, ...recurringInstances]
+		if (!searchQuery.trim()) {
+			return allCalendarTasks
+		}
+		return allCalendarTasks.filter((task) =>
+			(task.name || task.summary)
+				?.toLowerCase()
+				.includes(searchQuery.toLowerCase())
+		)
+	}, [oneTimeTasks, recurringInstances, searchQuery])
+
+	const isPanelVisible =
+		rightPanelContent.type !== "hidden" &&
+		rightPanelContent.type !== "initial"
+
 	return (
-		<>
-			<div>
-				<label className="text-sm font-medium text-gray-300 mb-2 block">
-					Plan Details
-				</label>
-				<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-					<input
-						type="text"
-						placeholder="Describe the overall goal..."
-						value={description}
-						onChange={(e) => setDescription(e.target.value)}
-						className="md:col-span-2 p-3 bg-neutral-800/50 border border-neutral-700 rounded-lg transition-colors focus:border-[var(--color-accent-blue)]"
-					/>
-					<select
-						value={priority}
-						onChange={(e) => setPriority(Number(e.target.value))}
-						className="p-3 bg-neutral-800/50 border border-neutral-700 rounded-lg appearance-none transition-colors focus:border-[var(--color-accent-blue)]"
-					>
-						<option value={0}>High Priority</option>
-						<option value={1}>Medium Priority</option>
-						<option value={2}>Low Priority</option>
-					</select>
+		<div className="flex-1 flex h-screen text-white overflow-hidden">
+			<Tooltip
+				id="tasks-tooltip"
+				place="right"
+				style={{ zIndex: 9999 }}
+			/>
+			<div className="flex-1 flex overflow-hidden relative">
+				<div className="absolute inset-0 z-[-1] network-grid-background">
+					<InteractiveNetworkBackground />
 				</div>
-			</div>
-			<div className="space-y-3">
-				<label className="text-sm font-medium text-gray-300">
-					Plan Steps
-				</label>
-				<AnimatePresence>
-					{plan.map((step, index) => (
-						<motion.div
-							key={index}
-							layout
-							initial={{ opacity: 0, y: -10 }}
-							animate={{ opacity: 1, y: 0 }}
-							exit={{ opacity: 0, x: -20 }}
-							className="flex items-start gap-2 sm:gap-3"
-						>
-							<IconGripVertical className="h-5 w-5 text-gray-500 flex-shrink-0" />
-							<div className="flex-grow flex flex-col gap-2">
-								<div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-									<select
-										value={step.tool || ""}
-										onChange={(e) =>
-											handleStepChange(
-												index,
-												"tool",
-												e.target.value
-											)
-										}
-										className="w-full sm:w-2/5 p-2 bg-neutral-800/50 border border-neutral-700 rounded-md text-sm transition-colors focus:border-[var(--color-accent-blue)]"
-									>
-										<option value="">
-											Select a tool...
-										</option>
-										{allTools.map((tool) => {
-											const isConnected =
-												integrations.find(
-													(i) => i.name === tool.name
-												)?.connected ||
-												integrations.find(
-													(i) => i.name === tool.name
-												)?.auth_type === "builtin"
-											return (
-												<option
-													key={tool.name}
-													value={tool.name}
-												>
-													{tool.display_name}{" "}
-													{!isConnected &&
-														" (Not Connected)"}
-												</option>
-											)
-										})}
-									</select>
-									<input
-										type="text"
-										placeholder="Describe what this step should do..."
-										value={step.description}
-										onChange={(e) =>
-											handleStepChange(
-												index,
-												"description",
-												e.target.value
-											)
-										}
-										className="flex-grow p-2 bg-neutral-800/50 border border-neutral-700 rounded-md text-sm transition-colors focus:border-[var(--color-accent-blue)]"
-									/>
-									<button
-										onClick={() => handleRemoveStep(index)}
-										className="p-2 text-[var(--color-accent-red)] hover:bg-neutral-700 rounded-full"
-									>
-										<IconX className="h-4 w-4" />
-									</button>
-								</div>
-								{!integrations.find((i) => i.name === step.tool)
-									?.connected &&
-									integrations.find(
-										(i) => i.name === step.tool
-									)?.auth_type !== "builtin" &&
-									step.tool && (
-										<ConnectToolButton
-											toolName={step.tool}
+				{/* Main Content Panel */}
+				<main className="flex-1 flex flex-col overflow-hidden relative">
+					<div className="absolute -top-[250px] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-brand-orange/10 rounded-full blur-3xl -z-10" />
+					<header className="p-6 pt-20 md:pt-6 flex-shrink-0 flex items-center justify-between bg-transparent">
+						<h1 className="text-3xl font-bold text-white">Tasks</h1>
+						<div className="absolute top-6 left-1/2 -translate-x-1/2">
+							<TaskViewSwitcher view={view} setView={setView} />
+						</div>
+						{/* Button to show examples on mobile */}
+						<div className="md:hidden">
+							<button
+								onClick={() =>
+									setRightPanelContent({
+										type: "welcome",
+										data: null
+									})
+								}
+								className="p-2 rounded-full bg-neutral-800/50 hover:bg-neutral-700/80 text-white"
+							>
+								<IconSparkles size={20} />
+							</button>
+						</div>
+					</header>
+
+					<div className="flex-1 overflow-y-auto custom-scrollbar">
+						{isLoading ? (
+							<div className="flex justify-center items-center h-full">
+								<IconLoader className="w-8 h-8 animate-spin text-sentient-blue" />
+							</div>
+						) : (
+							<AnimatePresence mode="wait">
+								<motion.div
+									key={view}
+									initial={{ opacity: 0 }}
+									animate={{ opacity: 1 }}
+									exit={{ opacity: 0 }}
+									transition={{ duration: 0.3 }}
+									className="h-full"
+								>
+									{view === "list" ? (
+										<ListView
+											oneTimeTasks={filteredOneTimeTasks}
+											activeWorkflows={
+												filteredActiveWorkflows
+											}
+											onSelectTask={handleSelectItem}
+											searchQuery={searchQuery}
+											onSearchChange={setSearchQuery}
+										/>
+									) : (
+										<CalendarView
+											tasks={filteredCalendarTasks} // prettier-ignore
+											gcalEvents={gcalEvents}
+											onSelectTask={handleSelectItem}
+											onDayClick={handleDayClick}
+											onShowMoreClick={
+												handleShowMoreClick
+											}
+											onMonthChange={
+												setCurrentCalendarDate
+											}
 										/>
 									)}
-							</div>
-						</motion.div>
-					))}
-				</AnimatePresence>
-				<button
-					onClick={handleAddStep}
-					className="flex items-center gap-1.5 py-1.5 px-3 rounded-full bg-[var(--color-primary-surface-elevated)] hover:bg-[var(--color-primary-surface)] text-xs"
-				>
-					<IconGripVertical className="h-4 w-4" /> Add Step
-				</button>
-			</div>
-			<div>
-				<label className="text-sm font-medium text-gray-300 mb-2 block">
-					Schedule
-				</label>
-				<ScheduleEditor schedule={schedule} setSchedule={setSchedule} />
-			</div>
-		</>
-	)
-}
-
-const EditTaskModal = ({
-	task,
-	onClose,
-	onSave,
-	setTask,
-	onUpdateSchedule,
-	allTools,
-	integrations
-}) => {
-	const safeSchedule = task.schedule || { type: "once", run_at: null }
-	return (
-		<motion.div
-			initial={{ opacity: 0 }}
-			animate={{ opacity: 1 }}
-			exit={{ opacity: 0 }}
-			className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 p-4"
-		>
-			<motion.div
-				initial={{ scale: 0.9, y: 20 }}
-				animate={{ scale: 1, y: 0 }}
-				exit={{ scale: 0.9, y: 20 }}
-				className="bg-gradient-to-br from-[var(--color-primary-surface)] to-[var(--color-primary-background)] p-6 rounded-2xl shadow-xl w-full max-w-3xl border border-[var(--color-primary-surface-elevated)] max-h-[90vh] flex flex-col"
-			>
-				<div className="flex justify-between items-center mb-6">
-					<h3 className="text-xl font-semibold">Edit Task</h3>
-					<button onClick={onClose} className="hover:text-white">
-						<IconX />
-					</button>
-				</div>
-				<div className="overflow-y-auto custom-scrollbar pr-2 space-y-6">
-					<PlanEditor
-						description={task.description}
-						setDescription={(val) =>
-							setTask({ ...task, description: val })
-						}
-						priority={task.priority}
-						setPriority={(val) =>
-							setTask({ ...task, priority: val })
-						}
-						plan={task.plan}
-						setPlan={(val) => setTask({ ...task, plan: val })}
-						schedule={safeSchedule}
-						setSchedule={(val) => {
-							onUpdateSchedule(task.task_id, val)
-							setTask({ ...task, schedule: val })
-						}}
-						allTools={allTools}
-						integrations={integrations}
-					/>
-				</div>
-				<div className="flex justify-end gap-4 mt-6 pt-4 border-t border-neutral-700">
-					<button
-						onClick={onClose}
-						className="py-2.5 px-5 rounded-lg bg-[var(--color-primary-surface-elevated)] hover:bg-[var(--color-primary-surface)] text-sm"
-					>
-						Cancel
-					</button>
-					<button
-						onClick={onSave}
-						className="py-2.5 px-5 rounded-lg bg-[var(--color-accent-green)] hover:bg-[var(--color-accent-green-hover)] text-sm transition-colors"
-					>
-						Save Changes
-					</button>
-				</div>
-			</motion.div>
-		</motion.div>
-	)
-}
-
-const ConnectToolButton = ({ toolName }) => {
-	const router = useRouter()
-	return (
-		<button
-			onClick={() => router.push(`/settings`)}
-			className="text-xs self-start bg-yellow-500/20 text-yellow-300 font-semibold py-1 px-2 rounded-full hover:bg-yellow-500/40 transition-colors whitespace-nowrap flex items-center gap-1"
-		>
-			<IconPlugConnected size={12} />
-			Connect {toolName}
-		</button>
-	)
-}
-
-const CollapsibleSection = ({
-	title,
-	tasks,
-	isOpen,
-	toggleOpen,
-	...handlers
-}) => {
-	if (tasks.length === 0) return null
-	return (
-		<div>
-			<button
-				onClick={toggleOpen}
-				className="w-full flex justify-between items-center py-3 px-2 text-left hover:bg-[var(--color-primary-surface)]/50 rounded-lg transition-colors"
-			>
-				<h2 className="text-xl font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
-					{title} ({tasks.length})
-				</h2>
-				<IconChevronUp
-					className={cn(
-						"transform transition-transform duration-200",
-						!isOpen && "rotate-180"
-					)}
-				/>
-			</button>
-			<AnimatePresence>
-				{isOpen && (
-					<motion.div
-						initial={{ height: 0, opacity: 0 }}
-						animate={{ height: "auto", opacity: 1 }}
-						exit={{ height: 0, opacity: 0 }}
-						className="overflow-hidden"
-					>
-						<motion.div layout className="space-y-3 pt-2 pb-4">
-							{tasks.map((task) => (
-								<TaskCard
-									key={task.task_id}
-									task={task}
-									{...handlers}
-								/>
-							))}
-						</motion.div>
-					</motion.div>
-				)}
-			</AnimatePresence>
-		</div>
-	)
-}
-
-const TaskCard = ({
-	task,
-	integrations,
-	onViewDetails,
-	onEditTask,
-	onReRunTask,
-	onDeleteTask,
-	onApproveTask
-}) => {
-	const router = useRouter()
-	const statusInfo = statusMap[task.status] || statusMap.default
-	const priorityInfo = priorityMap[task.priority] || priorityMap.default
-
-	let missingTools = []
-	if (task.status === "approval_pending" && integrations) {
-		const requiredTools = new Set(task.plan?.map((step) => step.tool) || [])
-		requiredTools.forEach((toolName) => {
-			const integration = integrations.find((i) => i.name === toolName)
-			if (
-				integration &&
-				!integration.connected &&
-				integration.auth_type !== "builtin"
-			) {
-				missingTools.push(integration.display_name || toolName)
-			}
-		})
-	}
-
-	const getScheduleText = () => {
-		if (!task.schedule) return null
-		const { type, run_at, frequency, time, days } = task.schedule
-		if (type === "once" && run_at) {
-			return `Scheduled for: ${new Date(run_at).toLocaleString()}`
-		}
-		if (type === "recurring") {
-			let scheduleText = `Repeats ${frequency}`
-			if (time) scheduleText += ` at ${time}`
-			if (frequency === "weekly" && days?.length > 0) {
-				scheduleText += ` on ${days.join(", ")}`
-			}
-			return scheduleText
-		}
-		return null
-	}
-	const scheduleText = getScheduleText()
-
-	const renderTaskSource = () => {
-		if (!task.original_context) return null
-		const { source, original_content, page_date, subject, description } =
-			task.original_context
-		let icon, text
-		switch (source) {
-			case "journal_block":
-				icon = <IconBook size={14} />
-				text = `From Journal: "${original_content?.substring(0, 40)}..."`
-				return (
-					<button
-						onClick={(e) => {
-							e.stopPropagation()
-							router.push(`/journal?date=${page_date}`)
-						}}
-						className="w-full text-left text-xs text-gray-500 mt-1 flex items-center gap-1.5 italic hover:text-blue-400"
-						title={`Go to journal entry on ${page_date}`}
-					>
-						{icon}
-						<span className="truncate">{text}</span>
-					</button>
-				)
-			case "gmail":
-				icon = <IconMail size={14} />
-				text = `From Gmail: "${subject || "No Subject"}"`
-				break
-			case "gcalendar":
-				icon = <IconCalendarEvent size={14} />
-				text = `From Calendar: "${subject || "No Summary"}"`
-				break
-			case "chat":
-				icon = <IconMessage size={14} />
-				text = `From Chat: "${description}"`
-				break
-			default:
-				return null
-		}
-		return (
-			<p
-				className="text-xs text-gray-500 mt-1 flex items-center gap-1.5 italic"
-				title={text}
-			>
-				{icon}
-				<span className="truncate">{text}</span>
-			</p>
-		)
-	}
-
-	return (
-		<motion.div
-			layout
-			initial={{ opacity: 0, y: 10 }}
-			animate={{ opacity: 1, y: 0 }}
-			exit={{ opacity: 0, y: -10 }}
-			whileHover={{
-				y: -2,
-				boxShadow:
-					"0 10px 15px -3px rgba(0, 178, 254, 0.05), 0 4px 6px -2px rgba(0, 178, 254, 0.03)"
-			}}
-			style={{ transformStyle: "preserve-3d" }}
-			className={cn(
-				"group flex items-start gap-4 bg-gradient-to-br from-[var(--color-primary-surface)] to-neutral-800/60 p-4 rounded-xl shadow-lg transition-all duration-200 border border-transparent hover:border-transparent",
-				task.enabled === false
-					? "border-l-4 border-gray-600 opacity-60"
-					: "hover:border-blue-500/30",
-				!missingTools.length && "cursor-pointer"
-			)}
-			onClick={(e) =>
-				!e.target.closest("button, a") &&
-				!missingTools.length &&
-				onViewDetails(task)
-			}
-		>
-			<div className="flex flex-col items-center w-20 flex-shrink-0 text-center">
-				<statusInfo.icon className={cn("h-7 w-7", statusInfo.color)} />
-				<span
-					className={cn(
-						"text-xs mt-1.5 font-semibold",
-						priorityInfo.color
-					)}
-				>
-					{priorityInfo.label} Priority
-				</span>
-			</div>
-			<div className="flex-grow min-w-0">
-				<div
-					className={cn(
-						"absolute top-2 right-2 h-2 w-2 rounded-full",
-						task.enabled === false
-							? "bg-gray-500"
-							: statusInfo.color.replace("text-", "bg-")
-					)}
-				></div>
-				<p className="font-semibold text-white">{task.description}</p>
-				{renderTaskSource()}
-				{scheduleText && (
-					<p className="text-xs text-[var(--color-accent-blue)] mt-1 flex items-center gap-1.5">
-						<IconRefresh size={14} />
-						<span>{scheduleText}</span>
-						{!task.enabled && (
-							<span className="font-bold text-yellow-400">
-								(Paused)
-							</span>
+								</motion.div>
+							</AnimatePresence>
 						)}
-					</p>
-				)}
-				{missingTools.length > 0 && (
-					<div className="flex flex-wrap items-center gap-2 mt-2 text-yellow-400 text-xs">
-						<div
-							data-tooltip-id={`missing-tools-tooltip-${task.task_id}`}
-							data-tooltip-content="Please connect these tools in Settings to approve this task."
-							className="flex items-center gap-2"
-						>
-							<IconAlertTriangle size={14} />
-							<span>Requires: {missingTools.join(", ")}</span>
-						</div>
-						<ConnectToolButton toolName={missingTools[0]} />
-						<Tooltip
-							id={`missing-tools-tooltip-${task.task_id}`}
-							place="bottom"
-						/>
 					</div>
-				)}
-			</div>
-			<div className="flex flex-col items-end gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-				{onApproveTask && (
-					<button
-						onClick={(e) => {
-							e.stopPropagation()
-							onApproveTask(task.task_id)
-						}}
-						className="p-1.5 rounded-md text-[var(--color-accent-green)] hover:bg-[var(--color-primary-surface-elevated)] disabled:text-gray-600 disabled:cursor-not-allowed"
-						data-tooltip-id="tasks-tooltip"
-						data-tooltip-content="Approve this plan for execution"
-						disabled={missingTools.length > 0}
-					>
-						<IconCircleCheck className="h-5 w-5" />
-					</button>
-				)}
-				{onEditTask && (
-					<button
-						onClick={(e) => {
-							e.stopPropagation()
-							onEditTask(task)
-						}}
-						className="p-1.5 rounded-md text-[var(--color-accent-orange)] hover:bg-[var(--color-primary-surface-elevated)]"
-						data-tooltip-id="tasks-tooltip"
-						data-tooltip-content="Edit this task's plan and properties"
-					>
-						<IconPencil className="h-5 w-5" />
-					</button>
-				)}
-				{onReRunTask && (
-					<button
-						onClick={(e) => {
-							e.stopPropagation()
-							onReRunTask(task.task_id)
-						}}
-						className="p-1.5 rounded-md text-[var(--color-accent-blue)] hover:bg-[var(--color-primary-surface-elevated)]"
-						data-tooltip-id="tasks-tooltip"
-						data-tooltip-content="Create a new copy of this task to run again"
-					>
-						<IconRefresh className="h-5 w-5" />
-					</button>
-				)}
-				{onDeleteTask && (
-					<button
-						onClick={(e) => {
-							e.stopPropagation()
-							onDeleteTask(task.task_id)
-						}}
-						className="p-1.5 rounded-md text-[var(--color-accent-red)] hover:bg-[var(--color-primary-surface-elevated)]"
-						data-tooltip-id="tasks-tooltip"
-						data-tooltip-content="Delete this task permanently"
-					>
-						<IconTrash className="h-5 w-5" />
-					</button>
-				)}
-			</div>
-		</motion.div>
-	)
-}
 
-const TaskDetailsModal = ({ task, onClose, onApprove, integrations }) => {
-	const statusInfo = statusMap[task.status] || statusMap.default
-	const priorityInfo = priorityMap[task.priority] || priorityMap.default
-	let missingTools = []
-	if (task.status === "approval_pending" && integrations) {
-		const requiredTools = new Set(task.plan?.map((step) => step.tool) || [])
-		requiredTools.forEach((toolName) => {
-			if (
-				!integrations.find((i) => i.name === toolName)?.connected &&
-				integrations.find((i) => i.name === toolName)?.auth_type !==
-					"builtin"
-			) {
-				missingTools.push(
-					integrations.find((i) => i.name === toolName)
-						?.display_name || toolName
-				)
-			}
-		})
-	}
-	const { thoughts, finalAnswer, mainContent } =
-		task.result && typeof task.result === "string"
-			? {
-					thoughts: task.result.match(
-						/<think>([\s\S]*?)<\/think>/
-					)?.[1],
-					finalAnswer: task.result.match(
-						/<final_answer>([\s\S]*?)<\/final_answer>/
-					)?.[1],
-					mainContent: task.result
-						.replace(/<think>[\s\S]*?<\/think>/g, "")
-						.replace(/<final_answer>[\s\S]*?<\/final_answer>/g, "")
-				}
-			: { thoughts: null, finalAnswer: null, mainContent: task.result }
-
-	return (
-		<motion.div
-			initial={{ opacity: 0 }}
-			animate={{ opacity: 1 }}
-			exit={{ opacity: 0 }}
-			className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 p-4"
-		>
-			<Tooltip id="task-details-tooltip" />
-			<motion.div
-				initial={{ scale: 0.9, y: 20 }}
-				animate={{ scale: 1, y: 0 }}
-				exit={{ scale: 0.9, y: 20 }}
-				className="bg-gradient-to-br from-[var(--color-primary-surface)] to-[var(--color-primary-background)] p-6 rounded-2xl shadow-xl w-full max-w-3xl border border-[var(--color-primary-surface-elevated)] max-h-[90vh] flex flex-col"
-			>
-				<div className="flex justify-between items-center mb-6">
-					<h3 className="text-2xl font-semibold text-white truncate">
-						{task.description}
-					</h3>
-					<button onClick={onClose} className="hover:text-white">
-						<IconX />
-					</button>
-				</div>
-				<div className="overflow-y-auto custom-scrollbar pr-2 space-y-6">
-					<div className="flex items-center gap-4 text-sm">
-						<span className="text-[var(--color-text-secondary)]">
-							Status:
-						</span>
-						<span
-							className={cn(
-								"font-semibold py-0.5 px-2 rounded-full text-xs",
-								statusInfo.color,
-								statusInfo.borderColor.replace(
-									"border-",
-									"bg-"
-								) + "/20"
-							)}
-						>
-							{statusInfo.label}
-						</span>
-						<div className="w-px h-4 bg-[var(--color-primary-surface-elevated)]"></div>
-						<span className="text-[var(--color-text-secondary)]">
-							Priority:
-						</span>
-						<span
-							className={cn("font-semibold", priorityInfo.color)}
-						>
-							{priorityInfo.label}
-						</span>
-					</div>
-					<div>
-						<h4 className="text-lg font-semibold text-white mb-3">
-							Plan
-						</h4>
-						<div className="space-y-2">
-							{task.plan.map((step, index) => (
-								<div
-									key={index}
-									className="flex items-start gap-3 bg-[var(--color-primary-surface)]/70 p-3 rounded-md"
-								>
-									<div className="flex-shrink-0 text-[var(--color-accent-blue)] font-bold mt-0.5">
-										{index + 1}.
-									</div>
-									<div>
-										<p className="font-semibold text-white">
-											{step.tool}
-										</p>
-										<p className="text-sm text-[var(--color-text-secondary)]">
-											{step.description}
-										</p>
-									</div>
-								</div>
-							))}
-						</div>
-					</div>
-					{task.progress_updates?.length > 0 && (
-						<div>
-							<h4 className="text-lg font-semibold text-white mb-4">
-								Progress
-							</h4>
-							<div className="space-y-4">
-								{task.progress_updates.map((update, index) => (
-									<div key={index} className="flex gap-4">
-										<div className="flex flex-col items-center">
-											<div className="w-4 h-4 bg-blue-500 rounded-full border-2 border-neutral-800"></div>
-											{index <
-												task.progress_updates.length -
-													1 && (
-												<div className="w-0.5 flex-grow bg-[var(--color-primary-surface-elevated)]"></div>
-											)}
-										</div>
-										<div>
-											<p className="text-sm text-white -mt-1">
-												{update.message}
-											</p>
-											<p className="text-xs text-[var(--color-text-muted)] mt-1.5">
-												{new Date(
-													update.timestamp
-												).toLocaleString()}
-											</p>
-										</div>
-									</div>
-								))}
-							</div>
-						</div>
-					)}
-					{(task.result || task.error) && (
-						<div className="pt-4 border-t border-[var(--color-primary-surface-elevated)]">
-							<h4 className="text-lg font-semibold text-white mb-4">
-								Outcome
-							</h4>
-							{task.error ? (
-								<pre className="text-sm bg-red-900/30 p-4 rounded-md text-red-300 whitespace-pre-wrap font-mono border border-[var(--color-accent-red)]/50">
-									{task.error}
-								</pre>
-							) : (
-								<div className="space-y-4 text-gray-300">
-									{thoughts && (
-										<details className="bg-[var(--color-primary-surface)]/50 rounded-lg p-3 border border-[var(--color-primary-surface-elevated)]">
-											<summary
-												className="cursor-pointer text-sm text-[var(--color-text-secondary)] font-semibold hover:text-white flex items-center gap-2"
-												data-tooltip-id="task-details-tooltip"
-												data-tooltip-content="See the step-by-step reasoning the agent used to produce the result."
-											>
-												<IconBrain
-													size={16}
-													className="text-yellow-400"
-												/>{" "}
-												View Agent's Thoughts
-											</summary>
-											<pre className="mt-3 text-xs text-gray-400 whitespace-pre-wrap font-mono">
-												{thoughts}
-											</pre>
-										</details>
-									)}
-									{mainContent &&
-										typeof mainContent === "string" && (
-											<div
-												dangerouslySetInnerHTML={{
-													__html: mainContent.replace(
-														/\n/g,
-														"<br />"
-													)
-												}}
-											/>
-										)}
-									{finalAnswer && (
-										<div className="mt-2 p-4 bg-green-900/30 border border-[var(--color-accent-green)]/50 rounded-lg">
-											<p className="text-sm font-semibold text-green-300 mb-2">
-												Final Answer
-											</p>
-											<div
-												dangerouslySetInnerHTML={{
-													__html: finalAnswer.replace(
-														/\n/g,
-														"<br />"
-													)
-												}}
-											/>
-										</div>
-									)}
-								</div>
-							)}
-						</div>
-					)}
-				</div>
-				<div className="flex justify-end mt-6 pt-4 border-t border-[var(--color-primary-surface-elevated)] gap-4">
-					<button
-						onClick={onClose}
-						className="py-2.5 px-6 rounded-lg bg-[var(--color-primary-surface-elevated)] hover:bg-[var(--color-primary-surface)] text-sm transition-colors"
-					>
-						Close
-					</button>
-					{task.status === "approval_pending" && (
-						<button
-							onClick={() => onApprove(task.task_id)}
-							className="py-2.5 px-6 rounded-lg bg-[var(--color-accent-green)] hover:bg-[var(--color-accent-green-hover)] text-sm flex items-center gap-2 disabled:opacity-50 transition-colors"
-							disabled={missingTools.length > 0}
-						>
-							<IconCircleCheck className="w-5 h-5" />
-							Approve Plan
-						</button>
-					)}
-				</div>
-			</motion.div>
-		</motion.div>
-	)
-}
-
-const ScheduleEditor = ({ schedule, setSchedule }) => {
-	const handleTypeChange = (type) => {
-		const baseSchedule = { ...schedule, type }
-		if (type === "once") {
-			delete baseSchedule.frequency // This is fine
-			delete baseSchedule.days
-			delete baseSchedule.time
-		} else {
-			delete baseSchedule.run_at // This is fine
-		}
-		setSchedule(baseSchedule)
-	}
-
-	const handleDayToggle = (day) => {
-		const currentDays = schedule.days || []
-		const newDays = currentDays.includes(day)
-			? currentDays.filter((d) => d !== day)
-			: [...currentDays, day]
-		setSchedule({ ...schedule, days: newDays })
-	}
-
-	return (
-		<div className="bg-neutral-800/50 p-4 rounded-lg space-y-4 border border-neutral-700/80">
-			<div className="flex items-center gap-2">
-				{[
-					{ label: "Run Once", value: "once" },
-					{ label: "Recurring", value: "recurring" }
-				].map(({ label, value }) => (
-					<button
-						key={value}
-						onClick={() => handleTypeChange(value)}
-						className={cn(
-							"px-4 py-1.5 rounded-full text-sm",
-							(schedule.type || "once") === value
-								? "bg-[var(--color-accent-blue)] text-white"
-								: "bg-neutral-600 hover:bg-neutral-500"
-						)}
-					>
-						{label}
-					</button>
-				))}
-			</div>
-
-			{(schedule.type === "once" || !schedule.type) && (
-				<div>
-					<label className="text-xs text-gray-400 block mb-1">
-						Run At (optional, local time)
-					</label>
-					<input
-						type="datetime-local"
-						value={schedule.run_at || ""}
-						onChange={(e) =>
-							setSchedule({ ...schedule, run_at: e.target.value })
-						}
-						className="w-full p-2 bg-neutral-600/80 border border-neutral-600 rounded-md focus:border-[var(--color-accent-blue)]"
+					<CreateTaskInput
+						onTaskAdded={fetchTasks}
+						prompt={createTaskPrompt}
+						setPrompt={setCreateTaskPrompt}
 					/>
-					<p className="text-xs text-gray-500 mt-1">
-						If left blank, the task will run immediately after
-						approval.
-					</p>
-				</div>
-			)}
+				</main>
 
-			{schedule.type === "recurring" && (
-				<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-					<div>
-						<label className="text-xs text-gray-400 block mb-1">
-							Frequency
-						</label>
-						<select
-							value={schedule.frequency || "daily"}
-							onChange={(e) =>
-								setSchedule({
-									...schedule,
-									frequency: e.target.value
-								})
-							}
-							className="w-full p-2 bg-neutral-600/80 border border-neutral-600 rounded-md focus:border-[var(--color-accent-blue)]"
+				{/* Right Details Panel */}
+				<AnimatePresence>
+					{isPanelVisible && (
+						<motion.aside
+							key="details-panel"
+							initial={{ x: "100%" }}
+							animate={{ x: "0%" }}
+							exit={{ x: "100%" }}
+							transition={{
+								type: "spring",
+								stiffness: 300,
+								damping: 30
+							}}
+							className="fixed inset-0 z-50 bg-brand-black md:relative md:inset-auto md:z-auto md:w-[450px] lg:w-[500px] md:bg-brand-black/50 md:backdrop-blur-sm md:border-l md:border-brand-gray flex-shrink-0 flex flex-col"
 						>
-							<option value="daily">Daily</option>
-							<option value="weekly">Weekly</option>
-						</select>
-					</div>
-					<div>
-						<label
-							className="text-xs text-gray-400 block mb-1"
-							data-tooltip-id="tasks-tooltip"
-							data-tooltip-content="Tasks are scheduled in Coordinated Universal Time (UTC) to ensure consistency across timezones."
-						>
-							Time (UTC)
-						</label>
-						<input
-							type="time"
-							value={schedule.time || "09:00"}
-							onChange={(e) =>
-								setSchedule({
-									...schedule,
-									time: e.target.value
-								})
-							}
-							className="w-full p-2 bg-neutral-600/80 border border-neutral-600 rounded-md focus:border-[var(--color-accent-blue)]"
-						/>
-					</div>
-					{schedule.frequency === "weekly" && (
-						<div className="md:col-span-2">
-							<label className="text-xs text-gray-400 block mb-2">
-								Days
-							</label>
-							<div className="flex flex-wrap gap-2">
-								{[
-									"Monday",
-									"Tuesday",
-									"Wednesday",
-									"Thursday",
-									"Friday",
-									"Saturday",
-									"Sunday"
-								].map((day) => (
-									<button
-										key={day}
-										onClick={() => handleDayToggle(day)}
-										className={cn(
-											"px-3 py-1.5 rounded-full text-xs font-semibold",
-											(schedule.days || []).includes(day)
-												? "bg-[var(--color-accent-blue)] text-white"
-												: "bg-neutral-600 hover:bg-neutral-500"
-										)}
+							<AnimatePresence mode="wait">
+								{rightPanelContent.type === "task" &&
+								rightPanelContent.data ? (
+									<motion.div
+										key={
+											rightPanelContent.data
+												.instance_id ||
+											rightPanelContent.data.task_id
+										}
+										initial={{ opacity: 0 }}
+										animate={{ opacity: 1 }}
+										exit={{ opacity: 0 }}
+										className="h-full"
 									>
-										{day.substring(0, 3)}
-									</button>
-								))}
-							</div>
-						</div>
+										<TaskDetailsPanel
+											task={rightPanelContent.data}
+											allTools={allTools}
+											integrations={integrations}
+											onClose={handleCloseRightPanel}
+											onSave={handleUpdateTask}
+											onDelete={(taskId) =>
+												handleAction(
+													() =>
+														fetch(
+															`/api/tasks/delete`,
+															{
+																method: "POST",
+																body: JSON.stringify(
+																	{
+																		taskId
+																	}
+																),
+																headers: {
+																	"Content-Type":
+																		"application/json"
+																}
+															}
+														),
+													"Task deleted."
+												)
+											}
+											onApprove={(taskId) =>
+												handleAction(
+													() =>
+														fetch(
+															`/api/tasks/approve`,
+															{
+																method: "POST",
+																body: JSON.stringify(
+																	{
+																		taskId
+																	}
+																),
+																headers: {
+																	"Content-Type":
+																		"application/json"
+																}
+															}
+														),
+													"Task approved."
+												)
+											}
+											onRerun={(taskId) =>
+												handleAction(
+													() =>
+														fetch(
+															`/api/tasks/rerun`,
+															{
+																method: "POST",
+																body: JSON.stringify(
+																	{
+																		taskId
+																	}
+																),
+																headers: {
+																	"Content-Type":
+																		"application/json"
+																}
+															}
+														),
+													"Task re-run."
+												)
+											}
+											onAnswerClarifications={(
+												taskId,
+												answers
+											) =>
+												handleAction(
+													() =>
+														fetch(
+															`/api/tasks/answer-clarifications`,
+															{
+																method: "POST",
+																body: JSON.stringify(
+																	{
+																		taskId,
+																		answers
+																	}
+																),
+																headers: {
+																	"Content-Type":
+																		"application/json"
+																}
+															}
+														),
+													"Answers submitted."
+												)
+											}
+											onArchiveTask={(taskId) =>
+												handleAction(
+													() =>
+														fetch(
+															`/api/tasks/update`,
+															{
+																method: "POST",
+																body: JSON.stringify(
+																	{
+																		taskId,
+																		status: "archived"
+																	}
+																),
+																headers: {
+																	"Content-Type":
+																		"application/json"
+																}
+															}
+														),
+													"Task archived."
+												)
+											}
+											onSendChatMessage={(
+												taskId,
+												message
+											) =>
+												handleAction(
+													() =>
+														fetch(
+															`/api/tasks/chat`,
+															{
+																method: "POST",
+																body: JSON.stringify(
+																	{
+																		taskId,
+																		message
+																	}
+																),
+																headers: {
+																	"Content-Type":
+																		"application/json"
+																}
+															}
+														),
+													"Message sent."
+												)
+											}
+										/>
+									</motion.div>
+								) : rightPanelContent.type === "gcal" &&
+								  rightPanelContent.data ? (
+									<motion.div
+										key={`gcal-${rightPanelContent.data.id}`}
+										initial={{ opacity: 0 }}
+										animate={{ opacity: 1 }}
+										exit={{ opacity: 0 }}
+										className="h-full"
+									>
+										<GCalEventDetailsPanel
+											event={rightPanelContent.data}
+											onClose={handleCloseRightPanel}
+											onCreateTask={
+												handleCreateTaskFromEvent
+											}
+										/>
+									</motion.div>
+								) : rightPanelContent.type === "day" &&
+								  rightPanelContent.data ? (
+									<motion.div
+										key={format(
+											rightPanelContent.data.date,
+											"yyyy-MM-dd"
+										)}
+										initial={{ opacity: 0 }}
+										animate={{ opacity: 1 }}
+										exit={{ opacity: 0 }}
+										className="h-full"
+									>
+										<DayDetailView
+											date={rightPanelContent.data.date}
+											tasks={rightPanelContent.data.tasks}
+											onSelectTask={handleSelectItem}
+											onClose={handleCloseRightPanel}
+										/>
+									</motion.div>
+								) : rightPanelContent.type === "welcome" ? (
+									<motion.div
+										key="welcome"
+										initial={{ opacity: 0 }}
+										animate={{ opacity: 1 }}
+										exit={{ opacity: 0 }}
+										className="h-full"
+									>
+										<WelcomePanel
+											onExampleClick={handleExampleClick}
+											onClose={handleCloseRightPanel}
+										/>
+									</motion.div>
+								) : null}
+							</AnimatePresence>
+						</motion.aside>
 					)}
-				</div>
-			)}
+				</AnimatePresence>
+			</div>
 		</div>
 	)
 }
 
-export default Tasks
+export default function TasksPage() {
+	return (
+		<Suspense
+			fallback={
+				<div className="flex-1 flex h-screen bg-black text-white overflow-hidden justify-center items-center">
+					<IconLoader className="w-10 h-10 animate-spin text-[var(--color-accent-blue)]" />
+				</div>
+			}
+		>
+			<TasksPageContent />
+		</Suspense>
+	)
+}

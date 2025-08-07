@@ -1,9 +1,12 @@
 # src/server/main/db.py
 import os
 import datetime
-import uuid 
+import uuid
+import json
+import logging
 import motor.motor_asyncio
 from pymongo import ASCENDING, DESCENDING, IndexModel, ReturnDocument
+from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 from typing import Dict, List, Optional, Any, Tuple
 
@@ -11,12 +14,15 @@ from typing import Dict, List, Optional, Any, Tuple
 from main.config import MONGO_URI, MONGO_DB_NAME
 
 USER_PROFILES_COLLECTION = "user_profiles" 
-CHAT_HISTORY_COLLECTION = "chat_history"
 NOTIFICATIONS_COLLECTION = "notifications" 
 POLLING_STATE_COLLECTION = "polling_state_store" 
 PROCESSED_ITEMS_COLLECTION = "processed_items_log" 
 TASK_COLLECTION = "tasks"
-JOURNAL_BLOCKS_COLLECTION = "journal_blocks"
+MESSAGES_COLLECTION = "messages"
+USER_PROACTIVE_PREFERENCES_COLLECTION = "user_proactive_preferences"
+PROACTIVE_SUGGESTION_TEMPLATES_COLLECTION = "proactive_suggestion_templates"
+
+logger = logging.getLogger(__name__)
 
 class MongoManager:
     def __init__(self):
@@ -24,12 +30,13 @@ class MongoManager:
         self.db = self.client[MONGO_DB_NAME]
         
         self.user_profiles_collection = self.db[USER_PROFILES_COLLECTION]
-        self.chat_history_collection = self.db[CHAT_HISTORY_COLLECTION]
         self.notifications_collection = self.db[NOTIFICATIONS_COLLECTION]
         self.polling_state_collection = self.db[POLLING_STATE_COLLECTION]
         self.processed_items_collection = self.db[PROCESSED_ITEMS_COLLECTION]
         self.task_collection = self.db[TASK_COLLECTION]
-        self.journal_blocks_collection = self.db[JOURNAL_BLOCKS_COLLECTION]
+        self.messages_collection = self.db[MESSAGES_COLLECTION]
+        self.user_proactive_preferences_collection = self.db[USER_PROACTIVE_PREFERENCES_COLLECTION]
+        self.proactive_suggestion_templates_collection = self.db[PROACTIVE_SUGGESTION_TEMPLATES_COLLECTION]
         
         print(f"[{datetime.datetime.now()}] [MainServer_MongoManager] Initialized. Database: {MONGO_DB_NAME}")
 
@@ -44,21 +51,15 @@ class MongoManager:
                            name="google_gmail_token_idx", sparse=True),
                 IndexModel([("userData.onboardingComplete", ASCENDING)], name="user_onboarding_status_idx", sparse=True)
             ],
-            self.chat_history_collection: [
-                IndexModel([("user_id", ASCENDING), ("chat_id", ASCENDING)], name="user_chat_id_idx"),
-                IndexModel([("messages.message", "text")], name="message_text_idx"),
-                IndexModel([("user_id", ASCENDING), ("last_updated", DESCENDING)], name="chat_last_updated_idx"), # Kept for sorting chats
-                IndexModel([("user_id", ASCENDING), ("messages.timestamp", DESCENDING)], name="message_timestamp_idx", sparse=True)
-            ],
             self.notifications_collection: [
                 IndexModel([("user_id", ASCENDING)], name="notification_user_id_idx"),
                 IndexModel([("user_id", ASCENDING), ("notifications.timestamp", DESCENDING)], name="notification_timestamp_idx", sparse=True)
             ],
             self.polling_state_collection: [
-                IndexModel([("user_id", ASCENDING), ("service_name", ASCENDING)], unique=True, name="polling_user_service_unique_idx"),
+                IndexModel([("user_id", ASCENDING), ("service_name", ASCENDING), ("poll_type", ASCENDING)], unique=True, name="polling_user_service_type_unique_idx"),
                 IndexModel([
-                    ("is_enabled", ASCENDING), ("next_scheduled_poll_time", ASCENDING), 
-                    ("is_currently_polling", ASCENDING), ("error_backoff_until_timestamp", ASCENDING) 
+                    ("is_enabled", ASCENDING), ("next_scheduled_poll_time", ASCENDING),
+                    ("is_currently_polling", ASCENDING), ("error_backoff_until_timestamp", ASCENDING)
                 ], name="polling_due_tasks_idx"),
                 IndexModel([("is_currently_polling", ASCENDING), ("last_attempted_poll_timestamp", ASCENDING)], name="polling_stale_locks_idx")
             ],
@@ -70,14 +71,19 @@ class MongoManager:
                 IndexModel([("user_id", ASCENDING), ("created_at", DESCENDING)], name="task_user_created_idx"),
                 IndexModel([("user_id", ASCENDING), ("status", ASCENDING), ("priority", ASCENDING)], name="task_user_status_priority_idx"),
                 IndexModel([("status", ASCENDING), ("agent_id", ASCENDING)], name="task_status_agent_idx", sparse=True), 
-                IndexModel([("task_id", ASCENDING)], unique=True, name="task_id_unique_idx")
+                IndexModel([("task_id", ASCENDING)], unique=True, name="task_id_unique_idx"),
+                IndexModel([("description", "text")], name="task_description_text_idx"),
             ],
-            self.journal_blocks_collection: [
-                IndexModel([("block_id", ASCENDING)], unique=True, name="journal_block_id_unique_idx"),
-                IndexModel([("user_id", ASCENDING), ("page_date", DESCENDING), ("order", ASCENDING)], name="journal_user_date_order_idx"),
-                IndexModel([("linked_task_id", ASCENDING)], name="journal_linked_task_idx", sparse=True),
-                IndexModel([("content", "text")], name="journal_content_text_idx")
-            ]
+            self.messages_collection: [
+                IndexModel([("message_id", ASCENDING)], unique=True, name="message_id_unique_idx"),
+                IndexModel([("user_id", ASCENDING), ("timestamp", DESCENDING)], name="message_user_timestamp_idx"),
+            ],
+            self.user_proactive_preferences_collection: [
+                IndexModel([("user_id", ASCENDING), ("suggestion_type", ASCENDING)], unique=True, name="user_suggestion_preference_unique_idx")
+            ],
+            self.proactive_suggestion_templates_collection: [
+                IndexModel([("type_name", ASCENDING)], unique=True, name="suggestion_type_name_unique_idx")
+            ],
         }
 
         for collection, indexes in collections_with_indexes.items():
@@ -86,6 +92,19 @@ class MongoManager:
                 print(f"[{datetime.datetime.now()}] [MainServer_DB_INIT] Indexes ensured for: {collection.name}")
             except Exception as e:
                 print(f"[{datetime.datetime.now()}] [MainServer_DB_ERROR] Index creation for {collection.name}: {e}")
+
+        # Pre-populate suggestion templates if the collection is empty
+        if await self.proactive_suggestion_templates_collection.count_documents({}) == 0:
+            print(f"[{datetime.datetime.now()}] [MainServer_DB_INIT] Pre-populating proactive suggestion templates...")
+            initial_templates = [
+                {"type_name": "draft_meeting_confirmation_email", "description": "Drafts an email to confirm a meeting, check availability, or ask for an agenda."},
+                {"type_name": "schedule_calendar_event", "description": "Creates a new event on the user's calendar based on details from a message."},
+                {"type_name": "create_follow_up_task", "description": "Creates a new task in the user's task list to follow up on a specific item or conversation."},
+                {"type_name": "summarize_document_or_thread", "description": "Summarizes a long document, email thread, or message chain for the user."},
+            ]
+            await self.proactive_suggestion_templates_collection.insert_many(initial_templates)
+            print(f"[{datetime.datetime.now()}] [MainServer_DB_INIT] Inserted {len(initial_templates)} templates.")
+
 
     # --- User Profile Methods ---
     async def get_user_profile(self, user_id: str) -> Optional[Dict]:
@@ -146,97 +165,10 @@ class MongoManager:
         )
         return result.matched_count > 0 or result.upserted_id is not None
 
-    # --- Chat History Methods ---
-    async def add_chat_message(self, user_id: str, chat_id: str, message_data: Dict) -> str:
-        if not all([user_id, chat_id, message_data]):
-            raise ValueError("user_id, chat_id, and message_data are required.")
-        
-        message_data["timestamp"] = datetime.datetime.now(datetime.timezone.utc)
-        message_id = message_data.get("id", str(uuid.uuid4())) 
-        message_data["id"] = message_id
-
-        result = await self.chat_history_collection.update_one(
-            {"user_id": user_id, "chat_id": chat_id},
-            {"$push": {"messages": message_data},
-             "$set": {"last_updated": datetime.datetime.now(datetime.timezone.utc)},
-             "$setOnInsert": {"user_id": user_id, "chat_id": chat_id, "created_at": datetime.datetime.now(datetime.timezone.utc)}
-            },
-            upsert=True
-        )
-        if result.matched_count > 0 or result.upserted_id is not None:
-            return message_id
-        raise Exception(f"Failed to add/update chat message for user {user_id}, chat {chat_id}")
-
-    async def get_chat_history(self, user_id: str, chat_id: str) -> List[Dict]:
-        if not user_id or not chat_id: return []
-        chat_doc = await self.chat_history_collection.find_one(
-            {"user_id": user_id, "chat_id": chat_id}, {"messages": 1, "_id": 0}
-        )
-        return chat_doc.get("messages", []) if chat_doc else []
-
-    async def get_all_chats_for_user(self, user_id: str) -> List[Dict]:
-        if not user_id: return []
-        cursor = self.chat_history_collection.find(
-            {"user_id": user_id},
-            {"chat_id": 1, "title": 1, "last_updated": 1, "_id": 0}
-        ).sort("last_updated", DESCENDING)
-        return await cursor.to_list(length=None)
-
-    async def delete_chat_history(self, user_id: str, chat_id: str) -> bool:
-        if not user_id or not chat_id: return False
-        result = await self.chat_history_collection.delete_one({"user_id": user_id, "chat_id": chat_id})
-        return result.deleted_count > 0
-
-    async def update_chat_message(self, user_id: str, chat_id: str, message_id: str, update_data: Dict) -> bool:
-        if not all([user_id, chat_id, message_id, update_data]):
-            raise ValueError("user_id, chat_id, message_id, and update_data are required.")
-
-        set_payload = {f"messages.$.{key}": value for key, value in update_data.items()}
-        set_payload["last_updated"] = datetime.datetime.now(datetime.timezone.utc)
-        
-        result = await self.chat_history_collection.update_one(
-            {"user_id": user_id, "chat_id": chat_id, "messages.id": message_id},
-            {"$set": set_payload}
-        )
-        if result.matched_count == 0:
-            print(f"[{datetime.datetime.now()}] [DB_UPDATE_WARN] No message found with ID {message_id} in chat {chat_id} for user {user_id} to update.")
-            return False
-        return result.modified_count > 0
-
-    async def create_new_chat_session(self, user_id: str, chat_id: str, title: Optional[str] = "New Chat") -> bool:
-        if not user_id or not chat_id: return False
-        now_utc = datetime.datetime.now(datetime.timezone.utc)
-        # Use update_one with upsert to avoid race conditions and ensure idempotency.
-        # If a chat with this ID somehow already exists, this does nothing.
-        result = await self.chat_history_collection.update_one(
-            {"user_id": user_id, "chat_id": chat_id},
-            {
-                "$setOnInsert": {
-                    "user_id": user_id,
-                    "chat_id": chat_id,
-                    "title": title,
-                    "messages": [],
-                    "created_at": now_utc,
-                    "last_updated": now_utc
-                }
-            },
-            upsert=True
-        )
-        return result.upserted_id is not None
-
-    async def rename_chat(self, user_id: str, chat_id: str, new_title: str) -> bool:
-        if not all([user_id, chat_id, new_title]):
-            return False
-        result = await self.chat_history_collection.update_one(
-            {"user_id": user_id, "chat_id": chat_id},
-            {"$set": {"title": new_title, "last_updated": datetime.datetime.now(datetime.timezone.utc)}}
-        )
-        return result.modified_count > 0
-
     # --- Notification Methods ---
     async def get_notifications(self, user_id: str) -> List[Dict]:
         if not user_id: return []
-        user_doc = await self.notifications_collection.find_one(
+        user_doc = await self.notifications_collection.find_one( # noqa: E501
             {"user_id": user_id}, {"notifications": 1}
         )
         notifications_list = user_doc.get("notifications", []) if user_doc else []
@@ -249,7 +181,9 @@ class MongoManager:
 
     async def add_notification(self, user_id: str, notification_data: Dict) -> Optional[Dict]:
         if not user_id or not notification_data: return None
-        notification_data["timestamp"] = datetime.datetime.now(datetime.timezone.utc)
+        # Store timestamp as an ISO 8601 string to ensure timezone correctness
+        # across all database and application layers.
+        notification_data["timestamp"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         notification_data["id"] = str(uuid.uuid4())
         result = await self.notifications_collection.update_one(
             {"user_id": user_id},
@@ -275,6 +209,29 @@ class MongoManager:
         )
         return result.modified_count > 0
 
+    async def find_and_action_suggestion_notification(self, user_id: str, notification_id: str) -> Optional[Dict]:
+        """
+        Atomically finds a proactive_suggestion notification, marks it as actioned, and returns it.
+        This prevents race conditions from multiple clicks.
+        """
+        if not user_id or not notification_id:
+            return None
+
+        # Find the document containing the notification
+        user_notif_doc = await self.notifications_collection.find_one(
+            {"user_id": user_id, "notifications.id": notification_id}
+        )
+        if not user_notif_doc:
+            return None
+
+        # Atomically update the specific notification inside the array
+        result = await self.notifications_collection.find_one_and_update(
+            {"user_id": user_id, "notifications.id": notification_id, "notifications.is_actioned": False},
+            {"$set": {"notifications.$.is_actioned": True}},
+        )
+
+        return user_notif_doc if result else None
+
     # --- Polling State Store Methods ---
     async def get_polling_state(self, user_id: str, service_name: str) -> Optional[Dict[str, Any]]:
         if not user_id or not service_name: return None
@@ -282,31 +239,293 @@ class MongoManager:
             {"user_id": user_id, "service_name": service_name}
         )
 
-    async def update_polling_state(self, user_id: str, service_name: str, state_data: Dict[str, Any]) -> bool: 
-        if not user_id or not service_name or state_data is None: return False
+    async def update_polling_state(self, user_id: str, service_name: str, poll_type: str, state_data: Dict[str, Any]) -> bool:
+        if not user_id or not service_name or not poll_type or state_data is None: return False
         for key, value in state_data.items(): 
             if isinstance(value, datetime.datetime):
                 state_data[key] = value.replace(tzinfo=datetime.timezone.utc) if value.tzinfo is None else value.astimezone(datetime.timezone.utc)
         
         # Prevent conflict errors by not trying to $set fields that are part of the unique index
         # or are immutable.
-        if '_id' in state_data:
-            del state_data['_id']
-        if 'user_id' in state_data:
-            del state_data['user_id']
-        if 'service_name' in state_data:
-            del state_data['service_name']
+        if '_id' in state_data: del state_data['_id']
+        if 'user_id' in state_data: del state_data['user_id']
+        if 'service_name' in state_data: del state_data['service_name']
+        if 'poll_type' in state_data: del state_data['poll_type']
         now_utc = datetime.datetime.now(datetime.timezone.utc)
         state_data["last_updated_at"] = now_utc
 
         result = await self.polling_state_collection.update_one(
-            {"user_id": user_id, "service_name": service_name}, 
-            {"$set": state_data, "$setOnInsert": {"created_at": now_utc, "user_id": user_id, "service_name": service_name}}, 
+            {"user_id": user_id, "service_name": service_name, "poll_type": poll_type},
+            {"$set": state_data, "$setOnInsert": {"created_at": now_utc, "user_id": user_id, "service_name": service_name, "poll_type": poll_type}},
             upsert=True
         )
         return result.matched_count > 0 or result.upserted_id is not None
+
+    async def delete_polling_state_by_service(self, user_id: str, service_name: str) -> int:
+        """Deletes all polling state documents for a user and a specific service."""
+        if not user_id or not service_name:
+            return 0
+        query = {"user_id": user_id, "service_name": service_name}
+        result = await self.polling_state_collection.delete_many(query)
+        return result.deleted_count
+
+    # --- Task Methods ---
+    async def add_task(self, user_id: str, task_data: dict) -> str:
+        """Creates a new task document and returns its ID."""
+        task_id = str(uuid.uuid4())
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+
+        schedule = task_data.get("schedule")
+        if isinstance(schedule, str):
+            try:
+                schedule = json.loads(schedule)
+            except json.JSONDecodeError:
+                schedule = None
+
+        task_doc = {
+            "task_id": task_id,
+            "user_id": user_id,
+            "name": task_data.get("name", "New Task"),
+            "description": task_data.get("description", ""),
+            "status": "planning",
+            "assignee": "ai",
+            "priority": task_data.get("priority", 1),
+            "plan": [],
+            "runs": [],
+            "schedule": schedule,
+            "enabled": True,
+            "original_context": task_data.get("original_context", {"source": "manual_creation"}),
+            "created_at": now_utc,
+            "updated_at": now_utc,
+            "chat_history": [],
+            "next_execution_at": None,
+            "last_execution_at": None,
+        }
+
+        await self.task_collection.insert_one(task_doc)
+        logger.info(f"Created new task {task_id} for user {user_id} with status 'planning'.")
+        return task_id
+
+    async def get_task(self, task_id: str, user_id: str) -> Optional[Dict]:
+        """Fetches a single task by its ID, ensuring it belongs to the user."""
+        return await self.task_collection.find_one({"task_id": task_id, "user_id": user_id})
+
+    async def get_all_tasks_for_user(self, user_id: str) -> List[Dict]:
+        """Fetches all tasks for a given user."""
+        cursor = self.task_collection.find({"user_id": user_id}).sort("created_at", -1)
+        return await cursor.to_list(length=None)
+
+    async def update_task(self, task_id: str, updates: Dict) -> bool:
+        """Updates an existing task document."""
+        updates["updated_at"] = datetime.datetime.now(datetime.timezone.utc)
+        result = await self.task_collection.update_one(
+            {"task_id": task_id},
+            {"$set": updates}
+        )
+        return result.modified_count > 0
+
+    async def add_answers_to_task(self, task_id: str, answers: List[Dict], user_id: str) -> bool:
+        """Finds a task and updates its clarifying questions with user answers."""
+        task = await self.get_task(task_id, user_id)
+        if not task:
+            return False
+
+        current_questions = task.get("clarifying_questions", [])
+        if not current_questions:
+            # Fallback for legacy tasks where questions might be in the last run
+            if task.get("runs"):
+                current_questions = task["runs"][-1].get("clarifying_questions", [])
+            if not current_questions:
+                logger.warning(f"add_answers_to_task called for task {task_id}, but no questions found.")
+                return False # Nothing to update
+
+        answer_map = {ans.get("question_id"): ans.get("answer_text") for ans in answers}
+
+        for question in current_questions:
+            q_id = question.get("question_id")
+            if q_id in answer_map:
+                question["answer"] = answer_map[q_id]
+        # Always write back to the top-level field for consistency
+        return await self.update_task(task_id, {"clarifying_questions": current_questions})
+
+    async def delete_task(self, task_id: str, user_id: str) -> str:
+        """Deletes a task."""
+        result = await self.task_collection.delete_one({"task_id": task_id, "user_id": user_id})
+        return "Task deleted successfully." if result.deleted_count > 0 else None
+
+    async def decline_task(self, task_id: str, user_id: str) -> str:
+        """Declines a task by setting its status to 'declined'."""
+        success = await self.update_task(task_id, {"status": "declined"})
+        return "Task declined." if success else None
+
+    async def delete_tasks_by_tool(self, user_id: str, tool_name: str) -> int:
+        """
+        Deletes all tasks for a user that have a plan step using a specific tool.
+        This is used when an integration is disconnected.
+        """
+        if not user_id or not tool_name:
+            return 0
+        query = {"user_id": user_id, "runs.plan.tool": tool_name}
+        result = await self.task_collection.delete_many(query)
+        logger.info(f"Deleted {result.deleted_count} tasks for user {user_id} using tool '{tool_name}'.")
+        return result.deleted_count
+
+    async def cancel_latest_run(self, task_id: str) -> bool:
+        """Pops the last run from the array and reverts the task status to completed."""
+        update_payload = {
+            "$set": {
+                "status": "completed",
+                "updated_at": datetime.datetime.now(datetime.timezone.utc)
+            },
+            "$pop": {"runs": 1}  # Removes the last element from the 'runs' array
+        }
+        result = await self.task_collection.update_one({"task_id": task_id}, update_payload) # noqa: E501
+        return result.modified_count > 0
+
+    async def delete_notifications_for_task(self, user_id: str, task_id: str):
+        """Deletes all notifications associated with a specific task_id for a user."""
+        if not user_id or not task_id:
+            return
+        await self.notifications_collection.update_one(
+            {"user_id": user_id},
+            {"$pull": {"notifications": {"task_id": task_id}}}
+        )
+        logger.info(f"Deleted notifications for task {task_id} for user {user_id}.")
+
+    async def rerun_task(self, original_task_id: str, user_id: str) -> Optional[str]:
+        """Duplicates a task to be re-run."""
+        original_task = await self.get_task(original_task_id, user_id)
+        if not original_task:
+            return None
+
+        new_task_doc = original_task.copy()
+        new_task_id = str(uuid.uuid4())
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+
+        # Reset fields for a new run
+        if "_id" in new_task_doc:
+            del new_task_doc["_id"] # Let Mongo generate a new one
+        new_task_doc["task_id"] = new_task_id
+        new_task_doc["status"] = "planning"
+        new_task_doc["created_at"] = now_utc
+        new_task_doc["updated_at"] = now_utc
+        new_task_doc["last_execution_at"] = None
+        new_task_doc["next_execution_at"] = None
+
+        await self.task_collection.insert_one(new_task_doc)
+        return new_task_id
+
+    # --- Message Methods ---
+    async def add_message(self, user_id: str, role: str, content: str, message_id: Optional[str] = None) -> Dict:
+        """
+        Adds a single message to the messages collection.
+        If a message_id is provided, it's used. Otherwise, a new one is generated.
+        For user messages with a provided ID, it prevents duplicate insertions.
+        """
+        now = datetime.datetime.now(datetime.timezone.utc)
+        final_message_id = message_id if message_id else str(uuid.uuid4())
+
+        # Prevent duplicate user messages if client retries
+        if role == "user" and message_id:
+            existing = await self.messages_collection.find_one({"message_id": final_message_id, "user_id": user_id})
+            if existing:
+                logger.info(f"Message with ID {final_message_id} already exists for user {user_id}. Skipping.")
+                return existing
+
+        message_doc = {
+            "message_id": final_message_id,
+            "user_id": user_id,
+            "role": role,
+            "content": content,
+            "timestamp": now,
+            "is_summarized": False,
+            "summary_id": None,
+        }
+        await self.messages_collection.insert_one(message_doc)
+        logger.info(f"Added message for user {user_id} with role {role}")
+        return message_doc
+
+    async def get_message_history(self, user_id: str, limit: int, before_timestamp_iso: Optional[str] = None) -> List[Dict]:
+        """Fetches a paginated history of messages for a user."""
+        query = {"user_id": user_id}
+        if before_timestamp_iso:
+            try:
+                # Ensure the timestamp is parsed correctly as UTC
+                before_timestamp = datetime.datetime.fromisoformat(before_timestamp_iso.replace("Z", "+00:00"))
+                query["timestamp"] = {"$lt": before_timestamp}
+            except (ValueError, TypeError):
+                logger.warning(f"Invalid before_timestamp format: {before_timestamp_iso}, ignoring.")
+                pass
+
+        cursor = self.messages_collection.find(query).sort("timestamp", DESCENDING).limit(limit)
+        messages = await cursor.to_list(length=limit)
+
+        # Serialize datetime and ObjectId objects for JSON response
+        for msg in messages:
+            if isinstance(msg.get("_id"), ObjectId):
+                msg["_id"] = str(msg["_id"])
+            if isinstance(msg.get("timestamp"), datetime.datetime):
+                msg["timestamp"] = msg["timestamp"].isoformat()
+
+        return messages
+
+    async def delete_message(self, user_id: str, message_id: str) -> bool:
+        """Deletes a single message by its ID for a specific user."""
+        if not user_id or not message_id:
+            return False
+        result = await self.messages_collection.delete_one({"user_id": user_id, "message_id": message_id})
+        return result.deleted_count > 0
+
+    async def delete_all_messages(self, user_id: str) -> int:
+        """Deletes all messages for a specific user."""
+        if not user_id:
+            return 0
+        result = await self.messages_collection.delete_many({"user_id": user_id})
+        logger.info(f"Deleted {result.deleted_count} messages for user {user_id}.")
+        return result.deleted_count
 
     async def close(self):
         if self.client:
             self.client.close()
             print(f"[{datetime.datetime.now()}] [MainServer_MongoManager] MongoDB connection closed.")
+
+    # --- Proactive Suggestion Template Methods ---
+    async def get_all_proactive_suggestion_templates(self) -> List[Dict]:
+        """Fetches all documents from the proactive_suggestion_templates collection."""
+        cursor = self.proactive_suggestion_templates_collection.find({}, {"_id": 0})
+        return await cursor.to_list(length=None)
+
+    # --- Proactive Learning Methods ---
+    async def update_proactive_preference_score(self, user_id: str, suggestion_type: str, increment_value: int):
+        """Finds or creates a user preference document and increments/decrements the score."""
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        # FIX: Removed 'score' from $setOnInsert to prevent conflict with $inc on upsert.
+        # $inc will create the field with the specified value if it doesn't exist.
+        await self.user_proactive_preferences_collection.update_one(
+            {"user_id": user_id, "suggestion_type": suggestion_type},
+            {
+                "$inc": {"score": increment_value},
+                "$set": {"last_updated": now_utc}
+            },
+            upsert=True
+        )
+    
+    async def get_user_proactive_preferences(self, user_id: str) -> Dict[str, int]:
+        """
+        Fetches all proactive suggestion preferences for a user and returns them
+        as a dictionary of {suggestion_type: score}.
+        """
+        if not user_id:
+            return {}
+        
+        preferences = {}
+        cursor = self.user_proactive_preferences_collection.find(
+            {"user_id": user_id},
+            {"_id": 0, "suggestion_type": 1, "score": 1}
+        )
+        async for doc in cursor:
+            if "suggestion_type" in doc and "score" in doc:
+                preferences[doc["suggestion_type"]] = doc["score"]
+        
+        logger.info(f"Fetched {len(preferences)} proactive preferences for user {user_id}.")
+        return preferences

@@ -21,7 +21,7 @@ export const GET = withAuth(async function GET(
 
 	try {
 		const response = await fetch(
-			`${APP_SERVER_URL}/agents/tasks/${taskId}`,
+			`${APP_SERVER_URL}/tasks/tasks/${taskId}`,
 			{
 				headers: { "Content-Type": "application/json", ...authHeader }
 			}

@@ -4,64 +4,179 @@ import os
 import json
 import asyncio
 import logging
+import datetime
 import threading
+import re
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-from typing import List, Dict, Any, Tuple, AsyncGenerator, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Callable, Coroutine, Union
 
+from qwen_agent.tools.base import BaseTool, register_tool
+from openai import OpenAI
+
+from main.chat.prompts import STAGE_1_SYSTEM_PROMPT, STAGE_2_SYSTEM_PROMPT
 from main.db import MongoManager
-from main.llm import get_qwen_assistant
-from main.config import INTEGRATIONS_CONFIG, SUPERMEMORY_MCP_BASE_URL, SUPERMEMORY_MCP_ENDPOINT_SUFFIX
-from main.chat.prompts import TOOL_SELECTOR_SYSTEM_PROMPT
+from main.llm import run_agent_with_fallback
+from main.config import (INTEGRATIONS_CONFIG, ENVIRONMENT)
 from json_extractor import JsonExtractor
+from workers.utils.text_utils import clean_llm_output
 
 logger = logging.getLogger(__name__)
 
-async def _select_relevant_tools(query: str, available_tools_map: Dict[str, str]) -> List[str]:
+@register_tool('json_validator')
+class JsonValidatorTool(BaseTool):
+    description = (
+        "Validates and cleans a string that is supposed to be a JSON object or list. "
+        "Use this tool to fix any syntax errors in a JSON string before passing it to another tool that requires valid JSON."
+    )
+    parameters = [{
+        'name': 'json_string',
+        'type': 'string',
+        'description': 'The string to be validated and cleaned as JSON.',
+        'required': True
+    }]
+
+    def call(self, params: str, **kwargs) -> str:
+        logger.info(f"JsonValidatorTool called with params: {params}")
+        try:
+            if isinstance(params, dict):
+                 parsed_params = params
+            else:
+                 parsed_params = JsonExtractor.extract_valid_json(params)
+            if not parsed_params:
+                return json.dumps({"status": "failure", "error": "Invalid JSON in params."})
+            json_string_to_validate = parsed_params.get('json_string', '')
+            if not json_string_to_validate:
+                return json.dumps({"status": "failure", "error": "Input json_string is empty."})
+            valid_json = JsonExtractor.extract_valid_json(json_string_to_validate)
+            if valid_json:
+                cleaned_json_string = json.dumps(valid_json)
+                logger.info(f"Successfully cleaned JSON: {cleaned_json_string}")
+                return json.dumps({"status": "success", "cleaned_json": cleaned_json_string})
+            else:
+                logger.warning(f"Could not extract valid JSON from: {json_string_to_validate}")
+                return json.dumps({"status": "failure", "error": "Could not extract any valid JSON from the input string."})
+        except Exception as e:
+            logger.error(f"JsonValidatorTool encountered an unexpected error: {e}", exc_info=True)
+            return json.dumps({"status": "failure", "error": str(e)})
+
+async def _get_stage1_response(messages: List[Dict[str, Any]], connected_tools_map: Dict[str, str], disconnected_tools_map: Dict[str, str], user_id: str) -> Dict[str, Any]:
     """
-    Uses a lightweight LLM call to select relevant tools for a given query.
-    This now runs the synchronous generator in a thread to avoid blocking.
+    Uses the Stage 1 LLM to detect topic changes and select relevant tools.
+    Returns a dictionary containing a 'topic_changed' boolean and a 'tools' list.
     """
-    if not available_tools_map:
-        return []
+    
+    print ("Using OpenAI Client for Stage 1 LLM call...")
+    client = OpenAI(
+        base_url=os.getenv("OPENAI_API_BASE_URL", "https://openrouter.ai/api/v1/"),
+        api_key=os.getenv("OPENAI_API_KEY", ""),
+    )
+    
+    print ("STAGE 1 MESSAGES:", messages)
 
-    try:
-        tools_description = "\n".join(f"- `{name}`: {desc}" for name, desc in available_tools_map.items())
-        prompt = f"User Query: \"{query}\"\n\nAvailable Tools:\n{tools_description}"
+    # Format messages for the OpenAI client, including the system prompt
+    formatted_messages = [
+        {"role": "system", "content": STAGE_1_SYSTEM_PROMPT}
+    ]
+    for msg in messages:
+        # The OpenAI API expects 'role' and 'content'. Filter for those keys.
+        if 'role' in msg and 'content' in msg:
+            formatted_messages.append({
+                "role": msg["role"],
+                "content": msg["content"]
+            })
 
-        selector_agent = get_qwen_assistant(system_message=TOOL_SELECTOR_SYSTEM_PROMPT, function_list=[])
-        messages = [{'role': 'user', 'content': prompt}]
+    completion = client.chat.completions.create(
+        model=os.getenv("OPENAI_MODEL_NAME", "google/gemini-2.5-flash"),
+        messages=formatted_messages,
+    )
 
-        def _run_selector_sync():
-            """Synchronous worker function to run the generator."""
-            final_content_str = ""
-            for chunk in selector_agent.run(messages=messages):
-                if isinstance(chunk, list) and chunk:
-                    last_message = chunk[-1]
-                    if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
-                        final_content_str = last_message["content"]
-            return final_content_str
+    final_content_str = completion.choices[0].message.content
+    
+    print(f"Stage 1 LLM output for user {user_id}: {final_content_str}")
+    
+    cleaned_output = clean_llm_output(final_content_str)
+    
+    print(f"Cleaned Stage 1 output for user {user_id}: {cleaned_output}")
 
-        # Run the synchronous function in a separate thread
-        final_content_str = await asyncio.to_thread(_run_selector_sync)
-        
-        selected_tools = JsonExtractor.extract_valid_json(final_content_str)
-        if isinstance(selected_tools, list):
-            logger.info(f"Tool selector identified relevant tools: {selected_tools}")
-            return selected_tools
-        return []
-    except Exception as e:
-        logger.error(f"Error during tool selection LLM call: {e}", exc_info=True)
-        return list(available_tools_map.keys())
+    # The output should now be a JSON object with 'topic_changed' and 'tools'
+    stage1_result = JsonExtractor.extract_valid_json(cleaned_output)
+
+    if isinstance(stage1_result, dict) and "topic_changed" in stage1_result and "tools" in stage1_result:
+        selected_tools = stage1_result.get("tools", [])
+
+        # Separate into connected and disconnected
+        connected_tools_selected = [tool for tool in selected_tools if tool in connected_tools_map]
+        disconnected_tools_selected = [tool for tool in selected_tools if tool in disconnected_tools_map]
+
+        final_result = {
+            "topic_changed": stage1_result.get("topic_changed", False),
+            "connected_tools": connected_tools_selected,
+            "disconnected_tools": disconnected_tools_selected
+        }
+        logger.info(f"Stage 1 triage result: {final_result}")
+        return final_result
+
+    # Fallback logic if the LLM fails to produce the correct JSON object
+    logger.warning(f"Stage 1 failed to produce valid JSON object. Falling back to simple tool detection. Output: {cleaned_output}")
+    # Try to see if it just returned a list (old behavior)
+    if isinstance(stage1_result, list):
+        connected_tools_selected = [tool for tool in stage1_result if tool in connected_tools_map]
+        disconnected_tools_selected = [tool for tool in stage1_result if tool in disconnected_tools_map]
+        return {
+            "topic_changed": False,
+            "connected_tools": connected_tools_selected,
+            "disconnected_tools": disconnected_tools_selected
+        }
+
+    # If all else fails, assume no topic change and no tools.
+    return {"topic_changed": False, "connected_tools": [], "disconnected_tools": []}
+
+
+def _extract_answer_from_llm_response(llm_output: str) -> str:
+    """
+    Extracts content from the first <answer> tag in the LLM's output.
+    This ensures only the user-facing response is used for TTS.
+    """
+    if not llm_output:
+        return ""
+    match = re.search(r'<answer>([\s\S]*?)</answer>', llm_output, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+
+    # Fallback: if no answer tag, strip all other tags and return what's left.
+    return re.sub(r'<(think|tool_code|tool_result)>.*?</\1>', '', llm_output, flags=re.DOTALL).strip()
+
+def _get_tool_lists(user_integrations: Dict) -> Tuple[Dict, Dict]:
+    """Separates tools into connected and disconnected lists."""
+    connected_tools = {} # Tools that are built-in or connected by the user
+    disconnected_tools = {}
+    for tool_name, config in INTEGRATIONS_CONFIG.items():
+        auth_type = config.get("auth_type")
+        # Skip internal tools that shouldn't be exposed to the planner/user
+        if tool_name in ["progress_updater", "chat_tools"]:
+            continue
+
+        # Built-in tools are always considered "connected" and available
+        if auth_type == "builtin":
+            connected_tools[tool_name] = config.get("description", "")
+        # For user-configured tools, check the 'connected' flag from the DB
+        elif auth_type in ["oauth", "manual"]:
+            if user_integrations.get(tool_name, {}).get("connected", False):
+                connected_tools[tool_name] = config.get("description", "")
+            else:
+                disconnected_tools[tool_name] = config.get("description", "")
+    return connected_tools, disconnected_tools
 
 async def generate_chat_llm_stream(
     user_id: str,
     messages: List[Dict[str, Any]],
     user_context: Dict[str, Any], # Basic context like name, timezone
-    preferences: Dict[str, Any],  # Detailed AI personality preferences
     db_manager: MongoManager) -> AsyncGenerator[Dict[str, Any], None]:
     assistant_message_id = str(uuid.uuid4())
 
     try:
+        yield {"type": "status", "message": "Analyzing context..."}
+
         username = user_context.get("name", "User")
         timezone_str = user_context.get("timezone", "UTC")
         location_raw = user_context.get("location")
@@ -81,42 +196,43 @@ async def generate_chat_llm_stream(
 
         user_profile = await db_manager.get_user_profile(user_id)
         user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
-        supermemory_user_id = user_profile.get("userData", {}).get("supermemory_user_id") if user_profile else None
-        
-        all_available_mcp_servers = {}
-        tool_name_to_desc_map = {}
 
-        if supermemory_user_id:
-            full_supermemory_mcp_url = f"{SUPERMEMORY_MCP_BASE_URL.rstrip('/')}/{supermemory_user_id}{SUPERMEMORY_MCP_ENDPOINT_SUFFIX}"
-            all_available_mcp_servers["supermemory"] = {"transport": "sse", "url": full_supermemory_mcp_url}
-            tool_name_to_desc_map["supermemory"] = INTEGRATIONS_CONFIG.get("supermemory", {}).get("description", "")
+        # Get both connected and disconnected tools
+        connected_tools, disconnected_tools = _get_tool_lists(user_integrations)
 
-        for tool_name, config in INTEGRATIONS_CONFIG.items():
-            if tool_name == "supermemory": continue
-            
-            is_builtin = config.get("auth_type") == "builtin"
-            is_connected = user_integrations.get(tool_name, {}).get("connected", False)
+        yield {"type": "status", "message": "Thinking..."}
 
-            if is_builtin or is_connected:
-                tool_name_to_desc_map[tool_name] = config.get("description", "")
-                mcp_config = config.get("mcp_server_config")
-                if mcp_config and mcp_config.get("url"):
-                    all_available_mcp_servers[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
+        # --- STAGE 1 ---
+        stage1_result = await _get_stage1_response(messages, connected_tools, disconnected_tools, user_id)
 
-        last_user_query = messages[-1].get("content", "") if messages else ""
-        relevant_tool_names = await _select_relevant_tools(last_user_query, tool_name_to_desc_map)
+        topic_changed = stage1_result.get("topic_changed", False) # noqa
+        relevant_tool_names = stage1_result.get("connected_tools", [])
+        disconnected_requested_tools = stage1_result.get("disconnected_tools", [])
 
-        mandatory_tools = {"journal", "supermemory", "chat_tools"}
+        # --- TOOL SELECTION & HISTORY TRUNCATION, PROCEED TO STAGE 2 ---
+        tool_display_names = [INTEGRATIONS_CONFIG.get(t, {}).get('display_name', t) for t in relevant_tool_names if t != 'memory']
+        if tool_display_names:
+            yield {"type": "status", "message": f"Using: {', '.join(tool_display_names)}"}
+
+        # Stage 2 agent also needs access to core tools
+        mandatory_tools = {"memory", "history", "tasks"}
         final_tool_names = set(relevant_tool_names) | mandatory_tools
-
+        # Build the list of tools for the agent, including MCPs and local tools, ensuring headers are included.
         filtered_mcp_servers = {}
-        for server_name, server_config in all_available_mcp_servers.items():
-            tool_name_for_server = next((tn for tn, tc in INTEGRATIONS_CONFIG.items() if tc.get("mcp_server_config", {}).get("name") == server_name), None)
-            if tool_name_for_server in final_tool_names:
-                filtered_mcp_servers[server_name] = server_config
+        for tool_name in final_tool_names:
+            config = INTEGRATIONS_CONFIG.get(tool_name, {})
+            if config:
+                mcp_config = config.get("mcp_server_config", {})
+                if mcp_config and mcp_config.get("url") and mcp_config.get("name"):
+                    server_name = mcp_config["name"]
+                    filtered_mcp_servers[server_name] = {
+                        "url": mcp_config["url"],
+                        "headers": {"X-User-ID": user_id},
+                        "transport": "sse"
+                    }
+        tools = [{"mcpServers": filtered_mcp_servers}]
 
         logger.info(f"Final tools for agent: {list(filtered_mcp_servers.keys())}")
-        tools = [{"mcpServers": filtered_mcp_servers}]
         
     except Exception as e:
         logger.error(f"Failed during initial setup for chat stream for user {user_id}: {e}", exc_info=True)
@@ -125,38 +241,60 @@ async def generate_chat_llm_stream(
 
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue[Optional[Any]] = asyncio.Queue()
-    stream_interrupted = False
     
-    # Dynamically construct persona instructions
-    agent_name = preferences.get('agentName', 'Sentient')
-    verbosity = preferences.get('responseVerbosity', 'Balanced')
-    humor_level = preferences.get('humorLevel', 'Balanced')
-    emoji_usage = "You can use emojis to add personality." if preferences.get('useEmojis', True) else "You should not use emojis."
+    # --- Prepare message history for Stage 2 based on topic change detection ---
+    stage_2_expanded_messages = []
+    if topic_changed:
+        logger.info(f"Topic change detected for user {user_id}. Truncating history for Stage 2.")
+        # Find the last user message and send only that
+        last_user_message = next((msg for msg in reversed(messages) if msg.get("role") == "user"), None)
+        if last_user_message:
+            stage_2_expanded_messages.append({
+                "role": "user",
+                "content": last_user_message.get("content", "")
+            })
+    else:
+        logger.info(f"No topic change detected for user {user_id}. Using full history for Stage 2.")
+        for msg in messages:
+            stage_2_expanded_messages.append({
+                "role": msg.get("role", "user"),
+                "content": msg.get("content", "")
+            })
 
-    system_prompt = (
-        f"You are {agent_name}, a personalized AI assistant. Your goal is to be as helpful as possible by using your available tools for information retrieval or by creating journal entries for actions that need to be planned and executed.\n\n"
-        f"**Critical Instructions:**\n"
-        f"1. **Analyze User Intent:** First, determine if the user is asking for information (a 'retrieval' query) or asking you to perform an action (an 'action' query).\n"
-        f"2. **Retrieval Queries:** For requests to find, list, search, or read information (e.g., 'what's the weather?', 'search for emails about project X', 'what's on my calendar?'), use the appropriate tools from your available tool list to get the information and answer the user directly.\n"
-        f"3. **Action Queries:** For requests to perform an action (e.g., 'send an email', 'create a document', 'schedule an event', 'delete this file'), you MUST NOT call the tool for that action directly. Instead, you MUST use the `journal-add_journal_entry` tool. The `content` for this tool should be a clear description of the user's request (e.g., `content='Send an email to my boss about the report'`). After calling this tool, inform the user that you have noted their request and it will be processed.\n"
-        f"4. **Memory Usage:** ALWAYS use `supermemory-search` first to check for existing context. If you learn a new, permanent fact about the user, use `supermemory-addToSupermemory` to save it.\n"
-        f"5. **Final Answer Format:** When you have a complete, final answer for the user that is not a tool call, you MUST wrap it in `<answer>` tags. For example: `<answer>The weather in London is 15°C and cloudy.</answer>`.\n\n"
-        f"**Your Persona:**\n"
-        f"- Your responses should be **{verbosity}**.\n"
-        f"- Your tone should be **{humor_level}**.\n"
-        f"- {emoji_usage}\n\n"
-        f"**User Context (for your reference):**\n"
-        f"-   **User's Name:** {username}\n"
-        f"-   **User's Location:** {location}\n"
-        f"-   **Current Time:** {current_user_time}\n\n"
-        f"Your primary directive is to be as personalized and helpful as possible by actively using your memory and tools. Do not ask questions you should already know the answer to; search your memory instead."
+    if not stage_2_expanded_messages:
+        logger.error(f"Message history for Stage 2 is empty for user {user_id}. This should not happen.")
+        # As a fallback, use the last message anyway
+        last_message = messages[-1] if messages else {}
+        stage_2_expanded_messages.append({
+            "role": last_message.get("role", "user"),
+            "content": last_message.get("content", "Hello.")
+        })
+
+    # Inject a system note if some requested tools are disconnected
+    if disconnected_requested_tools:
+        disconnected_display_names = [INTEGRATIONS_CONFIG.get(t, {}).get('display_name', t) for t in disconnected_requested_tools]
+        system_note = (
+            f"System Note: The user's request mentioned functionality requiring the following tools which are currently disconnected: "
+            f"{', '.join(disconnected_display_names)}. You MUST inform the user that you cannot complete that part of the request "
+            f"and suggest they connect the tool(s) in the Integrations page. Then, proceed with the rest of the request using the available tools."
+        )
+        # Prepend this note to the user's last message to make it highly visible to the agent.
+        if stage_2_expanded_messages and stage_2_expanded_messages[-1]['role'] == 'user':
+            stage_2_expanded_messages[-1]['content'] = f"{system_note}\n\nUser's original message: {stage_2_expanded_messages[-1]['content']}"
+        else:
+            # This case is unlikely but safe to handle.
+            stage_2_expanded_messages.append({'role': 'system', 'content': system_note})
+
+    system_prompt = STAGE_2_SYSTEM_PROMPT.format(
+        username=username,
+        location=location,
+        current_user_time=current_user_time
     )
 
     def worker():
         try:
-            qwen_assistant = get_qwen_assistant(system_message=system_prompt, function_list=tools)
-            qwen_formatted_history = [{"role": msg["role"], "content": msg["content"]} for msg in messages]
-            for new_history_step in qwen_assistant.run(messages=qwen_formatted_history):
+            # The agent expects a list of message dicts, which is what stage_2_expanded_messages is.
+            for new_history_step in run_agent_with_fallback(system_message=system_prompt, function_list=tools, messages=stage_2_expanded_messages):
                 loop.call_soon_threadsafe(queue.put_nowait, new_history_step)
         except Exception as e:
             logger.error(f"Error in chat worker thread for user {user_id}: {e}", exc_info=True)
@@ -168,6 +306,7 @@ async def generate_chat_llm_stream(
     thread.start()
 
     try:
+        first_chunk = True
         last_yielded_content_str = ""
         while True:
             current_history = await queue.get()
@@ -183,8 +322,13 @@ async def generate_chat_llm_stream(
             current_turn_str = "".join(msg_to_str(m) for m in assistant_messages)
             if len(current_turn_str) > len(last_yielded_content_str):
                 new_chunk = current_turn_str[len(last_yielded_content_str):]
-                yield {"type": "assistantStream", "token": new_chunk, "done": False, "messageId": assistant_message_id}
+                event_payload = {"type": "assistantStream", "token": new_chunk, "done": False, "messageId": assistant_message_id}
+                if first_chunk and new_chunk.strip():
+                    event_payload["tools"] = list(final_tool_names)
+                    first_chunk = False
+                yield event_payload
                 last_yielded_content_str = current_turn_str
+
     except asyncio.CancelledError:
         stream_interrupted = True
         raise
@@ -197,14 +341,179 @@ async def generate_chat_llm_stream(
 def msg_to_str(msg: Dict[str, Any]) -> str:
     if msg.get('role') == 'assistant' and msg.get('function_call'):
         args_str = msg['function_call'].get('arguments', '')
-        try: args_pretty = json.dumps(json.loads(args_str), indent=2)
+        try:
+            parsed_args = JsonExtractor.extract_valid_json(args_str)
+            args_pretty = json.dumps(parsed_args, indent=2) if parsed_args else args_str
         except: args_pretty = args_str
         return f"<tool_code name=\"{msg['function_call'].get('name')}\">\n{args_pretty}\n</tool_code>\n"
     elif msg.get('role') == 'function':
         content = msg.get('content', '')
-        try: content_pretty = json.dumps(json.loads(content), indent=2)
+        try:
+            parsed_content = JsonExtractor.extract_valid_json(content)
+            content_pretty = json.dumps(parsed_content, indent=2) if parsed_content else content
         except: content_pretty = content
         return f"<tool_result tool_name=\"{msg.get('name')}\">\n{content_pretty}\n</tool_result>\n"
     elif msg.get('role') == 'assistant' and msg.get('content'):
         return msg.get('content', '')
     return ''
+
+async def process_voice_command(
+    user_id: str,
+    transcribed_text: str,
+    send_status_update: Callable[[Dict[str, Any]], Coroutine[Any, Any, None]],
+    db_manager: MongoManager
+) -> Tuple[str, str]:
+    """
+    Processes a transcribed voice command with full agentic capabilities,
+    providing status updates and returning a final text response for TTS.
+    """
+    assistant_message_id = str(uuid.uuid4())
+    logger.info(f"Processing voice command for user {user_id}: '{transcribed_text}'")
+
+    try:
+        # 1. Save user message and a placeholder for the assistant's response
+        await db_manager.add_message(user_id=user_id, role="user", content=transcribed_text)
+        await db_manager.add_message(user_id=user_id, role="assistant", content="[Thinking...]", message_id=assistant_message_id)
+
+        # 2. Fetch history and user context
+        history_from_db = await db_manager.get_message_history(user_id, limit=30)
+        messages = list(reversed(history_from_db))
+        qwen_formatted_history = [msg for msg in messages if msg.get("message_id") != assistant_message_id]
+
+        user_profile = await db_manager.get_user_profile(user_id)
+        user_data = user_profile.get("userData", {}) if user_profile else {}
+        personal_info = user_data.get("personalInfo", {})
+        
+        username = personal_info.get("name", "User")
+        timezone_str = personal_info.get("timezone", "UTC")
+        location_raw = personal_info.get("location")
+
+        if isinstance(location_raw, dict) and 'latitude' in location_raw:
+            location = f"latitude: {location_raw.get('latitude')}, longitude: {location_raw.get('longitude')}"
+        elif isinstance(location_raw, str):
+            location = location_raw
+        else:
+            location = "Not specified"
+        try:
+            user_timezone = ZoneInfo(timezone_str)
+        except ZoneInfoNotFoundError:
+            user_timezone = ZoneInfo("UTC")
+        current_user_time = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
+
+        # 3. Full tool selection logic (Stage 1)
+        await send_status_update({"type": "status", "message": "choosing_tools"})
+        
+        user_integrations = user_data.get("integrations", {})
+        connected_tools, disconnected_tools = _get_tool_lists(user_integrations)
+
+        stage1_result = await _get_stage1_response(qwen_formatted_history, connected_tools, disconnected_tools, user_id)
+
+        topic_changed = stage1_result.get("topic_changed", False)
+        relevant_tool_names = stage1_result.get("connected_tools", [])
+        disconnected_requested_tools = stage1_result.get("disconnected_tools", [])
+
+        # 4. Stage 2 setup
+        mandatory_tools = {"memory", "history", "tasks"}
+        final_tool_names = set(relevant_tool_names) | mandatory_tools
+
+        filtered_mcp_servers = {}
+        for tool_name in final_tool_names:
+            config = INTEGRATIONS_CONFIG.get(tool_name, {})
+            if config:
+                mcp_config = config.get("mcp_server_config", {})
+                if mcp_config and mcp_config.get("url") and mcp_config.get("name"):
+                    server_name = mcp_config["name"]
+                    filtered_mcp_servers[server_name] = {
+                        "url": mcp_config["url"],
+                        "headers": {"X-User-ID": user_id},
+                        "transport": "sse"
+                    }
+        tools = [{"mcpServers": filtered_mcp_servers}]
+        logger.info(f"Voice Command Tools (Stage 2): {list(filtered_mcp_servers.keys())}")
+
+        # History truncation logic
+        stage_2_expanded_messages = []
+        if topic_changed:
+            last_user_message = next((msg for msg in reversed(qwen_formatted_history) if msg.get("role") == "user"), None)
+            if last_user_message:
+                stage_2_expanded_messages.append({"role": "user", "content": last_user_message.get("content", "")})
+        else:
+            for msg in qwen_formatted_history:
+                stage_2_expanded_messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
+
+        # Handle disconnected tools note
+        if disconnected_requested_tools:
+            disconnected_display_names = [INTEGRATIONS_CONFIG.get(t, {}).get('display_name', t) for t in disconnected_requested_tools]
+            system_note = (
+                f"System Note: The user's request mentioned functionality requiring the following tools which are currently disconnected: "
+                f"{', '.join(disconnected_display_names)}. You MUST inform the user that you cannot complete that part of the request "
+                f"and suggest they connect the tool(s) in the Integrations page. Then, proceed with the rest of the request using the available tools."
+            )
+            if stage_2_expanded_messages and stage_2_expanded_messages[-1]['role'] == 'user':
+                stage_2_expanded_messages[-1]['content'] = f"{system_note}\n\nUser's original message: {stage_2_expanded_messages[-1]['content']}"
+            else:
+                stage_2_expanded_messages.append({'role': 'system', 'content': system_note})
+
+        system_prompt = STAGE_2_SYSTEM_PROMPT.format(
+            username=username,
+            location=location,
+            current_user_time=current_user_time
+        )
+
+        await send_status_update({"type": "status", "message": "thinking"})
+
+        # 5. Agent Execution in a thread
+        loop = asyncio.get_running_loop()
+        def agent_worker():
+            final_run_response = None
+            try:
+                for response in run_agent_with_fallback(system_message=system_prompt, function_list=tools, messages=stage_2_expanded_messages):
+                    final_run_response = response
+                    if isinstance(response, list) and response:
+                        last_message = response[-1]
+                        if last_message.get('role') == 'assistant' and last_message.get('function_call'):
+                            tool_name = last_message['function_call']['name']
+                            asyncio.run_coroutine_threadsafe(
+                                send_status_update({"type": "status", "message": f"using_tool_{tool_name}"}),
+                                loop
+                            )
+                return final_run_response
+            except Exception as e:
+                logger.error(f"Error inside agent_worker thread for voice command: {e}", exc_info=True)
+                return None
+
+        final_run_response = await asyncio.to_thread(agent_worker)
+
+        # 6. Process result
+        full_response_str = ""
+        if final_run_response and isinstance(final_run_response, list):
+            assistant_content_parts = [
+                msg.get('content', '')
+                for msg in final_run_response
+                if msg.get('role') == 'assistant' and msg.get('content')
+            ]
+            full_response_str = "".join(assistant_content_parts)
+
+        final_text_response = _extract_answer_from_llm_response(full_response_str)
+
+        if not final_text_response:
+            last_message = final_run_response[-1] if final_run_response else {}
+            if last_message.get('role') == 'function':
+                final_text_response = "The action has been completed."
+            else:
+                final_text_response = "I'm sorry, I couldn't process that."
+
+        await db_manager.messages_collection.update_one(
+            {"message_id": assistant_message_id, "user_id": user_id},
+            {"$set": {"content": final_text_response}}
+        )
+
+        return final_text_response, assistant_message_id
+    except Exception as e:
+        logger.error(f"Error processing voice command for {user_id}: {e}", exc_info=True)
+        error_msg = "I encountered an error while processing your request."
+        await db_manager.messages_collection.update_one(
+            {"message_id": assistant_message_id},
+            {"$set": {"content": error_msg}}
+        )
+        return error_msg, assistant_message_id

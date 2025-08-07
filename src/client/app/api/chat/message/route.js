@@ -8,10 +8,7 @@ const appServerUrl =
 
 export const POST = withAuth(async function POST(request, { authHeader }) {
 	try {
-		const {
-			messages,
-			chatId
-		} = await request.json()
+		const { messages } = await request.json()
 
 		// Fetch user pricing/credits to pass to the backend
 		const pricingResponse = await fetch(
@@ -31,7 +28,6 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 			body: JSON.stringify({
 				// Pass `messages` array instead of `input`
 				messages,
-				chatId,
 				pricing, // Note: pricing and credits are still sent for backend logic
 				credits
 			}),

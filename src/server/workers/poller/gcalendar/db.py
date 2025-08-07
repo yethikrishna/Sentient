@@ -24,13 +24,14 @@ class PollerMongoManager:
         print(f"[{datetime.datetime.now()}] [GCalendarPoller_MongoManager] Assuming indexes are managed by main server.")
         pass
 
-    async def get_user_profile(self, user_id: str) -> Optional[Dict]:
+    async def get_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]: # noqa
         return await self.user_profiles_collection.find_one({"user_id": user_id})
 
-    async def get_polling_state(self, user_id: str, service_name: str) -> Optional[Dict[str, Any]]:
-        return await self.polling_state_collection.find_one({"user_id": user_id, "service_name": service_name})
+    async def get_polling_state(self, user_id: str, service_name: str, poll_type: str) -> Optional[Dict[str, Any]]:
+        return await self.polling_state_collection.find_one({"user_id": user_id, "service_name": service_name, "poll_type": poll_type})
 
-    async def update_polling_state(self, user_id: str, service_name: str, state_data: Dict[str, Any]) -> bool:
+    async def update_polling_state(self, user_id: str, service_name: str, poll_type: str, state_data: Dict[str, Any]) -> bool:
+        if not user_id or not service_name or state_data is None: return False
         for key, value in state_data.items():
             if isinstance(value, datetime.datetime):
                 state_data[key] = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
@@ -44,32 +45,79 @@ class PollerMongoManager:
             del state_data['user_id']
         if 'service_name' in state_data:
             del state_data['service_name']
+        if 'poll_type' in state_data:
+            del state_data['poll_type']
         if 'created_at' in state_data:
             del state_data['created_at']
 
         result = await self.polling_state_collection.update_one(
-            {"user_id": user_id, "service_name": service_name},
-            {"$set": state_data, "$setOnInsert": {"created_at": now_utc, "user_id": user_id, "service_name": service_name}},
+            {"user_id": user_id, "service_name": service_name, "poll_type": poll_type},
+            {"$set": state_data, "$setOnInsert": {"created_at": now_utc, "user_id": user_id, "service_name": service_name, "poll_type": poll_type}},
             upsert=True
         )
         return result.matched_count > 0 or result.upserted_id is not None
 
-    async def get_due_polling_tasks_for_service(self, service_name: str) -> List[Dict[str, Any]]:
+    async def get_due_polling_tasks_for_service(self, service_name: str, poll_type: str) -> List[Dict[str, Any]]:
         now_utc = datetime.datetime.now(timezone.utc)
-        query = {
-            "service_name": service_name,
-            "is_enabled": True,
-            "next_scheduled_poll_time": {"$lte": now_utc},
-            "is_currently_polling": False,
-            "$or": [{"error_backoff_until_timestamp": None}, {"error_backoff_until_timestamp": {"$lte": now_utc}}]
-        }
-        cursor = self.polling_state_collection.find(query).sort("next_scheduled_poll_time", ASCENDING)
-        return await cursor.to_list(length=None)
 
-    async def set_polling_status_and_get(self, user_id: str, service_name: str) -> Optional[Dict[str, Any]]:
+        # For 'triggers', we only want to poll users who have active triggered tasks.
+        if poll_type == 'triggers':
+            pipeline = [
+                # Stage 1: Find due polling states
+                {
+                    "$match": {
+                        "service_name": service_name,
+                        "poll_type": poll_type,
+                        "is_enabled": True,
+                        "next_scheduled_poll_time": {"$lte": now_utc},
+                        "is_currently_polling": False,
+                        "$or": [
+                            {"error_backoff_until_timestamp": None},
+                            {"error_backoff_until_timestamp": {"$lte": now_utc}}
+                        ]
+                    }
+                },
+                # Stage 2: Join with tasks collection to check for active triggers
+                {
+                    "$lookup": {
+                        "from": "tasks", # The name of the tasks collection
+                        "localField": "user_id",
+                        "foreignField": "user_id",
+                        "as": "user_tasks"
+                    }
+                },
+                # Stage 3: Filter for users who have at least one active triggered task for this specific service
+                {
+                    "$match": {
+                        "user_tasks": {
+                            "$elemMatch": {
+                                "status": "active",
+                                "schedule.type": "triggered",
+                                "schedule.source": service_name
+                            }
+                        }
+                    }
+                },
+                {"$sort": {"next_scheduled_poll_time": ASCENDING}}
+            ]
+            cursor = self.polling_state_collection.aggregate(pipeline)
+            return await cursor.to_list(length=None)
+        else:
+            # Original logic for other poll types like 'proactivity'
+            query = {
+                "service_name": service_name, "poll_type": poll_type,
+                "is_enabled": True,
+                "next_scheduled_poll_time": {"$lte": now_utc},
+                "is_currently_polling": False,
+                "$or": [{"error_backoff_until_timestamp": None}, {"error_backoff_until_timestamp": {"$lte": now_utc}}]
+            }
+            cursor = self.polling_state_collection.find(query).sort("next_scheduled_poll_time", ASCENDING)
+            return await cursor.to_list(length=None)
+
+    async def set_polling_status_and_get(self, user_id: str, service_name: str, poll_type: str) -> Optional[Dict[str, Any]]:
         now_utc = datetime.datetime.now(timezone.utc)
         doc = await self.polling_state_collection.find_one_and_update(
-            {"user_id": user_id, "service_name": service_name, "is_enabled": True, 
+            {"user_id": user_id, "service_name": service_name, "poll_type": poll_type, "is_enabled": True, 
              "next_scheduled_poll_time": {"$lte": now_utc}, "is_currently_polling": False,
              "$or": [{"error_backoff_until_timestamp": None}, {"error_backoff_until_timestamp": {"$lte": now_utc}}]},
             {"$set": {"is_currently_polling": True, "last_attempted_poll_timestamp": now_utc}},
@@ -77,33 +125,43 @@ class PollerMongoManager:
         )
         return doc
     
-    async def reset_stale_polling_locks(self, service_name: str, timeout_minutes: int = 30):
+    async def reset_stale_polling_locks(self, service_name: str, poll_type: str, timeout_minutes: int = 30):
         stale_threshold = datetime.datetime.now(timezone.utc) - datetime.timedelta(minutes=timeout_minutes)
         result = await self.polling_state_collection.update_many(
-            {"service_name": service_name, "is_currently_polling": True, "last_attempted_poll_timestamp": {"$lt": stale_threshold}},
+            {"service_name": service_name, "poll_type": poll_type, "is_currently_polling": True, "last_attempted_poll_timestamp": {"$lt": stale_threshold}},
             {"$set": {"is_currently_polling": False, "last_successful_poll_status_message": "Reset stale lock.",
                       "next_scheduled_poll_time": datetime.datetime.now(timezone.utc) + datetime.timedelta(seconds=60)}}
         )
         if result.modified_count > 0:
             print(f"[{datetime.datetime.now()}] [GCalendarPoller_MongoManager] Reset {result.modified_count} stale {service_name.upper()} polling locks.")
 
-    async def log_processed_item(self, user_id: str, service_name: str, item_id: str) -> bool:
+    async def log_processed_item(self, user_id: str, service_name: str, item_id: str, processor: str) -> bool:
+        """Logs that an item has been processed by a specific system (e.g., 'proactivity', 'triggers')."""
         try:
-            await self.processed_items_collection.insert_one({
-                "user_id": user_id, "service_name": service_name, "item_id": item_id,
-                "processing_timestamp": datetime.datetime.now(timezone.utc)
-            })
+            await self.processed_items_collection.update_one(
+                {"user_id": user_id, "service_name": service_name, "item_id": item_id},
+                {
+                    "$addToSet": {"processed_by": processor},
+                    "$setOnInsert": {
+                        "user_id": user_id, "service_name": service_name, "item_id": item_id,
+                        "processing_timestamp": datetime.datetime.now(timezone.utc)
+                    }
+                },
+                upsert=True
+            )
             return True
-        except DuplicateKeyError: return True
         except Exception as e:
-            print(f"[{datetime.datetime.now()}] [GCalendarPoller_DB_ERROR] Logging processed item {user_id}/{service_name}/{item_id}: {e}")
+            print(f"[{datetime.datetime.now()}] [GCalendarPoller_DB_ERROR] Logging processed item {user_id}/{service_name}/{item_id} by {processor}: {e}")
             return False
 
-    async def is_item_processed(self, user_id: str, service_name: str, item_id: str) -> bool:
-        count = await self.processed_items_collection.count_documents(
+    async def is_item_processed(self, user_id: str, service_name: str, item_id: str, processor: str) -> bool:
+        """Checks if an item has already been processed by a specific system."""
+        doc = await self.processed_items_collection.find_one(
             {"user_id": user_id, "service_name": service_name, "item_id": item_id}
         )
-        return count > 0
+        if doc and processor in doc.get("processed_by", []):
+            return True
+        return False
 
     async def close(self):
         if self.client:

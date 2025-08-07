@@ -8,7 +8,8 @@ import re
 
 from workers.poller.gmail.config import POLLING_INTERVALS_WORKER as POLL_CFG
 from workers.poller.gmail.db import PollerMongoManager
-from workers.poller.gmail.utils import get_gmail_credentials, fetch_emails
+from workers.poller.gmail.utils import get_gmail_credentials, fetch_emails # noqa
+from workers.proactive.utils import event_pre_filter # Import the pre-filter
 from googleapiclient.errors import HttpError # Import HttpError
 
 logger = logging.getLogger(__name__)
@@ -56,8 +57,8 @@ class GmailPollingService:
         polling_state["next_scheduled_poll_time"] = datetime.datetime.now(timezone.utc) + datetime.timedelta(seconds=backoff_seconds)
         logger.warning(f"User {user_id} experiencing {failures} failures. Backing off for {backoff_seconds}s.")
 
-    async def _run_single_user_poll_cycle(self, user_id: str, polling_state: dict):
-        logger.info(f"Starting poll cycle for user {user_id}")
+    async def _run_single_user_poll_cycle(self, user_id: str, polling_state: dict, mode: str):
+        logger.info(f"Starting poll cycle for user {user_id} in mode '{mode}'")
         updated_state = polling_state.copy() # To modify and save later
 
         try:
@@ -70,7 +71,13 @@ class GmailPollingService:
                 return
 
             all_privacy_filters = user_profile.get("userData", {}).get("privacyFilters", {})
-            gmail_filters = all_privacy_filters.get("gmail", {})
+            gmail_filters = {}
+            if isinstance(all_privacy_filters, dict):
+                gmail_filters = all_privacy_filters.get("gmail", {})
+            elif isinstance(all_privacy_filters, list):
+                # Backward compatibility: old format was a flat list of keywords
+                gmail_filters = {"keywords": all_privacy_filters, "emails": [], "labels": []}
+
             keyword_filters = gmail_filters.get("keywords", [])
             email_filters = [email.lower() for email in gmail_filters.get("emails", [])]
             label_filters = [label.lower() for label in gmail_filters.get("labels", [])]
@@ -85,11 +92,11 @@ class GmailPollingService:
                 return
 
             last_ts_unix = polling_state.get("last_successful_poll_timestamp_unix")
-            emails = await fetch_emails(creds, last_ts_unix, max_results=25) # Fetch up to 25 new emails
+            fetched_emails = await fetch_emails(creds, last_ts_unix, max_results=10)
             
             processed_count = 0
 
-            for email in emails:
+            for email in fetched_emails: # noqa
                 email_item_id = email["id"]
                 
                 # Keyword check
@@ -112,21 +119,48 @@ class GmailPollingService:
                     logger.info(f"Skipping email {email['id']} for user {user_id} due to label filter match.")
                     continue
 
-                if not await self.db_manager.is_item_processed(user_id, self.service_name, email_item_id):
-                    from workers.tasks import extract_from_context
-                    extract_from_context.delay(user_id, self.service_name, email_item_id, email)
-                    await self.db_manager.log_processed_item(user_id, self.service_name, email_item_id)
+                # Run the main pre-filter here, before dispatching any tasks
+                if not event_pre_filter(email, self.service_name, user_profile.get("userData", {}).get("personalInfo", {}).get("email")):
+                    logger.info(f"Email {email['id']} for user {user_id} was discarded by the main pre-filter.")
+                    continue
+
+                if not await self.db_manager.is_item_processed(user_id, self.service_name, email_item_id, mode): # noqa
+                    from workers.tasks import cud_memory_task, proactive_reasoning_pipeline, execute_triggered_task # noqa
+
+                    if mode == 'proactivity':
+                        # Construct a representative text string from the email data
+                        source_text = f"Subject: {email.get('subject', '')}\n\n{email.get('body', '')}"
+                        # # 1. Send to memory
+                        # cud_memory_task.delay(
+                        #     user_id=user_id,
+                        #     information=source_text,
+                        #     source=self.service_name
+                        # ) NOT SENDING TO MEMORY FOR NOW
+                        # 2. Send to proactive reasoning
+                        proactive_reasoning_pipeline.delay(
+                            user_id=user_id,
+                            event_type=self.service_name,
+                            event_data=email
+                        )
+                    elif mode == 'triggers':
+                        # 3. Check for and execute triggered tasks
+                        execute_triggered_task.delay(
+                            user_id=user_id, source=self.service_name,
+                            event_type="new_email", event_data=email
+                        )
+
+                    await self.db_manager.log_processed_item(user_id, self.service_name, email_item_id, mode)
                     processed_count += 1
 
             if processed_count > 0:
                 # If we processed emails, update the timestamp to the newest one we saw.
-                highest_email_ts_ms = max(email["timestamp_ms"] for email in emails) if emails else 0
+                highest_email_ts_ms = max(email["timestamp_ms"] for email in fetched_emails) if fetched_emails else 0
                 updated_state["last_successful_poll_timestamp_unix"] = highest_email_ts_ms // 1000
 
             if processed_count > 0:
-                logger.info(f"Processed and sent {processed_count} new emails to Kafka for user {user_id}.")
-            
-            updated_state["last_successful_poll_status_message"] = f"Successfully polled. Found {len(emails)} messages, processed {processed_count} new."
+                logger.info(f"Dispatched {processed_count} new emails to the processing pipeline for user {user_id}.")
+
+            updated_state["last_successful_poll_status_message"] = f"Successfully polled. Found {len(fetched_emails)} messages, dispatched {processed_count} new." # noqa
             updated_state["consecutive_failure_count"] = 0
             updated_state["error_backoff_until_timestamp"] = None
 
@@ -149,11 +183,14 @@ class GmailPollingService:
                     updated_state["is_enabled"] = False # Disable after too many failures
                     updated_state["next_scheduled_poll_time"] = datetime.datetime.now(timezone.utc) + datetime.timedelta(days=1) # Check much later
             else:
-                next_interval = self._calculate_next_poll_interval(user_profile or {})
+                if mode == 'triggers':
+                    next_interval = 60  # Always poll every 60 seconds for triggers
+                else: # proactivity
+                    next_interval = self._calculate_next_poll_interval(user_profile or {})
                 updated_state["next_scheduled_poll_time"] = datetime.datetime.now(timezone.utc) + datetime.timedelta(seconds=next_interval)
             
             updated_state["is_currently_polling"] = False # Release lock
-            await self.db_manager.update_polling_state(user_id, self.service_name, updated_state)
+            await self.db_manager.update_polling_state(user_id, self.service_name, mode, updated_state)
             logger.info(f"Poll cycle finished for user {user_id}. Next poll at {updated_state['next_scheduled_poll_time']}.")
 
 
@@ -162,12 +199,12 @@ class GmailPollingService:
         Periodically checks MongoDB for users whose Gmail polling is due.
         """
         logger.info(f"Scheduler starting loop (interval: {POLL_CFG['SCHEDULER_TICK_SECONDS']}s)")
-        await self.db_manager.initialize_indices_if_needed()
-        await self.db_manager.reset_stale_polling_locks(self.service_name) # Reset locks for "gmail"
+        # await self.db_manager.initialize_indices_if_needed()
+        # await self.db_manager.reset_stale_polling_locks(self.service_name) # Reset locks for "gmail"
 
         while True:
             try:
-                due_tasks_states = await self.db_manager.get_due_polling_tasks_for_service(self.service_name)
+                due_tasks_states = await self.db_manager.get_due_polling_tasks_for_service(self.service_name, 'proactivity') # Hardcoded for now
                 
                 if not due_tasks_states:
                     # logger.debug("Scheduler: No due Gmail polling tasks.")
@@ -179,12 +216,12 @@ class GmailPollingService:
                     user_id = task_state["user_id"]
                     
                     # Try to acquire a lock on the task
-                    locked_task_state = await self.db_manager.set_polling_status_and_get(user_id, self.service_name)
+                    locked_task_state = await self.db_manager.set_polling_status_and_get(user_id, self.service_name, 'proactivity')
                     
                     if locked_task_state:
                         logger.info(f"Scheduler: Acquired lock for {user_id}. Triggering poll cycle.")
                         # Run the poll cycle in a new task to not block the scheduler loop
-                        asyncio.create_task(self._run_single_user_poll_cycle(user_id, locked_task_state))
+                        asyncio.create_task(self._run_single_user_poll_cycle(user_id, locked_task_state, 'proactivity'))
                     else:
                         logger.debug(f"Scheduler: Could not acquire lock for {user_id} (already processing or no longer due).")
 

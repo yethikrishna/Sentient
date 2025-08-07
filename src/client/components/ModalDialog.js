@@ -29,12 +29,12 @@ const ModalDialog = ({
 				return "bg-green-600 hover:bg-green-500"
 			case "primary":
 			default:
-				return "bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)]"
+				return "bg-brand-orange hover:bg-brand-orange/90 text-brand-black font-semibold"
 		}
 	}
 
 	return (
-		<div className="fixed inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm z-50 p-4">
+		<div className="fixed inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm z-[60] p-4">
 			<div className="bg-neutral-800 rounded-lg p-6 shadow-xl space-y-5 w-full max-w-md border border-neutral-700">
 				{" "}
 				{/* Adjusted width/padding */}
@@ -86,7 +86,7 @@ const ModalDialog = ({
 						disabled={confirmButtonLoading}
 						className={cn(
 							// Confirm button with dynamic styling
-							"py-2 px-5 rounded-md text-white text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-60",
+							"py-2 px-4 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-60",
 							getConfirmButtonStyle() // Apply dynamic style
 						)}
 					>

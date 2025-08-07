@@ -15,7 +15,7 @@ if os.path.exists(dotenv_path):
 
 mcp = FastMCP(
     name="GShoppingServer",
-    instructions="This server provides a tool to search for products using the Google Shopping Search API.",
+    instructions="Provides a tool to search for products online using Google's search capabilities.",
 )
 
 @mcp.resource("prompt://gshopping-agent-system")
@@ -32,8 +32,8 @@ def build_gshopping_user_prompt(query: str, username: str, previous_tool_respons
 @mcp.tool
 async def search_products(ctx: Context, query: str) -> Dict[str, Any]:
     """
-    Searches for products online based on a query.
-    Returns a list of products with titles, links, prices, and snippets.
+    Searches for products based on a text `query`.
+    Returns a list of matching products, including their title, link, price, and brand where available.
     """
     try:
         user_id = auth.get_user_id_from_context(ctx)

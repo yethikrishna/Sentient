@@ -1,17 +1,16 @@
 import React from "react"
 import { useState } from "react"
+import { cn } from "@utils/cn"
 import {
 	IconClipboard,
 	IconCheck,
 	IconBrain,
-	IconSettings,
-	IconGlobe,
 	IconLink,
 	IconMail,
-	IconCode,
+	IconTrash,
 	IconChevronDown,
 	IconChevronUp,
-	IconTerminal2
+	IconArrowBackUp
 } from "@tabler/icons-react"
 import { Tooltip } from "react-tooltip"
 import ReactMarkdown from "react-markdown"
@@ -23,6 +22,7 @@ import IconGoogleSlides from "./icons/IconGoogleSlides"
 import IconGoogleDrive from "./icons/IconGoogleDrive"
 import IconGoogleMail from "./icons/IconGoogleMail"
 import toast from "react-hot-toast"
+import FileCard from "./FileCard"
 
 // LinkButton component (no changes needed)
 const LinkButton = ({ href, children }) => {
@@ -167,38 +167,40 @@ const ToolResultBlock = ({ name, result, isExpanded, onToggle }) => {
 
 // Main ChatBubble component
 const ChatBubble = ({
+	role,
+	content,
+	tools = [],
+	onReply,
+	onDelete,
 	message,
-	isUser,
-	memoryUsed,
-	agentsUsed,
-	internetUsed
+	allMessages = []
 }) => {
 	const [copied, setCopied] = useState(false)
 	const [expandedStates, setExpandedStates] = useState({})
-	const [renderedContent, setRenderedContent] = useState([])
+	const [processedContent, setProcessedContent] = useState({
+		content: content,
+		repliedTo: null
+	})
+	const isUser = role === "user"
 
-	// Memoize the parsed content to avoid re-parsing on every render
 	React.useEffect(() => {
-		setRenderedContent(renderMessageContent())
-	}, [message, expandedStates]) // Rerun parsing if message or expansion state changes
+		const replyRegex = /<reply_to id="([^"]+)">[\s\S]*?<\/reply_to>\n*/
+		const match = content.match(replyRegex)
 
-	// Function to copy message content to clipboard
-	const handleCopyToClipboard = () => {
-		// Build the text to copy from the parsed parts, ensuring we only copy the final answer
-		const plainText = renderedContent
-			.filter((part) => part.type === "answer")
-			.map((part) => part.props.children)
-			.join("")
-			.trim()
-
-		navigator.clipboard
-			.writeText(plainText)
-			.then(() => {
-				setCopied(true)
-				setTimeout(() => setCopied(false), 2000)
+		if (match) {
+			const repliedToId = match[1]
+			const actualContent = content.replace(replyRegex, "")
+			const originalMessage = allMessages.find(
+				(m) => m.id === repliedToId
+			)
+			setProcessedContent({
+				content: actualContent,
+				repliedTo: originalMessage
 			})
-			.catch((err) => toast.error(`Failed to copy text: ${err}`))
-	}
+		} else {
+			setProcessedContent({ content: content, repliedTo: null })
+		}
+	}, [content, allMessages])
 
 	// Function to toggle expansion of collapsible sections
 	const toggleExpansion = (id) => {
@@ -208,31 +210,49 @@ const ChatBubble = ({
 	// ***************************************************************
 	// *** UPDATED LOGIC: Function to render message content       ***
 	// ***************************************************************
-	const renderMessageContent = () => {
-		if (isUser || typeof message !== "string" || !message) {
+	const transformLinkUri = (uri) => {
+		if (uri.startsWith("file:")) {
+			return uri // Keep our custom protocol
+		}
+		// Let ReactMarkdown handle its default security for other links
+		return uri
+	}
+	const renderMessageContent = (contentToRender) => {
+		const markdownComponents = {
+			a: ({ href, children }) => {
+				console.log("Link clicked:", href)
+				if (href && href.startsWith("file:")) {
+					const filename = href.substring(5)
+					return <FileCard filename={filename} />
+				}
+				return <LinkButton href={href} children={children} />
+			}
+		}
+
+		if (isUser || typeof contentToRender !== "string" || !contentToRender) {
 			return [
 				<ReactMarkdown
 					key="user-md"
 					className="prose prose-invert"
 					remarkPlugins={[remarkGfm]}
-					children={message || ""}
-					components={{
-						a: ({ href, children }) => (
-							<LinkButton href={href} children={children} />
-						)
-					}}
+					children={contentToRender || ""}
+					urlTransform={transformLinkUri}
+					components={markdownComponents}
 				/>
 			]
 		}
 
 		const contentParts = []
 		const regex =
-			/(<think>[\s\S]*?<\/think>|<tool_code[^>]*>[\s\S]*?<\/tool_code>|<tool_result[^>]*>[\s\S]*?<\/tool_result>|<answer>[\s\S]*?<\/answer>)/g
+			/(<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>|<tool_(?:code|call)[^>]*>[\s\S]*?<\/tool_code>|<tool_result[^>]*>[\s\S]*?<\/tool_result>|<answer>[\s\S]*?<\/answer>)/g
 		let lastIndex = 0
-		let inToolCallPhase = false // State to track if we are between a tool_code and tool_result
+		let inToolCallPhase = false
 
-		for (const match of message.matchAll(regex)) {
-			const precedingText = message.substring(lastIndex, match.index)
+		for (const match of contentToRender.matchAll(regex)) {
+			const precedingText = contentToRender.substring(
+				lastIndex,
+				match.index
+			)
 
 			// 1. Add any text that came before the current tag, but only if we're not in the "ignore" phase
 			if (precedingText.trim() && !inToolCallPhase) {
@@ -243,14 +263,14 @@ const ChatBubble = ({
 			const tag = match[0]
 			let subMatch
 
-			if ((subMatch = tag.match(/<think>([\s\S]*?)<\/think>/))) {
-				const thinkContent = subMatch[1].trim()
+			if ((subMatch = tag.match(/<think(?:ing)?>([\s\S]*?)<\/think(?:ing)?>/))) {
+				const thinkContent = subMatch[1]?.trim()
 				if (thinkContent) {
 					contentParts.push({ type: "think", content: thinkContent })
 				}
 			} else if (
 				(subMatch = tag.match(
-					/<tool_code name="([^"]+)">[\s\S]*?<\/tool_code>/
+					/<tool_(?:code|call) name="([^"]+)">[\s\S]*?<\/tool_code>/
 				))
 			) {
 				// When we find a tool_code, we enter the "ignore" phase and do not render the code itself.
@@ -281,7 +301,7 @@ const ChatBubble = ({
 		}
 
 		// 3. Add any remaining text after the last tag (this is the final, streaming answer)
-		const remainingText = message.substring(lastIndex)
+		const remainingText = contentToRender.substring(lastIndex)
 		if (remainingText && !inToolCallPhase) {
 			contentParts.push({ type: "answer", content: remainingText })
 		}
@@ -335,11 +355,8 @@ const ChatBubble = ({
 						className="prose prose-invert"
 						remarkPlugins={[remarkGfm]}
 						children={part.content}
-						components={{
-							a: ({ href, children }) => (
-								<LinkButton href={href} children={children} />
-							)
-						}}
+						urlTransform={transformLinkUri}
+						components={markdownComponents}
 					/>
 				)
 			}
@@ -348,62 +365,138 @@ const ChatBubble = ({
 		})
 	}
 
+	const renderedContent = React.useMemo(
+		() => renderMessageContent(processedContent.content),
+		[processedContent.content, expandedStates, isUser]
+	)
+
+	// Function to copy message content to clipboard
+	const handleCopyToClipboard = () => {
+		// Parse the raw content to extract only the user-facing parts for copying.
+		const contentToParse = processedContent.content
+		if (!contentToParse || typeof contentToParse !== "string") {
+			toast.error("Nothing to copy.")
+			return
+		}
+
+		const answerParts = []
+		const regex =
+			/(<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>|<tool_code[^>]*>[\s\S]*?<\/tool_code>|<tool_result[^>]*>[\s\S]*?<\/tool_result>|<answer>[\s\S]*?<\/answer>)/g
+		let lastIndex = 0
+		let inToolCallPhase = false // To ignore raw text between tool_code and tool_result
+
+		for (const match of contentToParse.matchAll(regex)) {
+			const precedingText = contentToParse.substring(
+				lastIndex,
+				match.index
+			)
+			if (precedingText.trim() && !inToolCallPhase) {
+				answerParts.push(precedingText.trim())
+			}
+
+			const tag = match[0]
+			if (tag.startsWith("<tool_code")) inToolCallPhase = true
+			else if (tag.startsWith("<tool_result")) inToolCallPhase = false
+			else if (tag.startsWith("<answer>")) {
+				const answerContent =
+					tag.match(/<answer>([\s\S]*?)<\/answer>/)?.[1] || ""
+				if (answerContent) answerParts.push(answerContent.trim())
+			}
+			lastIndex = match.index + tag.length
+		}
+		const remainingText = contentToParse.substring(lastIndex)
+		if (remainingText.trim() && !inToolCallPhase) {
+			answerParts.push(remainingText.trim())
+		}
+		const plainText = answerParts.join("\n\n")
+
+		navigator.clipboard
+			.writeText(plainText)
+			.then(() => {
+				setCopied(true)
+				setTimeout(() => setCopied(false), 2000)
+			})
+			.catch((err) => toast.error(`Failed to copy text: ${err}`))
+	}
+
 	return (
 		<div
-			className={`p-4 rounded-lg ${
+			className={cn(
+				"px-4 py-3 rounded-2xl relative group text-white backdrop-blur-sm",
+				"max-w-full md:max-w-[80%]",
 				isUser
-					? "bg-[var(--color-accent-blue)] text-white text-base font-medium self-end max-w-[80%] sm:max-w-md lg:max-w-lg"
-					: "bg-transparent text-base text-white self-start w-full"
-			} mb-2 relative`}
+					? "bg-blue-600/30 border border-blue-500/50 rounded-br-none"
+					: "bg-neutral-800/30 border border-neutral-700/50 rounded-bl-none"
+			)}
 			style={{ wordBreak: "break-word" }}
 		>
-			{renderedContent}
-			{!isUser && (
-				<div className="flex justify-start items-center space-x-4 mt-6">
-					<Tooltip id="chat-bubble-tooltip" />
-					{memoryUsed && (
-						<span
-							data-tooltip-id="chat-bubble-tooltip"
-							data-tooltip-content="Memory was used to generate this response"
-							className="flex items-center text-[var(--color-accent-blue)]"
-						>
-							<IconBrain size={18} />
-						</span>
-					)}
-					{agentsUsed && (
-						<span
-							data-tooltip-id="chat-bubble-tooltip"
-							data-tooltip-content="Agents were used to process this response"
-							className="flex items-center text-[var(--color-text-secondary)]"
-						>
-							<IconSettings size={18} />
-						</span>
-					)}
-					{internetUsed && (
-						<span
-							data-tooltip-id="chat-bubble-tooltip"
-							data-tooltip-content="Internet was used to gather information for this response"
-							className="flex items-center text-[var(--color-text-secondary)]"
-						>
-							<IconGlobe size={18} />
-						</span>
-					)}
-					<button
-						onClick={handleCopyToClipboard}
-						className="flex items-center text-[var(--color-text-secondary)] hover:text-[var(--color-accent-green)] transition-colors"
-						data-tooltip-id="chat-bubble-tooltip"
-						data-tooltip-content={
-							copied ? "Copied!" : "Copy response"
-						}
-					>
-						{copied ? (
-							<IconCheck size={18} />
-						) : (
-							<IconClipboard size={18} />
-						)}
-					</button>
+			{processedContent.repliedTo && (
+				<div className="mb-3 p-2 border-l-2 border-neutral-500 bg-black/20 rounded-md">
+					<p className="text-xs text-neutral-400 font-semibold">
+						Replying to{" "}
+						{processedContent.repliedTo.role === "user"
+							? "you"
+							: "assistant"}
+					</p>
+					<p className="text-sm text-neutral-300 mt-1 truncate">
+						{processedContent.repliedTo.content}
+					</p>
 				</div>
 			)}
+			{renderedContent}
+			<div
+				className={cn(
+					"flex items-center gap-2 mt-4 transition-opacity",
+					"opacity-100 md:opacity-0 group-hover:md:opacity-100",
+					isUser ? "justify-end" : "justify-start"
+				)}
+			>
+				<Tooltip
+					place={isUser ? "left-start" : "right-start"}
+					id="chat-bubble-tooltip"
+					style={{ zIndex: 9999 }}
+				/>
+
+				{/* Assistant-only buttons */}
+				{!isUser && (
+					<>
+						<button
+							onClick={handleCopyToClipboard}
+							className="flex items-center p-1.5 rounded-full text-neutral-400 hover:bg-neutral-700 hover:text-white"
+							data-tooltip-id="chat-bubble-tooltip"
+							data-tooltip-content={
+								copied ? "Copied!" : "Copy response"
+							}
+						>
+							{copied ? (
+								<IconCheck size={16} />
+							) : (
+								<IconClipboard size={16} />
+							)}
+						</button>
+						<button
+							onClick={() => onReply(message)}
+							className="p-1.5 rounded-full text-neutral-400 hover:bg-neutral-700 hover:text-white"
+							data-tooltip-id="chat-bubble-tooltip"
+							data-tooltip-content="Reply"
+						>
+							<IconArrowBackUp size={16} />
+						</button>
+					</>
+				)}
+
+				{/* Delete button for both user and assistant */}
+				{onDelete && (
+					<button
+						onClick={() => onDelete(message.id)}
+						className="p-1.5 rounded-full text-neutral-400 hover:bg-neutral-700 hover:text-red-400"
+						data-tooltip-id="chat-bubble-tooltip"
+						data-tooltip-content="Delete"
+					>
+						<IconTrash size={16} />
+					</button>
+				)}
+			</div>
 		</div>
 	)
 }

@@ -1,0 +1,6 @@
+fastmcp
+python-dotenv
+motor
+cryptography
+crawl4ai
+playwright

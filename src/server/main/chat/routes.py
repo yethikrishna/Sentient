@@ -4,10 +4,9 @@ import json
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import asyncio
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import JSONResponse, StreamingResponse
-
-from main.chat.models import ChatMessageInput
+from main.chat.models import ChatMessageInput, DeleteMessageRequest
 from main.chat.utils import generate_chat_llm_stream
 from main.auth.utils import PermissionChecker
 from main.dependencies import mongo_manager
@@ -17,41 +16,50 @@ router = APIRouter(
     tags=["Chat"]
 )
 logger = logging.getLogger(__name__)
-
 @router.post("/message", summary="Process Chat Message (Overlay Chat)")
 async def chat_endpoint(
     request_body: ChatMessageInput, 
     user_id: str = Depends(PermissionChecker(required_permissions=["read:chat", "write:chat"]))
 ):
+    # 1. Check if there are any user messages
+    if not any(msg.get("role") == "user" for msg in request_body.messages):
+        raise HTTPException(status_code=400, detail="No user message found in the request.")
+
+    # 2. Save all new user messages since the last assistant message
+    for msg in reversed(request_body.messages):
+        if msg.get("role") == "assistant":
+            break
+        if msg.get("role") == "user":
+            await mongo_manager.add_message(user_id=user_id, role="user", content=msg.get("content", ""), message_id=msg.get("id"))
+
     # Fetch comprehensive user context
     user_profile = await mongo_manager.get_user_profile(user_id)
     user_data = user_profile.get("userData", {}) if user_profile else {}
     personal_info = user_data.get("personalInfo", {})
-    preferences = user_data.get("preferences", {})
 
     user_context = {
         "name": personal_info.get("name", "User"),
         "timezone": personal_info.get("timezone", "UTC"),
         "location": personal_info.get("location"),
-        "communication_style": preferences.get("communicationStyle", "friendly and professional")
     }
 
-    # The new stateless chat sends the entire message history.
-    # We no longer save or retrieve history from the database here.
-    
     async def event_stream_generator():
+        assistant_response_buffer = ""
+        assistant_message_id = None
         try:
             async for event in generate_chat_llm_stream(
                 user_id,
                 request_body.messages,
                 user_context,
-                preferences,
                 db_manager=mongo_manager
             ):
                 if not event:
                     continue
-                print(f"[INFO] Streaming event to user {user_id}: {json.dumps(event)}")
-                # yield as bytes and flush
+                if event.get("type") == "assistantStream":
+                    assistant_response_buffer += event.get("token", "")
+                    if not assistant_message_id and event.get("messageId"):
+                        assistant_message_id = event["messageId"]
+
                 yield json.dumps(event) + "\n"
         except asyncio.CancelledError:
             print(f"[INFO] Client disconnected, stream cancelled for user {user_id}.")
@@ -62,6 +70,16 @@ async def chat_endpoint(
                 "message": "Sorry, I encountered an error while processing your request."
             }
             yield (json.dumps(error_response) + "\n").encode("utf-8")
+        finally:
+            # Save the complete assistant response at the end of the stream
+            if assistant_response_buffer.strip() and assistant_message_id:
+                await mongo_manager.add_message(
+                    user_id=user_id,
+                    role="assistant",
+                    content=assistant_response_buffer.strip(),
+                    message_id=assistant_message_id
+                )
+                logger.info(f"Saved assistant response for user {user_id} with ID {assistant_message_id}")
 
     return StreamingResponse(
         event_stream_generator(),
@@ -71,4 +89,40 @@ async def chat_endpoint(
             "X-Accel-Buffering": "no",  # Disable Nginx buffering
             "Transfer-Encoding": "chunked",  # Hint chunked encoding
         }
+    )
+@router.get("/history", summary="Get message history for a user")
+async def get_chat_history(
+    request: Request,
+    user_id: str = Depends(PermissionChecker(required_permissions=["read:chat"]))
+):
+    limit = int(request.query_params.get("limit", 30))
+    before_timestamp = request.query_params.get("before_timestamp")
+
+    messages = await mongo_manager.get_message_history(user_id, limit, before_timestamp)
+
+    # The frontend expects messages in chronological order, but we fetch them in reverse chronological.
+    # So we must reverse them before sending.
+    return JSONResponse(content={"messages": messages[::-1]})
+@router.post("/delete", summary="Delete a message or clear chat history")
+async def delete_message(
+    request: DeleteMessageRequest,
+    user_id: str = Depends(PermissionChecker(required_permissions=["write:chat"]))
+):
+    if request.clear_all:
+        deleted_count = await mongo_manager.delete_all_messages(user_id)
+        return JSONResponse(content={"message": f"Successfully deleted {deleted_count} messages."})
+
+    if request.message_id:
+        success = await mongo_manager.delete_message(user_id, request.message_id)
+        if success:
+            return JSONResponse(content={"message": "Message deleted successfully."})
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Message not found or you do not have permission to delete it."
+            )
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="You must provide either a 'message_id' or 'clear_all: true'."
     )

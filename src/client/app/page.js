@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { useUser } from "@auth0/nextjs-auth0"
 import AnimatedLogo from "@components/AnimatedLogo"
 import toast from "react-hot-toast"
+import InteractiveNetworkBackground from "@components/ui/InteractiveNetworkBackground"
 import React from "react"
 
 /**
@@ -13,7 +14,7 @@ import React from "react"
  * This component is responsible for checking the user's authentication and onboarding status,
  * then redirecting them to the appropriate page (/auth/login, /onboarding, or /chat).
  * It displays a loading animation during this process.
- * The final destination for an authenticated and onboarded user is /home.
+ * The final destination for an authenticated and onboarded user is /chat.
  * @returns {React.ReactNode} - The Home component UI.
  */
 const Home = () => {
@@ -104,7 +105,7 @@ const Home = () => {
 			// In self-host mode, user is always "present", just need onboarding status.
 			if (onboarded !== null) {
 				if (onboarded) {
-					router.push("/home")
+					router.push("/chat")
 				} else {
 					router.push("/onboarding")
 				}
@@ -115,7 +116,7 @@ const Home = () => {
 		// Only redirect if auth is loaded, user exists, and onboarding status is determined.
 		if (!isAuthLoading && user && onboarded !== null) {
 			if (onboarded) {
-				router.push("/home")
+				router.push("/chat")
 			} else {
 				router.push("/onboarding")
 			}
@@ -124,8 +125,12 @@ const Home = () => {
 
 	// Show a loading screen while checking authentication or onboarding status.
 	return (
-		<div className="min-h-screen flex flex-col items-center justify-center bg-[var(--color-primary-background)]">
-			<div className="flex flex-col items-center justify-center h-full backdrop-blur-xs">
+		<div className="flex-1 min-h-screen flex flex-col items-center justify-center relative overflow-hidden">
+			<div className="absolute inset-0 z-[-1] network-grid-background">
+				<InteractiveNetworkBackground />
+			</div>
+			<div className="absolute -top-[250px] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-brand-orange/10 rounded-full blur-3xl -z-10" />
+			<div className="relative z-10 flex flex-col items-center justify-center h-full backdrop-blur-xs">
 				<AnimatedLogo />
 				<h1 className="text-white text-4xl mt-4">Sentient</h1>
 			</div>

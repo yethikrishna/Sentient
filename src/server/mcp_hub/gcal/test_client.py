@@ -18,8 +18,8 @@ llm_cfg = {
 mcp_server_url = "http://127.0.0.1:9002/sse"
 
 # 3. User Authentication
-#    IMPORTANT: Replace with a valid User ID from your MongoDB
-USER_ID = "kabeer"
+#    IMPORTANT: Replace with a valid User ID from your MongoDB that has gcalendar connected
+USER_ID = "google-oauth2|115437244827618197332"
 
 
 # --- Agent Setup ---
@@ -53,49 +53,47 @@ def run_agent_interaction():
     print("\n--- GCal Agent Ready ---")
     print("You can now interact with your Google Calendar.")
     print("Type 'quit' or 'exit' to end the session.")
-    print("\nExample commands:")
-    print("  - what are my next 5 events?")
-    print("  - schedule a meeting with the team for tomorrow at 3pm for one hour titled 'Project Sync'")
-    print("  - add an event 'Dentist Appointment' for 2024-10-25 from 10:00 to 10:30")
-    print("  - find my 'Project Sync' meeting and delete it")
-    print("  - search for any events about 'lunch'")
+    print("\nExample Commands:")
+    print("  - what are my next 5 events on my primary calendar?")
+    print("  - create an event titled 'Project Kickoff' for tomorrow at 2pm for 90 minutes")
+    print("  - search for any events about 'lunch' this week")
+    print("  - what calendars do I have access to?")
+    print("  - delete the event with ID '...event_id...'")
     print("-" * 25)
 
     messages = []
     while True:
         try:
-            user_input = input("You: ")
-            if user_input.lower() in ["quit", "exit"]:
-                print("Exiting agent...")
+            print("\nYou: ", end="")
+            user_input = input()
+            if user_input.lower() in ["quit", "exit", "q"]:
+                print("\n👋  Goodbye!")
                 break
 
             messages.append({'role': 'user', 'content': user_input})
-            print("\n--- Agent is processing... ---")
+            print("\nAgent: ", end="", flush=True)
             
-            full_response_history = None
+            last_assistant_text = ""
+            final_response_from_run = None
+            final_assistant_message = None
             for response in agent.run(messages=messages):
-                full_response_history = response
+                if isinstance(response, list) and response and response[-1].get("role") == "assistant":
+                    current_text = response[-1].get("content", "")
+                    if isinstance(current_text, str):
+                        delta = current_text[len(last_assistant_text):]
+                        print(delta, end="", flush=True)
+                        last_assistant_text = current_text
+                    final_assistant_message = response[-1]
 
-            if full_response_history:
-                print("\n--- Full Internal History ---")
-                print(json.dumps(full_response_history, indent=2))
-                print("-----------------------------\n")
-
-                messages = full_response_history
-                
-                final_answer = "No final textual answer from agent."
-                if messages and messages[-1]['role'] == 'assistant':
-                    content = messages[-1].get('content')
-                    if content:
-                       final_answer = content
-                
-                print(f"Agent: {final_answer}")
+            print()
+            if final_assistant_message:
+                messages.append(final_assistant_message)
             else:
-                print("Agent: I could not process that request.")
+                print("I could not process that request.")
                 messages.pop()
 
         except KeyboardInterrupt:
-            print("\nExiting agent...")
+            print("\n👋  Goodbye!")
             break
         except Exception as e:
             print(f"\nAn error occurred: {e}")

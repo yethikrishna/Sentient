@@ -1,22 +1,227 @@
 "use client"
 
-import React, { useState, useEffect, useCallback } from "react"
+import React, { useState, useEffect, useCallback } from "react" // eslint-disable-line
 import toast from "react-hot-toast"
-import { Tooltip } from "react-tooltip"
 import { useRouter } from "next/navigation"
-import { motion } from "framer-motion"
+import { motion, AnimatePresence } from "framer-motion"
 import {
 	IconLoader,
 	IconBell,
 	IconAlertCircle,
+	IconX,
 	IconArrowRight,
-	IconX
+	IconCheck,
+	IconThumbDown,
+	IconChevronDown,
+	IconChevronUp,
+	IconLink
 } from "@tabler/icons-react"
+import { formatDistanceToNow, parseISO } from "date-fns"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
+
+const SuggestionDetails = ({ payload }) => {
+	if (!payload) return null
+
+	const { reasoning, gathered_context } = payload
+	const triggerEvent = gathered_context?.trigger_event
+	const searchResults = gathered_context?.universal_search_results
+
+	return (
+		<div className="mt-3 pt-3 border-t border-neutral-700/50 text-xs space-y-4">
+			{reasoning && (
+				<div>
+					<h5 className="font-semibold text-neutral-300 mb-1">
+						Why was this suggested?
+					</h5>
+					<div className="text-neutral-400 italic">
+						<ReactMarkdown remarkPlugins={[remarkGfm]}>
+							{`"${reasoning}"`}
+						</ReactMarkdown>
+					</div>
+				</div>
+			)}
+			{triggerEvent && (
+				<div>
+					<h5 className="font-semibold text-neutral-300 mb-1">
+						Source Event ({triggerEvent.event_type})
+					</h5>
+					{triggerEvent.event_data && triggerEvent.event_data.url ? (
+						<div className="mt-1">
+							{(triggerEvent.event_data.summary ||
+								triggerEvent.event_data.subject) && (
+								<p className="text-neutral-300 truncate">
+									{triggerEvent.event_data.summary ||
+										triggerEvent.event_data.subject}
+								</p>
+							)}
+							<a
+								href={triggerEvent.event_data.url}
+								target="_blank"
+								rel="noopener noreferrer"
+								className="text-blue-400 hover:underline text-xs flex items-center gap-1 mt-1"
+							>
+								<IconLink size={12} />
+								View Original{" "}
+								{triggerEvent.event_type === "gcalendar"
+									? "Event"
+									: "Email"}
+							</a>
+						</div>
+					) : (
+						<pre className="bg-black/30 p-2 rounded-md text-neutral-400 whitespace-pre-wrap font-mono text-[11px] max-h-40 overflow-auto custom-scrollbar">
+							{JSON.stringify(triggerEvent.event_data, null, 2)}
+						</pre>
+					)}
+				</div>
+			)}
+			{searchResults && Object.keys(searchResults).length > 0 && (
+				<div>
+					<h5 className="font-semibold text-neutral-300 mb-1">
+						Related Context Found
+					</h5>
+					<pre className="bg-black/30 p-2 rounded-md text-neutral-400 whitespace-pre-wrap font-mono text-[11px] max-h-40 overflow-auto custom-scrollbar">
+						{JSON.stringify(searchResults, null, 2)}
+					</pre>
+				</div>
+			)}
+		</div>
+	)
+}
+
+const NotificationItem = ({
+	notification,
+	onDelete,
+	onAction,
+	onGeneralClick,
+	userTimezone,
+	isExpanded,
+	onToggleExpand
+}) => {
+	let formattedTimestamp = "..." // Default placeholder
+
+	try {
+		const date = parseISO(notification.timestamp)
+		if (userTimezone) {
+			formattedTimestamp = new Intl.DateTimeFormat(undefined, {
+				month: "short",
+				day: "numeric",
+				hour: "numeric",
+				minute: "2-digit",
+				hour12: true,
+				timeZone: userTimezone
+			}).format(date)
+		} else {
+			formattedTimestamp = formatDistanceToNow(date, { addSuffix: true })
+		}
+	} catch (e) {
+		formattedTimestamp = "Recently" // Fallback for invalid date
+	}
+
+	const isSuggestion = notification.type === "proactive_suggestion"
+
+	const handleClick = () => {
+		if (isSuggestion) {
+			onToggleExpand()
+		} else {
+			onGeneralClick(notification)
+		}
+	}
+
+	return (
+		<motion.div
+			layout
+			initial={{ opacity: 0, y: 10 }}
+			animate={{ opacity: 1, y: 0 }}
+			exit={{ opacity: 0, scale: 0.95 }}
+			className="bg-neutral-800/50 p-3 rounded-lg border border-neutral-700/50 shadow-sm transition-colors group"
+		>
+			<div
+				onClick={handleClick}
+				className="flex items-start gap-4 cursor-pointer hover:bg-neutral-700/70 -m-2 p-2 rounded-md"
+			>
+				<div className="flex-shrink-0 pt-1 self-start">
+					<IconBell className="w-5 h-5 text-[var(--color-accent-blue)]" />
+				</div>
+				<div className="flex-grow">
+					<div className="text-neutral-100 text-sm leading-relaxed mb-1">
+						<ReactMarkdown remarkPlugins={[remarkGfm]}>
+							{notification.message || "No message content."}
+						</ReactMarkdown>
+					</div>
+					<p className="text-neutral-400 text-xs">
+						{formattedTimestamp}
+					</p>
+				</div>
+				<div className="flex items-center gap-1 flex-shrink-0 self-start pt-1">
+					<button
+						onClick={(e) => {
+							e.stopPropagation()
+							onDelete(notification.id)
+						}}
+						className="p-1.5 text-neutral-500 rounded-full opacity-0 group-hover:opacity-100 hover:bg-neutral-600 hover:text-red-400 transition-all"
+					>
+						<IconX size={14} />
+					</button>
+					{isSuggestion &&
+						(isExpanded ? (
+							<IconChevronUp size={16} />
+						) : (
+							<IconChevronDown size={16} />
+						))}
+					{notification.task_id && !isSuggestion && (
+						<IconArrowRight className="w-5 h-5 text-neutral-500 transition-transform group-hover:translate-x-0.5" />
+					)}
+				</div>
+			</div>
+
+			{isSuggestion && (
+				<div className="mt-3 pt-3 border-t border-neutral-700/50 flex justify-end gap-2">
+					<button
+						onClick={(e) => {
+							e.stopPropagation()
+							onAction(notification.id, "dismissed")
+						}}
+						className="flex items-center gap-1.5 text-xs font-semibold text-neutral-300 bg-neutral-700/80 hover:bg-neutral-700 px-3 py-1.5 rounded-md"
+					>
+						<IconThumbDown size={14} /> Dismiss
+					</button>
+					<button
+						onClick={(e) => {
+							e.stopPropagation()
+							onAction(notification.id, "approved")
+						}}
+						className="flex items-center gap-1.5 text-xs font-semibold text-white bg-green-600/80 hover:bg-green-600 px-3 py-1.5 rounded-md"
+					>
+						<IconCheck size={14} /> Approve
+					</button>
+				</div>
+			)}
+			<AnimatePresence>
+				{isExpanded && isSuggestion && (
+					<motion.div
+						initial={{ height: 0, opacity: 0 }}
+						animate={{ height: "auto", opacity: 1 }}
+						exit={{ height: 0, opacity: 0 }}
+						transition={{ duration: 0.2, ease: "easeInOut" }}
+						className="overflow-hidden"
+					>
+						<SuggestionDetails
+							payload={notification.suggestion_payload}
+						/>
+					</motion.div>
+				)}
+			</AnimatePresence>
+		</motion.div>
+	)
+}
 
 const NotificationsOverlay = ({ onClose }) => {
 	const [notifications, setNotifications] = useState([])
 	const [isLoading, setIsLoading] = useState(true)
 	const [error, setError] = useState(null)
+	const [userTimezone, setUserTimezone] = useState(null)
+	const [expandedId, setExpandedId] = useState(null)
 	const router = useRouter()
 
 	const fetchNotifications = useCallback(async () => {
@@ -42,8 +247,8 @@ const NotificationsOverlay = ({ onClose }) => {
 			} else {
 				throw new Error("Invalid notification data format")
 			}
-		} catch (error) {
-			const errorMsg = `Error fetching notifications: ${error.message}`
+		} catch (err) {
+			const errorMsg = `Error fetching notifications: ${err.message}`
 			toast.error(errorMsg)
 			setError(errorMsg)
 		} finally {
@@ -51,24 +256,25 @@ const NotificationsOverlay = ({ onClose }) => {
 		}
 	}, [])
 
+	const fetchUserTimezone = useCallback(async () => {
+		try {
+			const response = await fetch("/api/user/data")
+			if (!response.ok) throw new Error("Failed to fetch user data")
+			const result = await response.json()
+			const timezone = result?.data?.personalInfo?.timezone
+			setUserTimezone(timezone)
+		} catch (err) {
+			console.error("Failed to fetch user timezone", err)
+		}
+	}, [])
+
 	useEffect(() => {
 		fetchNotifications()
-	}, [fetchNotifications])
-
-	const formatTimestamp = (timestamp) => {
-		if (!timestamp) return "No timestamp"
-		try {
-			return new Date(timestamp).toLocaleString(undefined, {
-				dateStyle: "medium",
-				timeStyle: "short"
-			})
-		} catch (e) {
-			return timestamp
-		}
-	}
+		fetchUserTimezone()
+	}, [fetchNotifications, fetchUserTimezone])
 
 	const handleDelete = async (e, notificationId) => {
-		e.stopPropagation()
+		if (e && e.stopPropagation) e.stopPropagation()
 		const originalNotifications = [...notifications]
 		setNotifications(notifications.filter((n) => n.id !== notificationId))
 
@@ -85,20 +291,77 @@ const NotificationsOverlay = ({ onClose }) => {
 				)
 			}
 			toast.success("Notification dismissed.")
-		} catch (error) {
-			toast.error(`Error dismissing notification: ${error.message}`)
+		} catch (err) {
+			toast.error(`Error dismissing notification: ${err.message}`)
+			setNotifications(originalNotifications)
+		}
+	}
+
+	const handleSuggestionAction = async (notificationId, action) => {
+		const originalNotifications = [...notifications]
+		setNotifications(notifications.filter((n) => n.id !== notificationId))
+
+		try {
+			const response = await fetch("/api/proactivity/action", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					notification_id: notificationId,
+					user_action: action
+				})
+			})
+			if (!response.ok) {
+				const errorData = await response.json()
+				throw new Error(errorData.error || "Failed to process action")
+			}
+			toast.success(`Suggestion ${action}.`)
+		} catch (err) {
+			toast.error(`Error: ${err.message}`)
 			setNotifications(originalNotifications)
 		}
 	}
 
 	const handleNotificationClick = (e, notif) => {
-		e.stopPropagation()
-		// A notification is associated with a task, but the user may not want to navigate away.
-		// We'll just close the overlay for now. A future enhancement could be a "View Task" button.
+		if (e && e.stopPropagation) e.stopPropagation()
 		if (notif.task_id) {
-			router.push("/tasks")
+			router.push(`/tasks?taskId=${notif.task_id}`)
 		}
 		onClose()
+	}
+
+	const handleClearAll = async () => {
+		if (
+			!window.confirm(
+				"Are you sure you want to dismiss all notifications?"
+			)
+		)
+			return
+		const originalNotifications = [...notifications]
+		setNotifications([])
+
+		const deletionPromises = originalNotifications.map((n) =>
+			handleDelete(null, n.id)
+		)
+
+		try {
+			await Promise.all(deletionPromises)
+			toast.success("All notifications dismissed.")
+		} catch (err) {
+			toast.error(`Could not dismiss all notifications: ${err.message}`)
+			setNotifications(originalNotifications)
+		}
+	}
+
+	const handleToggleExpand = (notificationId) => {
+		setExpandedId((prevId) =>
+			prevId === notificationId ? null : notificationId
+		)
+	}
+
+	const overlayVariants = {
+		hidden: { opacity: 0, y: 20, scale: 0.95 },
+		visible: { opacity: 1, y: 0, scale: 1 },
+		exit: { opacity: 0, y: 20, scale: 0.95 }
 	}
 
 	return (
@@ -106,99 +369,88 @@ const NotificationsOverlay = ({ onClose }) => {
 			initial={{ opacity: 0 }}
 			animate={{ opacity: 1 }}
 			exit={{ opacity: 0 }}
-			className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 p-4"
+			className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 flex items-center justify-center p-4"
 			onClick={onClose}
 		>
-			<Tooltip id="notifications-overlay-tooltip" />
 			<motion.div
-				initial={{ scale: 0.9, y: 20 }}
-				animate={{ scale: 1, y: 0 }}
-				exit={{ scale: 0.9, y: 20 }}
+				variants={overlayVariants}
+				initial="hidden"
+				animate="visible"
+				exit="exit"
+				transition={{ duration: 0.2, ease: "easeInOut" }}
 				onClick={(e) => e.stopPropagation()}
-				className="bg-gradient-to-br from-[var(--color-primary-surface)] to-[var(--color-primary-background)] p-6 rounded-2xl shadow-xl w-full max-w-lg border border-[var(--color-primary-surface-elevated)] max-h-[70vh] flex flex-col"
+				className="relative bg-neutral-900/90 backdrop-blur-xl p-4 rounded-2xl shadow-2xl w-full max-w-md border border-neutral-700 max-h-[70vh] flex flex-col"
 			>
-				<header className="flex justify-between items-center mb-6 flex-shrink-0">
-					<h2 className="text-xl font-semibold text-white flex items-center gap-3">
+				<header className="flex justify-between items-center mb-4 flex-shrink-0">
+					<h2 className="text-lg font-semibold text-white flex items-center gap-2">
 						<IconBell /> Notifications
 					</h2>
 					<button
 						onClick={onClose}
-						className="p-1 rounded-full hover:bg-[var(--color-primary-surface-elevated)]"
+						className="p-1.5 rounded-full hover:bg-neutral-700"
 					>
-						<IconX size={20} />
+						<IconX size={18} />
 					</button>
 				</header>
 				<main className="flex-1 w-full flex flex-col overflow-hidden">
 					{isLoading ? (
 						<div className="flex-grow flex flex-col justify-center items-center text-center p-4">
 							<IconLoader className="w-8 h-8 text-[var(--color-accent-blue)] animate-spin" />
-							<span className="ml-3 text-[var(--color-text-secondary)] mt-2">
+							<span className="text-neutral-400 mt-2">
 								Loading...
 							</span>
 						</div>
 					) : error ? (
 						<div className="flex-grow flex flex-col justify-center items-center text-center p-4">
-							<IconAlertCircle className="w-10 h-10 text-[var(--color-accent-red)] mb-3" />
-							<p className="text-[var(--color-accent-red)]">
+							<IconAlertCircle className="w-10 h-10 text-red-500 mb-3" />
+							<p className="text-red-400">
 								Could not load notifications
 							</p>
-							<p className="text-[var(--color-text-muted)] text-sm mt-1">
+							<p className="text-neutral-500 text-sm mt-1">
 								{error}
 							</p>
 						</div>
 					) : notifications.length === 0 ? (
 						<div className="flex-grow flex flex-col justify-center items-center text-center p-4">
-							<IconBell className="w-12 h-12 text-[var(--color-text-muted)] mb-3" />
-							<p className="text-[var(--color-text-secondary)]">
-								No new notifications
+							<IconBell className="w-12 h-12 text-neutral-600 mb-3" />
+							<p className="text-neutral-400">All caught up!</p>
+							<p className="text-neutral-500 text-sm">
+								You have no new notifications.
 							</p>
 						</div>
 					) : (
-						<div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+						<div className="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
 							{notifications.map((notif) => (
-								<div
-									key={notif.id ?? Math.random()}
-									onClick={(e) =>
-										handleNotificationClick(e, notif)
+								<NotificationItem
+									key={notif.id}
+									notification={notif}
+									userTimezone={userTimezone}
+									onDelete={() =>
+										handleDelete(null, notif.id)
 									}
-									className="flex items-center gap-4 bg-[var(--color-primary-surface)] p-3 rounded-lg border border-[var(--color-primary-surface-elevated)]/50 shadow-sm cursor-pointer hover:bg-[var(--color-primary-surface-elevated)]/70 transition-colors group"
-								>
-									<div className="flex-shrink-0 pt-1">
-										<IconBell className="w-5 h-5 text-[var(--color-accent-blue)]" />
-									</div>
-									<div className="flex-grow">
-										<p className="text-[var(--color-text-primary)] text-sm leading-relaxed mb-1">
-											{notif.message ||
-												"No message content."}
-										</p>
-										<p className="text-[var(--color-text-muted)] text-xs">
-											{formatTimestamp(notif.timestamp)}
-										</p>
-									</div>
-									<div className="flex items-center gap-2 flex-shrink-0">
-										<button
-											onClick={(e) =>
-												handleDelete(e, notif.id)
-											}
-											className="p-1.5 text-[var(--color-text-muted)] rounded-full opacity-0 group-hover:opacity-100 hover:bg-[var(--color-primary-surface-elevated)] hover:text-[var(--color-accent-red)] transition-all"
-											data-tooltip-id="notifications-overlay-tooltip"
-											data-tooltip-content="Dismiss"
-										>
-											<IconX size={16} />
-										</button>
-										{notif.task_id && (
-											<IconArrowRight
-												className="w-5 h-5 text-[var(--color-text-muted)] transition-transform group-hover:translate-x-1"
-												data-tooltip-id="notifications-overlay-tooltip"
-												data-tooltip-content="View Task"
-											/>
-										)}
-									</div>
-								</div>
+									onAction={handleSuggestionAction}
+									onGeneralClick={(n) =>
+										handleNotificationClick(null, n)
+									}
+									isExpanded={expandedId === notif.id}
+									onToggleExpand={() =>
+										handleToggleExpand(notif.id)
+									}
+								/>
 							))}
 						</div>
 					)}
 				</main>
+				{notifications.length > 0 && !isLoading && (
+					<footer className="mt-4 pt-3 border-t border-neutral-800 flex-shrink-0">
+						<button
+							onClick={handleClearAll}
+							className="w-full text-center text-sm text-neutral-400 hover:text-white hover:bg-neutral-700/50 py-2 rounded-lg transition-colors"
+						>
+							Dismiss All
+						</button>
+					</footer>
+				)}
 			</motion.div>
 		</motion.div>
 	)

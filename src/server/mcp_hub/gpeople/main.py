@@ -19,7 +19,7 @@ if ENVIRONMENT == 'dev-local':
 
 mcp = FastMCP(
     name="GPeopleServer",
-    instructions="This server provides tools to interact with the Google People API for managing contacts.",
+    instructions="Provides tools to search, create, update, and delete contacts in the user's Google Contacts.",
 )
 
 # --- Tool Helper ---
@@ -110,26 +110,31 @@ def _update_contact_field_sync(service, resource_name: str, field_to_update: str
 # --- Tool Definitions ---
 @mcp.tool
 async def search_contacts(ctx: Context, query: str) -> Dict:
-    """Searches for contacts by name, email, or phone number."""
+    """
+    Searches for contacts in the user's Google Contacts by a `query` string, which can be a name, email, or phone number. Returns a list of matching contacts with their `resourceName`.
+    """
     return await _execute_tool(ctx, _search_contacts_sync, query=query)
 
 @mcp.tool
 async def create_contact(ctx: Context, given_name: str, family_name: Optional[str] = None, email_address: Optional[str] = None, phone_number: Optional[str] = None) -> Dict:
-    """Creates a new contact with a name and optional email/phone."""
+    """
+    Creates a new contact in Google Contacts. Requires a `given_name` and can optionally include `family_name`, `email_address`, and `phone_number`.
+    """
     return await _execute_tool(ctx, _create_contact_sync, given_name=given_name, family_name=family_name, email_address=email_address, phone_number=phone_number)
 
 @mcp.tool
 async def delete_contact(ctx: Context, resource_name: str) -> Dict:
-    """Deletes a contact using their resourceName. Use search_contacts first to get the resourceName."""
+    """
+    Deletes a contact. Requires the contact's unique `resource_name`, which should be obtained by using `search_contacts` first.
+    """
     return await _execute_tool(ctx, _delete_contact_sync, resource_name=resource_name)
 
 @mcp.tool
 async def update_contact_field(ctx: Context, resource_name: str, field_to_update: str, new_value: str) -> Dict:
     """
-    Updates a specific field for a contact.
+    Updates a single field for an existing contact.
     'field_to_update' can be 'email', 'phone', or 'name'.
-    Use search_contacts first to get the resourceName.
-    For 'name', provide the full name like 'John Doe' as the new_value.
+    Requires the `resource_name` (from `search_contacts`), the `field_to_update` ('email', 'phone', or 'name'), and the `new_value`.
     """
     return await _execute_tool(ctx, _update_contact_field_sync, resource_name=resource_name, field_to_update=field_to_update, new_value=new_value)
 

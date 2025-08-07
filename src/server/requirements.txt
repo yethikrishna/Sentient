@@ -1,6 +1,3 @@
-# This is the master requirements file for the Docker image and Celery workers.
-# It includes dependencies for all services that run within this context.
-
 # --- Core Framework & Web Server ---
 fastapi
 uvicorn[standard]
@@ -15,14 +12,24 @@ cryptography
 # --- Asynchronous & HTTP Clients ---
 httpx
 requests
+requests-oauthlib
 
 # --- Database & Caching ---
 motor
 redis
+asyncpg
+pgvector
 
 # --- AI & Machine Learning ---
 qwen-agent
 google-genai
+elevenlabs
+librosa
+torch
+fastrtc[vad, stt, tts]
+numpy
+crawl4ai
+playwright
 
 # --- Background Task Queue ---
 celery
@@ -46,5 +53,11 @@ fastmcp
 matplotlib
 
 jsonextractor
-linkedin-scraper
-selenium
+
+# --- Vector DB and Embeddings ---
+chromadb-client
+sentence-transformers
+google-generativeai
+rich
+
+textract==1.5.0

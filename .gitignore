@@ -67,7 +67,7 @@ cover/
 *.log
 local_settings.py
 db.sqlite3
-db.sqlite3-journal
+db.sqlite3-tasks
 
 # Flask stuff:
 instance/
@@ -258,3 +258,15 @@ dump.rdb
 gows.db-shm 
 gows.db-wal
 gows.db
+
+# YoYo AI version control directory
+.yoyo/
+settings.local.json
+settings.json
+src/server/celerybeat-schedule-shm
+src/server/celerybeat-schedule-wal
+waha.sqlite3
+waha.sqlite3-shm
+waha.sqlite3-wal
+sentient_files/
+linkedin_cookies.json

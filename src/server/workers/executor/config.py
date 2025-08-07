@@ -1,4 +1,3 @@
-# src/server/workers/executor/config.py
 import os
 from dotenv import load_dotenv
 
@@ -6,19 +5,20 @@ from dotenv import load_dotenv
 # Load .env file for 'dev-local' environment.
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
 if ENVIRONMENT == 'dev-local':
-    # The .env file is expected to be in the `src/server` directory
-    dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
-    if os.path.exists(dotenv_path):
-        load_dotenv(dotenv_path=dotenv_path)
+    # Prefer .env.local, fall back to .env
+    server_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+    dotenv_local_path = os.path.join(server_root, '.env.local')
+    dotenv_path = os.path.join(server_root, '.env')
+    load_path = dotenv_local_path if os.path.exists(dotenv_local_path) else dotenv_path
+    if os.path.exists(load_path):
+        load_dotenv(dotenv_path=load_path)
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sentient_dev_db")
 
 # OpenAI API Standard Configuration
-OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL", "http://localhost:11434")
+OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL", "http://localhost:11434/v1/")
 OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "qwen3:4b")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ollama")
-SUPERMEMORY_MCP_BASE_URL = os.getenv("SUPERMEMORY_MCP_BASE_URL", "https://mcp.supermemory.ai/")
-SUPERMEMORY_MCP_ENDPOINT_SUFFIX = os.getenv("SUPERMEMORY_MCP_ENDPOINT_SUFFIX", "/sse")
 
 # The executor needs to know about all possible tools.
 # This is a replication of the logic from main/config.py
@@ -193,34 +193,55 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("PROGRESS_UPDATER_MCP_SERVER_URL", "http://localhost:9011/sse")
         }
     },
-    "chat_tools": { # Built-in, for chat agent
-        "display_name": "Chat Agent Tools",
-        "description": "Internal tools for the main conversational agent, such as handing off complex tasks to the planning system and checking task status.",
-        "auth_type": "builtin",
-        "icon": "IconMessage",
-        "mcp_server_config": {
-            "name": "chat_tools_server",
-            "url": os.getenv("CHAT_TOOLS_MCP_SERVER_URL", "http://localhost:9013/sse")
-        }
-    },
-    "journal": { # Built-in, for chat agent
-        "display_name": "Journal Tools",
-        "description": "Tools for managing the user's Journal. The agent can add new entries, search existing entries by keyword, and get a summary for a specific day.",
-        "auth_type": "builtin",
-        "icon": "IconMessage",
-        "mcp_server_config": {
-            "name": "journal_server",
-            "url": os.getenv("JOURNAL_MCP_SERVER_URL", "http://localhost:9018/sse")
-        }
-    },
-    "supermemory": {
-        "display_name": "Long-Term Memory",
-        "description": "The agent's long-term memory about the user. Use 'search' to recall facts, relationships, and preferences. Use 'addToSupermemory' to save new, permanent information about the user. This is critical for personalization.",
+    "memory": {
+        "display_name": "Memory",
+        "description": "Manages the user's memory. Use 'search_memory' to find facts, and 'cud_memory' to add, update, or delete information. This is critical for personalization.",
         "auth_type": "builtin",
         "icon": "IconBrain",
         "mcp_server_config": {
-            "name": "supermemory",
-            "url": None
+            "name": "memory_mcp",
+            "url": os.getenv("MEMORY_MCP_SERVER_URL", "http://localhost:8001/sse")
+        }
+    },
+    "file_management": {
+        "display_name": "File Management",
+        "description": "Read and write files to a temporary storage area. Useful for handling uploads, generating files for download, and data analysis.",
+        "auth_type": "builtin",
+        "icon": "IconFile",
+        "mcp_server_config": {
+            "name": "file_management_server",
+            "url": os.getenv("FILE_MANAGEMENT_MCP_SERVER_URL", "http://localhost:9026/sse")
+        }
+    },
+    "whatsapp": {
+        "display_name": "WhatsApp",
+        "description": "Connect a WhatsApp number to allow your agent to send messages on your behalf as a tool. This is different from your notification number.",
+        "auth_type": "manual",
+        "icon": "IconBrandWhatsapp",
+        "mcp_server_config": {
+            "name": "whatsapp_server",
+            "url": os.getenv("WHATSAPP_MCP_SERVER_URL", "http://localhost:9024/sse")
+        }
+    },
+    "linkedin": {
+        "display_name": "LinkedIn",
+        "description": "Search for job listings on LinkedIn. Requires you to first upload a 'linkedin_cookies.json' file using the file upload button in the chat.",
+        "auth_type": "manual",
+        "icon": "IconBrandLinkedin",
+        "category": "Data & Search",
+        "mcp_server_config": {
+            "name": "linkedin_server",
+            "url": os.getenv("LINKEDIN_MCP_SERVER_URL", "http://localhost:9027/sse")
+        }
+    },
+    "tasks": {
+        "display_name": "Internal Task Manager",
+        "description": "Manages asynchronous, background tasks. Use 'create_task_from_prompt' to create a new task from a natural language prompt. Use 'process_collection_in_parallel' to perform an action on each item in a list in parallel (e.g., summarize a list of articles).",
+        "auth_type": "builtin",
+        "icon": "IconChecklist",
+        "mcp_server_config": {
+            "name": "tasks_server",
+            "url": os.getenv("TASKS_MCP_SERVER_URL", "http://localhost:9018/sse/")
         }
     }
 }

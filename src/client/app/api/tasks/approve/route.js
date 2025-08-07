@@ -10,7 +10,7 @@ const appServerUrl =
 export const POST = withAuth(async function POST(request, { authHeader }) {
 	try {
 		const { taskId } = await request.json()
-		const response = await fetch(`${appServerUrl}/agents/approve-task`, {
+		const response = await fetch(`${appServerUrl}/tasks/approve-task`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json", ...authHeader },
 			body: JSON.stringify({ taskId: taskId })

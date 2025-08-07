@@ -1,8 +1,10 @@
 import datetime
 import json
 import base64
+import asyncio
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+import logging
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import JSONResponse
 
 from main.integrations.models import ManualConnectRequest, OAuthConnectRequest, DisconnectRequest
@@ -11,14 +13,22 @@ from main.auth.utils import aes_encrypt
 from main.config import (
     INTEGRATIONS_CONFIG, 
     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
-    GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET,
-    SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, NOTION_CLIENT_ID, NOTION_CLIENT_SECRET
+    TODOIST_CLIENT_ID, TODOIST_CLIENT_SECRET,
+    DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET,
+    TRELLO_CLIENT_ID,
+    GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SLACK_CLIENT_ID,
+    SLACK_CLIENT_SECRET, NOTION_CLIENT_ID, NOTION_CLIENT_SECRET
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/integrations",
     tags=["Integrations Management"]
 )
+
+from mcp_hub.gcal.auth import get_google_creds, authenticate_gcal
+from mcp_hub.gcal.utils import _simplify_event
 
 @router.get("/sources", summary="Get all available integration sources and their status")
 async def get_integration_sources(user_id: str = Depends(auth_helper.get_current_user_id)):
@@ -44,6 +54,12 @@ async def get_integration_sources(user_id: str = Depends(auth_helper.get_current
                 source_info["client_id"] = SLACK_CLIENT_ID
             elif name == 'notion':
                 source_info["client_id"] = NOTION_CLIENT_ID
+            elif name == 'trello':
+                source_info["client_id"] = TRELLO_CLIENT_ID
+            elif name == 'discord':
+                source_info["client_id"] = DISCORD_CLIENT_ID
+            elif name == 'todoist':
+                source_info["client_id"] = TODOIST_CLIENT_ID
 
         all_sources.append(source_info)
 
@@ -53,8 +69,14 @@ async def get_integration_sources(user_id: str = Depends(auth_helper.get_current
 @router.post("/connect/manual", summary="Connect an integration using manual credentials")
 async def connect_manual_integration(request: ManualConnectRequest, user_id: str = Depends(auth_helper.get_current_user_id)):
     service_name = request.service_name
-    if service_name not in INTEGRATIONS_CONFIG or INTEGRATIONS_CONFIG[service_name]["auth_type"] != "manual":
-        raise HTTPException(status_code=400, detail="Invalid service name or auth type is not manual.")
+    service_config = INTEGRATIONS_CONFIG.get(service_name)
+
+    if not service_config:
+        raise HTTPException(status_code=400, detail="Invalid service name.")
+
+    # Allow Trello to use this endpoint despite being 'oauth' type, as its flow provides a token directly.
+    if service_config["auth_type"] != "manual" and service_name != "trello":
+        raise HTTPException(status_code=400, detail=f"Service '{service_name}' does not support this connection method.")
 
     try:
         encrypted_creds = aes_encrypt(json.dumps(request.credentials))
@@ -72,6 +94,44 @@ async def connect_manual_integration(request: ManualConnectRequest, user_id: str
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/gcalendar/events", summary="Get Google Calendar events for a date range")
+async def get_gcalendar_events(
+    start_date: str = Query(..., description="Start date in ISO 8601 format"),
+    end_date: str = Query(..., description="End date in ISO 8601 format"),
+    user_id: str = Depends(auth_helper.get_current_user_id)
+):
+    user_profile = await mongo_manager.get_user_profile(user_id)
+    user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
+
+    gcal_integration = user_integrations.get("gcalendar", {})
+    if not gcal_integration.get("connected"):
+        return JSONResponse(content={"events": []})
+
+    try:
+        creds = await get_google_creds(user_id)
+        service = authenticate_gcal(creds)
+
+        def _fetch_events_sync():
+            events_result = service.events().list(
+                calendarId="primary",
+                timeMin=start_date,
+                timeMax=end_date,
+                maxResults=250,
+                singleEvents=True,
+                orderBy="startTime"
+            ).execute()
+            return events_result.get("items", [])
+
+        events = await asyncio.to_thread(_fetch_events_sync)
+
+        simplified_events = [_simplify_event(e) for e in events]
+
+        return JSONResponse(content={"events": simplified_events})
+
+    except Exception as e:
+        print(f"Error fetching GCal events for user {user_id}: {e}")
+        return JSONResponse(content={"events": []})
+
 @router.post("/connect/oauth", summary="Finalize OAuth2 connection by exchanging code for token")
 async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str = Depends(auth_helper.get_current_user_id)):
     service_name = request.service_name
@@ -82,6 +142,9 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
     token_payload = {}
     request_headers = {}
     creds_to_save = {}
+
+    if not request.code:
+        raise HTTPException(status_code=400, detail="Authorization code is missing.")
 
     if service_name.startswith('g') and service_name != 'github': # Google Services
         token_url = "https://oauth2.googleapis.com/token"
@@ -98,9 +161,16 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
             "client_id": GITHUB_CLIENT_ID,
             "client_secret": GITHUB_CLIENT_SECRET,
             "code": request.code,
-            "redirect_uri": request.redirect_uri,
+            "redirect_uri": request.redirect_uri
         }
         request_headers = {"Accept": "application/json"}
+
+        # 🔍 DEBUG: Log the exact payload being sent to GitHub
+        print(f"[DEBUG] GitHub OAuth request to {token_url}")
+        print(f"[DEBUG] Headers: {request_headers}")
+        print(f"[DEBUG] Payload: {token_payload}")
+        print(f"[DEBUG] redirect_uri from frontend: {request.redirect_uri}")
+
     elif service_name == 'slack':
         token_url = "https://slack.com/api/oauth.v2.access"
         token_payload = {
@@ -122,6 +192,23 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
             "grant_type": "authorization_code",
             "code": request.code,
             "redirect_uri": request.redirect_uri,
+        }
+    elif service_name == 'todoist':
+        token_url = "https://todoist.com/oauth/access_token"
+        token_payload = {
+            "client_id": TODOIST_CLIENT_ID,
+            "client_secret": TODOIST_CLIENT_SECRET,
+            "code": request.code,
+            "redirect_uri": request.redirect_uri
+        }
+    elif service_name == 'discord':
+        token_url = "https://discord.com/api/oauth2/token"
+        token_payload = {
+            "client_id": DISCORD_CLIENT_ID,
+            "client_secret": DISCORD_CLIENT_SECRET,
+            "grant_type": "authorization_code",
+            "code": request.code,
+            "redirect_uri": request.redirect_uri
         }
     else:
         raise HTTPException(status_code=400, detail=f"OAuth flow not implemented for {service_name}")
@@ -160,6 +247,14 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
              if "access_token" not in token_data:
                 raise HTTPException(status_code=400, detail=f"Notion OAuth error: {token_data.get('error_description', 'No access token in response.')}")
              creds_to_save = token_data # Store the whole object (access_token, workspace_id, etc.)
+        elif service_name == 'todoist':
+            if "access_token" not in token_data:
+                raise HTTPException(status_code=400, detail=f"Todoist OAuth error: {token_data.get('error', 'No access token in response.')}")
+            creds_to_save = token_data
+        elif service_name == 'discord':
+            if "access_token" not in token_data:
+                raise HTTPException(status_code=400, detail=f"Discord OAuth error: {token_data.get('error_description', 'No access token.')}")
+            creds_to_save = token_data # This includes access_token, refresh_token, and the 'bot' object with bot token
 
         encrypted_creds = aes_encrypt(json.dumps(creds_to_save))
 
@@ -172,11 +267,28 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
         if not success:
             raise HTTPException(status_code=500, detail="Failed to save integration credentials.")
         
-        # Create the polling state document to enable the poller for this service
         if service_name == 'gmail' or service_name == 'gcalendar':
+            # Check user's proactivity preference before enabling polling for PROACTIVITY ONLY
+            user_profile = await mongo_manager.get_user_profile(user_id)
+            is_proactivity_enabled = user_profile.get("userData", {}).get("preferences", {}).get("proactivityEnabled", False)
+
+            # Create a state for the proactivity poller (depends on user setting)
             await mongo_manager.update_polling_state(
                 user_id,
                 service_name,
+                "proactivity",
+                {
+                    "is_enabled": is_proactivity_enabled,
+                    "is_currently_polling": False,
+                    "next_scheduled_poll_time": datetime.datetime.now(datetime.timezone.utc), # Poll immediately
+                    "last_successful_poll_timestamp_unix": None,
+                }
+            )
+            # Create a state for the triggered workflow poller (ALWAYS enabled on connect)
+            await mongo_manager.update_polling_state(
+                user_id,
+                service_name,
+                "triggers",
                 {
                     "is_enabled": True,
                     "is_currently_polling": False,
@@ -193,7 +305,6 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.post("/disconnect", summary="Disconnect an integration")
 async def disconnect_integration(request: DisconnectRequest, user_id: str = Depends(auth_helper.get_current_user_id)):
     service_name = request.service_name
@@ -201,17 +312,26 @@ async def disconnect_integration(request: DisconnectRequest, user_id: str = Depe
         raise HTTPException(status_code=400, detail="Invalid service name.")
 
     try:
-        # Unset the specific integration object
+        # Delete tasks that rely on this tool
+        deleted_tasks_count = await mongo_manager.delete_tasks_by_tool(user_id, service_name)
+        logger.info(f"Deleted {deleted_tasks_count} tasks for user {user_id} associated with disconnected tool '{service_name}'.")
+
+        # Delete polling state for this source
+        deleted_polling_states_count = await mongo_manager.delete_polling_state_by_service(user_id, service_name)
+        logger.info(f"Deleted {deleted_polling_states_count} polling states for user {user_id} associated with disconnected source '{service_name}'.")
+
+        # Unset the specific integration object from the user profile
         update_payload = {f"userData.integrations.{service_name}": ""}
         result = await mongo_manager.user_profiles_collection.update_one(
             {"user_id": user_id},
             {"$unset": update_payload}
         )
 
-        if result.modified_count == 0:
+        if result.modified_count == 0 and deleted_tasks_count == 0 and deleted_polling_states_count == 0:
             # This can happen if the field didn't exist, which is not an error.
             return JSONResponse(content={"message": f"{service_name} was not connected or already disconnected."})
 
         return JSONResponse(content={"message": f"{service_name} disconnected successfully."})
     except Exception as e:
+        logger.error(f"Error disconnecting integration {service_name} for user {user_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

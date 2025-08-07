@@ -10,8 +10,9 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build, Resource
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
+from json_extractor import JsonExtractor
 
-from typing import Optional
+from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 
 # Load .env file for 'dev-local' environment.
@@ -19,7 +20,7 @@ ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
 if ENVIRONMENT == 'dev-local':
     dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
     if os.path.exists(dotenv_path):
-        load_dotenv(dotenv_path=dotenv_path)
+        load_dotenv(dotenv_path=dotenv_path, override=True)
 
 MONGO_URI = os.getenv("MONGO_URI")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
@@ -55,15 +56,31 @@ def get_user_id_from_context(ctx: Context) -> str:
         raise ToolError("Authentication failed: 'X-User-ID' header is missing.")
     return user_id
 
-async def get_user_timezone(user_id: str) -> str:
-    """Fetches the user's timezone from their profile, defaulting to UTC."""
+async def get_user_info(user_id: str) -> Dict[str, Any]:
+    """Fetches the user's info like timezone, email, and privacy filters from their profile."""
     user_doc = await users_collection.find_one(
         {"user_id": user_id},
-        {"userData.personalInfo.timezone": 1}
+        {"userData.personalInfo.timezone": 1, "userData.personalInfo.email": 1, "userData.privacyFilters": 1}
     )
     if not user_doc:
-        return "UTC"
-    return user_doc.get("userData", {}).get("personalInfo", {}).get("timezone", "UTC")
+        return {"timezone": "UTC", "email": None, "privacy_filters": {}}
+
+    user_data = user_doc.get("userData", {})
+    personal_info = user_data.get("personalInfo", {})
+
+    # Handle both old and new privacy filter formats
+    all_filters = user_data.get("privacyFilters", {})
+    gcal_filters = {}
+    if isinstance(all_filters, dict):
+        gcal_filters = all_filters.get("gcalendar", {})
+    elif isinstance(all_filters, list): # Backward compatibility
+        gcal_filters = {"keywords": all_filters, "emails": []}
+
+    return {
+        "timezone": personal_info.get("timezone", "UTC"),
+        "email": personal_info.get("email"),
+        "privacy_filters": gcal_filters
+    }
 
 async def get_google_creds(user_id: str) -> Credentials:
     """Fetches Google OAuth token from MongoDB for a given user_id."""
@@ -73,12 +90,14 @@ async def get_google_creds(user_id: str) -> Credentials:
     
     user_data = user_doc["userData"]
     gcal_data = user_data.get("integrations", {}).get("gcalendar")
-    if not gcal_data or not gcal_data.get("connected") or "credentials" not in gcal_data:
+    if not gcal_data or not gcal_data.get("connected") or not gcal_data.get("credentials"):
         raise ToolError(f"Google Calendar integration not connected. Please use the default connect flow.")
 
     try:
         decrypted_creds_str = aes_decrypt(gcal_data["credentials"])
-        token_info = json.loads(decrypted_creds_str)
+        token_info = JsonExtractor.extract_valid_json(decrypted_creds_str)
+        if not token_info:
+            raise ToolError("Failed to parse decrypted credentials for Google Calendar.")
         return Credentials.from_authorized_user_info(token_info)
     except Exception as e:
         raise ToolError(f"Failed to decrypt or parse default OAuth token for Google Calendar: {e}")

@@ -8,7 +8,7 @@ llm_cfg = {
 }
 
 mcp_server_url = "http://127.0.0.1:9015/sse"
-USER_ID = "kabeer" # Replace with a valid User ID
+USER_ID = "YOUR_USER_ID_HERE" # Replace with a valid User ID
 
 tools = [{
     "mcpServers": {
@@ -39,33 +39,31 @@ def run_agent_interaction():
     messages = []
     while True:
         try:
-            user_input = input("You: ")
-            if user_input.lower() in ["quit", "exit"]:
+            print("\nYou: ", end="")
+            user_input = input()
+            if user_input.lower() in {"quit", "exit", "q"}:
+                print("👋  Goodbye!")
                 break
 
             messages.append({'role': 'user', 'content': user_input})
-            print("\n--- Agent is processing... ---")
+            print("\nAgent: ", end="", flush=True)
             
-            final_response = None
+            last_assistant_text = ""
+            final_assistant_message = None
             for response in agent.run(messages=messages):
-                final_response = response
+                if isinstance(response, list) and response and response[-1].get("role") == "assistant":
+                    current_text = response[-1].get("content", "")
+                    if isinstance(current_text, str):
+                        delta = current_text[len(last_assistant_text):]
+                        print(delta, end="", flush=True)
+                        last_assistant_text = current_text
+                    final_assistant_message = response[-1]
 
-            if final_response:
-                print("\n--- Full Internal History ---")
-                print(json.dumps(final_response, indent=2))
-                print("-----------------------------\n")
-
-                messages = final_response
-                
-                final_answer = "No final textual answer from agent."
-                if messages and messages[-1]['role'] == 'assistant':
-                    content = messages[-1].get('content')
-                    if isinstance(content, str):
-                        final_answer = content
-                
-                print(f"Agent: {final_answer}")
+            print()
+            if final_assistant_message:
+                messages.append(final_assistant_message)
             else:
-                print("Agent: I could not process that request.")
+                print("I could not process that request.")
                 messages.pop()
 
         except KeyboardInterrupt:

@@ -1,54 +1,65 @@
 "use client"
 
-import React, { useState, useEffect, useCallback } from "react"
+import React, { useState, useEffect, useCallback, useMemo } from "react"
+import SparkleEffect from "@components/ui/SparkleEffect"
+import { BorderTrail } from "@components/ui/border-trail"
 import toast from "react-hot-toast"
 import {
 	IconLoader,
 	IconSettingsCog,
 	IconBrandGoogleDrive,
 	IconBrandSlack,
+	IconBrandDiscord,
 	IconBrandNotion,
 	IconPlugConnected,
 	IconPlugOff,
 	IconPlus,
 	IconCloud,
+	IconBrandTrello,
 	IconChartPie,
 	IconBrain,
 	IconBrandGithub,
 	IconNews,
 	IconFileText,
+	IconFile,
 	IconPresentation,
 	IconTable,
 	IconMapPin,
 	IconShoppingCart,
-	IconChevronDown,
-	IconChevronUp,
 	IconX,
 	IconMail,
+	IconBrandWhatsapp,
 	IconUsers,
 	IconHelpCircle,
 	IconCalendarEvent,
-	IconWorldSearch
+	IconWorldSearch,
+	IconSearch,
+	IconSparkles,
+	IconBrandLinkedin,
+	IconAlertTriangle,
+	IconEye,
+	IconPlug
 } from "@tabler/icons-react"
-import { Tooltip } from "react-tooltip"
 import { cn } from "@utils/cn"
 import { usePostHog } from "posthog-js/react"
-import ModalDialog from "@components/ModalDialog"
+import InteractiveNetworkBackground from "@components/ui/InteractiveNetworkBackground"
 import { motion, AnimatePresence } from "framer-motion"
+import {
+	MorphingDialog,
+	MorphingDialogTrigger,
+	MorphingDialogContent,
+	MorphingDialogTitle,
+	MorphingDialogSubtitle,
+	MorphingDialogClose,
+	MorphingDialogDescription,
+	MorphingDialogContainer
+} from "@components/ui/morphing-dialog"
+import { Tooltip } from "react-tooltip"
+import ModalDialog from "@components/ModalDialog"
+import { useRouter } from "next/navigation"
+import IconBrandTodoist from "@components/icons/IconBrandTodoist"
 
-const HelpTooltip = ({ content }) => (
-	<div className="absolute top-6 right-6 z-40">
-		<button
-			data-tooltip-id="page-help-tooltip"
-			data-tooltip-content={content}
-			className="p-1.5 rounded-full text-neutral-500 hover:text-white hover:bg-[var(--color-primary-surface)] pulse-glow-animation"
-		>
-			<IconHelpCircle size={22} />
-		</button>
-	</div>
-)
-
-const integrationIcons = {
+const integrationColorIcons = {
 	gmail: IconMail,
 	gcalendar: IconCalendarEvent,
 	gpeople: IconUsers,
@@ -65,67 +76,51 @@ const integrationIcons = {
 	quickchart: IconChartPie,
 	memory: IconBrain,
 	google_search: IconWorldSearch,
+	trello: IconBrandTrello,
 	github: IconBrandGithub,
-	news: IconNews
+	news: IconNews,
+	todoist: IconBrandTodoist,
+	discord: IconBrandDiscord,
+	whatsapp: IconBrandWhatsapp,
+	file_management: IconFile,
+	linkedin: IconBrandLinkedin
 }
+
+const IconPlaceholder = IconSettingsCog
 
 const MANUAL_INTEGRATION_CONFIGS = {} // Manual integrations removed for Slack and Notion
 
-const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {
-	const [credentials, setCredentials] = useState({})
+const WhatsAppConnectModal = ({ integration, onClose, onSuccess }) => {
+	const [number, setNumber] = useState("")
 	const [isSubmitting, setIsSubmitting] = useState(false)
 	const posthog = usePostHog()
 
 	if (!integration) return null
 
-	const config = MANUAL_INTEGRATION_CONFIGS[integration?.name]
-	const instructions = config?.instructions || []
-	const fields = config?.fields || []
-
-	if (fields.length === 0) return null
-
-	const handleChange = (e) => {
-		setCredentials({
-			...credentials,
-			[e.target.name]: e.target.value
-		})
-	}
-
 	const handleSubmit = async () => {
-		for (const field of fields) {
-			if (!credentials[field.id]?.trim()) {
-				toast.error(`Please provide the ${field.label}.`)
-				return
-			}
+		if (!number.trim()) {
+			toast.error("Please provide a valid WhatsApp number.")
+			return
 		}
 
 		setIsSubmitting(true)
 		try {
-			const response = await fetch(
-				"/api/settings/integrations/connect/manual",
-				{
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						service_name: integration.name,
-						credentials
-					})
-				}
-			)
-
+			const response = await fetch("/api/settings/whatsapp-mcp", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ whatsapp_mcp_number: number })
+			})
 			const data = await response.json()
 			if (!response.ok) {
 				throw new Error(
-					data.error ||
-						`Failed to connect ${integration.display_name}`
+					data.detail || "Failed to connect WhatsApp Agent"
 				)
 			}
-
 			posthog?.capture("integration_connected", {
-				integration_name: integration.name,
+				integration_name: "whatsapp",
 				auth_type: "manual"
 			})
-			toast.success(`${integration.display_name} connected successfully!`)
+			toast.success("WhatsApp Agent connected successfully!")
 			onSuccess()
 			onClose()
 		} catch (error) {
@@ -137,44 +132,89 @@ const ManualTokenEntryModal = ({ integration, onClose, onSuccess }) => {
 
 	const modalContent = (
 		<div className="text-left space-y-4 my-4">
-			<div>
-				<h4 className="font-semibold text-gray-300 mb-2">
-					Instructions:
-				</h4>
-				<ol className="list-decimal list-inside space-y-1 text-sm text-gray-400">
-					{instructions.map((step, index) => (
-						<li key={index}>{step}</li>
-					))}
-				</ol>
-			</div>
-			<div className="space-y-3">
-				{fields.map((field) => (
-					<div key={field.id}>
-						<label
-							htmlFor={field.id}
-							className="block text-sm font-medium text-gray-300 mb-1"
-						>
-							Enter {field.label}
-						</label>
-						<input
-							type={field.type}
-							name={field.id}
-							id={field.id}
-							onChange={handleChange}
-							value={credentials[field.id] || ""}
-							className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
-							autoComplete="off"
-						/>
-					</div>
-				))}
-			</div>
+			<p className="text-sm text-gray-400">
+				Enter your WhatsApp number including the country code (e.g.,
+				+14155552671). This number will be used by the agent to send
+				messages on your behalf as a tool.
+			</p>
+			<input
+				type="tel"
+				value={number}
+				onChange={(e) => setNumber(e.target.value)}
+				placeholder="+14155552671"
+				className="w-full bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+				autoComplete="off"
+			/>
 		</div>
 	)
 
 	return (
 		<ModalDialog
 			title={`Connect to ${integration.display_name}`}
-			description="Follow the instructions below and enter your credentials."
+			description="Connect a number for the agent to use as a tool."
+			onConfirm={handleSubmit}
+			onCancel={onClose}
+			confirmButtonText={isSubmitting ? "Connecting..." : "Connect"}
+			isConfirmDisabled={isSubmitting}
+			extraContent={modalContent}
+		/>
+	)
+}
+
+const LinkedInConnectModal = ({ integration, onClose, onSuccess }) => {
+	const [isSubmitting, setIsSubmitting] = useState(false)
+	const posthog = usePostHog()
+
+	if (!integration) return null
+
+	const handleSubmit = async () => {
+		setIsSubmitting(true)
+		try {
+			const response = await fetch(
+				"/api/settings/integrations/connect/manual",
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						service_name: "linkedin",
+						credentials: { setup_complete: true } // Dummy credentials
+					})
+				}
+			)
+			const data = await response.json()
+			if (!response.ok) {
+				throw new Error(
+					data.detail || "Failed to connect LinkedIn Agent"
+				)
+			}
+			posthog?.capture("integration_connected", {
+				integration_name: "linkedin",
+				auth_type: "manual"
+			})
+			toast.success("LinkedIn Agent connected successfully!")
+			onSuccess()
+			onClose()
+		} catch (error) {
+			toast.error(error.message)
+		} finally {
+			setIsSubmitting(false)
+		}
+	}
+
+	const modalContent = (
+		<div className="text-left space-y-4 my-4">
+			<p className="text-sm text-gray-400">
+				This will enable the LinkedIn job search tool for your account.
+				The system uses a shared, pre-configured session to perform
+				searches.
+			</p>
+		</div>
+	)
+
+	return (
+		<ModalDialog
+			title={`Connect to ${integration.display_name}`}
+			description="Enable the agent to search for jobs on LinkedIn."
 			onConfirm={handleSubmit}
 			onCancel={onClose}
 			confirmButtonText={isSubmitting ? "Connecting..." : "Connect"}
@@ -203,24 +243,24 @@ const FilterInputSection = ({
 
 	return (
 		<div className="bg-[var(--color-primary-surface)]/50 p-4 rounded-lg border border-[var(--color-primary-surface-elevated)]">
-			<h4 className="text-lg font-semibold text-gray-200 mb-2">
+			<h4 className="text-md font-semibold text-gray-200 mb-1">
 				{title}
 			</h4>
 			{description && (
-				<p className="text-gray-400 text-sm mb-4">{description}</p>
+				<p className="text-gray-400 text-xs mb-3">{description}</p>
 			)}
-			<div className="flex gap-2 mb-4">
+			<div className="flex flex-col sm:flex-row gap-2 mb-4">
 				<input
 					type="text"
 					value={inputValue}
 					onChange={(e) => setInputValue(e.target.value)}
 					onKeyDown={(e) => e.key === "Enter" && handleAdd()}
 					placeholder={placeholder}
-					className="flex-grow bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)]"
+					className="flex-grow bg-[var(--color-primary-surface-elevated)] border border-neutral-600 rounded-md px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-blue)] w-full"
 				/>
 				<button
 					onClick={handleAdd}
-					className="flex flex-row items-center py-2 px-4 rounded-md bg-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue-hover)] text-white font-medium transition-colors"
+					className="flex flex-row items-center justify-center py-2 px-4 rounded-md bg-brand-orange hover:bg-brand-orange/80 text-brand-black font-semibold transition-colors"
 				>
 					<IconPlus className="w-4 h-4 mr-2" /> Add
 				</button>
@@ -336,190 +376,238 @@ const PrivacySettings = ({ serviceName }) => {
 				onDelete={(value) => handleDeleteItem("keywords", value)}
 				placeholder="Add a new keyword..."
 			/>
-
-			{serviceName === "gmail" && (
-				<>
+			{serviceName === "gmail" ? (
+				<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 					<FilterInputSection
-						title="Blocked Email Senders"
-						description="Emails from these addresses (or containing these partial addresses) will be ignored."
+						title="Blocked Senders"
+						description="Emails from these addresses will be ignored."
 						items={filters.emails}
 						onAdd={(value) => handleAddItem("emails", value)}
 						onDelete={(value) => handleDeleteItem("emails", value)}
-						placeholder="Add an email address..."
+						placeholder="Add an email..."
 					/>
 					<FilterInputSection
 						title="Blocked Labels"
-						description="Emails with these labels will be ignored. Enter the full label name (e.g., 'Promotions', 'Social')."
+						description="Emails with these labels will be ignored."
 						items={filters.labels}
 						onAdd={(value) => handleAddItem("labels", value)}
 						onDelete={(value) => handleDeleteItem("labels", value)}
-						placeholder="Add a Gmail label..."
+						placeholder="Add a label..."
 					/>
-				</>
-			)}
+				</div>
+			) : serviceName === "gcalendar" ? (
+				<FilterInputSection
+					title="Blocked Attendees"
+					description="Events containing any of these attendees (by email) will be ignored."
+					items={filters.emails}
+					onAdd={(value) => handleAddItem("emails", value)}
+					onDelete={(value) => handleDeleteItem("emails", value)}
+					placeholder="Add an attendee's email..."
+				/>
+			) : null}
 		</div>
 	)
 }
 
-const IntegrationDetailsModal = ({
-	integration,
-	onClose,
-	onConnect,
-	onDisconnect,
-	isProcessing
-}) => {
-	if (!integration) return null
-
-	const IntegrationIcon = integration.icon || IconSettingsCog
-	const showPrivacyFilters = ["gmail", "gcalendar"].includes(integration.name)
+const PrivacySettingsModal = ({ serviceName, onClose }) => {
+	const capitalizedServiceName =
+		serviceName.charAt(0).toUpperCase() + serviceName.slice(1)
 
 	return (
 		<motion.div
 			initial={{ opacity: 0 }}
 			animate={{ opacity: 1 }}
 			exit={{ opacity: 0 }}
+			className="fixed inset-0 bg-black/70 backdrop-blur-md z-[60] flex items-center justify-center p-4"
 			onClick={onClose}
-			className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 p-4"
 		>
 			<motion.div
-				initial={{ scale: 0.9, y: 20 }}
+				initial={{ scale: 0.95, y: 20 }}
 				animate={{ scale: 1, y: 0 }}
-				exit={{ scale: 0.9, y: 20 }}
+				exit={{ scale: 0.95, y: -20 }}
+				transition={{ duration: 0.2, ease: "easeInOut" }}
 				onClick={(e) => e.stopPropagation()}
-				className="bg-gradient-to-br from-[var(--color-primary-surface)] to-[var(--color-primary-background)] p-6 rounded-2xl shadow-xl w-full max-w-2xl border border-[var(--color-primary-surface-elevated)] max-h-[90vh] flex flex-col"
+				className="relative bg-neutral-900/90 backdrop-blur-xl p-6 rounded-2xl shadow-2xl w-full max-w-2xl border border-neutral-700 max-h-[80vh] flex flex-col"
 			>
-				<div className="flex justify-between items-start mb-6 flex-shrink-0">
-					<div className="flex items-center gap-4">
-						<IntegrationIcon className="w-10 h-10 text-[var(--color-accent-blue)]" />
-						<div>
-							<h2 className="text-2xl font-bold text-white">
-								{integration.display_name}
-							</h2>
-							<p className="text-sm text-[var(--color-text-secondary)]">
-								{integration.connected
-									? "Connected"
-									: "Not Connected"}
-							</p>
-						</div>
-					</div>
+				<header className="flex justify-between items-center mb-4 flex-shrink-0">
+					<h2 className="text-lg font-semibold text-white">
+						Privacy Filters for {capitalizedServiceName}
+					</h2>
 					<button
 						onClick={onClose}
-						className="p-1 rounded-full hover:bg-[var(--color-primary-surface-elevated)]"
+						className="p-1.5 rounded-full hover:bg-neutral-700"
 					>
-						<IconX size={20} />
+						<IconX size={18} />
 					</button>
-				</div>
-				<div className="overflow-y-auto custom-scrollbar pr-2 space-y-6 flex-grow">
-					<div className="bg-[var(--color-primary-surface)]/50 p-4 rounded-lg border border-[var(--color-primary-surface-elevated)]">
-						<h4 className="text-lg font-semibold text-gray-200 mb-2">
-							Capabilities
-						</h4>
-						<p className="text-gray-400 text-sm">
-							{integration.description}
-						</p>
-					</div>
-
-					{showPrivacyFilters && (
-						<PrivacySettings serviceName={integration.name} />
-					)}
-				</div>
-				<div className="mt-6 pt-4 border-t border-[var(--color-primary-surface-elevated)] flex-shrink-0">
-					{isProcessing ? (
-						<div className="flex justify-center">
-							<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)]" />
-						</div>
-					) : integration.connected ? (
-						<button
-							onClick={(e) => {
-								e.stopPropagation()
-								onDisconnect(integration.name)
-							}}
-							className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-[var(--color-accent-red)]/20 hover:bg-[var(--color-accent-red)]/40 text-[var(--color-accent-red)] text-sm font-medium transition-colors"
-						>
-							<IconPlugOff size={16} />
-							<span>Disconnect</span>
-						</button>
-					) : (
-						<button
-							onClick={(e) => {
-								e.stopPropagation()
-								onConnect(integration)
-							}}
-							className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-[var(--color-accent-blue)]/80 hover:bg-[var(--color-accent-blue)] text-white text-sm font-medium transition-colors"
-						>
-							<IconPlugConnected size={16} />
-							<span>Connect</span>
-						</button>
-					)}
-				</div>
+				</header>
+				<main className="flex-1 overflow-y-auto custom-scrollbar pr-2">
+					<PrivacySettings serviceName={serviceName} />
+				</main>
+				<footer className="mt-6 pt-4 border-t border-neutral-800 flex justify-end">
+					<button
+						onClick={onClose}
+						className="py-2 px-5 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-sm font-medium"
+					>
+						Done
+					</button>
+				</footer>
 			</motion.div>
 		</motion.div>
 	)
 }
 
-const IntegrationCard = ({
-	integration,
-	onConnect,
-	onDisconnect,
-	onViewDetails,
-	isProcessing
-}) => {
-	const IntegrationIcon = integration.icon || IconSettingsCog
-	return (
-		<div
-			className="bg-gradient-to-br from-[var(--color-primary-surface)] to-neutral-800/60 p-5 rounded-xl shadow-lg transition-all duration-300 border border-[var(--color-primary-surface-elevated)]/70 hover:border-[var(--color-accent-blue)]/30 hover:-translate-y-1 flex flex-col group cursor-pointer"
-			onClick={() => onViewDetails(integration)}
+const InfoPanel = ({ onClose, title, children }) => (
+	<motion.div
+		initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
+		animate={{ opacity: 1, backdropFilter: "blur(12px)" }}
+		exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
+		className="fixed inset-0 bg-black/70 z-[60] flex p-4 md:p-6"
+		onClick={onClose}
+	>
+		<motion.div
+			initial={{ opacity: 0, y: 20 }}
+			animate={{ opacity: 1, y: 0 }}
+			exit={{ opacity: 0, y: 20 }}
+			transition={{ duration: 0.2, ease: "easeInOut" }}
+			onClick={(e) => e.stopPropagation()}
+			className="relative bg-neutral-900/80 backdrop-blur-2xl p-6 rounded-2xl shadow-2xl w-full h-full border border-neutral-700 flex flex-col"
 		>
-			<div className="flex items-start justify-between mb-4">
-				<IntegrationIcon className="w-10 h-10 text-[var(--color-accent-blue)] flex-shrink-0" />
-				<span
-					className={cn(
-						"px-2 py-0.5 rounded-full text-xs font-semibold",
-						integration.connected
-							? "bg-green-500/20 text-green-300"
-							: "bg-neutral-600/50 text-neutral-300"
-					)}
+			<header className="flex justify-between items-center mb-6 flex-shrink-0">
+				<h2 className="text-lg font-semibold text-white flex items-center gap-2">
+					{title}
+				</h2>
+				<button
+					onClick={onClose}
+					className="p-1.5 rounded-full hover:bg-neutral-700"
 				>
-					{integration.connected ? "Connected" : "Not Connected"}
-				</span>
+					<IconX size={18} />
+				</button>
+			</header>
+			<main className="flex-1 overflow-y-auto custom-scrollbar pr-2 text-left space-y-6">
+				{children}
+			</main>
+		</motion.div>
+	</motion.div>
+)
+
+const IntegrationHeader = ({
+	searchQuery,
+	onSearchChange,
+	categories,
+	activeCategory,
+	onCategoryChange
+}) => {
+	return (
+		<div className="mb-8 sticky top-0 bg-dark-surface/80 backdrop-blur-sm py-4 z-10">
+			{/* Redesigned Search Bar */}
+			<div className="relative">
+				<IconSearch
+					className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-500"
+					size={20}
+				/>
+				<input
+					type="text"
+					placeholder="Search integrations..."
+					value={searchQuery}
+					onChange={(e) => onSearchChange(e.target.value)}
+					className="w-full bg-neutral-900 border border-neutral-700 rounded-full pl-12 pr-4 py-3 text-white placeholder-neutral-500 focus:ring-2 focus:ring-brand-orange"
+				/>
 			</div>
+
+			{/* Filter Pills */}
+			<div className="mt-4 flex flex-wrap gap-2">
+				{categories.map((category) => (
+					<button
+						key={category}
+						onClick={() => onCategoryChange(category)}
+						className={cn(
+							"px-4 py-2 rounded-full text-sm font-medium transition-colors",
+							activeCategory === category
+								? "bg-brand-orange text-black"
+								: "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
+						)}
+					>
+						{category}
+					</button>
+				))}
+			</div>
+		</div>
+	)
+}
+
+const IntegrationTag = ({ type }) => {
+	const styles = {
+		Native: "bg-green-500/20 text-green-300",
+		"3rd Party": "bg-neutral-600/50 text-neutral-300"
+	}
+	return (
+		<span
+			className={cn(
+				"px-2 py-0.5 rounded-full text-xs font-semibold",
+				styles[type]
+			)}
+		>
+			{type}
+		</span>
+	)
+}
+
+const IntegrationCard = ({ integration, icon: Icon }) => {
+	const getTagType = (authType) => {
+		if (authType === "builtin") return "Native"
+		if (["oauth", "manual"].includes(authType)) return "3rd Party"
+		return null
+	}
+
+	const tagType = getTagType(integration.auth_type)
+
+	const isConnectable = ["oauth", "manual"].includes(integration.auth_type)
+
+	const isConnected =
+		integration.connected || integration.auth_type === "builtin"
+
+	return (
+		<div className="bg-neutral-900/50 p-4 sm:p-5 rounded-xl transition-all duration-300 border border-neutral-800/70 hover:border-brand-orange hover:-translate-y-1 flex flex-col text-left h-full">
+			{/* Top Section */}
+			<div className="flex items-start justify-between mb-4">
+				<div className="flex items-center gap-3">
+					<div className="w-10 h-10 flex items-center justify-center rounded-lg bg-brand-gray p-1.5 text-brand-orange">
+						<Icon className="w-full h-full" />
+					</div>
+					<div>
+						<h3 className="font-semibold text-white text-base sm:text-lg">
+							{integration.display_name}
+						</h3>
+						<span
+							className={cn(
+								"text-xs font-semibold",
+								isConnected
+									? "text-green-400"
+									: "text-neutral-500"
+							)}
+						>
+							{isConnected ? "Connected" : "Not Connected"}
+						</span>
+					</div>
+				</div>
+				{tagType && <IntegrationTag type={tagType} />}
+			</div>
+
+			{/* Middle Section */}
 			<div className="flex-grow">
-				<h3 className="font-semibold text-white text-lg">
-					{integration.display_name}
-				</h3>
 				<p className="text-sm text-gray-400 mt-1 line-clamp-3">
 					{integration.description}
 				</p>
 			</div>
-			<div className="mt-5 pt-4 border-t border-[var(--color-primary-surface-elevated)]/50">
-				{isProcessing ? (
-					<div className="flex justify-center">
-						<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)]" />
-					</div>
-				) : integration.connected ? (
-					<button
-						onClick={(e) => {
-							e.stopPropagation()
-							onDisconnect(integration.name)
-						}}
-						className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-[var(--color-accent-red)]/20 hover:bg-[var(--color-accent-red)]/40 text-[var(--color-accent-red)] text-sm font-medium transition-colors"
-					>
-						<IconPlugOff size={16} />
-						<span>Disconnect</span>
-					</button>
-				) : (
-					<button
-						onClick={(e) => {
-							e.stopPropagation()
-							onConnect(integration)
-						}}
-						className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-[var(--color-accent-blue)]/80 hover:bg-[var(--color-accent-blue)] text-white text-sm font-medium transition-colors"
-					>
-						<IconPlugConnected size={16} />
-						<span>Connect</span>
-					</button>
-				)}
-			</div>
+
+			{/* Bottom Section */}
+			{isConnectable && (
+				<div className="mt-4 pt-4 border-t border-neutral-800 flex justify-end">
+					<span className="text-sm font-medium text-neutral-400 group-hover:text-white transition-colors">
+						View Details →
+					</span>
+				</div>
+			)}
 		</div>
 	)
 }
@@ -528,10 +616,20 @@ const IntegrationsPage = () => {
 	const [userIntegrations, setUserIntegrations] = useState([])
 	const [defaultTools, setDefaultTools] = useState([])
 	const [loading, setLoading] = useState(true)
-	const [activeManualIntegration, setActiveManualIntegration] = useState(null)
 	const [processingIntegration, setProcessingIntegration] = useState(null)
+	const [searchQuery, setSearchQuery] = useState("")
+	const [activeCategory, setActiveCategory] = useState("All")
 	const [selectedIntegration, setSelectedIntegration] = useState(null)
+	const [activeManualIntegration, setActiveManualIntegration] = useState(null)
+	const [whatsAppToConnect, setWhatsAppToConnect] = useState(null)
+	const [linkedInToConnect, setLinkedInToConnect] = useState(null)
+	const [sparkleTrigger, setSparkleTrigger] = useState(0)
+	const [privacyModalService, setPrivacyModalService] = useState(null)
+	const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false)
+	const [disconnectingIntegration, setDisconnectingIntegration] =
+		useState(null)
 	const posthog = usePostHog()
+	const router = useRouter()
 
 	const googleServices = [
 		"gmail",
@@ -554,7 +652,7 @@ const IntegrationsPage = () => {
 			const integrationsWithIcons = (data.integrations || []).map(
 				(ds) => ({
 					...ds,
-					icon: integrationIcons[ds.name] || IconSettingsCog
+					icon: integrationColorIcons[ds.name] || IconSettingsCog
 				})
 			)
 
@@ -562,7 +660,7 @@ const IntegrationsPage = () => {
 				"google_search",
 				"progress_updater",
 				"chat_tools",
-				"journal"
+				"tasks"
 			]
 			const connectable = integrationsWithIcons.filter(
 				(i) =>
@@ -583,6 +681,16 @@ const IntegrationsPage = () => {
 	}, [])
 
 	const handleConnect = (integration) => {
+		if (integration.name === "whatsapp") {
+			setWhatsAppToConnect(integration)
+			return
+		}
+
+		if (integration.name === "linkedin") {
+			setLinkedInToConnect(integration)
+			return
+		}
+
 		if (integration.auth_type === "oauth") {
 			const { name: serviceName, client_id: clientId } = integration
 			if (!clientId) {
@@ -591,6 +699,16 @@ const IntegrationsPage = () => {
 				)
 				return
 			}
+
+			if (serviceName === "trello") {
+				// Trello uses an implicit grant flow where the token is returned in the URL fragment.
+				const returnUrl = `${window.location.origin}/integrations` // Redirect back to this page to handle the fragment.
+				const scope = "read,write" // Request read and write permissions for creating cards.
+				const authUrl = `https://trello.com/1/authorize?expiration=never&scope=${scope}&response_type=token&key=${clientId}&return_url=${encodeURIComponent(returnUrl)}&callback_method=fragment`
+				window.location.href = authUrl
+				return // Stop execution for Trello as it's a redirect.
+			}
+
 			const redirectUri = `${window.location.origin}/api/settings/integrations/connect/oauth/callback`
 			let authUrl = ""
 			const scopes = {
@@ -614,13 +732,11 @@ const IntegrationsPage = () => {
 			if (googleServices.includes(serviceName)) {
 				authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(
 					redirectUri
-				)}&response_type=code&scope=${encodeURIComponent(
-					scope
-				)}&access_type=offline&prompt=consent&state=${serviceName}`
+				)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=consent&state=${serviceName}`
 			} else if (serviceName === "github") {
-				authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
-					redirectUri
-				)}&scope=${encodeURIComponent(scope)}&state=${serviceName}`
+				// For GitHub, it's safer to omit the redirect_uri and let it use the default
+				// configured in the OAuth App settings to avoid mismatches.
+				authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&scope=${encodeURIComponent(scope)}&state=${serviceName}`
 			} else if (serviceName === "slack") {
 				authUrl = `https://slack.com/oauth/v2/authorize?client_id=${clientId}&user_scope=${encodeURIComponent(
 					scope
@@ -630,6 +746,17 @@ const IntegrationsPage = () => {
 				authUrl = `https://api.notion.com/v1/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
 					redirectUri
 				)}&response_type=code&owner=user&state=${serviceName}`
+			} else if (serviceName === "todoist") {
+				const scope = "data:read_write"
+				authUrl = `https://todoist.com/oauth/authorize?client_id=${clientId}&scope=${scope}&state=${serviceName}`
+			} else if (serviceName === "discord") {
+				// Scopes for Discord: identify (read user info), guilds (list servers), bot (add bot to servers), applications.commands (for slash commands)
+				const scope = "identify guilds bot applications.commands"
+				// Permissions for the bot
+				const permissions = "580851377359936"
+				authUrl = `https://discord.com/api/oauth2/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
+					redirectUri
+				)}&response_type=code&scope=${encodeURIComponent(scope)}&permissions=${permissions}&state=${serviceName}`
 			}
 			if (authUrl) window.location.href = authUrl
 			else
@@ -645,17 +772,14 @@ const IntegrationsPage = () => {
 		}
 	}
 
-	const handleDisconnect = async (integrationName) => {
-		const displayName =
-			userIntegrations.find((i) => i.name === integrationName)
-				?.display_name || integrationName
-		if (
-			!window.confirm(
-				`Are you sure you want to disconnect ${displayName}?`
-			)
-		)
-			return
+	const handleDisconnect = async () => {
+		if (!disconnectingIntegration) return
+
+		const { name: integrationName, display_name: displayName } =
+			disconnectingIntegration
+
 		setProcessingIntegration(integrationName)
+
 		try {
 			const response = await fetch(
 				"/api/settings/integrations/disconnect",
@@ -676,6 +800,7 @@ const IntegrationsPage = () => {
 			toast.error(error.message)
 		} finally {
 			setProcessingIntegration(null)
+			setDisconnectingIntegration(null) // Close modal
 		}
 	}
 
@@ -686,121 +811,459 @@ const IntegrationsPage = () => {
 		const success = urlParams.get("integration_success")
 		const error = urlParams.get("integration_error")
 
+		// Handle Trello's implicit grant flow which returns the token in the URL hash.
+		// This must be handled on the client-side as the hash is not sent to the server.
+		if (window.location.hash.includes("#token=")) {
+			const hash = window.location.hash.substring(1) // remove #
+			const params = new URLSearchParams(hash)
+			const token = params.get("token")
+
+			if (token) {
+				// Immediately clear the hash from the URL bar for security
+				window.history.replaceState({}, document.title, "/integrations")
+
+				const saveTrelloToken = async (t) => {
+					const toastId = toast.loading(
+						"Finalizing Trello connection..."
+					)
+					try {
+						// Use the manual connection endpoint to save the user's token
+						const response = await fetch(
+							"/api/settings/integrations/connect/manual",
+							{
+								method: "POST",
+								headers: { "Content-Type": "application/json" },
+								body: JSON.stringify({
+									service_name: "trello",
+									credentials: { token: t } // Trello returns a single token
+								})
+							}
+						)
+						if (!response.ok) {
+							const errorData = await response.json()
+							throw new Error(
+								errorData.error ||
+									"Failed to save Trello token."
+							)
+						}
+						// This will trigger the success toast and state refresh below
+						router.replace(
+							"/integrations?integration_success=trello",
+							{ scroll: false }
+						)
+					} catch (error) {
+						toast.error(
+							`Trello connection failed: ${error.message}`,
+							{ id: toastId }
+						)
+					}
+				}
+				saveTrelloToken(token)
+			}
+		}
+
 		if (success) {
 			const capitalized =
 				success.charAt(0).toUpperCase() + success.slice(1)
 			posthog?.capture("integration_connected", {
 				integration_name: success,
-				auth_type: "oauth"
+				auth_type: "oauth_redirect"
 			})
 			toast.success(`Successfully connected to ${capitalized}!`)
+			setSparkleTrigger((c) => c + 1)
 			window.history.replaceState({}, document.title, "/integrations")
 		} else if (error) {
 			toast.error(`Connection failed: ${error}`)
 			window.history.replaceState({}, document.title, "/integrations")
 		}
-	}, [fetchIntegrations])
+	}, [fetchIntegrations, posthog])
+
+	const allIntegrations = useMemo(() => {
+		return [...userIntegrations, ...defaultTools]
+	}, [userIntegrations, defaultTools])
+
+	const categories = useMemo(() => {
+		const allCats = allIntegrations.map((i) => i.category).filter(Boolean)
+		return ["All", ...new Set(allCats)]
+	}, [allIntegrations])
+
+	const filteredIntegrations = useMemo(() => {
+		return allIntegrations.filter((integration) => {
+			const matchesCategory =
+				activeCategory === "All" ||
+				integration.category === activeCategory
+			const matchesSearch =
+				searchQuery.trim() === "" ||
+				integration.display_name
+					.toLowerCase()
+					.includes(searchQuery.toLowerCase()) ||
+				integration.description
+					.toLowerCase()
+					.includes(searchQuery.toLowerCase())
+			return matchesCategory && matchesSearch
+		})
+	}, [allIntegrations, searchQuery, activeCategory])
 
 	return (
-		<div className="flex h-screen bg-[var(--color-primary-background)] text-[var(--color-text-primary)] overflow-x-hidden pl-0 md:pl-20">
-			<Tooltip id="integrations-tooltip" style={{ zIndex: 9999 }} />
-			<Tooltip id="page-help-tooltip" style={{ zIndex: 9999 }} />
-			<div className="flex-1 flex flex-col overflow-hidden relative">
-				<header className="flex items-center justify-between p-4 md:px-8 md:py-6 bg-[var(--color-primary-background)] border-b border-[var(--color-primary-surface)]">
-					<HelpTooltip content="Connect your apps here. This allows Sentient to access information and perform actions on your behalf." />
-					<h1 className="text-3xl lg:text-4xl font-semibold text-[var(--color-text-primary)] flex items-center gap-3">
-						Integrations
-					</h1>
-					{/* This empty div is to help the justify-between on the header */}
-					<div className="w-10"></div>
+		<div className="flex-1 flex h-screen text-white overflow-x-hidden">
+			<Tooltip
+				id="page-help-tooltip"
+				place="right-start"
+				style={{ zIndex: 9999 }}
+			/>
+			<AnimatePresence>
+				{isInfoPanelOpen && (
+					<InfoPanel
+						onClose={() => setIsInfoPanelOpen(false)}
+						title={
+							<div className="flex items-center gap-2">
+								<IconSparkles /> About Integrations
+							</div>
+						}
+					>
+						<p className="text-neutral-300">
+							Integrations are the bridge between me and your
+							favorite apps. By connecting your tools, you grant
+							me the ability to access information and perform
+							actions on your behalf.
+						</p>
+						<div className="space-y-4">
+							<div className="flex items-start gap-4">
+								<IconPlug
+									size={20}
+									className="text-brand-orange flex-shrink-0 mt-1"
+								/>
+								<div>
+									<h3 className="font-semibold text-white">
+										How It Works
+									</h3>
+									<p className="text-neutral-400 text-sm mt-1">
+										When you make a request in the chat, I
+										automatically select the right tool for
+										the job. For example, if you ask me to
+										'summarize my unread emails', I'll use
+										the connected Gmail tool to fetch the
+										data and complete the task.
+									</p>
+								</div>
+							</div>
+							<div className="flex items-start gap-4">
+								<IconEye
+									size={20}
+									className="text-brand-orange flex-shrink-0 mt-1"
+								/>
+								<div>
+									<h3 className="font-semibold text-white">
+										Proactive Assistance
+									</h3>
+									<p className="text-neutral-400 text-sm mt-1">
+										For some integrations like Gmail and
+										Google Calendar, I can proactively
+										monitor for important events. When I
+										find something I think you'd want to act
+										on—like an urgent email or a meeting
+										request—I'll create a suggestion and
+										send you a notification. You can then
+										approve it to have me take care of it,
+										or dismiss it.
+									</p>
+								</div>
+							</div>
+						</div>
+					</InfoPanel>
+				)}
+			</AnimatePresence>
+			<AnimatePresence>
+				{disconnectingIntegration && (
+					<ModalDialog
+						title={
+							<div className="flex items-center gap-2">
+								<IconAlertTriangle className="text-yellow-400" />
+								<span>{`Disconnect ${disconnectingIntegration.display_name}?`}</span>
+							</div>
+						}
+						description="This will permanently delete all tasks that use this tool and any related polling data. This action cannot be undone."
+						confirmButtonText="Disconnect"
+						confirmButtonType="danger"
+						onConfirm={handleDisconnect}
+						onCancel={() => setDisconnectingIntegration(null)}
+						confirmButtonLoading={
+							processingIntegration ===
+							disconnectingIntegration.name
+						}
+					/>
+				)}
+			</AnimatePresence>
+			<SparkleEffect trigger={sparkleTrigger} />
+			<div className="fixed bottom-6 left-6 z-40">
+				<button
+					onClick={() => setIsInfoPanelOpen(true)}
+					className="p-1.5 rounded-full text-neutral-500 hover:text-white hover:bg-[var(--color-primary-surface)] pulse-glow-animation"
+				>
+					<IconHelpCircle size={22} />
+				</button>
+			</div>
+			<div className="flex-1 flex flex-col overflow-hidden relative w-full pt-16 md:pt-0">
+				<div className="absolute inset-0 z-[-1] network-grid-background">
+					<InteractiveNetworkBackground />
+				</div>
+				<div className="absolute -top-[250px] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-brand-orange/10 rounded-full blur-3xl -z-10" />
+				<header className="flex items-center justify-between p-4 sm:p-6 md:px-8 md:py-6 bg-transparent border-b border-[var(--color-primary-surface)] shrink-0">
+					<div>
+						<h1 className="text-3xl lg:text-4xl font-bold text-white">
+							Integrations
+						</h1>
+						<p className="text-neutral-400 mt-1">
+							Expand Sentient's capabilities by connecting your
+							favorite tools.
+						</p>
+					</div>
 				</header>
-				<main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 custom-scrollbar">
+				<main className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-10 pb-4 sm:pb-6 md:pb-10 custom-scrollbar">
 					<div className="w-full max-w-7xl mx-auto">
 						{loading ? (
 							<div className="flex justify-center items-center py-20">
-								<IconLoader className="w-12 h-12 animate-spin text-[var(--color-accent-blue)]" />
+								<IconLoader className="w-12 h-12 animate-spin text-brand-orange" />
 							</div>
 						) : (
 							<>
-								<section>
-									<h2 className="text-xl font-semibold mb-5 text-gray-300 border-b border-[var(--color-primary-surface-elevated)] pb-2">
-										Connectable Apps
-									</h2>
-									<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-										{userIntegrations.map((integration) => (
-											<IntegrationCard
-												key={integration.name}
-												integration={integration}
-												onConnect={handleConnect}
-												onDisconnect={handleDisconnect}
-												onViewDetails={
-													setSelectedIntegration
+								<div className="pt-4 sm:pt-6 md:pt-10">
+									<IntegrationHeader
+										searchQuery={searchQuery}
+										onSearchChange={setSearchQuery}
+										categories={categories}
+										activeCategory={activeCategory}
+										onCategoryChange={setActiveCategory}
+									/>
+									<section>
+										<motion.div
+											className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+											variants={{
+												hidden: { opacity: 0 },
+												visible: {
+													opacity: 1,
+													transition: {
+														staggerChildren: 0.05
+													}
 												}
-												isProcessing={
-													processingIntegration ===
-													integration.name
-												}
-											/>
-										))}
-									</div>
-								</section>
-
-								<section className="mt-12">
-									<div className="flex items-center gap-2 mb-5 border-b border-[var(--color-primary-surface-elevated)] pb-2">
-										<h2 className="text-xl font-semibold text-gray-300">
-											Built-in Tools
-										</h2>
-										<span
-											data-tooltip-id="integrations-tooltip"
-											data-tooltip-content="These tools are built-in and always available."
-											className="cursor-help text-neutral-400 hover:text-white"
+											}}
+											initial="hidden"
+											animate="visible"
 										>
-											<IconHelpCircle size={18} />
-										</span>
-									</div>
-									<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-										{defaultTools.map((tool) => {
-											const ToolIcon =
-												tool.icon || IconSettingsCog
-											return (
-												<div
-													key={tool.name}
-													className="bg-[var(--color-primary-surface)]/80 p-5 rounded-xl border border-[var(--color-primary-surface-elevated)]/50"
-												>
-													<ToolIcon className="w-10 h-10 text-[var(--color-text-muted)] mb-4" />
-													<h3 className="font-semibold text-white text-lg">
-														{tool.display_name}
-													</h3>
-													<p className="text-sm text-gray-400 mt-1">
-														{tool.description}
-													</p>
-												</div>
-											)
-										})}
-									</div>
-								</section>
+											<AnimatePresence>
+												{filteredIntegrations.map(
+													(integration) => {
+														const Icon =
+															integrationColorIcons[
+																integration.name
+															] || IconPlaceholder
+														const isConnectable = [
+															"oauth",
+															"manual"
+														].includes(
+															integration.auth_type
+														)
+
+														const card = (
+															<IntegrationCard
+																integration={
+																	integration
+																}
+																icon={Icon}
+															/>
+														)
+
+														const cardVariants = {
+															hidden: {
+																opacity: 0,
+																y: -20
+															},
+															visible: {
+																opacity: 1,
+																y: 0
+															}
+														}
+
+														if (isConnectable) {
+															return (
+																<motion.div
+																	key={
+																		integration.name
+																	}
+																	variants={
+																		cardVariants
+																	}
+																	className="h-full"
+																>
+																	<MorphingDialog
+																		transition={{
+																			type: "spring",
+																			bounce: 0.05,
+																			duration: 0.3
+																		}}
+																	>
+																		<MorphingDialogTrigger className="group h-full w-full">
+																			{
+																				card
+																			}
+																		</MorphingDialogTrigger>
+																		<MorphingDialogContainer>
+																			<MorphingDialogContent className="pointer-events-auto relative flex h-auto w-full flex-col overflow-hidden border border-neutral-700 bg-neutral-900 sm:w-[600px] rounded-2xl">
+																				<BorderTrail className="bg-brand-orange" />
+																				<div className="p-4 sm:p-6 overflow-y-auto custom-scrollbar">
+																					<div className="flex items-center gap-4 mb-4">
+																						<div className="w-10 h-10 flex items-center justify-center rounded-lg bg-brand-gray p-1.5 text-brand-orange">
+																							<Icon className="w-full h-full" />
+																						</div>
+																						<div>
+																							<MorphingDialogTitle className="text-xl sm:text-2xl font-bold text-white">
+																								{
+																									integration.display_name
+																								}
+																							</MorphingDialogTitle>
+																							<MorphingDialogSubtitle className="text-sm text-neutral-400">
+																								{integration.connected
+																									? "Connected"
+																									: "Not Connected"}
+																							</MorphingDialogSubtitle>
+																						</div>
+																					</div>
+																					<MorphingDialogDescription>
+																						<p className="text-sm sm:text-base text-neutral-300 mb-6">
+																							{
+																								integration.description
+																							}
+																						</p>
+																						{[
+																							"gmail",
+																							"gcalendar"
+																						].includes(
+																							integration.name
+																						) && (
+																							<div className="my-4">
+																								<button
+																									onClick={() =>
+																										setPrivacyModalService(
+																											integration.name
+																										)
+																									}
+																									className="w-full text-center text-sm text-neutral-400 hover:text-white hover:bg-neutral-700/50 py-2 rounded-lg transition-colors border border-neutral-700"
+																								>
+																									Manage
+																									Privacy
+																									Filters
+																								</button>
+																							</div>
+																						)}
+																						<div className="mt-6 pt-4 border-t border-neutral-800">
+																							{processingIntegration ===
+																							integration.name ? (
+																								<div className="flex justify-center">
+																									<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)]" />
+																								</div>
+																							) : integration.connected ? (
+																								<button
+																									onClick={(
+																										e
+																									) => {
+																										e.stopPropagation()
+																										setDisconnectingIntegration(
+																											integration
+																										)
+																									}}
+																									className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-[var(--color-accent-red)]/20 hover:bg-[var(--color-accent-red)]/40 text-[var(--color-accent-red)] text-sm font-medium transition-colors"
+																								>
+																									<IconPlugOff
+																										size={
+																											16
+																										}
+																									/>
+																									<span>
+																										Disconnect
+																									</span>
+																								</button>
+																							) : (
+																								<button
+																									onClick={(
+																										e
+																									) => {
+																										e.stopPropagation()
+																										handleConnect(
+																											integration
+																										)
+																									}}
+																									className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-brand-orange hover:bg-brand-orange/90 text-brand-black font-semibold text-sm transition-colors"
+																								>
+																									<IconSparkles
+																										size={
+																											16
+																										}
+																									/>
+																									<span>
+																										Connect
+																									</span>
+																								</button>
+																							)}
+																						</div>
+																					</MorphingDialogDescription>
+																				</div>
+																				<MorphingDialogClose className="text-white hover:bg-neutral-700 p-1 rounded-full" />
+																			</MorphingDialogContent>
+																		</MorphingDialogContainer>
+																	</MorphingDialog>
+																</motion.div>
+															)
+														} else {
+															return (
+																<motion.div
+																	key={
+																		integration.name
+																	}
+																	variants={
+																		cardVariants
+																	}
+																	className="h-full"
+																>
+																	<div className="h-full">
+																		{card}
+																	</div>
+																</motion.div>
+															)
+														}
+													}
+												)}
+											</AnimatePresence>
+										</motion.div>
+									</section>
+								</div>
 							</>
 						)}
 					</div>
 				</main>
 			</div>
 			<AnimatePresence>
-				{activeManualIntegration && (
-					<ManualTokenEntryModal
-						integration={activeManualIntegration}
-						onClose={() => setActiveManualIntegration(null)}
+				{whatsAppToConnect && (
+					<WhatsAppConnectModal
+						integration={whatsAppToConnect}
+						onClose={() => setWhatsAppToConnect(null)}
 						onSuccess={fetchIntegrations}
 					/>
 				)}
-				{selectedIntegration && (
-					<IntegrationDetailsModal
-						integration={selectedIntegration}
-						onClose={() => setSelectedIntegration(null)}
-						onConnect={handleConnect}
-						onDisconnect={handleDisconnect}
-						isProcessing={
-							processingIntegration === selectedIntegration?.name
-						}
+			</AnimatePresence>
+			<AnimatePresence>
+				{linkedInToConnect && (
+					<LinkedInConnectModal
+						integration={linkedInToConnect}
+						onClose={() => setLinkedInToConnect(null)}
+						onSuccess={fetchIntegrations}
+					/>
+				)}
+			</AnimatePresence>
+			<AnimatePresence>
+				{privacyModalService && (
+					<PrivacySettingsModal
+						serviceName={privacyModalService}
+						onClose={() => setPrivacyModalService(null)}
 					/>
 				)}
 			</AnimatePresence>

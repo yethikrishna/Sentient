@@ -10,6 +10,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build, Resource
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
+from json_extractor import JsonExtractor
 
 from typing import Optional
 from dotenv import load_dotenv
@@ -19,7 +20,7 @@ ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
 if ENVIRONMENT == 'dev-local':
     dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
     if os.path.exists(dotenv_path):
-        load_dotenv(dotenv_path=dotenv_path)
+        load_dotenv(dotenv_path=dotenv_path, override=True)
 MONGO_URI = os.getenv("MONGO_URI")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
 AES_SECRET_KEY_HEX = os.getenv("AES_SECRET_KEY")
@@ -66,12 +67,14 @@ async def get_google_creds(user_id: str) -> Credentials:
 
     user_data = user_doc["userData"]
     gdrive_data = user_data.get("integrations", {}).get("gdrive")
-    if not gdrive_data or not gdrive_data.get("connected") or "credentials" not in gdrive_data:
+    if not gdrive_data or not gdrive_data.get("connected") or not gdrive_data.get("credentials"):
         raise ToolError(f"Google Drive integration not connected. Please use the default connect flow.")
     
     try:
         decrypted_creds_str = aes_decrypt(gdrive_data["credentials"])
-        token_info = json.loads(decrypted_creds_str)
+        token_info = JsonExtractor.extract_valid_json(decrypted_creds_str)
+        if not token_info:
+            raise ToolError("Failed to parse decrypted credentials for Google Drive.")
         return Credentials.from_authorized_user_info(token_info)
     except Exception as e:
         raise ToolError(f"Failed to decrypt or parse default OAuth token for Google Drive: {e}")

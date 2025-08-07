@@ -1,10 +1,10 @@
 import os
-import logging
 import asyncpg
 import asyncio
 from dotenv import load_dotenv
 from typing import Dict
 
+from fastmcp.utilities.logging import get_logger
 from .constants import TOPICS
 
 # Load .env file for 'dev-local' environment.
@@ -14,7 +14,7 @@ if ENVIRONMENT == 'dev-local':
     if os.path.exists(dotenv_path):
         load_dotenv(dotenv_path=dotenv_path)
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # PostgreSQL connection details
 POSTGRES_USER = os.getenv("POSTGRES_USER")

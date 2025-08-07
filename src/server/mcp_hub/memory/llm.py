@@ -1,17 +1,18 @@
 import os
-import logging
 from qwen_agent.agents import Assistant
 from typing import Dict, Any
 import json
 
 from . import prompts
+from main.llm import run_agent_with_fallback
+from fastmcp.utilities.logging import get_logger
+
+logger = get_logger(__name__)
 
 # Use the main server's LLM config
 OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL", "http://localhost:11434/v1/") # Keep for consistency in config
 OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "qwen3:4b")
 OPENAI_API_KEYS = [key for key in [os.getenv("OPENAI_API_KEY"), os.getenv("OPENAI_API_KEY_FALLBACK_1"), os.getenv("OPENAI_API_KEY_FALLBACK_2")] if key]
-
-logger = logging.getLogger(__name__)
 
 def _get_base_llm_config() -> Dict[str, Any]:
     config = {
@@ -54,9 +55,6 @@ def run_agent_with_prompt(agent_config: Dict[str, Any], user_prompt: str) -> str
     logger.debug(f"Agent '{agent_name}' user prompt:\n---PROMPT START---\n{user_prompt}\n---PROMPT END---")
     messages = [{'role': 'user', 'content': user_prompt}]
     final_content = ""
-
-    # Import here to avoid circular dependency issues at module load time
-    from main.llm import run_agent_with_fallback
 
     try:
         for chunk in run_agent_with_fallback(system_message=system_message, function_list=[], messages=messages):

@@ -1,8 +1,8 @@
-import logging
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
+from fastmcp.utilities.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 def get_user_id_from_context(ctx: Context) -> str:
     """

@@ -1,6 +1,5 @@
 import os
 import json
-import logging
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional
@@ -8,18 +7,13 @@ from typing import Dict, Any, List, Optional
 import numpy as np
 import google.generativeai as genai
 from pgvector.asyncpg import register_vector
+from fastmcp.utilities.logging import get_logger
 
 from . import db, llm
-from .prompts import (
-    fact_relevance_user_prompt_template,
-    fact_summarization_user_prompt_template,
-    fact_extraction_user_prompt_template,
-    cud_decision_user_prompt_template,
-    fact_analysis_user_prompt_template,
-)
+from .prompts import fact_analysis_user_prompt_template
+from main.config import EMBEDDING_MODEL_NAME, GEMINI_API_KEY
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # --- Module-level state (initialized by lifespan event) ---
 embed_model_name: str = None
@@ -29,13 +23,11 @@ agents: Dict[str, Any] = {}
 def initialize_embedding_model():
     global embed_model_name
     if embed_model_name is None:
-        model_name = os.getenv("EMBEDDING_MODEL_NAME", "models/gemini-embedding-001")
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY environment variable not set.")
-        logger.info(f"Initializing embedding model: {model_name}")
-        genai.configure(api_key=api_key)
-        embed_model_name = model_name
+        if not GEMINI_API_KEY:
+            raise ValueError("GEMINI_API_KEY is not set in main.config.")
+        logger.info(f"Initializing embedding model: {EMBEDDING_MODEL_NAME}")
+        genai.configure(api_key=GEMINI_API_KEY)
+        embed_model_name = EMBEDDING_MODEL_NAME
 
 def initialize_agents():
     global agents
@@ -129,7 +121,7 @@ def _get_normalized_embedding(text: str, task_type: str) -> np.ndarray:
 
 async def search_memory(user_id: str, query: str) -> str: # noqa: E501
     """Searches memory by performing a semantic search, filtering for relevance, and summarizing results."""
-    print(f"Executing search_memory for user_id='{user_id}' with query: '{query}'")
+    logger.info(f"Executing search_memory for user_id='{user_id}' with query: '{query}'")
     pool = await db.get_db_pool()
     async with pool.acquire() as conn:
         await register_vector(conn)
@@ -148,7 +140,7 @@ async def search_memory(user_id: str, query: str) -> str: # noqa: E501
         )
     
         found_facts = [r['content'] for r in records]
-        print(f"Found {found_facts} potentially relevant facts from vector search.")
+        logger.info(f"Found {len(found_facts)} potentially relevant facts from vector search.")
 
     if not found_facts:
         logger.info("No facts found from vector search. Returning.")
@@ -170,10 +162,10 @@ async def search_memory(user_id: str, query: str) -> str: # noqa: E501
         except (json.JSONDecodeError, AttributeError):
             logger.warning(f"Could not parse relevance check response: {relevance_raw}")
 
-    print(f"Step 3/4: Found {relevant_facts} truly relevant facts after filtering.")
+    logger.info(f"Step 3/4: Found {len(relevant_facts)} truly relevant facts after filtering.")
 
     if not relevant_facts:
-        print("No relevant facts remained after filtering. Returning message to user.")
+        logger.info("No relevant facts remained after filtering. Returning message to user.")
         return "No relevant information found in your memory."
 
     # Step 4: Summarization
@@ -182,7 +174,7 @@ async def search_memory(user_id: str, query: str) -> str: # noqa: E501
     summary_raw = llm.run_agent_with_prompt(agents["fact_summarization"], prompt)
     summary = clean_llm_output(summary_raw)
 
-    print(f"Summary generated: {summary}")
+    logger.info(f"Summary generated: {summary[:100]}...")
 
     logger.info("Search complete. Returning summary.")
     return summary if isinstance(summary, str) and summary else "Could not generate a summary from the retrieved information."

@@ -1,5 +1,4 @@
 import os
-import logging
 import asyncio
 from typing import Dict, Any, List
 from contextlib import asynccontextmanager
@@ -7,6 +6,7 @@ from workers.tasks import cud_memory_task
 
 from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
+from fastmcp.utilities.logging import configure_logging, get_logger
 
 from . import auth, utils, db
 
@@ -17,8 +17,9 @@ if ENVIRONMENT == 'dev-local':
     if os.path.exists(dotenv_path):
         load_dotenv(dotenv_path=dotenv_path)
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# --- Standardized Logging Setup ---
+configure_logging(level="INFO")
+logger = get_logger(__name__)
 
 # --- MCP Server Initialization ---
 @asynccontextmanager
@@ -116,5 +117,5 @@ if __name__ == "__main__":
     host = os.getenv("MCP_SERVER_HOST", "127.0.0.1")
     port = int(os.getenv("MCP_SERVER_PORT", 8001))
 
-    print(f"Starting Memory MCP Server on http://{host}:{port}")
+    logger.info(f"Starting Memory MCP Server on http://{host}:{port}")
     mcp.run(transport="sse", host=host, port=port)

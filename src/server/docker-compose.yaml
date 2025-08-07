@@ -21,6 +21,8 @@ services:
             # Exposes Nginx (running on port 80 in the container) to port 5000 on the host.
             # This is the primary public-facing port for your entire application.
             - "5000:80"
+            # Expose a range of UDP ports for WebRTC media streams.
+            - "40000-49999:40000-49999/udp"
         depends_on:
             - postgres
             - chroma

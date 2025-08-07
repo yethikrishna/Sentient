@@ -169,12 +169,18 @@ class MyVoiceChatHandler(ReplyOnPause):
                 await self.send_message(json.dumps({"type": "status", "message": "listening"}))
             except Exception as final_e:
                 logger.warning(f"Could not send final 'listening' status for user {user_id}, connection likely closed: {final_e}")
+                
+stream = None
 
 async def get_credentials():
-    # Use a reasonable TTL of 1 hour (3600 seconds) for client-side credentials.
-    return await get_cloudflare_turn_credentials_async(hf_token=HF_TOKEN)
+    creds = await get_cloudflare_turn_credentials_async(hf_token=HF_TOKEN, ttl=360_000)
+    logger.info("Using Cloudflare TURN credentials for WebRTC connections: %s", creds)
+    return creds
 
-stream = None
+def get_server_credentials():
+    creds = get_cloudflare_turn_credentials(hf_token=HF_TOKEN, ttl=360_000)
+    logger.info("Using Cloudflare TURN server creds on server side: %s", creds)
+    return creds
 
 if ENVIRONMENT in ["dev-local", "selfhost"]:
     logger.info("Running in dev-local or selfhost mode, using no TURN server.")
@@ -185,14 +191,14 @@ if ENVIRONMENT in ["dev-local", "selfhost"]:
     )
 else:
     logger.info("Using Cloudflare TURN server for WebRTC connections.")
-    # --- Instantiate the handler and create the FastRTC Stream ---
     stream = Stream(
         handler=MyVoiceChatHandler(),
         rtc_configuration=get_credentials,
-        # server_rtc_configuration=get_cloudflare_turn_credentials(ttl=360_000),
+        server_rtc_configuration=get_server_credentials(),
         modality="audio",
         mode="send-receive",
     )
+
 
 @router.post("/end", summary="End voice chat session")
 async def end_voice_session(rtc_token: str):

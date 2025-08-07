@@ -7,6 +7,7 @@ from typing import AsyncGenerator, Dict, Any
 import re
 import numpy as np
 from fastapi import APIRouter, Depends
+from functools import partial
 from fastrtc import AlgoOptions, ReplyOnPause, SileroVadOptions, Stream, get_cloudflare_turn_credentials_async, get_cloudflare_turn_credentials
 from fastrtc.utils import audio_to_float32, get_current_context
 
@@ -170,10 +171,15 @@ class MyVoiceChatHandler(ReplyOnPause):
                 logger.warning(f"Could not send final 'listening' status for user {user_id}, connection likely closed: {final_e}")
 
 async def get_credentials():
+    # Use a reasonable TTL of 1 hour (3600 seconds) for client-side credentials.
     return await get_cloudflare_turn_credentials_async(hf_token=HF_TOKEN)
 
-rtc_configuration = None if ENVIRONMENT == "dev-local" or ENVIRONMENT == "selfhost" else get_credentials
-server_rtc_configuration = None if ENVIRONMENT == "dev-local" or ENVIRONMENT == "selfhost" else get_cloudflare_turn_credentials(ttl=360_000)
+rtc_configuration = None if ENVIRONMENT in ["dev-local", "selfhost"] else get_credentials
+
+# The server_rtc_configuration must be a CALLABLE to fetch fresh, short-lived credentials for each new connection.
+# The original code called the function once at startup, causing credentials to become stale and leading to 401 errors.
+# We use functools.partial to create a callable with a reasonable TTL.
+server_rtc_configuration = None if ENVIRONMENT in ["dev-local", "selfhost"] else partial(get_cloudflare_turn_credentials, ttl=360_000)
 
 
 # --- Instantiate the handler and create the FastRTC Stream ---

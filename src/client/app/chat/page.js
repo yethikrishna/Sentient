@@ -988,8 +988,8 @@ export default function ChatPage() {
 					style={{ maxHeight: "200px" }}
 				/>
 				{!input && !uploadedFilename && (
-					<div className="absolute top-1/2 left-4 -translate-y-1/2 text-neutral-500 pointer-events-none z-0">
-						<TextLoop className="text-base ml-5">
+					<div className="absolute top-1/2 left-4 right-4 -translate-y-1/2 text-neutral-500 pointer-events-none z-0 overflow-hidden">
+						<TextLoop className="text-base ml-5 whitespace-normal md:whitespace-nowrap">
 							<span>Ask anything...</span>
 							<span>Summarize my unread emails from today</span>
 							<span>

@@ -152,23 +152,15 @@ async def delete_task(
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
 
-    is_modification = len(task.get("runs", [])) > 1
+    # Always delete the entire task, regardless of its type or number of runs.
+    message = await mongo_manager.delete_task(request.taskId, user_id)
+    if not message:
+        raise HTTPException(status_code=404, detail="Task not found or not deleted.")
 
-    if is_modification:
-        # This is a "cancel change request" action.
-        success = await mongo_manager.cancel_latest_run(request.taskId)
-        # Also delete any notifications related to the cancelled modification attempt.
-        await mongo_manager.delete_notifications_for_task(user_id, request.taskId)
-        if success:
-            return {"message": "Change request cancelled and original task restored."}
-        else:
-            raise HTTPException(status_code=500, detail="Failed to cancel change request.")
-    else:
-        # This is a normal task with only one run, so delete it entirely.
-        message = await mongo_manager.delete_task(request.taskId, user_id)
-        if not message:
-            raise HTTPException(status_code=404, detail="Task not found or not deleted.")
-        return {"message": message}
+    # Also delete any notifications related to the task.
+    await mongo_manager.delete_notifications_for_task(user_id, request.taskId)
+
+    return {"message": message}
 
 @router.post("/task-action", status_code=status.HTTP_200_OK)
 async def task_action(

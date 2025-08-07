@@ -176,11 +176,8 @@ class MyVoiceChatHandler(ReplyOnPause):
                 
 stream = None
 
-def get_credentials():
-    logger.info("📡 get_credentials() called")
-    creds = get_cloudflare_turn_credentials(hf_token=HF_TOKEN, ttl=360_000)
-    logger.info("Using Cloudflare TURN credentials for WebRTC connections: %s", creds)
-    return creds
+async def get_credentials():
+    return await get_cloudflare_turn_credentials_async(hf_token=HF_TOKEN)
 
 def get_server_credentials():
     creds = get_cloudflare_turn_credentials(hf_token=HF_TOKEN, ttl=360_000)
@@ -198,7 +195,7 @@ else:
     logger.info("Using Cloudflare TURN server for WebRTC connections.")
     stream = Stream(
         handler=MyVoiceChatHandler(),
-        rtc_configuration=get_credentials(),
+        rtc_configuration=get_credentials,
         server_rtc_configuration=get_server_credentials(),
         modality="audio",
         mode="send-receive",

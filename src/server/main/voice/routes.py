@@ -174,22 +174,25 @@ async def get_credentials():
     # Use a reasonable TTL of 1 hour (3600 seconds) for client-side credentials.
     return await get_cloudflare_turn_credentials_async(hf_token=HF_TOKEN)
 
-rtc_configuration = None if ENVIRONMENT in ["dev-local", "selfhost"] else get_credentials
+stream = None
 
-# The server_rtc_configuration must be a CALLABLE to fetch fresh, short-lived credentials for each new connection.
-# The original code called the function once at startup, causing credentials to become stale and leading to 401 errors.
-# We use functools.partial to create a callable with a reasonable TTL.
-server_rtc_configuration = None if ENVIRONMENT in ["dev-local", "selfhost"] else partial(get_cloudflare_turn_credentials, ttl=360_000)
-
-
-# --- Instantiate the handler and create the FastRTC Stream ---
-stream = Stream(
-    handler=MyVoiceChatHandler(),
-    rtc_configuration=rtc_configuration,
-    server_rtc_configuration=server_rtc_configuration,
-    modality="audio",
-    mode="send-receive",
-)
+if ENVIRONMENT in ["dev-local", "selfhost"]:
+    logger.info("Running in dev-local or selfhost mode, using no TURN server.")
+    stream = Stream(
+        handler=MyVoiceChatHandler(),
+        modality="audio",
+        mode="send-receive",
+    )
+else:
+    logger.info("Using Cloudflare TURN server for WebRTC connections.")
+    # --- Instantiate the handler and create the FastRTC Stream ---
+    stream = Stream(
+        handler=MyVoiceChatHandler(),
+        rtc_configuration=get_credentials,
+        server_rtc_configuration=get_cloudflare_turn_credentials(ttl=360_000)
+        modality="audio",
+        mode="send-receive",
+    )
 
 @router.post("/end", summary="End voice chat session")
 async def end_voice_session(rtc_token: str):

@@ -10,7 +10,13 @@ from pgvector.asyncpg import register_vector
 from fastmcp.utilities.logging import get_logger
 
 from . import db, llm
-from .prompts import fact_analysis_user_prompt_template
+from .prompts import (
+    fact_relevance_user_prompt_template,
+    fact_summarization_user_prompt_template,
+    fact_extraction_user_prompt_template,
+    cud_decision_user_prompt_template,
+    fact_analysis_user_prompt_template,
+)
 from main.config import EMBEDDING_MODEL_NAME, GEMINI_API_KEY
 
 logger = get_logger(__name__)

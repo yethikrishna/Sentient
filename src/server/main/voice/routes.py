@@ -7,19 +7,22 @@ from typing import AsyncGenerator, Dict, Any
 import re
 import numpy as np
 from fastapi import APIRouter, Depends
-from fastrtc import AlgoOptions, ReplyOnPause, SileroVadOptions, Stream
+from fastrtc import AlgoOptions, ReplyOnPause, SileroVadOptions, Stream, get_cloudflare_turn_credentials_async, get_cloudflare_turn_credentials
 from fastrtc.utils import audio_to_float32, get_current_context
 
 from main.auth.utils import PermissionChecker
 from main.dependencies import mongo_manager
 from main.llm import get_qwen_assistant
 from main.chat.utils import process_voice_command
+from main.config import ENVIRONMENT, HF_TOKEN
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/voice", tags=["Voice"])
 
 rtc_token_cache: Dict[str, Dict] = {}
 TOKEN_EXPIRATION_SECONDS = 600
+
+
 
 @router.post("/initiate", summary="Initiate a voice chat session")
 async def initiate_voice_session(
@@ -166,10 +169,18 @@ class MyVoiceChatHandler(ReplyOnPause):
             except Exception as final_e:
                 logger.warning(f"Could not send final 'listening' status for user {user_id}, connection likely closed: {final_e}")
 
+async def get_credentials():
+    return await get_cloudflare_turn_credentials_async(hf_token=HF_TOKEN)
+
+rtc_configuration = None if ENVIRONMENT == "dev-local" or ENVIRONMENT == "selfhost" else get_credentials
+server_rtc_configuration = None if ENVIRONMENT == "dev-local" or ENVIRONMENT == "selfhost" else get_cloudflare_turn_credentials(ttl=360_000)
+
 
 # --- Instantiate the handler and create the FastRTC Stream ---
 stream = Stream(
     handler=MyVoiceChatHandler(),
+    rtc_configuration=rtc_configuration,
+    server_rtc_configuration=server_rtc_configuration,
     modality="audio",
     mode="send-receive",
 )

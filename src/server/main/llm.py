@@ -1,6 +1,7 @@
 # src/server/main/llm.py
 import os
 import logging
+import time
 import httpx
 from qwen_agent.agents import Assistant
 from qwen_agent.llm import get_chat_model
@@ -40,7 +41,7 @@ def get_qwen_assistant(system_message: str = DEFAULT_SYSTEM_PROMPT, function_lis
 def run_agent_with_fallback(system_message: str, function_list: list, messages: list):
     """
     Initializes and runs a Qwen Assistant, trying a list of API keys in sequence if failures occur.
-    This function is a generator that yields the results from the successful agent run.
+    Each key is tried up to 3 times with a delay to accommodate for transient network issues.
     """
     if not OPENAI_API_KEYS:
         raise ValueError("No OpenAI API keys configured.")
@@ -53,18 +54,28 @@ def run_agent_with_fallback(system_message: str, function_list: list, messages: 
             'api_key': key,
         }
 
-        try:
-            logger.info(f"Attempting to run agent with API key #{i+1}")
-            bot = Assistant(llm=llm_cfg, system_message=system_message, function_list=function_list or [])
+        # Retry logic
+        max_retries = 3
+        retry_delay = 2  # seconds
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"Attempting to run agent with API key #{i+1} (Attempt {attempt + 1}/{max_retries})")
+                bot = Assistant(llm=llm_cfg, system_message=system_message, function_list=function_list or [])
 
-            yield from bot.run(messages=messages)
-            return # If the stream completes successfully, exit the generator.
+                yield from bot.run(messages=messages)
+                return  # If the stream completes successfully, exit the generator.
 
-        except Exception as e:
-            error_message = f"Agent run with API key #{i+1} failed: {e}"
-            logger.warning(error_message, exc_info=True)
-            errors.append(error_message)
-            continue # Try the next key
+            except Exception as e:
+                error_message = f"Agent run with API key #{i+1}, attempt #{attempt + 1} failed: {e}"
+                logger.warning(error_message, exc_info=True)
+
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                else:
+                    # Last attempt failed, append error and move to next key
+                    errors.append(error_message)
+                    break  # Break from retry loop to go to next key
 
     # If the loop completes, all keys have failed
-    raise Exception(f"All OpenAI API keys failed. Errors: {errors}")
+    raise Exception(f"All OpenAI API keys failed after retries. Errors: {errors}")

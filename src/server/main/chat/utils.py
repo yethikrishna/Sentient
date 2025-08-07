@@ -394,93 +394,109 @@ async def process_voice_command(
             user_timezone = ZoneInfo("UTC")
         current_user_time = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
 
-        # 3. Full tool selection logic
+        # 3. Full tool selection logic (Stage 1)
         await send_status_update({"type": "status", "message": "choosing_tools"})
         
         user_integrations = user_data.get("integrations", {})
         connected_tools, disconnected_tools = _get_tool_lists(user_integrations)
 
-        # Call Stage 1
-        stage1_output = await _get_stage1_response(qwen_formatted_history, connected_tools, disconnected_tools, user_id)
+        stage1_result = await _get_stage1_response(qwen_formatted_history, connected_tools, disconnected_tools, user_id)
 
-        final_text_response = "I'm sorry, I couldn't process that." # Default error message
+        topic_changed = stage1_result.get("topic_changed", False)
+        relevant_tool_names = stage1_result.get("connected_tools", [])
+        disconnected_requested_tools = stage1_result.get("disconnected_tools", [])
 
-        if isinstance(stage1_output, str):
-            # Stage 1 provided a direct response
-            logger.info(f"Stage 1 provided a direct response for voice command for user {user_id}.")
-            final_text_response = _extract_answer_from_llm_response(stage1_output)
+        # 4. Stage 2 setup
+        mandatory_tools = {"memory", "history", "tasks"}
+        final_tool_names = set(relevant_tool_names) | mandatory_tools
+
+        filtered_mcp_servers = {}
+        for tool_name in final_tool_names:
+            config = INTEGRATIONS_CONFIG.get(tool_name, {})
+            if config:
+                mcp_config = config.get("mcp_server_config", {})
+                if mcp_config and mcp_config.get("url") and mcp_config.get("name"):
+                    server_name = mcp_config["name"]
+                    filtered_mcp_servers[server_name] = {
+                        "url": mcp_config["url"],
+                        "headers": {"X-User-ID": user_id},
+                        "transport": "sse"
+                    }
+        tools = [{"mcpServers": filtered_mcp_servers}]
+        logger.info(f"Voice Command Tools (Stage 2): {list(filtered_mcp_servers.keys())}")
+
+        # History truncation logic
+        stage_2_expanded_messages = []
+        if topic_changed:
+            last_user_message = next((msg for msg in reversed(qwen_formatted_history) if msg.get("role") == "user"), None)
+            if last_user_message:
+                stage_2_expanded_messages.append({"role": "user", "content": last_user_message.get("content", "")})
         else:
-            # Stage 1 selected tools, proceed to Stage 2
-            relevant_tool_names = stage1_output
-            mandatory_tools = {"memory", "history", "tasks"}
-            final_tool_names = set(relevant_tool_names) | mandatory_tools
-
-            # Build the list of tools for the agent, ensuring headers are included.
-            filtered_mcp_servers = {}
-            for tool_name in final_tool_names:
-                config = INTEGRATIONS_CONFIG.get(tool_name, {})
-                if config:
-                    mcp_config = config.get("mcp_server_config", {})
-                    if mcp_config and mcp_config.get("url") and mcp_config.get("name"):
-                        server_name = mcp_config["name"]
-                        filtered_mcp_servers[server_name] = {
-                            "url": mcp_config["url"],
-                            "headers": {"X-User-ID": user_id},
-                            "transport": "sse"
-                        }
-            tools = [{"mcpServers": filtered_mcp_servers}]
-            logger.info(f"Voice Command Tools (Stage 2): {list(filtered_mcp_servers.keys())}")
-                
-            expanded_messages = []
             for msg in qwen_formatted_history:
-                expanded_messages.append({
-                    "role": msg.get("role", "user"),
-                    "content": msg.get("content", "")
-                })
-            
-            system_prompt = STAGE_2_SYSTEM_PROMPT.format(
-                username=username,
-                location=location,
-                current_user_time=current_user_time
+                stage_2_expanded_messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
+
+        # Handle disconnected tools note
+        if disconnected_requested_tools:
+            disconnected_display_names = [INTEGRATIONS_CONFIG.get(t, {}).get('display_name', t) for t in disconnected_requested_tools]
+            system_note = (
+                f"System Note: The user's request mentioned functionality requiring the following tools which are currently disconnected: "
+                f"{', '.join(disconnected_display_names)}. You MUST inform the user that you cannot complete that part of the request "
+                f"and suggest they connect the tool(s) in the Integrations page. Then, proceed with the rest of the request using the available tools."
             )
-            
-            await send_status_update({"type": "status", "message": "thinking"})
-            
-            # --- MODIFICATION: Run blocking agent code in a separate thread ---
-            loop = asyncio.get_running_loop()
-            def agent_worker():
-                final_run_response = None
-                try:
-                    for response in run_agent_with_fallback(system_message=system_prompt, function_list=tools, messages=expanded_messages):
+            if stage_2_expanded_messages and stage_2_expanded_messages[-1]['role'] == 'user':
+                stage_2_expanded_messages[-1]['content'] = f"{system_note}\n\nUser's original message: {stage_2_expanded_messages[-1]['content']}"
+            else:
+                stage_2_expanded_messages.append({'role': 'system', 'content': system_note})
 
-                        if isinstance(response, list) and response:
-                                # Schedule the async status update on the main event loop
-                                asyncio.run_coroutine_threadsafe(
-                                    send_status_update({"type": "status", "message": f"using_tool_{tool_name}"}),
-                                    loop
-                                )
-                    return final_run_response
-                except Exception as e:
-                    logger.error(f"Error inside agent_worker thread for voice command: {e}", exc_info=True)
-                    return None
+        system_prompt = STAGE_2_SYSTEM_PROMPT.format(
+            username=username,
+            location=location,
+            current_user_time=current_user_time
+        )
 
-            final_run_response = await asyncio.to_thread(agent_worker)
-            # --- END MODIFICATION ---
-            
-            if final_run_response and isinstance(final_run_response, list):
-                assistant_content_parts = [
-                    msg.get('content', '') 
-                    for msg in final_run_response 
-                    if msg.get('role') == 'assistant' and msg.get('content')
-                ]
-                full_response_str = "".join(assistant_content_parts)
-                final_text_response = _extract_answer_from_llm_response(full_response_str)
+        await send_status_update({"type": "status", "message": "thinking"})
 
-                if not final_text_response:
-                    last_message = final_run_response[-1]
-                    if last_message.get('role') == 'function':
-                        # Provide a more generic completion message if there's no explicit text answer
-                        final_text_response = "The action has been completed."
+        # 5. Agent Execution in a thread
+        loop = asyncio.get_running_loop()
+        def agent_worker():
+            final_run_response = None
+            try:
+                for response in run_agent_with_fallback(system_message=system_prompt, function_list=tools, messages=stage_2_expanded_messages):
+                    final_run_response = response
+                    if isinstance(response, list) and response:
+                        last_message = response[-1]
+                        if last_message.get('role') == 'assistant' and last_message.get('function_call'):
+                            tool_name = last_message['function_call']['name']
+                            asyncio.run_coroutine_threadsafe(
+                                send_status_update({"type": "status", "message": f"using_tool_{tool_name}"}),
+                                loop
+                            )
+                return final_run_response
+            except Exception as e:
+                logger.error(f"Error inside agent_worker thread for voice command: {e}", exc_info=True)
+                return None
+
+        final_run_response = await asyncio.to_thread(agent_worker)
+
+        # 6. Process result
+        full_response_str = ""
+        if final_run_response and isinstance(final_run_response, list):
+            assistant_content_parts = [
+                msg.get('content', '')
+                for msg in final_run_response
+                if msg.get('role') == 'assistant' and msg.get('content')
+            ]
+            full_response_str = "".join(assistant_content_parts)
+
+        final_text_response = _extract_answer_from_llm_response(full_response_str)
+
+        if not final_text_response:
+            last_message = final_run_response[-1] if final_run_response else {}
+            if last_message.get('role') == 'function':
+                final_text_response = "The action has been completed."
+            else:
+                final_text_response = "I'm sorry, I couldn't process that."
+
         await db_manager.messages_collection.update_one(
             {"message_id": assistant_message_id, "user_id": user_id},
             {"$set": {"content": final_text_response}}

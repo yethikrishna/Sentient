@@ -44,11 +44,17 @@ async def initiate_voice_session(
     expires_at = now + TOKEN_EXPIRATION_SECONDS
     rtc_token_cache[rtc_token] = {"user_id": user_id, "expires_at": expires_at}
     
-    # Get TURN credentials to send to the client
-    ice_servers_config = get_credentials()
+    if ENVIRONMENT in ["dev-local", "selfhost"]:
+        logger.info(f"Initiated voice session for user {user_id} in dev-local mode with token {rtc_token}")
+        return {"rtc_token": rtc_token, "ice_servers": []}  # No TURN server in dev-local mode
+    
+    else:
+        logger.info(f"Initiated voice session for user {user_id} with token {rtc_token} using TURN server")
+        # Get TURN credentials to send to the client
+        ice_servers_config = await get_credentials()
 
-    logger.info(f"Initiated voice session for user {user_id} with token {rtc_token}")
-    return {"rtc_token": rtc_token, "ice_servers": ice_servers_config}
+        logger.info(f"Initiated voice session for user {user_id} with token {rtc_token}")
+        return {"rtc_token": rtc_token, "ice_servers": ice_servers_config}
 
 
 class MyVoiceChatHandler(ReplyOnPause):
@@ -119,9 +125,12 @@ class MyVoiceChatHandler(ReplyOnPause):
             await self.send_message(json.dumps({"type": "stt_result", "text": transcription}))
 
             # 2. FULL AGENTIC LLM PROCESSING
-            async def send_status_update(status_dict: Dict[str, Any]):
-                await self.send_message(json.dumps(status_dict))
+            # Define the callback function that process_voice_command will use to send status updates
+            async def send_status_update(status_update: Dict[str, Any]):
+                """Sends a status update message to the client."""
+                await self.send_message(json.dumps(status_update))
 
+            # Call the updated, fully-featured voice command processor
             full_response_buffer, assistant_message_id = await process_voice_command(
                 user_id=user_id,
                 transcribed_text=transcription,

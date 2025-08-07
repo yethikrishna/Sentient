@@ -73,10 +73,19 @@ async def _execute_tool(ctx: Context, func, *args, **kwargs) -> Dict[str, Any]:
 # --- Sync Tool Implementations ---
 
 def _send_email_sync(service, to: str, subject: str, body: str):
-    message_raw = base64.urlsafe_b64encode(MIMEText(body).as_bytes()).decode()
-    message_body = {"raw": message_raw, "to": to, "subject": subject}
+    msg = MIMEText(body)
+    msg["to"] = to
+    msg["subject"] = subject
+
+    # Optional: add From header to avoid confusion
+    msg["from"] = "me"
+
+    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+    message_body = {"raw": raw}
+
     service.users().messages().send(userId="me", body=message_body).execute()
     return {"message": "Email sent successfully."}
+
 
 def _reply_to_email_sync(service, message_id: str, body: str, reply_all: bool = False):
     original_msg = service.users().messages().get(userId="me", id=message_id, format="metadata", metadataHeaders=["subject", "from", "to", "cc", "message-id", "references"]).execute()
@@ -262,8 +271,11 @@ async def applyLabels(ctx: Context, message_id: str, label_ids: List[str]) -> Di
 async def createDraft(ctx: Context, to: str, subject: str, body: str) -> Dict[str, Any]:
     """Create a new draft email that can be edited before sending."""
     def _sync(service, to, subject, body):
-        message_raw = base64.urlsafe_b64encode(MIMEText(body).as_bytes()).decode()
-        message = {"message": {"raw": message_raw, "to": to, "subject": subject}}
+        msg = MIMEText(body)
+        msg["to"] = to
+        msg["subject"] = subject
+        message_raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+        message = {"message": {"raw": message_raw}}
         draft = service.users().drafts().create(userId="me", body=message).execute()
         return {"draft_id": draft['id'], "message": "Draft created successfully."}
     return await _execute_tool(ctx, _sync, to=to, subject=subject, body=body)
@@ -371,8 +383,13 @@ async def removeLabels(ctx: Context, message_id: str, label_ids: List[str]) -> D
 async def updateDraft(ctx: Context, draft_id: str, to: Optional[str] = None, subject: Optional[str] = None, body: Optional[str] = None) -> Dict[str, Any]:
     """Update an existing draft email with new content."""
     def _sync(service, draft_id, to, subject, body):
-        message_raw = base64.urlsafe_b64encode(MIMEText(body).as_bytes()).decode()
-        message = {"message": {"raw": message_raw, "to": to, "subject": subject}}
+        msg = MIMEText(body)
+        if to:
+            msg["to"] = to
+        if subject:
+            msg["subject"] = subject
+        message_raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+        message = {"message": {"raw": message_raw}}
         updated_draft = service.users().drafts().update(userId="me", id=draft_id, body=message).execute()
         return {"draft_id": updated_draft['id'], "message": "Draft updated."}
     return await _execute_tool(ctx, _sync, draft_id=draft_id, to=to, subject=subject, body=body)

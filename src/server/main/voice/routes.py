@@ -189,7 +189,7 @@ else:
     stream = Stream(
         handler=MyVoiceChatHandler(),
         rtc_configuration=get_credentials,
-        server_rtc_configuration=get_cloudflare_turn_credentials(ttl=360_000),
+        # server_rtc_configuration=get_cloudflare_turn_credentials(ttl=360_000),
         modality="audio",
         mode="send-receive",
     )

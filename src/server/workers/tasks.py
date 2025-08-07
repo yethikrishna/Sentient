@@ -18,14 +18,14 @@ from main.tasks.prompts import TASK_CREATION_PROMPT
 from main.llm import run_agent_with_fallback as run_main_agent_with_fallback
 from main.db import MongoManager
 from workers.celery_app import celery_app
-from workers.planner.llm import get_planner_agent, get_question_generator_agent # noqa: E501
+from workers.planner.llm import get_planner_agent # noqa: E501
+from workers.planner.prompts import QUESTION_GENERATOR_SYSTEM_PROMPT
 from workers.proactive.main import run_proactive_pipeline_logic
 from workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions # noqa: E501
 from workers.memory_agent_utils import get_memory_qwen_agent, get_db_manager as get_memory_db_manager # noqa: E501
 from workers.executor.tasks import execute_task_plan
 from main.vector_db import get_conversation_summaries_collection
 from main.chat.prompts import STAGE_1_SYSTEM_PROMPT
-from workers.planner.llm import run_agent_with_fallback as run_worker_agent_with_fallback
 from mcp_hub.memory.utils import cud_memory, initialize_embedding_model, initialize_agents
 from workers.utils.text_utils import clean_llm_output
 
@@ -76,8 +76,7 @@ async def _select_relevant_tools(query: str, available_tools_map: Dict[str, str]
         return []
 
     try:
-        tools_description = "\n".join(f"- `{name}`: {desc}" for name, desc in available_tools_map.items())
-        prompt = f"User Query: \"{query}\"\n\nAvailable External Tools (for selection):\n{tools_description}"
+        prompt = f"The user is trying to perform the following task: \"{query}\" Choose the relevant tools needed to complete the task, as well as any tools where important information or context can be found related to the task. \n (For example, if the user is asking to perform a task using Gmail, you should definitely include gmail in the selected tools, but also include gpeople which can be used to find relevant contacts.)"
 
         messages = [{'role': 'user', 'content': prompt}]
 
@@ -91,11 +90,18 @@ async def _select_relevant_tools(query: str, available_tools_map: Dict[str, str]
             return final_content_str
 
         final_content_str = await asyncio.to_thread(_run_selector_sync)
-        selected_tools = JsonExtractor.extract_valid_json(final_content_str)
-        if isinstance(selected_tools, list):
-            logger.info(f"Tool selector identified relevant tools for context search: {selected_tools}")
-            return selected_tools
-        return []
+        cleaned_output = clean_llm_output(final_content_str)
+        parsed_output = JsonExtractor.extract_valid_json(cleaned_output)
+        selected_tools = []
+        if isinstance(parsed_output, dict) and "topic_changed" in parsed_output and "tools" in parsed_output:
+            selected_tools = parsed_output.get("tools", [])
+
+            # Separate into connected and disconnected
+            connected_tools_selected = [tool for tool in selected_tools if tool in available_tools_map]
+            
+            selected_tools = connected_tools_selected
+        
+        return selected_tools
     except Exception as e:
         logger.error(f"Error during tool selection for context search: {e}", exc_info=True)
         return list(available_tools_map.keys())
@@ -368,21 +374,26 @@ async def get_clarifying_questions(user_id: str, task_description: str, topics: 
 
     logger.info(f"Context Verifier for user {user_id} will use tools: {list(mcp_servers_for_agent.keys())}")
     
-    agent_config = get_question_generator_agent(
-        original_context=original_context,
-        available_tools_for_prompt=available_tools_for_prompt,
-        mcp_servers_for_agent=mcp_servers_for_agent
-    )
+    """Initializes a unified Qwen agent to verify context and generate clarifying questions."""
+    original_context_str = json.dumps(original_context, indent=2, default=str)
 
-    user_prompt = f"Based on the task '{task_description}' and the provided context, please use your tools to find relevant information and then determine if any clarifying questions are necessary."
+    system_prompt = QUESTION_GENERATOR_SYSTEM_PROMPT.format(
+        original_context=original_context_str,
+    )
+    
+    tools_config = [{"mcpServers": mcp_servers_for_agent}]
+
+    user_prompt = f"User's task request: '{task_description}'"
     messages = [{'role': 'user', 'content': user_prompt}]
 
     final_response_str = ""
-    for chunk in run_worker_agent_with_fallback(system_message=agent_config["system_message"], function_list=agent_config["function_list"], messages=messages):
+    for chunk in run_main_agent_with_fallback(system_message=system_prompt, function_list=tools_config, messages=messages):
         if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
             final_response_str = chunk[-1].get("content", "")
 
+    print ("RAW RESPONSE FROM QUESTION GENERATOR:", final_response_str)
     response_data = JsonExtractor.extract_valid_json(clean_llm_output(final_response_str))
+    print ("PARSED RESPONSE DATA:", response_data)
     if response_data and isinstance(response_data.get("clarifying_questions"), list):
         return response_data["clarifying_questions"]
     else:
@@ -531,7 +542,7 @@ async def async_generate_plan(task_id: str, user_id: str):
         messages = [{'role': 'user', 'content': user_prompt_content}]
 
         final_response_str = ""
-        for chunk in run_worker_agent_with_fallback(system_message=agent_config["system_message"], function_list=agent_config["function_list"], messages=messages):
+        for chunk in run_main_agent_with_fallback(system_message=agent_config["system_message"], function_list=agent_config["function_list"], messages=messages):
             if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
                 final_response_str = chunk[-1].get("content", "")
 

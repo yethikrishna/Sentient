@@ -12,7 +12,7 @@ from .models import CreateMemoryRequest, UpdateMemoryRequest
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
-    prefix="/api/memories",
+    prefix="/memories",
     tags=["Memories"]
 )
 
@@ -22,7 +22,7 @@ async def startup_event():
     utils._initialize_agents()
     utils._initialize_embedding_model()
 
-@router.get("/", summary="Get all memories for a user")
+@router.get("", summary="Get all memories for a user")
 async def get_all_memories(
     user_id: str = Depends(PermissionChecker(required_permissions=["read:memory"]))
 ):
@@ -64,7 +64,7 @@ async def get_memory_graph(
         logger.error(f"Error generating memory graph for user {user_id}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error generating memory graph.")
 
-@router.post("/", summary="Create a new memory for a user")
+@router.post("", summary="Create a new memory for a user")
 async def create_memory(
     request: CreateMemoryRequest,
     user_id: str = Depends(PermissionChecker(required_permissions=["write:memory"]))

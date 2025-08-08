@@ -18,7 +18,8 @@ import {
 	IconHeadphones,
 	IconDots,
 	IconLogout,
-	IconX
+	IconX,
+	IconDownload
 } from "@tabler/icons-react"
 import { cn } from "@utils/cn"
 import { motion, AnimatePresence } from "framer-motion"
@@ -69,10 +70,39 @@ const SidebarContent = ({
 	const pathname = usePathname()
 	const [userDetails, setUserDetails] = useState(null)
 	const [isHelpModalOpen, setHelpModalOpen] = useState(false)
+	const [installPrompt, setInstallPrompt] = useState(null)
 	const [isUserMenuOpen, setUserMenuOpen] = useState(false)
 	const userMenuRef = useRef(null)
 
 	useClickOutside(userMenuRef, () => setUserMenuOpen(false))
+
+	useEffect(() => {
+		const handleBeforeInstallPrompt = (e) => {
+			// Prevent the mini-infobar from appearing on mobile
+			e.preventDefault()
+			// Stash the event so it can be triggered later.
+			setInstallPrompt(e)
+		}
+
+		window.addEventListener(
+			"beforeinstallprompt",
+			handleBeforeInstallPrompt
+		)
+
+		return () => {
+			window.removeEventListener(
+				"beforeinstallprompt",
+				handleBeforeInstallPrompt
+			)
+		}
+	}, [])
+
+	const handleInstallClick = async () => {
+		if (!installPrompt) return
+		const result = await installPrompt.prompt()
+		console.log(`Install prompt was: ${result.outcome}`)
+		setInstallPrompt(null)
+	}
 
 	useEffect(() => {
 		fetch("/api/user/profile")
@@ -225,6 +255,22 @@ const SidebarContent = ({
 
 			{/* Footer */}
 			<div className="flex flex-col gap-2">
+				{installPrompt && (
+					<button
+						onClick={handleInstallClick}
+						className={cn(
+							"w-full flex items-center gap-3 bg-green-600/20 border border-green-500/50 text-green-300 rounded-lg p-2 text-left text-sm hover:bg-green-600/40 transition-colors",
+							isCollapsed && "justify-center"
+						)}
+					>
+						<IconDownload size={20} className="flex-shrink-0" />
+						{!isCollapsed && (
+							<span className="font-medium whitespace-nowrap">
+								Install App
+							</span>
+						)}
+					</button>
+				)}
 				{isMobile ? (
 					<button
 						onClick={onMobileClose}

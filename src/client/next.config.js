@@ -1,6 +1,47 @@
 // src/client/next.config.js
 
 /** @type {import('next').NextConfig} */
+import nextPWA from "next-pwa"
+
+const withPWA = nextPWA({
+	dest: "public",
+	disable: process.env.NODE_ENV === "development",
+	register: true,
+	skipWaiting: false,
+	runtimeCaching: [
+		// Cache Google Fonts
+		{
+			urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+			handler: "CacheFirst",
+			options: {
+				cacheName: "google-fonts-cache",
+				expiration: {
+					maxEntries: 10,
+					maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+				},
+				cacheableResponse: {
+					statuses: [0, 200]
+				}
+			}
+		},
+		// Cache API data with a Stale-While-Revalidate strategy
+		{
+			urlPattern: /\/api\//, // Match any API route
+			handler: "StaleWhileRevalidate",
+			options: {
+				cacheName: "api-data-cache",
+				expiration: {
+					maxEntries: 50,
+					maxAgeSeconds: 60 * 60 // 1 hour
+				},
+				cacheableResponse: {
+					statuses: [200]
+				}
+			}
+		}
+	]
+})
+
 const nextConfig = {
 	images: {
 		unoptimized: true
@@ -44,4 +85,4 @@ if (process.env.NODE_ENV === "production") {
 	nextConfig.output = "standalone"
 }
 
-export default nextConfig
+export default withPWA(nextConfig)

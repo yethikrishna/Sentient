@@ -131,6 +131,21 @@ export default function ChatPage() {
 	const remoteAudioRef = useRef(null)
 	const voiceModeStartTimeRef = useRef(null)
 
+	const lastSpokenTextRef = useRef("")
+	const setMicrophoneEnabled = useCallback((enabled) => {
+		if (webrtcClientRef.current?.mediaStream) {
+			const audioTracks =
+				webrtcClientRef.current.mediaStream.getAudioTracks()
+			if (audioTracks.length > 0) {
+				// Only change if the state is different to avoid unnecessary operations
+				if (audioTracks[0].enabled !== enabled) {
+					audioTracks[0].enabled = enabled
+					setIsMuted(!enabled)
+				}
+			}
+		}
+	}, [])
+
 	const fetchInitialMessages = useCallback(async () => {
 		setIsLoading(true)
 		try {
@@ -597,74 +612,113 @@ export default function ChatPage() {
 	}
 
 	// --- Voice Mode Handlers ---
-	const handleStatusChange = useCallback((status) => {
-		setConnectionStatus(status)
-		if (status !== "connecting" && ringtoneAudioRef.current) {
-			ringtoneAudioRef.current.pause()
-			ringtoneAudioRef.current.currentTime = 0
-		}
-		if (status === "connected") {
-			if (connectedAudioRef.current) {
-				connectedAudioRef.current.volume = 0.4
-				connectedAudioRef.current
-					.play()
-					.catch((e) => console.error("Error playing sound:", e))
+	const handleStatusChange = useCallback(
+		(status) => {
+			setConnectionStatus(status)
+			if (status !== "connecting" && ringtoneAudioRef.current) {
+				ringtoneAudioRef.current.pause()
+				ringtoneAudioRef.current.currentTime = 0
 			}
-			setVoiceStatusText("Listening...")
-		} else if (status === "disconnected") {
-			setVoiceStatusText("Click to start call")
-		} else if (status === "connecting") {
-			setVoiceStatusText("Connecting...")
-		}
-	}, [])
+			if (status === "connected") {
+				if (connectedAudioRef.current) {
+					connectedAudioRef.current.volume = 0.4
+					connectedAudioRef.current
+						.play()
+						.catch((e) => console.error("Error playing sound:", e))
+				}
+				// Add a delay to allow ICE connection to stabilize
+				setVoiceStatusText("Please wait a moment...")
+				setMicrophoneEnabled(false) // Mute mic during stabilization
+				setTimeout(() => {
+					setVoiceStatusText("Listening...")
+					setMicrophoneEnabled(true) // Unmute after delay
+				}, 4000)
+			} else if (status === "disconnected") {
+				setVoiceStatusText("Click to start call")
+			} else if (status === "connecting") {
+				setVoiceStatusText("Connecting...")
+			}
+		},
+		[setMicrophoneEnabled]
+	)
 
-	const handleVoiceEvent = useCallback((event) => {
-		if (event.type === "stt_result" && event.text) {
-			setDisplayedMessages((prev) => [
-				...prev,
-				{
-					id: `user_${Date.now()}`,
-					role: "user",
-					content: event.text,
-					timestamp: new Date().toISOString()
+	const handleVoiceEvent = useCallback(
+		(event) => {
+			if (event.type === "stt_result" && event.text) {
+				setDisplayedMessages((prev) => [
+					...prev,
+					{
+						id: `user_${Date.now()}`,
+						role: "user",
+						content: event.text,
+						timestamp: new Date().toISOString()
+					}
+				])
+			} else if (event.type === "llm_result" && event.text) {
+				lastSpokenTextRef.current = event.text // Store the text for duration calculation
+				setDisplayedMessages((prev) => [
+					...prev,
+					{
+						id: event.messageId || `assistant_${Date.now()}`,
+						role: "assistant",
+						content: event.text,
+						timestamp: new Date().toISOString()
+					}
+				])
+			} else if (event.type === "status") {
+				if (event.message === "thinking") {
+					setVoiceStatusText("Thinking...")
+					setMicrophoneEnabled(false)
+				} else if (event.message === "speaking") {
+					setVoiceStatusText("Speaking...")
+					setMicrophoneEnabled(false)
+				} else if (event.message === "listening") {
+					// The server sends 'listening' when it's done sending audio,
+					// but client-side buffering can cause a delay. We estimate
+					// the speaking duration based on the text length from the
+					// `llm_result` event to avoid unmuting the mic too early.
+					const textToMeasure = lastSpokenTextRef.current
+					// Estimate duration: ~18 chars/sec -> ~55ms/char. Add a smaller buffer.
+					const estimatedDuration = textToMeasure.length * 55 + 250 // ms
+
+					setTimeout(() => {
+						if (
+							webrtcClientRef.current?.peerConnection
+								?.connectionState === "connected"
+						) {
+							setVoiceStatusText("Listening...")
+							setMicrophoneEnabled(true)
+						}
+					}, estimatedDuration)
+
+					// Reset for the next turn
+					lastSpokenTextRef.current = ""
+				} else if (event.message === "transcribing") {
+					setVoiceStatusText("Transcribing...")
+					setMicrophoneEnabled(false) // Mute as soon as transcription starts
+				} else if (event.message === "choosing_tools")
+					setVoiceStatusText("Choosing tools...")
+				else if (
+					event.message &&
+					event.message.startsWith("using_tool_")
+				) {
+					const toolName = event.message
+						.replace("using_tool_", "")
+						.replace("_server", "")
+						.replace("_mcp", "")
+					setVoiceStatusText(
+						`Using ${
+							toolName.charAt(0).toUpperCase() + toolName.slice(1)
+						}...`
+					)
 				}
-			])
-		} else if (event.type === "llm_result" && event.text) {
-			setDisplayedMessages((prev) => [
-				...prev,
-				{
-					id: event.messageId || `assistant_${Date.now()}`,
-					role: "assistant",
-					content: event.text,
-					timestamp: new Date().toISOString()
-				}
-			])
-		} else if (event.type === "status") {
-			if (event.message === "thinking") setVoiceStatusText("Thinking...")
-			else if (event.message === "speaking")
-				setVoiceStatusText("Speaking...")
-			else if (event.message === "listening")
-				setVoiceStatusText("Listening...")
-			else if (event.message === "transcribing")
-				setVoiceStatusText("Transcribing...")
-			else if (event.message === "choosing_tools")
-				setVoiceStatusText("Choosing tools...")
-			else if (event.message && event.message.startsWith("using_tool_")) {
-				const toolName = event.message
-					.replace("using_tool_", "")
-					.replace("_server", "")
-					.replace("_mcp", "")
-				setVoiceStatusText(
-					`Using ${
-						toolName.charAt(0).toUpperCase() + toolName.slice(1)
-					}...`
-				)
+			} else if (event.type === "error") {
+				toast.error(`Voice Error: ${event.message}`)
+				setVoiceStatusText("Error. Click to retry.")
 			}
-		} else if (event.type === "error") {
-			toast.error(`Voice Error: ${event.message}`)
-			setVoiceStatusText("Error. Click to retry.")
-		}
-	}, [])
+		},
+		[setMicrophoneEnabled]
+	)
 
 	const handleAudioLevel = useCallback((level) => {
 		setAudioLevel((prev) => prev * 0.7 + level * 0.3)

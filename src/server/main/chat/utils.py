@@ -6,17 +6,18 @@ import asyncio
 import logging
 import datetime
 import threading
+import time
 import re
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Callable, Coroutine, Union
 
 from qwen_agent.tools.base import BaseTool, register_tool
-from openai import OpenAI
+from openai import OpenAI, APIError
 
 from main.chat.prompts import STAGE_1_SYSTEM_PROMPT, STAGE_2_SYSTEM_PROMPT
 from main.db import MongoManager
 from main.llm import run_agent_with_fallback
-from main.config import (INTEGRATIONS_CONFIG, ENVIRONMENT)
+from main.config import (INTEGRATIONS_CONFIG, ENVIRONMENT, OPENAI_API_KEYS, OPENAI_API_BASE_URL, OPENAI_MODEL_NAME)
 from json_extractor import JsonExtractor
 from workers.utils.text_utils import clean_llm_output
 
@@ -64,72 +65,79 @@ async def _get_stage1_response(messages: List[Dict[str, Any]], connected_tools_m
     Uses the Stage 1 LLM to detect topic changes and select relevant tools.
     Returns a dictionary containing a 'topic_changed' boolean and a 'tools' list.
     """
-    
-    print ("Using OpenAI Client for Stage 1 LLM call...")
-    client = OpenAI(
-        base_url=os.getenv("OPENAI_API_BASE_URL", "https://openrouter.ai/api/v1/"),
-        api_key=os.getenv("OPENAI_API_KEY", ""),
-    )
-    
-    print ("STAGE 1 MESSAGES:", messages)
+    if not OPENAI_API_KEYS:
+        raise ValueError("No OpenAI API keys configured for Stage 1.")
 
-    # Format messages for the OpenAI client, including the system prompt
     formatted_messages = [
         {"role": "system", "content": STAGE_1_SYSTEM_PROMPT}
     ]
     for msg in messages:
-        # The OpenAI API expects 'role' and 'content'. Filter for those keys.
         if 'role' in msg and 'content' in msg:
             formatted_messages.append({
                 "role": msg["role"],
                 "content": msg["content"]
             })
 
-    completion = client.chat.completions.create(
-        model=os.getenv("OPENAI_MODEL_NAME", "google/gemini-2.5-flash"),
-        messages=formatted_messages,
-    )
+    errors = []
+    max_retries = 3
+    retry_delay = 2  # seconds
 
-    final_content_str = completion.choices[0].message.content
-    
-    print(f"Stage 1 LLM output for user {user_id}: {final_content_str}")
-    
-    cleaned_output = clean_llm_output(final_content_str)
-    
-    print(f"Cleaned Stage 1 output for user {user_id}: {cleaned_output}")
+    for i, key in enumerate(OPENAI_API_KEYS):
+        if not key:
+            continue
 
-    # The output should now be a JSON object with 'topic_changed' and 'tools'
-    stage1_result = JsonExtractor.extract_valid_json(cleaned_output)
+        client = OpenAI(base_url=OPENAI_API_BASE_URL, api_key=key)
 
-    if isinstance(stage1_result, dict) and "topic_changed" in stage1_result and "tools" in stage1_result:
-        selected_tools = stage1_result.get("tools", [])
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"Stage 1: Attempting LLM call with API key #{i+1} (Attempt {attempt + 1}/{max_retries})")
 
-        # Separate into connected and disconnected
-        connected_tools_selected = [tool for tool in selected_tools if tool in connected_tools_map]
-        disconnected_tools_selected = [tool for tool in selected_tools if tool in disconnected_tools_map]
+                def sync_api_call():
+                    return client.chat.completions.create(
+                        model=OPENAI_MODEL_NAME,
+                        messages=formatted_messages,
+                    )
 
-        final_result = {
-            "topic_changed": stage1_result.get("topic_changed", False),
-            "connected_tools": connected_tools_selected,
-            "disconnected_tools": disconnected_tools_selected
-        }
-        logger.info(f"Stage 1 triage result: {final_result}")
-        return final_result
+                completion = await asyncio.to_thread(sync_api_call)
+                final_content_str = completion.choices[0].message.content
 
-    # Fallback logic if the LLM fails to produce the correct JSON object
-    logger.warning(f"Stage 1 failed to produce valid JSON object. Falling back to simple tool detection. Output: {cleaned_output}")
-    # Try to see if it just returned a list (old behavior)
-    if isinstance(stage1_result, list):
-        connected_tools_selected = [tool for tool in stage1_result if tool in connected_tools_map]
-        disconnected_tools_selected = [tool for tool in stage1_result if tool in disconnected_tools_map]
-        return {
-            "topic_changed": False,
-            "connected_tools": connected_tools_selected,
-            "disconnected_tools": disconnected_tools_selected
-        }
+                logger.info(f"Stage 1 LLM output for user {user_id}: {final_content_str}")
+                cleaned_output = clean_llm_output(final_content_str)
+                logger.info(f"Cleaned Stage 1 output for user {user_id}: {cleaned_output}")
+                stage1_result = JsonExtractor.extract_valid_json(cleaned_output)
 
-    # If all else fails, assume no topic change and no tools.
+                # --- SUCCESS PATH ---
+                # This is the original logic, now nested inside the success path of the retry loop
+                if isinstance(stage1_result, dict) and "topic_changed" in stage1_result and "tools" in stage1_result:
+                    selected_tools = stage1_result.get("tools", [])
+                    connected_tools_selected = [tool for tool in selected_tools if tool in connected_tools_map]
+                    disconnected_tools_selected = [tool for tool in selected_tools if tool in disconnected_tools_map]
+                    return {
+                        "topic_changed": stage1_result.get("topic_changed", False),
+                        "connected_tools": connected_tools_selected,
+                        "disconnected_tools": disconnected_tools_selected
+                    }
+                # Fall through to retry/fail if JSON is invalid
+
+            except (APIError, httpx.RequestError) as e:
+                error_message = f"Stage 1 call with API key #{i+1}, attempt #{attempt + 1} failed: {e}"
+                logger.warning(error_message)
+                errors.append(error_message)
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                else:
+                    break  # Break retry loop to go to next key
+            except Exception as e:
+                error_message = f"An unexpected error occurred during Stage 1 call with key #{i+1}, attempt #{attempt + 1}: {e}"
+                logger.error(error_message, exc_info=True)
+                errors.append(error_message)
+                break # Move to next key on unexpected errors
+
+    # --- FAILURE PATH ---
+    logger.error(f"All Stage 1 LLM attempts failed for user {user_id}. Errors: {errors}")
+    # Fallback to avoid crashing the chat
     return {"topic_changed": False, "connected_tools": [], "disconnected_tools": []}
+
 
 
 def _extract_answer_from_llm_response(llm_output: str) -> str:

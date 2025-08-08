@@ -10,7 +10,7 @@ import time
 import re
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Callable, Coroutine, Union
-
+import httpx
 from qwen_agent.tools.base import BaseTool, register_tool
 from openai import OpenAI, APIError
 

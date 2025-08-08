@@ -596,41 +596,6 @@ export default function ChatPage() {
 		return "Good Evening"
 	}
 
-	const getFinalAnswer = (content) => {
-		if (!content || typeof content !== "string") return ""
-
-		const answerParts = []
-		const regex =
-			/(<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>|<tool_code[^>]*>[\s\S]*?<\/tool_code>|<tool_result[^>]*>[\s\S]*?<\/tool_result>|<answer>[\s\S]*?<\/answer>)/g
-		let lastIndex = 0
-		let inToolCallPhase = false
-
-		for (const match of content.matchAll(regex)) {
-			const precedingText = content.substring(lastIndex, match.index)
-			if (precedingText.trim() && !inToolCallPhase) {
-				answerParts.push(precedingText.trim())
-			}
-
-			const tag = match[0]
-			if (tag.startsWith("<tool_code")) inToolCallPhase = true
-			else if (tag.startsWith("<tool_result")) inToolCallPhase = false
-			else if (tag.startsWith("<answer>")) {
-				const answerContent =
-					tag.match(/<answer>([\s\S]*?)<\/answer>/)?.[1] || ""
-				if (answerContent) answerParts.push(answerContent.trim())
-			}
-			lastIndex = match.index + tag.length
-		}
-		const remainingText = content.substring(lastIndex)
-		if (remainingText.trim() && !inToolCallPhase) {
-			answerParts.push(remainingText.trim())
-		}
-
-		const plainText = answerParts.join("\n\n")
-		if (plainText) return plainText
-		return content.replace(/<[^>]+>/g, "").trim()
-	}
-
 	// --- Voice Mode Handlers ---
 	const handleStatusChange = useCallback((status) => {
 		setConnectionStatus(status)
@@ -918,7 +883,7 @@ export default function ChatPage() {
 								: "the assistant"}
 						</p>
 						<p className="text-sm text-neutral-200 mt-1 truncate">
-							{getFinalAnswer(replyingTo.content)}
+							{replyingTo.content.replace(/<[^>]+>/g, "").trim()}
 						</p>
 					</div>
 					<button
@@ -1480,9 +1445,7 @@ export default function ChatPage() {
 															duration: 0.3
 														}}
 													>
-														{getFinalAnswer(
-															msg.content
-														)}
+														{msg.content}
 													</motion.div>
 												))}
 										</AnimatePresence>
@@ -1533,6 +1496,9 @@ export default function ChatPage() {
 										role={msg.role}
 										content={msg.content}
 										tools={msg.tools || []}
+										thoughts={msg.thoughts || []}
+										tool_calls={msg.tool_calls || []}
+										tool_results={msg.tool_results || []}
 										onReply={handleReply}
 										message={msg}
 										allMessages={displayedMessages}

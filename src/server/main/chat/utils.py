@@ -20,6 +20,7 @@ from main.llm import run_agent_with_fallback
 from main.config import (INTEGRATIONS_CONFIG, ENVIRONMENT, OPENAI_API_KEYS, OPENAI_API_BASE_URL, OPENAI_MODEL_NAME)
 from json_extractor import JsonExtractor
 from workers.utils.text_utils import clean_llm_output
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +139,83 @@ async def _get_stage1_response(messages: List[Dict[str, Any]], connected_tools_m
     # Fallback to avoid crashing the chat
     return {"topic_changed": False, "connected_tools": [], "disconnected_tools": []}
 
+def parse_assistant_response(raw_content: str) -> Dict[str, Any]:
+    """
+    Parses the raw LLM output string to separate the final answer, thoughts, and tool interactions.
+    """
+    if not isinstance(raw_content, str):
+        return {"final_content": "", "thoughts": [], "tool_calls": [], "tool_results": []}
+
+    thoughts = []
+    tool_calls = []
+    tool_results = []
+    answer_parts = []
+
+    # Regex to find all tags, using backreference for correct closing tag
+    tag_regex = re.compile(r'(<(think(?:ing)?|tool_code|tool_call|tool_result|answer)[\s\S]*?>[\s\S]*?<\/\2>)', re.DOTALL)
+
+    last_index = 0
+    in_tool_call_phase = False
+
+    for match in tag_regex.finditer(raw_content):
+        # Capture text between tags as part of the answer if not in a tool call phase
+        preceding_text = raw_content[last_index:match.start()].strip()
+        if preceding_text and not in_tool_call_phase:
+            answer_parts.append(preceding_text)
+
+        tag_content = match.group(1)
+
+        # Extract thoughts
+        think_match = re.search(r'<think(?:ing)?>([\s\S]*?)</think(?:ing)?>', tag_content, re.DOTALL)
+        if think_match:
+            thoughts.append(think_match.group(1).strip())
+            last_index = match.end()
+            continue
+
+        # Extract tool calls
+        tool_code_match = re.search(r'<tool_(?:code|call) name="([^"]+)">([\s\S]*?)</tool_code>', tag_content, re.DOTALL)
+        if tool_code_match:
+            in_tool_call_phase = True
+            tool_calls.append({
+                "tool_name": tool_code_match.group(1),
+                "parameters": tool_code_match.group(2).strip()
+            })
+            last_index = match.end()
+            continue
+
+        # Extract tool results
+        tool_result_match = re.search(r'<tool_result tool_name="([^"]+)">([\s\S]*?)</tool_result>', tag_content, re.DOTALL)
+        if tool_result_match:
+            in_tool_call_phase = False
+            tool_results.append({
+                "tool_name": tool_result_match.group(1),
+                "result": tool_result_match.group(2).strip()
+            })
+            last_index = match.end()
+            continue
+
+        # Extract final answer parts
+        answer_match = re.search(r'<answer>([\s\S]*?)</answer>', tag_content, re.DOTALL)
+        if answer_match:
+            answer_parts.append(answer_match.group(1).strip())
+            last_index = match.end()
+            continue
+
+        last_index = match.end()
+
+    # Capture any trailing text after the last tag
+    trailing_text = raw_content[last_index:].strip()
+    if trailing_text and not in_tool_call_phase:
+        answer_parts.append(trailing_text)
+
+    final_content = "\n\n".join(filter(None, answer_parts))
+
+    return {
+        "final_content": final_content,
+        "thoughts": thoughts,
+        "tool_calls": tool_calls,
+        "tool_results": tool_results
+    }
 
 
 def _extract_answer_from_llm_response(llm_output: str) -> str:

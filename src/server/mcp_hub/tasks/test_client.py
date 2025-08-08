@@ -12,7 +12,7 @@ llm_cfg = {
 mcp_server_url = "http://127.0.0.1:9018/sse"
 
 # IMPORTANT: Replace with a valid User ID from your MongoDB
-USER_ID = "YOUR_USER_ID_HERE"
+USER_ID = "google-oauth2|115437244827618197332"
 
 # --- Agent Setup ---
 tools = [{
@@ -70,6 +70,7 @@ def run_agent_interaction():
             print()
             if final_assistant_message:
                 messages.append(final_assistant_message)
+                print(messages)
             else:
                 print("I could not process that request.")
                 messages.pop()

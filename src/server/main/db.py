@@ -416,7 +416,7 @@ class MongoManager:
         return new_task_id
 
     # --- Message Methods ---
-    async def add_message(self, user_id: str, role: str, content: str, message_id: Optional[str] = None) -> Dict:
+    async def add_message(self, user_id: str, role: str, content: str, message_id: Optional[str] = None, thoughts: Optional[List[str]] = None, tool_calls: Optional[List[Dict]] = None, tool_results: Optional[List[Dict]] = None) -> Dict:
         """
         Adds a single message to the messages collection.
         If a message_id is provided, it's used. Otherwise, a new one is generated.
@@ -441,6 +441,15 @@ class MongoManager:
             "is_summarized": False,
             "summary_id": None,
         }
+
+        # Add new structured fields if they are provided and not empty
+        if thoughts:
+            message_doc["thoughts"] = thoughts
+        if tool_calls:
+            message_doc["tool_calls"] = tool_calls
+        if tool_results:
+            message_doc["tool_results"] = tool_results
+
         await self.messages_collection.insert_one(message_doc)
         logger.info(f"Added message for user {user_id} with role {role}")
         return message_doc

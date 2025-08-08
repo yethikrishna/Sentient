@@ -7,7 +7,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from main.chat.models import ChatMessageInput, DeleteMessageRequest
-from main.chat.utils import generate_chat_llm_stream
+from main.chat.utils import generate_chat_llm_stream, parse_assistant_response
 from main.auth.utils import PermissionChecker
 from main.dependencies import mongo_manager
 
@@ -73,13 +73,19 @@ async def chat_endpoint(
         finally:
             # Save the complete assistant response at the end of the stream
             if assistant_response_buffer.strip() and assistant_message_id:
+                # NEW: Parse the response before saving
+                parsed_response = parse_assistant_response(assistant_response_buffer.strip())
+
                 await mongo_manager.add_message(
                     user_id=user_id,
                     role="assistant",
-                    content=assistant_response_buffer.strip(),
-                    message_id=assistant_message_id
+                    content=parsed_response["final_content"],
+                    message_id=assistant_message_id,
+                    thoughts=parsed_response["thoughts"],
+                    tool_calls=parsed_response["tool_calls"],
+                    tool_results=parsed_response["tool_results"]
                 )
-                logger.info(f"Saved assistant response for user {user_id} with ID {assistant_message_id}")
+                logger.info(f"Saved parsed assistant response for user {user_id} with ID {assistant_message_id}")
 
     return StreamingResponse(
         event_stream_generator(),

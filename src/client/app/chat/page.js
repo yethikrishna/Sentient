@@ -131,6 +131,21 @@ export default function ChatPage() {
 	const remoteAudioRef = useRef(null)
 	const voiceModeStartTimeRef = useRef(null)
 
+	const lastSpokenTextRef = useRef("")
+	const setMicrophoneEnabled = useCallback((enabled) => {
+		if (webrtcClientRef.current?.mediaStream) {
+			const audioTracks =
+				webrtcClientRef.current.mediaStream.getAudioTracks()
+			if (audioTracks.length > 0) {
+				// Only change if the state is different to avoid unnecessary operations
+				if (audioTracks[0].enabled !== enabled) {
+					audioTracks[0].enabled = enabled
+					setIsMuted(!enabled)
+				}
+			}
+		}
+	}, [])
+
 	const fetchInitialMessages = useCallback(async () => {
 		setIsLoading(true)
 		try {
@@ -596,110 +611,114 @@ export default function ChatPage() {
 		return "Good Evening"
 	}
 
-	const getFinalAnswer = (content) => {
-		if (!content || typeof content !== "string") return ""
-
-		const answerParts = []
-		const regex =
-			/(<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>|<tool_code[^>]*>[\s\S]*?<\/tool_code>|<tool_result[^>]*>[\s\S]*?<\/tool_result>|<answer>[\s\S]*?<\/answer>)/g
-		let lastIndex = 0
-		let inToolCallPhase = false
-
-		for (const match of content.matchAll(regex)) {
-			const precedingText = content.substring(lastIndex, match.index)
-			if (precedingText.trim() && !inToolCallPhase) {
-				answerParts.push(precedingText.trim())
-			}
-
-			const tag = match[0]
-			if (tag.startsWith("<tool_code")) inToolCallPhase = true
-			else if (tag.startsWith("<tool_result")) inToolCallPhase = false
-			else if (tag.startsWith("<answer>")) {
-				const answerContent =
-					tag.match(/<answer>([\s\S]*?)<\/answer>/)?.[1] || ""
-				if (answerContent) answerParts.push(answerContent.trim())
-			}
-			lastIndex = match.index + tag.length
-		}
-		const remainingText = content.substring(lastIndex)
-		if (remainingText.trim() && !inToolCallPhase) {
-			answerParts.push(remainingText.trim())
-		}
-
-		const plainText = answerParts.join("\n\n")
-		if (plainText) return plainText
-		return content.replace(/<[^>]+>/g, "").trim()
-	}
-
 	// --- Voice Mode Handlers ---
-	const handleStatusChange = useCallback((status) => {
-		setConnectionStatus(status)
-		if (status !== "connecting" && ringtoneAudioRef.current) {
-			ringtoneAudioRef.current.pause()
-			ringtoneAudioRef.current.currentTime = 0
-		}
-		if (status === "connected") {
-			if (connectedAudioRef.current) {
-				connectedAudioRef.current.volume = 0.4
-				connectedAudioRef.current
-					.play()
-					.catch((e) => console.error("Error playing sound:", e))
+	const handleStatusChange = useCallback(
+		(status) => {
+			setConnectionStatus(status)
+			if (status !== "connecting" && ringtoneAudioRef.current) {
+				ringtoneAudioRef.current.pause()
+				ringtoneAudioRef.current.currentTime = 0
 			}
-			setVoiceStatusText("Listening...")
-		} else if (status === "disconnected") {
-			setVoiceStatusText("Click to start call")
-		} else if (status === "connecting") {
-			setVoiceStatusText("Connecting...")
-		}
-	}, [])
+			if (status === "connected") {
+				if (connectedAudioRef.current) {
+					connectedAudioRef.current.volume = 0.4
+					connectedAudioRef.current
+						.play()
+						.catch((e) => console.error("Error playing sound:", e))
+				}
+				// Add a delay to allow ICE connection to stabilize
+				setVoiceStatusText("Please wait a moment...")
+				setMicrophoneEnabled(false) // Mute mic during stabilization
+				setTimeout(() => {
+					setVoiceStatusText("Listening...")
+					setMicrophoneEnabled(true) // Unmute after delay
+				}, 4000)
+			} else if (status === "disconnected") {
+				setVoiceStatusText("Click to start call")
+			} else if (status === "connecting") {
+				setVoiceStatusText("Connecting...")
+			}
+		},
+		[setMicrophoneEnabled]
+	)
 
-	const handleVoiceEvent = useCallback((event) => {
-		if (event.type === "stt_result" && event.text) {
-			setDisplayedMessages((prev) => [
-				...prev,
-				{
-					id: `user_${Date.now()}`,
-					role: "user",
-					content: event.text,
-					timestamp: new Date().toISOString()
+	const handleVoiceEvent = useCallback(
+		(event) => {
+			if (event.type === "stt_result" && event.text) {
+				setDisplayedMessages((prev) => [
+					...prev,
+					{
+						id: `user_${Date.now()}`,
+						role: "user",
+						content: event.text,
+						timestamp: new Date().toISOString()
+					}
+				])
+			} else if (event.type === "llm_result" && event.text) {
+				lastSpokenTextRef.current = event.text // Store the text for duration calculation
+				setDisplayedMessages((prev) => [
+					...prev,
+					{
+						id: event.messageId || `assistant_${Date.now()}`,
+						role: "assistant",
+						content: event.text,
+						timestamp: new Date().toISOString()
+					}
+				])
+			} else if (event.type === "status") {
+				if (event.message === "thinking") {
+					setVoiceStatusText("Thinking...")
+					setMicrophoneEnabled(false)
+				} else if (event.message === "speaking") {
+					setVoiceStatusText("Speaking...")
+					setMicrophoneEnabled(false)
+				} else if (event.message === "listening") {
+					// The server sends 'listening' when it's done sending audio,
+					// but client-side buffering can cause a delay. We estimate
+					// the speaking duration based on the text length from the
+					// `llm_result` event to avoid unmuting the mic too early.
+					const textToMeasure = lastSpokenTextRef.current
+					// Estimate duration: ~18 chars/sec -> ~55ms/char. Add a smaller buffer.
+					const estimatedDuration = textToMeasure.length * 55 + 250 // ms
+
+					setTimeout(() => {
+						if (
+							webrtcClientRef.current?.peerConnection
+								?.connectionState === "connected"
+						) {
+							setVoiceStatusText("Listening...")
+							setMicrophoneEnabled(true)
+						}
+					}, estimatedDuration)
+
+					// Reset for the next turn
+					lastSpokenTextRef.current = ""
+				} else if (event.message === "transcribing") {
+					setVoiceStatusText("Transcribing...")
+					setMicrophoneEnabled(false) // Mute as soon as transcription starts
+				} else if (event.message === "choosing_tools")
+					setVoiceStatusText("Choosing tools...")
+				else if (
+					event.message &&
+					event.message.startsWith("using_tool_")
+				) {
+					const toolName = event.message
+						.replace("using_tool_", "")
+						.replace("_server", "")
+						.replace("_mcp", "")
+					setVoiceStatusText(
+						`Using ${
+							toolName.charAt(0).toUpperCase() + toolName.slice(1)
+						}...`
+					)
 				}
-			])
-		} else if (event.type === "llm_result" && event.text) {
-			setDisplayedMessages((prev) => [
-				...prev,
-				{
-					id: event.messageId || `assistant_${Date.now()}`,
-					role: "assistant",
-					content: event.text,
-					timestamp: new Date().toISOString()
-				}
-			])
-		} else if (event.type === "status") {
-			if (event.message === "thinking") setVoiceStatusText("Thinking...")
-			else if (event.message === "speaking")
-				setVoiceStatusText("Speaking...")
-			else if (event.message === "listening")
-				setVoiceStatusText("Listening...")
-			else if (event.message === "transcribing")
-				setVoiceStatusText("Transcribing...")
-			else if (event.message === "choosing_tools")
-				setVoiceStatusText("Choosing tools...")
-			else if (event.message && event.message.startsWith("using_tool_")) {
-				const toolName = event.message
-					.replace("using_tool_", "")
-					.replace("_server", "")
-					.replace("_mcp", "")
-				setVoiceStatusText(
-					`Using ${
-						toolName.charAt(0).toUpperCase() + toolName.slice(1)
-					}...`
-				)
+			} else if (event.type === "error") {
+				toast.error(`Voice Error: ${event.message}`)
+				setVoiceStatusText("Error. Click to retry.")
 			}
-		} else if (event.type === "error") {
-			toast.error(`Voice Error: ${event.message}`)
-			setVoiceStatusText("Error. Click to retry.")
-		}
-	}, [])
+		},
+		[setMicrophoneEnabled]
+	)
 
 	const handleAudioLevel = useCallback((level) => {
 		setAudioLevel((prev) => prev * 0.7 + level * 0.3)
@@ -918,7 +937,7 @@ export default function ChatPage() {
 								: "the assistant"}
 						</p>
 						<p className="text-sm text-neutral-200 mt-1 truncate">
-							{getFinalAnswer(replyingTo.content)}
+							{replyingTo.content.replace(/<[^>]+>/g, "").trim()}
 						</p>
 					</div>
 					<button
@@ -988,8 +1007,8 @@ export default function ChatPage() {
 					style={{ maxHeight: "200px" }}
 				/>
 				{!input && !uploadedFilename && (
-					<div className="absolute top-1/2 left-4 -translate-y-1/2 text-neutral-500 pointer-events-none z-0">
-						<TextLoop className="text-base ml-5">
+					<div className="absolute top-1/2 left-4 right-4 -translate-y-1/2 text-neutral-500 pointer-events-none z-0 overflow-hidden">
+						<TextLoop className="text-base ml-5 whitespace-normal md:whitespace-nowrap">
 							<span>Ask anything...</span>
 							<span>Summarize my unread emails from today</span>
 							<span>
@@ -1480,9 +1499,7 @@ export default function ChatPage() {
 															duration: 0.3
 														}}
 													>
-														{getFinalAnswer(
-															msg.content
-														)}
+														{msg.content}
 													</motion.div>
 												))}
 										</AnimatePresence>
@@ -1533,6 +1550,9 @@ export default function ChatPage() {
 										role={msg.role}
 										content={msg.content}
 										tools={msg.tools || []}
+										thoughts={msg.thoughts || []}
+										tool_calls={msg.tool_calls || []}
+										tool_results={msg.tool_results || []}
 										onReply={handleReply}
 										message={msg}
 										allMessages={displayedMessages}

@@ -70,8 +70,8 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 						className="w-full rounded-l-full bg-transparent text-white placeholder-transparent border-1 border-brand-orange focus:ring-0 focus:ring-brand-black text-sm z-10 overflow-y-auto self-stretch py-2"
 					/>
 					{!prompt && (
-						<div className="absolute top-1/2 left-4 -translate-y-1/2 text-neutral-500 pointer-events-none z-0">
-							<TextLoop className="text-sm px-2">
+						<div className="absolute top-1/2 left-4 right-12 -translate-y-1/2 text-neutral-500 pointer-events-none z-0 overflow-hidden">
+							<TextLoop className="text-sm px-2 whitespace-normal md:whitespace-nowrap">
 								<span>Create a task...</span>
 								<span>
 									Summarize my unread emails from today

@@ -10,7 +10,7 @@ import {
 	IconFileText,
 	IconArrowBackUp,
 	IconX,
-	IconMenu2,
+	IconDotsVertical,
 	IconPhone,
 	IconPhoneOff,
 	IconWaveSine,
@@ -1276,7 +1276,7 @@ export default function ChatPage() {
 					}}
 					className="p-2 rounded-full bg-neutral-800/50 hover:bg-neutral-700/80 text-white"
 				>
-					<IconMenu2 size={20} />
+					<IconDotsVertical size={20} />
 				</button>
 				<AnimatePresence>
 					{isOptionsOpen && (

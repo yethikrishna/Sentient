@@ -3,7 +3,6 @@ import React, { useState, useEffect, useRef } from "react"
 import { usePathname } from "next/navigation"
 import Link from "next/link"
 import {
-	IconAdjustments,
 	IconChecklist,
 	IconPlugConnected,
 	IconUser,
@@ -17,6 +16,7 @@ import {
 	IconMessagePlus,
 	IconHeadphones,
 	IconDots,
+	IconAdjustments,
 	IconLogout,
 	IconX,
 	IconDownload
@@ -63,6 +63,7 @@ const SidebarContent = ({
 	isCollapsed,
 	onToggle,
 	onNotificationsOpen,
+	onSearchOpen,
 	unreadCount,
 	isMobile = false,
 	onMobileClose = () => {},
@@ -113,7 +114,11 @@ const SidebarContent = ({
 					isCollapsed && "justify-center"
 				)}
 			>
-				<Link href="/chat" className="flex items-center gap-2">
+				<Link
+					href="/chat"
+					className="flex items-center gap-2"
+					onClick={isMobile ? onMobileClose : undefined}
+				>
 					<img
 						src="/images/half-logo-dark.svg"
 						alt="Logo"
@@ -121,34 +126,45 @@ const SidebarContent = ({
 					/>
 					<AnimatePresence>
 						{!isCollapsed && (
-							<motion.span
-								initial={{ opacity: 0, x: -10 }}
-								animate={{ opacity: 1, x: 0 }}
-								exit={{ opacity: 0, x: -10 }}
-								transition={{ duration: 0.2 }}
-								className="font-bold text-lg text-white whitespace-nowrap"
-							>
+							<motion.span className="font-bold text-lg text-white whitespace-nowrap">
 								Sentient
 							</motion.span>
 						)}
 					</AnimatePresence>
 				</Link>
 				<AnimatePresence>
-					{!isCollapsed && (
-						<motion.div
-							initial={{ opacity: 0, x: -10 }}
-							animate={{ opacity: 1, x: 0 }}
-							exit={{ opacity: 0, x: -10 }}
-							transition={{ duration: 0.2, delay: 0.1 }}
-							className="flex items-center gap-1"
+					{isMobile && (
+						<button
+							onClick={onMobileClose}
+							className="p-1.5 rounded-full hover:bg-neutral-800"
 						>
-							<button className="p-1.5 rounded-md hover:bg-neutral-800 text-neutral-400 hover:text-white">
-								<IconSearch size={18} />
-							</button>
-						</motion.div>
+							<IconX size={18} />
+						</button>
 					)}
 				</AnimatePresence>
 			</div>
+
+			{/* Search Button */}
+			<button
+				onClick={() => {
+					onSearchOpen()
+					if (isMobile) onMobileClose()
+				}}
+				className={cn(
+					"w-full flex items-center gap-3 bg-neutral-800/40 border border-neutral-700/80 rounded-lg p-2.5 text-left mb-4 hover:bg-neutral-800/80 transition-colors",
+					isCollapsed && "justify-center"
+				)}
+			>
+				<IconSearch
+					size={18}
+					className="text-neutral-300 flex-shrink-0"
+				/>
+				{!isCollapsed && (
+					<span className="text-sm font-medium text-neutral-200">
+						Search...
+					</span>
+				)}
+			</button>
 
 			{/* Upgrade Button */}
 			<button
@@ -368,6 +384,7 @@ const Sidebar = ({
 	isCollapsed,
 	onToggle,
 	onNotificationsOpen,
+	onSearchOpen,
 	unreadCount,
 	isMobileOpen,
 	onMobileClose
@@ -428,6 +445,7 @@ const Sidebar = ({
 								isCollapsed={false}
 								onMobileClose={onMobileClose}
 								onNotificationsOpen={onNotificationsOpen}
+								onSearchOpen={onSearchOpen}
 								unreadCount={unreadCount}
 								isMobile={true}
 								installPrompt={installPrompt}
@@ -448,6 +466,7 @@ const Sidebar = ({
 					isCollapsed={isCollapsed}
 					onToggle={onToggle}
 					onNotificationsOpen={onNotificationsOpen}
+					onSearchOpen={onSearchOpen}
 					unreadCount={unreadCount}
 					installPrompt={installPrompt}
 					handleInstallClick={handleInstallClick}

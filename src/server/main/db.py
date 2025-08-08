@@ -72,11 +72,12 @@ class MongoManager:
                 IndexModel([("user_id", ASCENDING), ("status", ASCENDING), ("priority", ASCENDING)], name="task_user_status_priority_idx"),
                 IndexModel([("status", ASCENDING), ("agent_id", ASCENDING)], name="task_status_agent_idx", sparse=True), 
                 IndexModel([("task_id", ASCENDING)], unique=True, name="task_id_unique_idx"),
-                IndexModel([("description", "text")], name="task_description_text_idx"),
+                IndexModel([("name", "text"), ("description", "text")], name="task_text_search_idx"),
             ],
             self.messages_collection: [
                 IndexModel([("message_id", ASCENDING)], unique=True, name="message_id_unique_idx"),
                 IndexModel([("user_id", ASCENDING), ("timestamp", DESCENDING)], name="message_user_timestamp_idx"),
+                IndexModel([("content", "text")], name="message_content_text_idx"),
             ],
             self.user_proactive_preferences_collection: [
                 IndexModel([("user_id", ASCENDING), ("suggestion_type", ASCENDING)], unique=True, name="user_suggestion_preference_unique_idx")

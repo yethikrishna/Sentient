@@ -1,0 +1,50 @@
+# Dockerfile.render - Optimized for Render deployment
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    # Textract dependencies
+    antiword \
+    poppler-utils \
+    tesseract-ocr \
+    unrtf \
+    # Node.js for frontend build
+    nodejs \
+    npm \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
+
+# Copy the entire source code
+COPY . .
+
+# Install Python dependencies
+RUN cd src/server && pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+# Install Playwright browsers
+RUN cd src/server && playwright install --with-deps
+
+# Build the frontend
+RUN cd src/client && npm install && npm run build
+
+# Expose port (Render will set the PORT environment variable)
+EXPOSE $PORT
+
+# Create a simple startup script
+RUN echo '#!/bin/bash\n\
+PORT=${PORT:-5000}\n\
+cd /app/src/server\n\
+exec uvicorn main.app:app --host 0.0.0.0 --port $PORT --lifespan on' > /app/start-render.sh \
+    && chmod +x /app/start-render.sh
+
+# Start the application
+CMD ["/app/start-render.sh"]

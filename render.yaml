@@ -1,0 +1,294 @@
+services:
+  # Main Sentient Web Application
+  - type: web
+    name: sentient-app
+    runtime: docker
+    dockerfilePath: ./Dockerfile.render
+    plan: starter
+    region: oregon
+    branch: master
+    healthCheckPath: /health
+    envVars:
+      # Environment Configuration
+      - key: ENVIRONMENT
+        value: production
+      - key: PYTHONPATH
+        value: /app
+      - key: PYTHONDONTWRITEBYTECODE
+        value: "1"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      
+      # Database Configuration
+      - key: POSTGRES_HOST
+        fromService:
+          type: pserv
+          name: sentient-postgres
+          property: host
+      - key: POSTGRES_PORT
+        fromService:
+          type: pserv
+          name: sentient-postgres
+          property: port
+      - key: POSTGRES_USER
+        fromService:
+          type: pserv
+          name: sentient-postgres
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromService:
+          type: pserv
+          name: sentient-postgres
+          property: password
+      - key: POSTGRES_DB
+        fromService:
+          type: pserv
+          name: sentient-postgres
+          property: database
+      
+      # Redis Configuration
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: sentient-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: sentient-redis
+          property: port
+      - key: REDIS_PASSWORD
+        fromService:
+          type: redis
+          name: sentient-redis
+          property: password
+      
+      # Application URLs
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: sentient-redis
+          property: connectionString
+      - key: DATABASE_URL
+        fromService:
+          type: pserv
+          name: sentient-postgres
+          property: connectionString
+      
+      # API Keys (to be set in Render dashboard)
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL_NAME
+        value: gpt-4
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: POSTHOG_API_KEY
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: NOTION_TOKEN
+        sync: false
+      - key: SLACK_BOT_TOKEN
+        sync: false
+      - key: WHATSAPP_WEBHOOK_SECRET
+        sync: false
+      
+      # Application Configuration
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ENCRYPTION_KEY
+        generateValue: true
+      - key: SESSION_SECRET
+        generateValue: true
+      
+      # ChromaDB Configuration (external service or simplified)
+      - key: CHROMA_HOST
+        value: localhost
+      - key: CHROMA_PORT
+        value: "8000"
+      
+      # WAHA Configuration (optional for WhatsApp)
+      - key: WAHA_URL
+        value: http://localhost:3000
+      - key: WAHA_API_KEY
+        sync: false
+
+  # PostgreSQL Database with pgvector extension
+  - type: pserv
+    name: sentient-postgres
+    runtime: postgres
+    plan: starter
+    region: oregon
+    databaseName: sentient
+    databaseUser: sentient_user
+    postgresMajorVersion: 16
+    ipAllowList: []
+
+  # Redis for Celery message broker and caching
+  - type: redis
+    name: sentient-redis
+    plan: starter
+    region: oregon
+    ipAllowList: []
+
+  # Background Worker Service for Celery tasks
+  - type: worker
+    name: sentient-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile.render
+    plan: starter
+    region: oregon
+    branch: master
+    startCommand: "cd /app/src/server && celery -A workers.celery_app worker --loglevel=info --pool=solo"
+    envVars:
+      # Copy all environment variables from the main web service
+      - key: ENVIRONMENT
+        value: production
+      - key: PYTHONPATH
+        value: /app
+      - key: PYTHONDONTWRITEBYTECODE
+        value: "1"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      
+      # Database Configuration
+      - key: POSTGRES_HOST
+        fromService:
+          type: pserv
+          name: sentient-postgres
+          property: host
+      - key: POSTGRES_PORT
+        fromService:
+          type: pserv
+          name: sentient-postgres
+          property: port
+      - key: POSTGRES_USER
+        fromService:
+          type: pserv
+          name: sentient-postgres
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromService:
+          type: pserv
+          name: sentient-postgres
+          property: password
+      - key: POSTGRES_DB
+        fromService:
+          type: pserv
+          name: sentient-postgres
+          property: database
+      
+      # Redis Configuration
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: sentient-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: sentient-redis
+          property: port
+      - key: REDIS_PASSWORD
+        fromService:
+          type: redis
+          name: sentient-redis
+          property: password
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: sentient-redis
+          property: connectionString
+      - key: DATABASE_URL
+        fromService:
+          type: pserv
+          name: sentient-postgres
+          property: connectionString
+      
+      # API Keys (sync from main service)
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL_NAME
+        value: gpt-4
+      - key: JWT_SECRET
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+
+  # Celery Beat Scheduler for periodic tasks
+  - type: worker
+    name: sentient-scheduler
+    runtime: docker
+    dockerfilePath: ./Dockerfile.render
+    plan: starter
+    region: oregon
+    branch: master
+    startCommand: "cd /app/src/server && celery -A workers.celery_app beat --loglevel=info"
+    envVars:
+      # Copy environment variables from worker service
+      - key: ENVIRONMENT
+        value: production
+      - key: PYTHONPATH
+        value: /app
+      - key: PYTHONDONTWRITEBYTECODE
+        value: "1"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      
+      # Database Configuration
+      - key: POSTGRES_HOST
+        fromService:
+          type: pserv
+          name: sentient-postgres
+          property: host
+      - key: POSTGRES_PORT
+        fromService:
+          type: pserv
+          name: sentient-postgres
+          property: port
+      - key: POSTGRES_USER
+        fromService:
+          type: pserv
+          name: sentient-postgres
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromService:
+          type: pserv
+          name: sentient-postgres
+          property: password
+      - key: POSTGRES_DB
+        fromService:
+          type: pserv
+          name: sentient-postgres
+          property: database
+      
+      # Redis Configuration
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: sentient-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: sentient-redis
+          property: port
+      - key: REDIS_PASSWORD
+        fromService:
+          type: redis
+          name: sentient-redis
+          property: password
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: sentient-redis
+          property: connectionString
+      - key: DATABASE_URL
+        fromService:
+          type: pserv
+          name: sentient-postgres
+          property: connectionString

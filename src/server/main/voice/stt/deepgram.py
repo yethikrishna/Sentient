@@ -44,16 +44,19 @@ class DeepgramSTT(BaseSTT):
             # The audio is raw PCM, 16-bit signed little-endian, mono.
             # We must provide the mimetype to Deepgram.
             source: BufferSource = {
-                "buffer": audio_bytes, 
-                "mimetype": f"audio/raw;pcm=s16le;sample_rate={sample_rate};channels=1"
+                "buffer": audio_bytes
             }
             
             # Configure Deepgram options for the request for best results
+            # Crucially, we must specify the encoding, sample_rate, and channels for raw audio.
             options = PrerecordedOptions(
                 model="nova-3",
                 smart_format=True,
                 punctuate=True,
-                utterances=True
+                utterances=True,
+                encoding="linear16",
+                sample_rate=sample_rate,
+                channels=1
             )
 
             # Make the API call to transcribe the audio buffer

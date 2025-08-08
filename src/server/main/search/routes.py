@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 import asyncio
+from bson import ObjectId
+import datetime
 
 from main.auth.utils import PermissionChecker
 from main.search.models import UnifiedSearchRequest
@@ -15,6 +17,15 @@ router = APIRouter(
     prefix="/api/search",
     tags=["Search"]
 )
+
+def sanitize_dict(d: dict) -> dict:
+    """Converts non-serializable types like ObjectId and datetime to strings."""
+    for key, value in d.items():
+        if isinstance(value, ObjectId):
+            d[key] = str(value)
+        elif isinstance(value, datetime.datetime):
+            d[key] = value.isoformat()
+    return d
 
 @router.post("/unified", summary="Perform a unified search across all data sources")
 async def unified_search_endpoint(
@@ -73,10 +84,10 @@ async def interactive_search(
             tasks_coro, chats_coro, search_memories_coro()
         )
 
-        # Format results
-        formatted_tasks = [{"type": "task", **t} for t in tasks_res]
-        formatted_chats = [{"type": "chat", **c} for c in chats_res]
-        formatted_memories = [{"type": "memory", **m} for m in memories_res]
+        # Format and sanitize results
+        formatted_tasks = [{"type": "task", **sanitize_dict(t)} for t in tasks_res]
+        formatted_chats = [{"type": "chat", **sanitize_dict(c)} for c in chats_res]
+        formatted_memories = [{"type": "memory", **sanitize_dict(m)} for m in memories_res]
 
         all_results = formatted_tasks + formatted_chats + formatted_memories
 

@@ -342,7 +342,7 @@ INTEGRATIONS_CONFIG = {
     },
     "tasks": {
         "display_name": "Internal Task Manager",
-        "description": "Manages asynchronous, background tasks. Use 'create_task_from_prompt' to create a new task from a natural language prompt. Use 'process_collection_in_parallel' to perform an action on each item in a list in parallel (e.g., summarize a list of articles).",
+        "description": "Manages asynchronous, background tasks. Use 'create_task_from_prompt' to create a new task from a natural language prompt.",
         "auth_type": "builtin",
         "icon": "IconChecklist",
         "category": "Core",

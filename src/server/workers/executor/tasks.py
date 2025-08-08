@@ -14,7 +14,7 @@ from json_extractor import JsonExtractor
 from main.analytics import capture_event
 from qwen_agent.agents import Assistant
 from workers.celery_app import celery_app
-from workers.utils.api_client import notify_user, push_progress_update
+from workers.utils.api_client import notify_user, push_progress_update, push_task_list_update
 from workers.utils.text_utils import clean_llm_output
 from celery import chord, group
 
@@ -36,6 +36,15 @@ llm_cfg = {
 # --- Database Connection within Celery Task ---
 def get_db_client():
     return motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI)[MONGO_DB_NAME]
+
+# Helper to run async functions from sync Celery tasks
+def run_async(coro):
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coro)
 
 async def update_task_run_status(db, task_id: str, run_id: str, status: str, user_id: str, details: Dict = None, block_id: Optional[str] = None):
     # Update the status of the specific run and the top-level task status
@@ -356,31 +365,89 @@ async def async_execute_task_plan(task_id: str, user_id: str, run_id: str):
         return {"status": "error", "message": error_message}
 
 @celery_app.task(name="aggregate_results_callback")
-def aggregate_results_callback(results):
-    """Celery callback task to aggregate results from a chord."""
-    logger.info(f"Aggregating results from parallel workers. Results: {str(results)[:500]}")
-    return results
+def aggregate_results_callback(results, parent_task_id: str, user_id: str):
+    """Celery callback task to aggregate results from a swarm chord."""
+    logger.info(f"Aggregating results for swarm task {parent_task_id}. Received {len(results)} results.")
+    run_async(async_aggregate_results(results, parent_task_id, user_id))
 
-@celery_app.task(name="run_single_item_worker")
-def run_single_item_worker(user_id: str, item: Any, worker_prompt: str, worker_tools: List[str]):
+async def async_aggregate_results(results, parent_task_id: str, user_id: str):
+    db = get_db_client()
+    try:
+        # Check for errors in results
+        failed_count = sum(1 for r in results if isinstance(r, dict) and 'error' in r)
+        final_status = "completed_with_errors" if failed_count > 0 else "completed"
+
+        progress_update = {
+            "worker_id": "aggregator",
+            "timestamp": datetime.datetime.now(datetime.timezone.utc),
+            "status": "aggregating",
+            "message": f"All {len(results)} agents have completed. Aggregating results."
+        }
+
+        await db.tasks.update_one(
+            {"task_id": parent_task_id},
+            {
+                "$set": {
+                    "status": final_status,
+                    "swarm_details.aggregated_results": results,
+                    "swarm_details.completed_agents": len(results)
+                },
+                "$push": {"swarm_details.progress_updates": progress_update}
+            }
+        )
+        
+        task = await db.tasks.find_one({"task_id": parent_task_id}, {"name": 1})
+        task_name = task.get("name", "Swarm Task") if task else "Swarm Task"
+
+        await notify_user(user_id, f"Swarm task '{task_name}' has completed.", parent_task_id, notification_type="taskCompleted")
+        await push_task_list_update(user_id, parent_task_id, "swarm_completed")
+
+    except Exception as e:
+        logger.error(f"Error in aggregate_results_callback for task {parent_task_id}: {e}", exc_info=True)
+        # Update task to error state if aggregation fails
+        await db.tasks.update_one(
+            {"task_id": parent_task_id},
+            {"$set": {"status": "error", "error": f"Failed during result aggregation: {str(e)}"}}
+        )
+
+@celery_app.task(name="run_single_item_worker", bind=True)
+def run_single_item_worker(self, parent_task_id: str, user_id: str, item: Any, worker_prompt: str, worker_tools: List[str]):
     """
     A Celery worker that executes a sub-task for a single item from a collection.
     This worker runs a self-contained agent to fulfill the worker_prompt using a specific set of tools.
     """
-    logger.info(f"Running single item worker for user {user_id} on item: {str(item)[:200]} with tools: {worker_tools}")
+    worker_id = self.request.id
+    logger.info(f"Running single item worker {worker_id} for parent task {parent_task_id} on item: {str(item)[:100]}")
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
     
-    return loop.run_until_complete(async_run_single_item_worker(user_id, item, worker_prompt, worker_tools))
+    return loop.run_until_complete(async_run_single_item_worker(parent_task_id, user_id, item, worker_prompt, worker_tools, worker_id))
 
-async def async_run_single_item_worker(user_id: str, item: Any, worker_prompt: str, worker_tools: List[str]):
+async def async_run_single_item_worker(parent_task_id: str, user_id: str, item: Any, worker_prompt: str, worker_tools: List[str], worker_id: str):
     """
     Async logic for the single item worker.
     """
     db = get_db_client()
+
+    async def push_update(status: str, message: str):
+        update = {
+            "worker_id": worker_id,
+            "timestamp": datetime.datetime.now(datetime.timezone.utc),
+            "status": status,
+            "message": message
+        }
+        await db.tasks.update_one(
+            {"task_id": parent_task_id},
+            {
+                "$push": {"swarm_details.progress_updates": update},
+                "$inc": {"swarm_details.completed_agents": 1 if status in ["completed", "error"] else 0}
+            }
+        )
+        await push_task_list_update(user_id, parent_task_id, "swarm_progress")
+
     try:
         # 1. Get user context
         user_profile = await db.user_profiles.find_one({"user_id": user_id})
@@ -420,6 +487,8 @@ async def async_run_single_item_worker(user_id: str, item: Any, worker_prompt: s
         
         messages = [{'role': 'user', 'content': full_worker_prompt}]
 
+        await push_update("processing", f"Starting work on item: {str(item)[:100]}")
+
         # 4. Run the agent
         agent = Assistant(llm=llm_cfg, function_list=tools_config, system_message=system_prompt)
         
@@ -436,23 +505,31 @@ async def async_run_single_item_worker(user_id: str, item: Any, worker_prompt: s
             result_str = answer_match.group(1).strip()
             parsed_result = JsonExtractor.extract_valid_json(result_str)
             if parsed_result is not None:
-                return parsed_result
-            if result_str.lower() == 'null':
-                return None
-            return result_str
+                final_result = parsed_result
+            elif result_str.lower() == 'null':
+                final_result = None
+            else:
+                final_result = result_str
+        else:
+            last_message = final_response_list[-1] if final_response_list else {}
+            if last_message.get("role") == "function":
+                tool_result = JsonExtractor.extract_valid_json(last_message.get("content", "{}"))
+                if isinstance(tool_result, dict):
+                    final_result = tool_result.get("result")
+                else:
+                    final_result = last_message.get("content")
+            else:
+                cleaned_content = clean_llm_output(final_content)
+                if cleaned_content.lower() == 'null':
+                    final_result = None
+                else:
+                    final_result = cleaned_content
         
-        last_message = final_response_list[-1] if final_response_list else {}
-        if last_message.get("role") == "function":
-            tool_result = JsonExtractor.extract_valid_json(last_message.get("content", "{}"))
-            if isinstance(tool_result, dict):
-                return tool_result.get("result")
-            return last_message.get("content")
-
-        cleaned_content = clean_llm_output(final_content)
-        if cleaned_content.lower() == 'null':
-            return None
-        return cleaned_content
+        await push_update("completed", f"Finished work. Result: {str(final_result)[:100]}")
+        return final_result
 
     except Exception as e:
-        logger.error(f"Error in single item worker for user {user_id}: {e}", exc_info=True)
-        return {"error": str(e)}
+        error_str = str(e)
+        logger.error(f"Error in single item worker {worker_id} for task {parent_task_id}: {e}", exc_info=True)
+        await push_update("error", f"An error occurred: {error_str}")
+        return {"error": error_str, "item": item}

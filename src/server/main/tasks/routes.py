@@ -9,7 +9,7 @@ import uuid
 
 from main.dependencies import mongo_manager, websocket_manager
 from main.auth.utils import PermissionChecker
-from workers.tasks import generate_plan_from_context, execute_task_plan, calculate_next_run, process_task_change_request, refine_task_details, refine_and_plan_ai_task, cud_memory_task
+from workers.tasks import generate_plan_from_context, execute_task_plan, calculate_next_run, process_task_change_request, refine_task_details, refine_and_plan_ai_task, cud_memory_task, orchestrate_swarm_task
 from .models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest, AnswerClarificationsRequest, TaskActionRequest, TaskChatRequest, ProgressUpdateRequest
 from main.llm import run_agent_with_fallback
 from json_extractor import JsonExtractor
@@ -86,22 +86,48 @@ async def add_task(
     request: AddTaskRequest,
     user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"])),
 ):
-	# All new tasks are assigned to the AI by default.
-	# Create a placeholder task immediately.
-	task_data = {
-		"name": request.prompt,
-		"description": request.prompt, # The refiner will use this to generate a better name and description
-		"priority": 1,  # Default priority
-		"schedule": None,
-		"assignee": "ai"
-	}
-	task_id = await mongo_manager.add_task(user_id, task_data)
-	if not task_id:
-		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create task.")
+    if request.is_swarm:
+        if not request.prompt:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A prompt describing the goal and items is required for swarm tasks.")
 
-	# Asynchronously refine details and then trigger planning
-	refine_and_plan_ai_task.delay(task_id, user_id)
-	return {"message": "Task accepted! I'll start planning it out.", "task_id": task_id}
+        task_data = {
+            "name": request.prompt,
+            "description": f"Swarm task to achieve the goal: {request.prompt}",
+            "priority": 1,
+            "assignee": "ai",
+            "task_type": "swarm",
+            "swarm_details": {
+                "goal": request.prompt, # The full prompt is the goal
+                "items": [], # Items will be extracted by the orchestrator
+                "total_agents": 0,
+                "completed_agents": 0,
+                "progress_updates": [],
+                "aggregated_results": []
+            }
+        }
+        task_id = await mongo_manager.add_task(user_id, task_data)
+        if not task_id:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create swarm task.")
+
+        orchestrate_swarm_task.delay(task_id, user_id)
+        return {"message": "Swarm task initiated! I'll start planning it out.", "task_id": task_id}
+    else:
+        if not request.prompt:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt is required for single tasks.")
+        task_data = {
+            "name": request.prompt,
+            "description": request.prompt,
+            "priority": 1,
+            "schedule": None,
+            "assignee": "ai",
+            "task_type": "single"
+        }
+        task_id = await mongo_manager.add_task(user_id, task_data)
+        if not task_id:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create task.")
+
+        refine_and_plan_ai_task.delay(task_id, user_id)
+        return {"message": "Task accepted! I'll start planning it out.", "task_id": task_id}
 
 @router.post("/fetch-tasks")
 async def fetch_tasks(

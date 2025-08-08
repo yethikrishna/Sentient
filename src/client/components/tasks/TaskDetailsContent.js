@@ -18,6 +18,7 @@ import ExecutionUpdate from "./ExecutionUpdate"
 import ChatBubble from "@components/ChatBubble"
 import { TextShimmer } from "@components/ui/text-shimmer"
 import { IconInfoCircle } from "@tabler/icons-react"
+import CollapsibleSection from "./CollapsibleSection"
 
 const TaskChatSection = ({ task, onSendChatMessage }) => {
 	const [message, setMessage] = useState("")
@@ -166,6 +167,79 @@ const QnaSection = ({ questions, task, onAnswerClarifications }) => {
 	)
 }
 
+const SwarmDetailsSection = ({ swarmDetails }) => {
+	if (!swarmDetails) return null
+
+	const {
+		goal,
+		total_agents = 0,
+		completed_agents = 0,
+		progress_updates = [],
+		aggregated_results = []
+	} = swarmDetails
+
+	const progress =
+		total_agents > 0 ? (completed_agents / total_agents) * 100 : 0
+
+	return (
+		<div className="space-y-4">
+			<div>
+				<label className="text-sm font-medium text-neutral-400 block mb-2">
+					Swarm Goal
+				</label>
+				<div className="bg-neutral-800/50 p-3 rounded-lg text-sm text-neutral-300">
+					{goal}
+				</div>
+			</div>
+			<div>
+				<label className="text-sm font-medium text-neutral-400 block mb-2">
+					Swarm Progress
+				</label>
+				<div className="bg-neutral-800/50 p-3 rounded-lg space-y-2">
+					<div className="flex justify-between items-center text-xs font-mono text-neutral-300">
+						<span>
+							{completed_agents} / {total_agents} Agents Complete
+						</span>
+						<span>{Math.round(progress)}%</span>
+					</div>
+					<div className="w-full bg-neutral-700 rounded-full h-2.5">
+						<div
+							className="bg-blue-500 h-2.5 rounded-full"
+							style={{ width: `${progress}%` }}
+						></div>
+					</div>
+				</div>
+			</div>
+			<CollapsibleSection title="Live Log">
+				<div className="space-y-2 bg-neutral-800/50 p-3 rounded-lg max-h-60 overflow-y-auto custom-scrollbar">
+					{progress_updates.map((update, index) => (
+						<div
+							key={index}
+							className="text-xs font-mono text-neutral-400"
+						>
+							<span className="text-neutral-500">
+								[
+								{new Date(
+									update.timestamp
+								).toLocaleTimeString()}
+								]
+							</span>{" "}
+							[{update.status}] {update.message}
+						</div>
+					))}
+				</div>
+			</CollapsibleSection>
+			{aggregated_results.length > 0 && (
+				<CollapsibleSection title="Aggregated Results">
+					<pre className="text-xs bg-neutral-800/50 p-3 rounded-lg whitespace-pre-wrap font-mono border border-neutral-700/50 max-h-96 overflow-auto custom-scrollbar">
+						{JSON.stringify(aggregated_results, null, 2)}
+					</pre>
+				</CollapsibleSection>
+			)}
+		</div>
+	)
+}
+
 const TaskDetailsContent = ({
 	task,
 	isEditing,
@@ -211,6 +285,11 @@ const TaskDetailsContent = ({
 
 	return (
 		<div className="space-y-6">
+			{/* --- SWARM DETAILS (if applicable) --- */}
+			{displayTask.task_type === "swarm" && (
+				<SwarmDetailsSection swarmDetails={displayTask.swarm_details} />
+			)}
+
 			{/* --- META INFO & ASSIGNEE --- */}
 			<div className="grid grid-cols-2 gap-6">
 				<div>

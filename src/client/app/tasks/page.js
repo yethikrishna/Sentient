@@ -45,6 +45,7 @@ function TasksPageContent() {
 	const [oneTimeTasks, setOneTimeTasks] = useState([])
 	const [recurringTasks, setRecurringTasks] = useState([])
 	const [triggeredTasks, setTriggeredTasks] = useState([])
+	const [swarmTasks, setSwarmTasks] = useState([])
 	const [recurringInstances, setRecurringInstances] = useState([])
 	const [integrations, setIntegrations] = useState([])
 	const [allTools, setAllTools] = useState([])
@@ -110,10 +111,13 @@ function TasksPageContent() {
 			const oneTime = []
 			const recurring = []
 			const triggered = []
+			const swarm = []
 			const instances = []
 
 			rawTasks.forEach((task) => {
-				if (task.schedule?.type === "recurring") {
+				if (task.task_type === "swarm") {
+					swarm.push(task)
+				} else if (task.schedule?.type === "recurring") {
 					recurring.push(task)
 					// Process past runs from `runs` array
 					if (task.runs && Array.isArray(task.runs)) {
@@ -163,6 +167,7 @@ function TasksPageContent() {
 			setOneTimeTasks(oneTime)
 			setRecurringTasks(recurring)
 			setTriggeredTasks(triggered)
+			setSwarmTasks(swarm)
 			setRecurringInstances(instances)
 
 			const integrationsRes = await fetch("/api/settings/integrations")
@@ -353,7 +358,11 @@ Description: ${event.description || "No description."}`
 	}, [oneTimeTasks, searchQuery])
 
 	const filteredActiveWorkflows = useMemo(() => {
-		const allWorkflows = [...recurringTasks, ...triggeredTasks]
+		const allWorkflows = [
+			...swarmTasks,
+			...recurringTasks,
+			...triggeredTasks
+		]
 		if (!searchQuery.trim()) {
 			return allWorkflows
 		}
@@ -365,7 +374,7 @@ Description: ${event.description || "No description."}`
 						.toLowerCase()
 						.includes(searchQuery.toLowerCase()))
 		)
-	}, [recurringTasks, triggeredTasks, searchQuery])
+	}, [swarmTasks, recurringTasks, triggeredTasks, searchQuery])
 
 	const filteredCalendarTasks = useMemo(() => {
 		const allCalendarTasks = [...oneTimeTasks, ...recurringInstances]

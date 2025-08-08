@@ -10,11 +10,13 @@ from dateutil import rrule
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Dict, Any, Optional, List, Tuple
 from bson import ObjectId
+from celery import group, chord
 from main.analytics import capture_event
 from json_extractor import JsonExtractor
 from workers.utils.api_client import notify_user, push_task_list_update
-from main.config import INTEGRATIONS_CONFIG
+from main.config import INTEGRATIONS_CONFIG, OPENAI_API_KEYS, OPENAI_API_BASE_URL, OPENAI_MODEL_NAME
 from main.tasks.prompts import TASK_CREATION_PROMPT
+from mcp_hub.tasks.prompts import RESOURCE_MANAGER_SYSTEM_PROMPT
 from main.llm import run_agent_with_fallback as run_main_agent_with_fallback
 from main.db import MongoManager
 from workers.celery_app import celery_app
@@ -23,10 +25,10 @@ from workers.planner.prompts import QUESTION_GENERATOR_SYSTEM_PROMPT
 from workers.proactive.main import run_proactive_pipeline_logic
 from workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions # noqa: E501
 from workers.memory_agent_utils import get_memory_qwen_agent, get_db_manager as get_memory_db_manager # noqa: E501
-from workers.executor.tasks import execute_task_plan
+from workers.executor.tasks import execute_task_plan, run_single_item_worker, aggregate_results_callback
 from main.vector_db import get_conversation_summaries_collection
 from main.chat.prompts import STAGE_1_SYSTEM_PROMPT
-from mcp_hub.memory.utils import cud_memory, initialize_embedding_model, initialize_agents
+from mcp_hub.tasks.prompts import ITEM_EXTRACTOR_SYSTEM_PROMPT
 from workers.utils.text_utils import clean_llm_output
 
 # Imports for poller logic
@@ -189,6 +191,161 @@ def create_task_from_suggestion(user_id: str, suggestion_payload: Dict[str, Any]
         if worker_mongo_manager:
             run_async(worker_mongo_manager.close())
 
+@celery_app.task(name="orchestrate_swarm_task")
+def orchestrate_swarm_task(task_id: str, user_id: str):
+    """
+    Celery task entry point for orchestrating a swarm task.
+    """
+    logger.info(f"Celery worker received task 'orchestrate_swarm_task' for task_id: {task_id}")
+    run_async(async_orchestrate_swarm_task(task_id, user_id))
+
+async def async_orchestrate_swarm_task(task_id: str, user_id: str):
+    """
+    The main orchestration logic for a swarm task.
+    1. Fetches the task.
+    2. Invokes the Resource Manager agent to get an execution plan.
+    3. Updates the task with the plan.
+    4. Dispatches a Celery chord of sub-agent workers.
+    """
+    db_manager = MongoManager()
+    try:
+        task = await db_manager.get_task(task_id, user_id)
+        if not task or task.get("task_type") != "swarm":
+            logger.error(f"Orchestrator: Task {task_id} not found or is not a swarm task.")
+            return
+
+        swarm_details = task.get("swarm_details", {})
+        goal = swarm_details.get("goal")
+        items = swarm_details.get("items")
+
+        # --- NEW: Item Extraction Step ---
+        if not items: # If items list is empty, try to extract from goal
+            logger.info(f"Task {task_id}: Items list is empty. Attempting to extract items from goal.")
+
+            if not goal:
+                 raise ValueError("Swarm task is missing a goal to extract items from.")
+
+            messages = [{'role': 'user', 'content': goal}]
+
+            extractor_response_str = ""
+            for chunk in run_main_agent_with_fallback(system_message=ITEM_EXTRACTOR_SYSTEM_PROMPT, function_list=[], messages=messages):
+                if isinstance(chunk, list) and chunk:
+                    last_message = chunk[-1]
+                    if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
+                        extractor_response_str = last_message["content"]
+
+            extractor_response_str = clean_llm_output(extractor_response_str).strip()
+            extracted_items = JsonExtractor.extract_valid_json(extractor_response_str)
+
+            if not isinstance(extracted_items, list) or not extracted_items:
+                raise ValueError(f"Item Extractor agent failed to extract a list of items from the goal. Response: {extractor_response_str}")
+
+            items = extracted_items # Update local variable
+            logger.info(f"Task {task_id}: Extracted {len(items)} items. Updating task in DB.")
+
+            # Update the task in the DB with the extracted items
+            await db_manager.task_collection.update_one(
+                {"task_id": task_id},
+                {"$set": {"swarm_details.items": items}}
+            )
+
+        if not goal or not items: # Re-check after potential extraction attempt
+            raise ValueError("Swarm task is missing goal or items after extraction attempt.")
+
+        # --- 1. Resource Manager Agent ---
+        logger.info(f"Invoking Resource Manager for user {user_id} with goal: {goal}")
+        
+        user_profile = await db_manager.get_user_profile(user_id)
+        user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
+        
+        available_tools = {}
+        for tool_name, config in INTEGRATIONS_CONFIG.items():
+            if tool_name in ["tasks", "progress_updater"]: continue
+            is_builtin = config.get("auth_type") == "builtin"
+            is_connected = user_integrations.get(tool_name, {}).get("connected", False)
+            if is_builtin or is_connected:
+                available_tools[tool_name] = config.get("description", "")
+        
+        system_prompt = RESOURCE_MANAGER_SYSTEM_PROMPT.format(
+            available_tools_json=json.dumps(list(available_tools.keys()))
+        )
+        
+        items_sample = items[:5]
+        user_prompt = f"Goal: \"{goal}\"\n\nItems (sample of {len(items)} total):\n{json.dumps(items_sample, indent=2, default=str)}"
+        
+        messages = [{'role': 'user', 'content': user_prompt}]
+        
+        manager_response_str = ""
+        for chunk in run_main_agent_with_fallback(system_message=system_prompt, function_list=[], messages=messages):
+            if isinstance(chunk, list) and chunk:
+                last_message = chunk[-1]
+                if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
+                    manager_response_str = last_message["content"]
+
+        manager_response_str = clean_llm_output(manager_response_str).strip()
+
+        if not manager_response_str:
+            raise Exception("Resource Manager agent returned an empty response.")
+        
+        execution_plan = JsonExtractor.extract_valid_json(manager_response_str)
+        
+        if not isinstance(execution_plan, list) or not all(isinstance(item, dict) for item in execution_plan):
+            raise Exception(f"Resource Manager returned an invalid plan. Response: {manager_response_str}")
+
+        logger.info(f"Resource Manager created execution plan with {len(execution_plan)} sub-task(s).")
+
+        # --- 2. Dispatch Worker Tasks ---
+        all_worker_groups = []
+        total_agents = 0
+        for config in execution_plan:
+            item_indices = config.get("item_indices", [])
+            worker_prompt = config.get("worker_prompt")
+            required_tools = config.get("required_tools", [])
+            
+            if not all([isinstance(item_indices, list), worker_prompt, isinstance(required_tools, list)]):
+                logger.warning(f"Skipping invalid worker configuration: {config}")
+                continue
+
+            valid_indices = [i for i in item_indices if i < len(items)]
+            total_agents += len(valid_indices)
+            task_group = group(run_single_item_worker.s(parent_task_id=task_id, user_id=user_id, item=items[i], worker_prompt=worker_prompt, worker_tools=required_tools) for i in valid_indices)
+            if task_group:
+                all_worker_groups.append(task_group)
+
+        if not all_worker_groups:
+            raise Exception("The execution plan resulted in no valid tasks to run.")
+        
+        # --- 3. Update DB and Dispatch Chord ---
+        progress_update = {
+            "worker_id": "planner",
+            "timestamp": datetime.datetime.now(datetime.timezone.utc),
+            "status": "planning",
+            "message": f"Resource manager created a plan for {total_agents} agents."
+        }
+        await db_manager.task_collection.update_one(
+            {"task_id": task_id},
+            {
+                "$set": {
+                    "status": "processing",
+                    "swarm_details.total_agents": total_agents
+                },
+                "$push": {"swarm_details.progress_updates": progress_update}
+            }
+        )
+        await push_task_list_update(user_id, task_id, "swarm_plan_created")
+
+        header = group(all_worker_groups)
+        callback = aggregate_results_callback.s(parent_task_id=task_id, user_id=user_id)
+        chord_task = chord(header, callback)
+        
+        logger.info(f"Dispatching a chord of {total_agents} parallel workers for task {task_id}.")
+        chord_task.apply_async()
+
+    except Exception as e:
+        logger.error(f"Error in orchestrate_swarm_task for task {task_id}: {e}", exc_info=True)
+        await db_manager.update_task(task_id, {"status": "error", "error": str(e)})
+    finally:
+        await db_manager.close()
 
 @celery_app.task(name="refine_and_plan_ai_task")
 def refine_and_plan_ai_task(task_id: str, user_id: str):

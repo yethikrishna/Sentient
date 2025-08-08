@@ -10,7 +10,10 @@ class Answer(BaseModel):
     answer_text: str
 
 class AddTaskRequest(BaseModel):
-    prompt: str
+    prompt: Optional[str] = None
+    goal: Optional[str] = None
+    items: Optional[List[Any]] = None
+    is_swarm: bool = False
 
 class AnswerClarificationsRequest(BaseModel):
     task_id: str

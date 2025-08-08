@@ -197,6 +197,29 @@ export default function LayoutWrapper({ children }) {
 	}, [])
 
 	useEffect(() => {
+		// This effect runs only on the client side, after the component mounts.
+		if (
+			"serviceWorker" in navigator &&
+			process.env.NODE_ENV === "production"
+		) {
+			// The 'load' event ensures that SW registration doesn't delay page rendering.
+			window.addEventListener("load", function () {
+				navigator.serviceWorker.register("/sw.js").then(
+					function (registration) {
+						console.log(
+							"ServiceWorker registration successful with scope: ",
+							registration.scope
+						)
+					},
+					function (err) {
+						console.log("ServiceWorker registration failed: ", err)
+					}
+				)
+			})
+		}
+	}, [])
+
+	useEffect(() => {
 		const handleEscape = (e) => {
 			if (e.key === "Escape") {
 				if (isNotificationsOpen) setNotificationsOpen(false)

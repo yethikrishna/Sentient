@@ -65,44 +65,17 @@ const SidebarContent = ({
 	onNotificationsOpen,
 	unreadCount,
 	isMobile = false,
-	onMobileClose = () => {}
+	onMobileClose = () => {},
+	installPrompt,
+	handleInstallClick
 }) => {
 	const pathname = usePathname()
 	const [userDetails, setUserDetails] = useState(null)
 	const [isHelpModalOpen, setHelpModalOpen] = useState(false)
-	const [installPrompt, setInstallPrompt] = useState(null)
 	const [isUserMenuOpen, setUserMenuOpen] = useState(false)
 	const userMenuRef = useRef(null)
 
 	useClickOutside(userMenuRef, () => setUserMenuOpen(false))
-
-	useEffect(() => {
-		const handleBeforeInstallPrompt = (e) => {
-			// Prevent the mini-infobar from appearing on mobile
-			e.preventDefault()
-			// Stash the event so it can be triggered later.
-			setInstallPrompt(e)
-		}
-
-		window.addEventListener(
-			"beforeinstallprompt",
-			handleBeforeInstallPrompt
-		)
-
-		return () => {
-			window.removeEventListener(
-				"beforeinstallprompt",
-				handleBeforeInstallPrompt
-			)
-		}
-	}, [])
-
-	const handleInstallClick = async () => {
-		if (!installPrompt) return
-		const result = await installPrompt.prompt()
-		console.log(`Install prompt was: ${result.outcome}`)
-		setInstallPrompt(null)
-	}
 
 	useEffect(() => {
 		fetch("/api/user/profile")
@@ -398,55 +371,89 @@ const Sidebar = ({
 	unreadCount,
 	isMobileOpen,
 	onMobileClose
-}) => (
-	<>
-		{/* Mobile Sidebar */}
-		<AnimatePresence>
-			{isMobileOpen && (
-				<>
-					<motion.div
-						className="fixed inset-0 bg-black/60 z-40 md:hidden"
-						initial={{ opacity: 0 }}
-						animate={{ opacity: 1 }}
-						exit={{ opacity: 0 }}
-						onClick={onMobileClose}
-					/>
-					<motion.div
-						className="fixed top-0 left-0 h-screen w-[260px] bg-black p-3 text-neutral-200 border-r border-neutral-800/50 z-50 md:hidden"
-						initial={{ x: "-100%" }}
-						animate={{ x: 0 }}
-						exit={{ x: "-100%" }}
-						transition={{
-							type: "spring",
-							stiffness: 300,
-							damping: 30
-						}}
-					>
-						<SidebarContent
-							isCollapsed={false}
-							onMobileClose={onMobileClose}
-							onNotificationsOpen={onNotificationsOpen}
-							unreadCount={unreadCount}
-							isMobile={true}
-						/>
-					</motion.div>
-				</>
-			)}
-		</AnimatePresence>
+}) => {
+	const [installPrompt, setInstallPrompt] = useState(null)
 
-		{/* Desktop Sidebar */}
-		<motion.div
-			animate={{ width: isCollapsed ? 80 : 260 }}
-			transition={{ type: "spring", stiffness: 300, damping: 30 }}
-			className="hidden md:flex fixed top-0 left-0 h-screen bg-black flex-col p-3 text-neutral-200 border-r border-neutral-800/50 z-40"
-		>
-			<SidebarContent
-				isCollapsed={isCollapsed}
-				onToggle={onToggle}
-				onNotificationsOpen={onNotificationsOpen}
-				unreadCount={unreadCount}
-			/>
-		</motion.div>
-	</>
-)
+	useEffect(() => {
+		const handleBeforeInstallPrompt = (e) => {
+			e.preventDefault()
+			setInstallPrompt(e)
+		}
+
+		window.addEventListener(
+			"beforeinstallprompt",
+			handleBeforeInstallPrompt
+		)
+
+		return () => {
+			window.removeEventListener(
+				"beforeinstallprompt",
+				handleBeforeInstallPrompt
+			)
+		}
+	}, [])
+
+	const handleInstallClick = async () => {
+		if (!installPrompt) return
+		const result = await installPrompt.prompt()
+		console.log(`Install prompt was: ${result.outcome}`)
+		setInstallPrompt(null) // The prompt can only be used once.
+	}
+
+	return (
+		<>
+			{/* Mobile Sidebar */}
+			<AnimatePresence>
+				{isMobileOpen && (
+					<>
+						<motion.div
+							className="fixed inset-0 bg-black/60 z-40 md:hidden"
+							initial={{ opacity: 0 }}
+							animate={{ opacity: 1 }}
+							exit={{ opacity: 0 }}
+							onClick={onMobileClose}
+						/>
+						<motion.div
+							className="fixed top-0 left-0 h-screen w-[260px] bg-black p-3 text-neutral-200 border-r border-neutral-800/50 z-50 md:hidden"
+							initial={{ x: "-100%" }}
+							animate={{ x: 0 }}
+							exit={{ x: "-100%" }}
+							transition={{
+								type: "spring",
+								stiffness: 300,
+								damping: 30
+							}}
+						>
+							<SidebarContent
+								isCollapsed={false}
+								onMobileClose={onMobileClose}
+								onNotificationsOpen={onNotificationsOpen}
+								unreadCount={unreadCount}
+								isMobile={true}
+								installPrompt={installPrompt}
+								handleInstallClick={handleInstallClick}
+							/>
+						</motion.div>
+					</>
+				)}
+			</AnimatePresence>
+
+			{/* Desktop Sidebar */}
+			<motion.div
+				animate={{ width: isCollapsed ? 80 : 260 }}
+				transition={{ type: "spring", stiffness: 300, damping: 30 }}
+				className="hidden md:flex fixed top-0 left-0 h-screen bg-black flex-col p-3 text-neutral-200 border-r border-neutral-800/50 z-40"
+			>
+				<SidebarContent
+					isCollapsed={isCollapsed}
+					onToggle={onToggle}
+					onNotificationsOpen={onNotificationsOpen}
+					unreadCount={unreadCount}
+					installPrompt={installPrompt}
+					handleInstallClick={handleInstallClick}
+				/>
+			</motion.div>
+		</>
+	)
+}
 export default Sidebar

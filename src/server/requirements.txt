@@ -24,6 +24,7 @@ pgvector
 qwen-agent
 google-genai
 elevenlabs
+deepgram-sdk
 librosa
 torch
 fastrtc[vad, stt, tts]

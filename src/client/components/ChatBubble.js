@@ -146,7 +146,7 @@ const ToolCodeBlock = ({ name, code, isExpanded, onToggle }) => {
 		<div className="mb-4 border-l-2 border-green-500 pl-3">
 			<button
 				onClick={onToggle}
-				className="flex items-center gap-2 text-green-400 hover:text-green-300 text-sm font-semibold"
+				className="flex w-full items-center justify-start gap-2 text-green-400 hover:text-green-300 text-sm font-semibold"
 				data-tooltip-id="chat-bubble-tooltip"
 				data-tooltip-content="Click to see the tool call details."
 			>
@@ -182,7 +182,7 @@ const ToolResultBlock = ({ name, result, isExpanded, onToggle }) => {
 		<div className="mb-4 border-l-2 border-purple-500 pl-3">
 			<button
 				onClick={onToggle}
-				className="flex items-center gap-2 text-purple-400 hover:text-purple-300 text-sm font-semibold"
+				className="flex w-full items-center justify-start gap-2 text-purple-400 hover:text-purple-300 text-sm font-semibold"
 				data-tooltip-id="chat-bubble-tooltip"
 				data-tooltip-content="Click to see the result from the tool."
 			>
@@ -299,7 +299,9 @@ const ChatBubble = ({
 
 			// Extract final answer by removing all other tags.
 			// The <answer> tag takes precedence.
-			const answerMatch = contentString.match(/<answer>([\s\S]*?)<\/answer>/)
+			const answerMatch = contentString.match(
+				/<answer>([\s\S]*?)<\/answer>/
+			)
 			let final
 			if (answerMatch) {
 				final = answerMatch[1]

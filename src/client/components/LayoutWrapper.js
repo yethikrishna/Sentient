@@ -3,15 +3,17 @@ import React, { useState, useEffect, useCallback, useRef } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { AnimatePresence } from "framer-motion"
 import NotificationsOverlay from "@components/NotificationsOverlay"
-import { IconBell, IconMenu2, IconLoader } from "@tabler/icons-react"
+import { IconMenu2, IconLoader } from "@tabler/icons-react"
 import Sidebar from "@components/Sidebar"
-import CommandPalette from "./CommandPallete" // Corrected import path
+import CommandPalette from "./CommandPallete"
+import GlobalSearch from "./GlobalSearch"
 import { useGlobalShortcuts } from "@hooks/useGlobalShortcuts"
 import { cn } from "@utils/cn"
 import toast from "react-hot-toast"
 
 export default function LayoutWrapper({ children }) {
 	const [isNotificationsOpen, setNotificationsOpen] = useState(false)
+	const [isSearchOpen, setSearchOpen] = useState(false)
 	const [isCommandPaletteOpen, setCommandPaletteOpen] = useState(false)
 	const [isSidebarCollapsed, setSidebarCollapsed] = useState(true)
 	const [isMobileNavOpen, setMobileNavOpen] = useState(false)
@@ -256,6 +258,7 @@ export default function LayoutWrapper({ children }) {
 							setSidebarCollapsed(!isSidebarCollapsed)
 						}
 						onNotificationsOpen={handleNotificationsOpen}
+						onSearchOpen={() => setSearchOpen(true)}
 						unreadCount={unreadCount}
 						isMobileOpen={isMobileNavOpen}
 						onMobileClose={() => setMobileNavOpen(false)}
@@ -288,6 +291,11 @@ export default function LayoutWrapper({ children }) {
 					<NotificationsOverlay
 						onClose={() => setNotificationsOpen(false)}
 					/>
+				)}
+			</AnimatePresence>
+			<AnimatePresence>
+				{isSearchOpen && (
+					<GlobalSearch onClose={() => setSearchOpen(false)} />
 				)}
 			</AnimatePresence>
 		</>

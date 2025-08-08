@@ -7,7 +7,24 @@ const withPWA = nextPWA({
 	dest: "public",
 	disable: process.env.NODE_ENV === "development",
 	register: true,
-	skipWaiting: false,
+	skipWaiting: true,
+	exclude: [
+		// add buildExcludes here
+		({ asset, compilation }) => {
+			if (
+				asset.name.startsWith("server/") ||
+				asset.name.match(
+					/^((app-|^)build-manifest\.json|react-loadable-manifest\.json)$/
+				)
+			) {
+				return true
+			}
+			if (process.env.NODE_ENV == "development" && !asset.name.startsWith("static/runtime/")) {
+				return true
+			}
+			return false
+		}
+	],
 	runtimeCaching: [
 		// Cache Google Fonts
 		{

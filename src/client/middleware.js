@@ -38,7 +38,8 @@ export const config = {
 		 * - _next/image (image optimization files)
 		 * - favicon.ico, sitemap.xml, robots.txt (metadata files)
 		 * - api (API routes)
+		 * - PWA files (manifest, icons, service worker, workbox)
 		 */
-		"/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|api).*)"
+		"/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|api|manifest.json|sw.js|workbox-.*\\.js$|.*\\.png$).*)"
 	]
 }

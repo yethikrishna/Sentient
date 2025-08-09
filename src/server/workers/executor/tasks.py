@@ -14,7 +14,7 @@ from json_extractor import JsonExtractor
 from main.analytics import capture_event
 from qwen_agent.agents import Assistant
 from workers.celery_app import celery_app
-from workers.executor.prompts import RESULT_GENERATOR_SYSTEM_PROMPT
+from workers.executor.prompts import RESULT_GENERATOR_SYSTEM_PROMPT # noqa: E501
 from workers.utils.api_client import notify_user, push_progress_update, push_task_list_update
 from workers.utils.text_utils import clean_llm_output
 from celery import chord, group
@@ -108,65 +108,6 @@ async def add_progress_update(db, task_id: str, run_id: str, user_id: str, messa
             {"$push": {"task_progress": progress_update}}
         )
 
-def parse_agent_string_to_updates(content: str) -> List[Dict[str, Any]]:
-    """
-    Parses a string containing agent's XML-like tags into a list of structured update objects.
-    This logic is inspired by the frontend's ChatBubble.js parser.
-    """
-    if not content or not isinstance(content, str):
-        return []
-
-    updates = []
-    regex = re.compile(r'(<(think|tool_code|tool_result|answer)[\s\S]*?>[\s\S]*?<\/\2>)', re.DOTALL)
-    
-    last_index = 0
-    for match in regex.finditer(content):
-        preceding_text = content[last_index:match.start()].strip()
-        if preceding_text:
-            updates.append({"type": "info", "content": preceding_text})
-
-        tag_content = match.group(1)
-        
-        think_match = re.search(r'<think>([\s\S]*?)</think>', tag_content, re.DOTALL)
-        if think_match:
-            updates.append({"type": "thought", "content": think_match.group(1).strip()})
-            continue
-
-        tool_code_match = re.search(r'<tool_code name="([^"]+)">([\s\S]*?)</tool_code>', tag_content, re.DOTALL)
-        if tool_code_match:
-            tool_name = tool_code_match.group(1)
-            updates.append({"type": "info", "content": f"Using tool: {tool_name}"})
-            continue
-
-        tool_result_match = re.search(r'<tool_result tool_name="([^"]+)">([\s\S]*?)</tool_result>', tag_content, re.DOTALL)
-        if tool_result_match:
-            tool_name = tool_result_match.group(1)
-            result_str = tool_result_match.group(2).strip()
-            result_content = JsonExtractor.extract_valid_json(result_str)
-            if not result_content:
-                result_content = {"raw_result": result_str}
-            is_error = isinstance(result_content, dict) and result_content.get("status") == "failure"
-            updates.append({
-                "type": "tool_result",
-                "tool_name": tool_name,
-                "result": result_content.get("result", result_content.get("error", result_content)),
-                "is_error": is_error
-            })
-            continue
-
-        answer_match = re.search(r'<answer>([\s\S]*?)</answer>', tag_content, re.DOTALL)
-        if answer_match:
-            updates.append({"type": "final_answer", "content": answer_match.group(1).strip()})
-            continue
-        
-        last_index = match.end()
-
-    trailing_text = content[last_index:].strip()
-    if trailing_text:
-        updates.append({"type": "info", "content": trailing_text})
-        
-    return updates
-
 @celery_app.task(name="execute_task_plan")
 def execute_task_plan(task_id: str, user_id: str, run_id: str):
     logger.info(f"Celery worker received task 'execute_task_plan' for task_id: {task_id}, run_id: {run_id}")
@@ -178,6 +119,77 @@ def execute_task_plan(task_id: str, user_id: str, run_id: str):
     
     return loop.run_until_complete(async_execute_task_plan(task_id, user_id, run_id))
 
+def parse_agent_string_to_updates(content: str) -> List[Dict[str, Any]]:
+    """
+    Parses a string containing agent's XML-like tags into a list of structured update objects.
+    This logic is inspired by the frontend's ChatBubble.js parser.
+    """
+    if not content or not isinstance(content, str):
+        return []
+
+    updates = []
+    # This regex finds all tags and captures the tag name in group 2
+    regex = re.compile(r'(<(think|tool_code|tool_result|answer)[\s\S]*?>[\s\S]*?<\/\2>)', re.DOTALL)
+
+    last_index = 0
+    for match in regex.finditer(content):
+        # Capture text between tags as an 'info' update
+        preceding_text = content[last_index:match.start()].strip()
+        if preceding_text:
+            updates.append({"type": "info", "content": preceding_text})
+
+        tag_content = match.group(1)
+
+        think_match = re.search(r'<think>([\s\S]*?)</think>', tag_content, re.DOTALL)
+        if think_match:
+            updates.append({"type": "thought", "content": think_match.group(1).strip()})
+            last_index = match.end()
+            continue
+
+        tool_code_match = re.search(r'<tool_code name="([^"]+)">([\s\S]*?)</tool_code>', tag_content, re.DOTALL)
+        if tool_code_match:
+            params_str = tool_code_match.group(2).strip()
+            params = JsonExtractor.extract_valid_json(params_str)
+            if not params:
+                params = {"raw_parameters": params_str}
+            updates.append({
+                "type": "tool_call",
+                "tool_name": tool_code_match.group(1),
+                "parameters": params
+            })
+            last_index = match.end()
+            continue
+
+        tool_result_match = re.search(r'<tool_result tool_name="([^"]+)">([\s\S]*?)</tool_result>', tag_content, re.DOTALL)
+        if tool_result_match:
+            result_str = tool_result_match.group(2).strip()
+            result_content = JsonExtractor.extract_valid_json(result_str)
+            if not result_content:
+                result_content = {"raw_result": result_str}
+            is_error = isinstance(result_content, dict) and result_content.get("status") == "failure"
+            updates.append({
+                "type": "tool_result",
+                "tool_name": tool_result_match.group(1),
+                "result": result_content.get("result", result_content.get("error", result_content)),
+                "is_error": is_error
+            })
+            last_index = match.end()
+            continue
+
+        answer_match = re.search(r'<answer>([\s\S]*?)</answer>', tag_content, re.DOTALL)
+        if answer_match:
+            updates.append({"type": "final_answer", "content": answer_match.group(1).strip()})
+            last_index = match.end()
+            continue
+
+        last_index = match.end()
+
+    # Capture any trailing text after the last tag
+    trailing_text = content[last_index:].strip()
+    if trailing_text:
+        updates.append({"type": "info", "content": trailing_text})
+
+    return updates
 
 async def async_execute_task_plan(task_id: str, user_id: str, run_id: str):
     db = get_db_client()
@@ -218,9 +230,6 @@ async def async_execute_task_plan(task_id: str, user_id: str, run_id: str):
     user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
     
     active_mcp_servers = {}
-    progress_updater_config = INTEGRATIONS_CONFIG.get("progress_updater", {}).get("mcp_server_config")
-    if progress_updater_config:
-        active_mcp_servers[progress_updater_config["name"]] = {"url": progress_updater_config["url"], "headers": {"X-User-ID": user_id}}
 
     for tool_name in required_tools_from_plan:
         if tool_name not in INTEGRATIONS_CONFIG:
@@ -228,7 +237,7 @@ async def async_execute_task_plan(task_id: str, user_id: str, run_id: str):
             continue
         config = INTEGRATIONS_CONFIG[tool_name]
         mcp_config = config.get("mcp_server_config")
-        if not mcp_config or tool_name in ["progress_updater"]:
+        if not mcp_config:
             continue
         is_builtin = config.get("auth_type") == "builtin"
         is_connected_via_oauth = user_integrations.get(tool_name, {}).get("connected", False)
@@ -249,61 +258,58 @@ async def async_execute_task_plan(task_id: str, user_id: str, run_id: str):
 
     plan_description = task.get("name", "Unnamed plan")
     original_context_str = json.dumps(original_context_data, indent=2, default=str) if original_context_data else "No original context provided."
+    found_context_str = task.get("found_context", "No additional context was found by the research agent.")
     block_id_prompt = f"The block_id for this task is '{block_id}'. You MUST pass this ID to the 'update_progress' tool in the 'block_id' parameter." if block_id else "This task did not originate from a tasks block."
 
     full_plan_prompt = (
-        f"You are Sentient, a resourceful and autonomous executor agent. Your goal is to complete the user's request by intelligently following the provided plan.\n\n"
+        f"You are Sentient, a resourceful and autonomous executor agent. Your goal is to complete the user's request by intelligently following the provided plan.\n\n" # noqa
         f"**User Context:**\n- **User's Name:** {user_name}\n- **User's Location:** {user_location}\n- **Current Date & Time:** {current_user_time}\n\n"
+        f"**Retrieved Context (from research agent):**\n{found_context_str}\n\n"
         f"Your task ID is '{task_id}' and the current run ID is '{run_id}'.\n\n"
         f"The original context that triggered this plan is:\n---BEGIN CONTEXT---\n{original_context_str}\n---END CONTEXT---\n\n"
         f"**Primary Objective:** '{plan_description}'\n\n"
         f"**The Plan to Execute:**\n" + "\n".join([f"- Step {i+1}: Use the '{step['tool']}' tool to '{step['description']}'" for i, step in enumerate(task.get("plan", []))]) + "\n\n" # noqa
-        "**EXECUTION STRATEGY:**\n"
-        "1.  **Execution Flow:** You MUST start by executing the first step of the plan. Do not summarize the plan or provide a final answer until you have executed all steps. Follow the plan sequentially.\n"
-        "2.  **Map Plan to Tools:** The plan provides a high-level tool name (e.g., 'gmail', 'gdrive'). You must map this to the specific functions available to you (e.g., `gmail_server-sendEmail`, `gdrive_server-gdrive_search`).\n"
-        "3.  **Be Resourceful & Fill Gaps:** The plan is a guideline. If a step is missing information (e.g., an email address for a manager, a document name), your first action for that step MUST be to use the `memory-search_memory` tool to find the missing information. Do not proceed with incomplete information.\n"
-        "4.  **Remember New Information:** If you discover a new, permanent fact about the user during your execution (e.g., you find their manager's email is 'boss@example.com'), you MUST use `memory-cud_memory` to save it.\n"
-        "5.  **Report Progress & Failures:** You MUST call the `progress_updater_server-update_progress` tool to report your status. You MUST provide the `task_id`, the `run_id`, and a descriptive `update_message` string. If a tool fails, analyze the error, report it, and try an alternative approach. Do not give up easily.\n"
-        "6.  **Provide a Final, Detailed Answer:** ONLY after all steps are successfully completed, you MUST provide a final, comprehensive answer to the user. This is not a tool call. Your final response MUST be wrapped in `<answer>` tags. For example: `<answer>I have successfully scheduled the meeting and sent an invitation to John Doe.</answer>`.\n"
-        "7.  **Contact Information:** To find contact details like phone numbers or emails, use the `gpeople` tool before attempting to send an email or make a call.\n"
+        "**EXECUTION STRATEGY:**\n" # noqa
+        "1.  **Think Step-by-Step:** Before each action, you MUST explain your reasoning and what you are about to do. Your thought process MUST be wrapped in `<think>` tags.\n" # noqa
+        "2.  **Tool Calls:** When you call a tool, you MUST use the `<tool_code>` format. For example: `<tool_code name=\"gdrive_server-gdrive_search\">{{\"query\": \"Q3 Report\"}}</tool_code>`.\n" # noqa
+        "3.  **Execution Flow:** You MUST start by executing the first step of the plan. Do not summarize the plan or provide a final answer until you have executed all steps. Follow the plan sequentially.\n" # noqa
+        "4.  **Map Plan to Tools:** The plan provides a high-level tool name (e.g., 'gmail', 'gdrive'). You must map this to the specific functions available to you (e.g., `gmail_server-sendEmail`, `gdrive_server-gdrive_search`).\n" # noqa
+        "5.  **Be Resourceful & Fill Gaps:** The plan is a guideline. If a step is missing information (e.g., an email address for a manager, a document name), your first action for that step MUST be to use the `memory-search_memory` tool to find the missing information. Do not proceed with incomplete information.\n" # noqa
+        "6.  **Remember New Information:** If you discover a new, permanent fact about the user during your execution (e.g., you find their manager's email is 'boss@example.com'), you MUST use `memory-cud_memory` to save it.\n" # noqa
+        "7.  **Handle Failures:** If a tool fails, analyze the error, think about an alternative approach, and try again. Do not give up easily. Your thought process and the error will be logged automatically.\n" # noqa
+        "8.  **Provide a Final, Detailed Answer:** ONLY after all steps are successfully completed, you MUST provide a final, comprehensive answer to the user. This is not a tool call. Your final response MUST be wrapped in `<answer>` tags. For example: `<answer>I have successfully scheduled the meeting and sent an invitation to John Doe.</answer>`.\n" # noqa
+        "9.  **Contact Information:** To find contact details like phone numbers or emails, use the `gpeople` tool before attempting to send an email or make a call.\n" # noqa
         "\nNow, begin your work. Think step-by-step and start executing the plan, beginning with Step 1."
     )
     
     try:
-        executor_agent = Assistant(llm=llm_cfg, function_list=tools_config, system_message=full_plan_prompt)
         initial_messages = [{'role': 'user', 'content': "Begin executing the plan. Follow your instructions meticulously."}]
         
         logger.info(f"Task {task_id}: Starting agent run.")
 
-        last_processed_history_len = len(initial_messages)
+        final_assistant_content = ""
+        final_history = []
+        for current_history in run_main_agent_with_fallback(
+            system_message=full_plan_prompt,
+            function_list=tools_config,
+            messages=initial_messages
+        ):
+            final_history = current_history
+
+        # After the loop, process the complete response
+        if final_history and final_history[-1].get("role") == "assistant":
+            final_assistant_content = final_history[-1].get("content", "")
+
         final_answer_content = ""
-
-        for current_history in executor_agent.run(messages=initial_messages):
-            # Process only the new messages that have been added since the last iteration
-            new_messages_to_process = current_history[last_processed_history_len:]
-
-            for msg in new_messages_to_process:
-                update_to_push = None
-                if msg.get('role') == 'assistant' and isinstance(msg.get('content'), str) and msg.get('content').strip():
-                    # This is a thought process or final answer text
-                    parsed_updates = parse_agent_string_to_updates(msg['content'])
-                    for update in parsed_updates:
-                        await add_progress_update(db, task_id, run_id, user_id, update, block_id)
-                        if update.get("type") == "final_answer":
-                            final_answer_content = update.get("content")
-                elif msg.get('role') == 'assistant' and msg.get('function_call'):
-                    # This is a tool call.
-                    tool_name = msg['function_call']['name']
-                    update_to_push = {"type": "info", "content": f"Using tool: {tool_name}"}
-                elif msg.get('role') == 'function':
-                    # This is a tool result
-                    result_content = msg['content']
-                    update_to_push = {"type": "info", "content": f"Tool result received: {result_content}"}
-
-                if update_to_push:
-                    await add_progress_update(db, task_id, run_id, user_id, update_to_push, block_id)
-
-            last_processed_history_len = len(current_history)
+        if final_assistant_content:
+            parsed_updates = parse_agent_string_to_updates(final_assistant_content)
+            for update in parsed_updates:
+                # Per user request, do not push thoughts to the log, but parse everything else.
+                if update.get("type") == "thought":
+                    continue
+                await add_progress_update(db, task_id, run_id, user_id, update, block_id)
+                if update.get("type") == "final_answer":
+                    final_answer_content = update.get("content")
 
         logger.info(f"Task {task_id} execution phase completed. Dispatching to result generator.")
         await add_progress_update(db, task_id, run_id, user_id, {"type": "info", "content": "Execution finished. Generating final report..."}, block_id=block_id)

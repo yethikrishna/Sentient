@@ -30,7 +30,6 @@ const TaskDetailsPanel = ({
 	onApprove,
 	onDelete,
 	onRerun,
-	onAnswerClarifications,
 	onArchiveTask,
 	className,
 	onSendChatMessage
@@ -212,16 +211,10 @@ const TaskDetailsPanel = ({
 								handleStepChange={handleStepChange}
 								allTools={allTools}
 								integrations={integrations}
-								onAnswerClarifications={onAnswerClarifications}
 								onSendChatMessage={onSendChatMessage}
 							/>
 						) : scheduleType === "recurring" ? (
 							<RecurringTaskDetails
-								task={task}
-								onAnswerClarifications={onAnswerClarifications}
-							/>
-						) : scheduleType === "triggered" ? (
-							<TriggeredTaskDetails
 								task={task}
 								onAnswerClarifications={onAnswerClarifications}
 							/>
@@ -237,7 +230,6 @@ const TaskDetailsPanel = ({
 								handleStepChange={handleStepChange}
 								allTools={allTools}
 								integrations={integrations}
-								onAnswerClarifications={onAnswerClarifications}
 								onSendChatMessage={onSendChatMessage}
 							/>
 						)}

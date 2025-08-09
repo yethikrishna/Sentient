@@ -24,58 +24,6 @@ import CollapsibleSection from "./CollapsibleSection"
 import FileCard from "@components/FileCard"
 import ReactMarkdown from "react-markdown"
 
-const TaskChatSection = ({ task, onSendChatMessage }) => {
-	const [message, setMessage] = useState("")
-	const chatEndRef = React.useRef(null)
-
-	useEffect(() => {
-		chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
-	}, [task.chat_history])
-
-	const handleSend = () => {
-		if (message.trim()) {
-			onSendChatMessage(task.task_id, message)
-			setMessage("")
-		}
-	}
-
-	return (
-		<div className="mt-6 pt-6 border-t border-neutral-800">
-			<h4 className="font-semibold text-neutral-300 mb-4">
-				Task Conversation
-			</h4>
-			<div className="space-y-4 max-h-64 overflow-y-auto custom-scrollbar pr-2">
-				{(task.chat_history || []).map((msg, index) => (
-					<ChatBubble
-						key={index}
-						role={msg.role}
-						content={msg.content}
-						message={msg}
-					/>
-				))}
-				<div ref={chatEndRef} />
-			</div>
-			<div className="mt-4 flex items-center gap-2">
-				<input
-					type="text"
-					value={message}
-					onChange={(e) => setMessage(e.target.value)}
-					onKeyDown={(e) => e.key === "Enter" && handleSend()}
-					placeholder="Ask for changes or follow-ups..."
-					className="flex-grow p-2 bg-neutral-800 border border-neutral-700 rounded-lg text-sm"
-				/>
-				<button
-					onClick={handleSend}
-					className="p-2 bg-blue-600 rounded-lg text-white hover:bg-blue-500 disabled:opacity-50"
-					disabled={!message.trim()}
-				>
-					<IconSend size={16} />
-				</button>
-			</div>
-		</div>
-	)
-}
-
 // New component for handling clarification questions
 const QnaSection = ({ questions, task, onAnswerClarifications }) => {
 	const [answers, setAnswers] = useState({})
@@ -166,6 +114,58 @@ const QnaSection = ({ questions, task, onAnswerClarifications }) => {
 						</button>
 					</div>
 				)}
+			</div>
+		</div>
+	)
+}
+
+const TaskChatSection = ({ task, onSendChatMessage }) => {
+	const [message, setMessage] = useState("")
+	const chatEndRef = React.useRef(null)
+
+	useEffect(() => {
+		chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
+	}, [task.chat_history])
+
+	const handleSend = () => {
+		if (message.trim()) {
+			onSendChatMessage(task.task_id, message)
+			setMessage("")
+		}
+	}
+
+	return (
+		<div className="mt-6 pt-6 border-t border-neutral-800">
+			<h4 className="font-semibold text-neutral-300 mb-4">
+				Task Conversation
+			</h4>
+			<div className="space-y-4 max-h-64 overflow-y-auto custom-scrollbar pr-2">
+				{(task.chat_history || []).map((msg, index) => (
+					<ChatBubble
+						key={index}
+						role={msg.role}
+						content={msg.content}
+						message={msg}
+					/>
+				))}
+				<div ref={chatEndRef} />
+			</div>
+			<div className="mt-4 flex items-center gap-2">
+				<input
+					type="text"
+					value={message}
+					onChange={(e) => setMessage(e.target.value)}
+					onKeyDown={(e) => e.key === "Enter" && handleSend()}
+					placeholder="Ask for changes or follow-ups..."
+					className="flex-grow p-2 bg-neutral-800 border border-neutral-700 rounded-lg text-sm"
+				/>
+				<button
+					onClick={handleSend}
+					className="p-2 bg-blue-600 rounded-lg text-white hover:bg-blue-500 disabled:opacity-50"
+					disabled={!message.trim()}
+				>
+					<IconSend size={16} />
+				</button>
 			</div>
 		</div>
 	)
@@ -358,7 +358,6 @@ const TaskDetailsContent = ({
 	handleStepChange,
 	allTools,
 	integrations,
-	onAnswerClarifications,
 	onSendChatMessage
 }) => {
 	if (!task) {
@@ -451,15 +450,19 @@ const TaskDetailsContent = ({
 				</div>
 			</div>
 
-			{/* --- NEW: Q&A Section --- */}
-			{displayTask.clarifying_questions &&
-				displayTask.clarifying_questions.length > 0 && (
-					<QnaSection
-						questions={displayTask.clarifying_questions}
-						task={displayTask}
-						onAnswerClarifications={onAnswerClarifications}
-					/>
-				)}
+			{/* --- Researched Context (if planning) --- */}
+			{displayTask.status === "planning" && displayTask.found_context && (
+				<div>
+					<label className="text-sm font-medium text-neutral-400 block mb-2">
+						Researched Context
+					</label>
+					<div className="bg-neutral-800/50 p-3 rounded-lg text-sm text-neutral-300 whitespace-pre-wrap border border-neutral-700/50">
+						<ReactMarkdown className="prose prose-sm prose-invert">
+							{displayTask.found_context}
+						</ReactMarkdown>
+					</div>
+				</div>
+			)}
 
 			{/* --- DESCRIPTION --- */}
 			<div>

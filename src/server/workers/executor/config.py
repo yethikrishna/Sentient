@@ -183,16 +183,6 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("QUICKCHART_MCP_SERVER_URL", "http://localhost:9008/sse")
         }
     },
-    "progress_updater": { # Built-in tool for executor
-        "display_name": "Progress Updater",
-        "description": "Internal tool for the system to provide real-time progress updates on long-running tasks.",
-        "auth_type": "builtin",
-        "icon": "IconActivity",
-        "mcp_server_config": {
-            "name": "progress_updater_server",
-            "url": os.getenv("PROGRESS_UPDATER_MCP_SERVER_URL", "http://localhost:9011/sse")
-        }
-    },
     "memory": {
         "display_name": "Memory",
         "description": "Manages the user's memory. Use 'search_memory' to find facts, and 'cud_memory' to add, update, or delete information. This is critical for personalization.",

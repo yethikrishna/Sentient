@@ -559,30 +559,6 @@ Description: ${event.description || "No description."}`
 												handleAction(
 													() =>
 														fetch(
-															`/api/tasks/rerun`,
-															{
-																method: "POST",
-																body: JSON.stringify(
-																	{
-																		taskId
-																	}
-																),
-																headers: {
-																	"Content-Type":
-																		"application/json"
-																}
-															}
-														),
-													"Task re-run."
-												)
-											}
-											onAnswerClarifications={(
-												taskId,
-												answers
-											) =>
-												handleAction(
-													() =>
-														fetch(
 															`/api/tasks/answer-clarifications`,
 															{
 																method: "POST",

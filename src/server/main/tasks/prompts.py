@@ -15,7 +15,10 @@ You are an intelligent assistant that helps users create tasks from natural lang
     - `1`: Medium priority (standard tasks, default).
     - `2`: Low priority (can be done anytime, not urgent).
 3.  **Schedule:** Analyze the prompt for any scheduling information (dates, times, recurrence). Decipher whether the task is a one-time event or recurring, and format the schedule accordingly:
-    - **One-time tasks:** If a specific date and time is mentioned, use the `once` type. The `run_at` value MUST be in `YYYY-MM-DDTHH:MM` format. If no time is mentioned for a specific day (e.g., "tomorrow"), default to `09:00`. If no date or time is mentioned at all, the task is for *now*, so set `run_at` to the current date and time.
+    - **One-time tasks:**
+        - If the prompt has **NO MENTION of a future date or time** (e.g., "summarize this document", "organize my files"), the task is for **immediate execution**. You MUST set `run_at` to `null`.
+        - If a specific future date and time is mentioned, use the `once` type. The `run_at` value MUST be in `YYYY-MM-DDTHH:MM` format.
+        - If no time is mentioned for a specific day (e.g., "tomorrow"), default to `09:00`.
     - **Recurring tasks:** If the task is recurring, use the `recurring` type.
         - `frequency` can be "daily" or "weekly".
         - `time` MUST be in "HH:MM" 24-hour format. If no time is specified, default to `09:00`.
@@ -74,7 +77,7 @@ Your response MUST be a single, valid JSON object with the keys "name", "descrip
   "priority": 2,
   "schedule": {{
     "type": "once",
-    "run_at": "CURRENT_DATE_TIME_IN_USER_TIMEZONE"
+    "run_at": null
   }}
 }}
 

@@ -33,20 +33,6 @@ export const taskStatusColors = {
 		bgColor: "bg-purple-500/20",
 		border: "border-purple-400"
 	},
-	clarification_pending: {
-		icon: IconMessageQuestion,
-		label: "Needs Input",
-		textColor: "text-orange-300",
-		bgColor: "bg-orange-500/20",
-		border: "border-orange-400"
-	},
-	clarification_answered: {
-		icon: IconRefresh,
-		label: "Re-planning",
-		textColor: "text-blue-300",
-		bgColor: "bg-blue-500/20",
-		border: "border-blue-400"
-	},
 	processing: {
 		icon: IconPlayerPlay,
 		label: "Processing",

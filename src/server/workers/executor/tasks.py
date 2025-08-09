@@ -14,9 +14,11 @@ from json_extractor import JsonExtractor
 from main.analytics import capture_event
 from qwen_agent.agents import Assistant
 from workers.celery_app import celery_app
+from workers.executor.prompts import RESULT_GENERATOR_SYSTEM_PROMPT
 from workers.utils.api_client import notify_user, push_progress_update, push_task_list_update
 from workers.utils.text_utils import clean_llm_output
 from celery import chord, group
+from main.llm import run_agent_with_fallback as run_main_agent_with_fallback
 
 # Load environment variables for the worker from its own config
 from workers.executor.config import (MONGO_URI, MONGO_DB_NAME,
@@ -303,13 +305,13 @@ async def async_execute_task_plan(task_id: str, user_id: str, run_id: str):
 
             last_processed_history_len = len(current_history)
 
-        final_content = final_answer_content or "Task completed. Check the execution log for details."
-        logger.info(f"Task {task_id}: Final result: {final_content}")
-        await add_progress_update(db, task_id, run_id, user_id, {"type": "info", "content": "Execution script finished."}, block_id=block_id)
+        logger.info(f"Task {task_id} execution phase completed. Dispatching to result generator.")
+        await add_progress_update(db, task_id, run_id, user_id, {"type": "info", "content": "Execution finished. Generating final report..."}, block_id=block_id)
+        await update_task_run_status(db, task_id, run_id, "completed", user_id, block_id=block_id)
         capture_event(user_id, "task_execution_succeeded", {"task_id": task_id, "run_id": run_id})
-        await update_task_run_status(db, task_id, run_id, "completed", user_id, details={"result": final_content}, block_id=block_id)
 
-        # --- NEW RESCHEDULING LOGIC ---
+        # Call the new result generator task
+        generate_task_result.delay(task_id, run_id, user_id)
         from workers.tasks import calculate_next_run
         schedule_type = task.get('schedule', {}).get('type')
         if schedule_type == 'recurring':
@@ -331,7 +333,7 @@ async def async_execute_task_plan(task_id: str, user_id: str, run_id: str):
                 {"$set": {"status": "completed", "next_execution_at": None}}
             )
 
-        return {"status": "success", "result": final_content}
+        return {"status": "success", "message": "Task execution complete, generating report."}
 
     except Exception as e:
         error_message = f"Executor agent failed: {str(e)}"
@@ -365,12 +367,12 @@ async def async_execute_task_plan(task_id: str, user_id: str, run_id: str):
         return {"status": "error", "message": error_message}
 
 @celery_app.task(name="aggregate_results_callback")
-def aggregate_results_callback(results, parent_task_id: str, user_id: str):
+def aggregate_results_callback(results, parent_task_id: str, user_id: str, parent_run_id: str):
     """Celery callback task to aggregate results from a swarm chord."""
     logger.info(f"Aggregating results for swarm task {parent_task_id}. Received {len(results)} results.")
-    run_async(async_aggregate_results(results, parent_task_id, user_id))
+    run_async(async_aggregate_results(results, parent_task_id, user_id, parent_run_id))
 
-async def async_aggregate_results(results, parent_task_id: str, user_id: str):
+async def async_aggregate_results(results, parent_task_id: str, user_id: str, parent_run_id: str):
     db = get_db_client()
     try:
         # Check for errors in results
@@ -381,26 +383,25 @@ async def async_aggregate_results(results, parent_task_id: str, user_id: str):
             "worker_id": "aggregator",
             "timestamp": datetime.datetime.now(datetime.timezone.utc),
             "status": "aggregating",
-            "message": f"All {len(results)} agents have completed. Aggregating results."
+            "message": f"All {len(results)} agents have completed. Generating final report."
         }
 
         await db.tasks.update_one(
             {"task_id": parent_task_id},
             {
                 "$set": {
-                    "status": final_status,
-                    "swarm_details.aggregated_results": results,
-                    "swarm_details.completed_agents": len(results)
+                    "status": final_status, "runs.$[run].status": final_status
                 },
-                "$push": {"swarm_details.progress_updates": progress_update}
-            }
+                "$push": {"runs.$[run].progress_updates": progress_update}
+            },
+            array_filters=[{"run.run_id": parent_run_id}]
         )
         
+        generate_task_result.delay(parent_task_id, parent_run_id, user_id, aggregated_results=results)
         task = await db.tasks.find_one({"task_id": parent_task_id}, {"name": 1})
         task_name = task.get("name", "Swarm Task") if task else "Swarm Task"
 
         await notify_user(user_id, f"Swarm task '{task_name}' has completed.", parent_task_id, notification_type="taskCompleted")
-        await push_task_list_update(user_id, parent_task_id, "swarm_completed")
 
     except Exception as e:
         logger.error(f"Error in aggregate_results_callback for task {parent_task_id}: {e}", exc_info=True)
@@ -409,6 +410,62 @@ async def async_aggregate_results(results, parent_task_id: str, user_id: str):
             {"task_id": parent_task_id},
             {"$set": {"status": "error", "error": f"Failed during result aggregation: {str(e)}"}}
         )
+
+@celery_app.task(name="generate_task_result")
+def generate_task_result(task_id: str, run_id: str, user_id: str, aggregated_results: Optional[List[Any]] = None):
+    """
+    Analyzes a completed task run and generates a structured, user-friendly result.
+    """
+    logger.info(f"Generating final result for task {task_id}, run {run_id}")
+    run_async(async_generate_task_result(task_id, run_id, user_id, aggregated_results))
+
+async def async_generate_task_result(task_id: str, run_id: str, user_id: str, aggregated_results: Optional[List[Any]] = None):
+    db = get_db_client()
+    try:
+        task = await db.tasks.find_one({"task_id": task_id, "user_id": user_id})
+        if not task:
+            logger.error(f"ResultGenerator: Task {task_id} not found.")
+            return
+
+        current_run = next((r for r in task.get("runs", []) if r["run_id"] == run_id), None)
+        if not current_run:
+            logger.error(f"ResultGenerator: Run {run_id} not found in task {task_id}.")
+            return
+
+        # 1. Compile context for the LLM
+        context_for_llm = {
+            "goal": task.get("name", "No goal specified."),
+            "plan": current_run.get("plan", task.get("plan", [])), # Use run-specific plan if available
+            "execution_log": current_run.get("progress_updates", []),
+            "aggregated_results": aggregated_results # This will be present for swarm tasks
+        }
+
+        # 2. Call the Result Generator Agent
+        messages = [{'role': 'user', 'content': json.dumps(context_for_llm, default=str)}]
+
+        response_str = ""
+        # This is a non-streaming call, so we just need the final result.
+        for chunk in run_main_agent_with_fallback(system_message=RESULT_GENERATOR_SYSTEM_PROMPT, function_list=[], messages=messages):
+            if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
+                response_str = chunk[-1].get("content", "")
+
+        if not response_str:
+            raise Exception("Result Generator agent returned an empty response.")
+
+        structured_result = JsonExtractor.extract_valid_json(clean_llm_output(response_str))
+        if not structured_result:
+            # Fallback: use the raw text as the summary
+            structured_result = {"summary": response_str, "links_created": [], "links_found": [], "files_created": [], "tools_used": []}
+            logger.warning(f"ResultGenerator for task {task_id} failed to parse JSON, using raw output as summary.")
+
+        # 3. Update the task run with the structured result
+        await db.tasks.update_one({"task_id": task_id, "user_id": user_id}, {"$set": {"runs.$[run].result": structured_result}}, array_filters=[{"run.run_id": run_id}])
+        logger.info(f"Successfully generated and saved structured result for task {task_id}, run {run_id}.")
+        await push_task_list_update(user_id, task_id, run_id)
+    except Exception as e:
+        logger.error(f"Error in async_generate_task_result for task {task_id}: {e}", exc_info=True)
+        error_result = {"summary": f"Failed to generate final report: {str(e)}"}
+        await db.tasks.update_one({"task_id": task_id, "user_id": user_id}, {"$set": {"runs.$[run].result": error_result}}, array_filters=[{"run.run_id": run_id}])
 
 @celery_app.task(name="run_single_item_worker", bind=True)
 def run_single_item_worker(self, parent_task_id: str, user_id: str, item: Any, worker_prompt: str, worker_tools: List[str]):

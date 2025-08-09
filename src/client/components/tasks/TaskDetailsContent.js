@@ -11,14 +11,18 @@ import {
 	IconUser,
 	IconX,
 	IconLoader,
-	IconSend
+	IconSend,
+	IconInfoCircle,
+	IconLink,
+	IconWorldSearch
 } from "@tabler/icons-react"
 import ScheduleEditor from "@components/tasks/ScheduleEditor"
 import ExecutionUpdate from "./ExecutionUpdate"
 import ChatBubble from "@components/ChatBubble"
 import { TextShimmer } from "@components/ui/text-shimmer"
-import { IconInfoCircle } from "@tabler/icons-react"
 import CollapsibleSection from "./CollapsibleSection"
+import FileCard from "@components/FileCard"
+import ReactMarkdown from "react-markdown"
 
 const TaskChatSection = ({ task, onSendChatMessage }) => {
 	const [message, setMessage] = useState("")
@@ -163,6 +167,109 @@ const QnaSection = ({ questions, task, onAnswerClarifications }) => {
 					</div>
 				)}
 			</div>
+		</div>
+	)
+}
+
+const TaskResultDisplay = ({ result }) => {
+	if (!result) return null
+
+	// Handle simple string results for backward compatibility
+	if (typeof result === "string") {
+		return (
+			<div>
+				<h4 className="font-semibold text-neutral-300 mb-2">Result</h4>
+				<div className="text-sm bg-neutral-800/50 p-3 rounded-lg whitespace-pre-wrap border border-neutral-700/50">
+					<ReactMarkdown>{result}</ReactMarkdown>
+				</div>
+			</div>
+		)
+	}
+
+	const { summary, links_created, links_found, files_created, tools_used } =
+		result
+
+	return (
+		<div className="space-y-4">
+			<h4 className="font-semibold text-neutral-300">Final Report</h4>
+
+			{summary && (
+				<div className="text-sm bg-neutral-800/50 p-4 rounded-lg border border-neutral-700/50">
+					<ReactMarkdown className="prose prose-sm prose-invert">
+						{summary}
+					</ReactMarkdown>
+				</div>
+			)}
+
+			{(links_created?.length > 0 || links_found?.length > 0) && (
+				<CollapsibleSection title="Relevant Links">
+					<div className="space-y-2 pt-2">
+						{links_created.map((link, i) => (
+							<div
+								key={`created-${i}`}
+								className="flex items-center gap-2 text-sm p-2 bg-neutral-800/30 rounded-md"
+							>
+								<IconLink size={16} className="text-blue-400" />
+								<a
+									href={link.url}
+									target="_blank"
+									rel="noopener noreferrer"
+									className="text-blue-400 hover:underline truncate"
+								>
+									{link.description || link.url}
+								</a>
+							</div>
+						))}
+						{links_found.map((link, i) => (
+							<div
+								key={`found-${i}`}
+								className="flex items-center gap-2 text-sm p-2 bg-neutral-800/30 rounded-md"
+							>
+								<IconWorldSearch
+									size={16}
+									className="text-green-400"
+								/>
+								<a
+									href={link.url}
+									target="_blank"
+									rel="noopener noreferrer"
+									className="text-green-400 hover:underline truncate"
+								>
+									{link.description || link.url}
+								</a>
+							</div>
+						))}
+					</div>
+				</CollapsibleSection>
+			)}
+
+			{files_created?.length > 0 && (
+				<CollapsibleSection title="Files Created">
+					<div className="space-y-2 pt-2">
+						{files_created.map((file, i) => (
+							<FileCard
+								key={`file-${i}`}
+								filename={file.filename}
+							/>
+						))}
+					</div>
+				</CollapsibleSection>
+			)}
+
+			{tools_used?.length > 0 && (
+				<CollapsibleSection title="Tools Used">
+					<div className="flex flex-wrap gap-2 pt-2">
+						{tools_used.map((tool) => (
+							<span
+								key={tool}
+								className="bg-neutral-700 text-xs font-medium px-2 py-1 rounded-full"
+							>
+								{tool}
+							</span>
+						))}
+					</div>
+				</CollapsibleSection>
+			)}
 		</div>
 	)
 }
@@ -553,14 +660,7 @@ const TaskDetailsContent = ({
 								</div>
 							)}
 						{run.result && (
-							<div>
-								<h4 className="font-semibold text-neutral-300 mb-2">
-									Result
-								</h4>
-								<pre className="text-xs bg-neutral-800/50 p-3 rounded-lg whitespace-pre-wrap font-mono border border-neutral-700/50">
-									{JSON.stringify(run.result, null, 2)}
-								</pre>
-							</div>
+							<TaskResultDisplay result={run.result} />
 						)}
 						{run.error && (
 							<div>

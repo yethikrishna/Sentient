@@ -54,7 +54,12 @@ const TaskDetailsPanel = ({
 			return []
 		}
 
-		const requiredTools = new Set(plan.map((step) => step.tool))
+		// FIX: Filter out any null, undefined, or empty tool names from the plan
+		// to prevent errors when rendering the missing tools buttons.
+		const requiredTools = new Set(
+			plan.map((step) => step.tool).filter(Boolean)
+		)
+
 		const connectedTools = new Set(
 			integrations
 				.filter((i) => i.connected || i.auth_type === "builtin")

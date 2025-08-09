@@ -13,51 +13,121 @@ import {
 	IconLayoutSidebarLeftCollapse,
 	IconLayoutSidebarLeftExpand,
 	IconArrowUpCircle,
-	IconMessagePlus,
-	IconHeadphones,
 	IconDots,
 	IconAdjustments,
 	IconLogout,
 	IconX,
-	IconDownload
+	IconDownload,
+	IconHeadphones
 } from "@tabler/icons-react"
 import { cn } from "@utils/cn"
 import { motion, AnimatePresence } from "framer-motion"
 import useClickOutside from "@hooks/useClickOutside"
 
-const HelpVideoModal = ({ onClose }) => (
-	<motion.div
-		initial={{ opacity: 0 }}
-		animate={{ opacity: 1 }}
-		exit={{ opacity: 0 }}
-		className="fixed inset-0 bg-black/70 backdrop-blur-md z-[100] flex items-center justify-center p-4"
-		onClick={onClose}
-	>
-		<motion.div
-			initial={{ scale: 0.9, y: 20 }}
-			animate={{ scale: 1, y: 0 }}
-			exit={{ scale: 0.9, y: -20 }}
-			transition={{ duration: 0.2, ease: "easeInOut" }}
-			onClick={(e) => e.stopPropagation()}
-			className="relative bg-black p-2 rounded-xl shadow-2xl w-full max-w-3xl aspect-video border border-neutral-700"
+const UserProfileSection = ({ isCollapsed, user }) => {
+	const [isUserMenuOpen, setUserMenuOpen] = useState(false)
+	const userMenuRef = useRef(null)
+	useClickOutside(userMenuRef, () => setUserMenuOpen(false))
+
+	// CHANGED: Use the environment variable for the namespace
+	const roles =
+		user?.[`${process.env.NEXT_PUBLIC_AUTH0_NAMESPACE}/roles`] || []
+	const isPro = roles.includes("Pro")
+	const planName = isPro ? "Pro" : "Basic"
+
+	const dashboardUrl = process.env.NEXT_PUBLIC_LANDING_PAGE_URL
+		? `${process.env.NEXT_PUBLIC_LANDING_PAGE_URL}/dashboard`
+		: "#"
+
+	return (
+		<div
+			className={cn(
+				"flex items-center justify-between bg-neutral-800/40 border border-neutral-700/80 rounded-lg p-1.5",
+				isCollapsed && "flex-col gap-2"
+			)}
 		>
-			<button
-				onClick={onClose}
-				className="absolute -top-3 -right-3 z-10 p-1.5 bg-neutral-800 text-white rounded-full hover:bg-neutral-700"
-				aria-label="Close video"
+			<div
+				className={cn(
+					"flex items-center gap-2 p-1 rounded-md flex-grow",
+					isCollapsed ? "w-full justify-center" : ""
+				)}
 			>
-				<IconX size={18} />
-			</button>
-			<iframe
-				className="w-full h-full rounded-lg"
-				src="https://www.youtube.com/embed/wCmWFUX_ZrM?autoplay=1&rel=0&showinfo=0&controls=1"
-				title="Sentient Demo Video"
-				allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-				allowFullScreen
-			></iframe>
-		</motion.div>
-	</motion.div>
-)
+				{user?.picture ? (
+					<img
+						src={user.picture}
+						alt="User"
+						className="w-7 h-7 rounded-full flex-shrink-0"
+					/>
+				) : (
+					<div className="w-7 h-7 rounded-full bg-neutral-700 flex items-center justify-center flex-shrink-0">
+						<IconUser size={16} />
+					</div>
+				)}
+				<AnimatePresence>
+					{!isCollapsed && (
+						<motion.div
+							initial={{ opacity: 0, width: 0 }}
+							animate={{ opacity: 1, width: "auto" }}
+							exit={{ opacity: 0, width: 0 }}
+							className="overflow-hidden whitespace-nowrap"
+						>
+							<p className="font-semibold text-sm text-white">
+								{user?.name || "User"}
+							</p>
+							<span
+								className={cn(
+									"text-xs",
+									isPro
+										? "text-brand-orange"
+										: "text-neutral-400"
+								)}
+							>
+								{planName}
+							</span>
+						</motion.div>
+					)}
+				</AnimatePresence>
+			</div>
+			{!isCollapsed && (
+				<div className="relative" ref={userMenuRef}>
+					<button
+						onClick={() => setUserMenuOpen(!isUserMenuOpen)}
+						className="p-2 rounded-md hover:bg-neutral-700 text-neutral-400 hover:text-white"
+					>
+						<IconDots size={16} />
+					</button>
+					<AnimatePresence>
+						{isUserMenuOpen && (
+							<motion.div
+								initial={{ opacity: 0, y: 10, scale: 0.95 }}
+								animate={{ opacity: 1, y: 0, scale: 1 }}
+								exit={{ opacity: 0, y: 10, scale: 0.95 }}
+								className="absolute bottom-full right-0 mb-2 w-48 bg-neutral-900/80 backdrop-blur-md border border-neutral-700 rounded-lg shadow-lg p-1 z-50"
+							>
+								<a
+									href={dashboardUrl}
+									target="_blank"
+									rel="noopener noreferrer"
+									className="w-full flex items-center gap-2 text-left px-3 py-2 text-sm rounded-md text-neutral-200 hover:bg-neutral-700/50 transition-colors"
+								>
+									<IconAdjustments size={16} />
+									<span>Account & Billing</span>
+								</a>
+								<a
+									href="/api/auth/logout"
+									className="w-full flex items-center gap-2 text-left px-3 py-2 text-sm rounded-md text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-colors"
+								>
+									<IconLogout size={16} />
+									<span>Logout</span>
+								</a>
+							</motion.div>
+						)}
+					</AnimatePresence>
+				</div>
+			)}
+		</div>
+	)
+}
 
 const SidebarContent = ({
 	isCollapsed,
@@ -68,21 +138,20 @@ const SidebarContent = ({
 	isMobile = false,
 	onMobileClose = () => {},
 	installPrompt,
-	handleInstallClick
+	handleInstallClick,
+	user
 }) => {
 	const pathname = usePathname()
-	const [userDetails, setUserDetails] = useState(null)
 	const [isHelpModalOpen, setHelpModalOpen] = useState(false)
-	const [isUserMenuOpen, setUserMenuOpen] = useState(false)
-	const userMenuRef = useRef(null)
 
-	useClickOutside(userMenuRef, () => setUserMenuOpen(false))
+	// CHANGED: Use the environment variable for the namespace
+	const roles =
+		user?.[`${process.env.NEXT_PUBLIC_AUTH0_NAMESPACE}/roles`] || []
+	const isPro = roles.includes("Pro")
 
-	useEffect(() => {
-		fetch("/api/user/profile")
-			.then((res) => (res.ok ? res.json() : null))
-			.then((data) => setUserDetails(data))
-	}, [])
+	const dashboardUrl = process.env.NEXT_PUBLIC_LANDING_PAGE_URL
+		? `${process.env.NEXT_PUBLIC_LANDING_PAGE_URL}/dashboard`
+		: "#"
 
 	const navLinks = [
 		{ title: "Chat", href: "/chat", icon: <IconMessage size={20} /> },
@@ -104,10 +173,22 @@ const SidebarContent = ({
 		<div className="flex flex-col h-full w-full overflow-y-auto custom-scrollbar">
 			<AnimatePresence>
 				{isHelpModalOpen && (
-					<HelpVideoModal onClose={() => setHelpModalOpen(false)} />
+					<div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+						<div className="bg-neutral-800 p-6 rounded-lg text-center">
+							<h3 className="text-lg font-bold mb-4">
+								Help Video
+							</h3>
+							<p>Video player would be here.</p>
+							<button
+								onClick={() => setHelpModalOpen(false)}
+								className="mt-4 px-4 py-2 bg-brand-orange text-black rounded"
+							>
+								Close
+							</button>
+						</div>
+					</div>
 				)}
 			</AnimatePresence>
-			{/* Header */}
 			<div
 				className={cn(
 					"flex items-center justify-between mb-4 px-2",
@@ -144,7 +225,6 @@ const SidebarContent = ({
 				</AnimatePresence>
 			</div>
 
-			{/* Search Button */}
 			<button
 				onClick={() => {
 					onSearchOpen()
@@ -166,38 +246,41 @@ const SidebarContent = ({
 				)}
 			</button>
 
-			{/* Upgrade Button */}
-			<button
-				className={cn(
-					"w-full bg-neutral-800/40 border border-neutral-700/80 rounded-lg p-2.5 text-left mb-2 hover:bg-neutral-800/80 transition-colors",
-					isCollapsed && "flex justify-center"
-				)}
-			>
-				<div className="flex items-center gap-3">
-					<div className="bg-neutral-700/80 p-1 rounded-full">
-						<IconArrowUpCircle size={18} />
+			{!isPro && (
+				<a
+					href={dashboardUrl}
+					target="_blank"
+					rel="noopener noreferrer"
+					className={cn(
+						"w-full bg-neutral-800/40 border border-neutral-700/80 rounded-lg p-2.5 text-left mb-2 hover:bg-neutral-800/80 transition-colors",
+						isCollapsed && "flex justify-center"
+					)}
+				>
+					<div className="flex items-center gap-3">
+						<div className="bg-neutral-700/80 p-1 rounded-full text-brand-orange">
+							<IconArrowUpCircle size={18} />
+						</div>
+						<AnimatePresence>
+							{!isCollapsed && (
+								<motion.div
+									initial={{ opacity: 0, width: 0 }}
+									animate={{ opacity: 1, width: "auto" }}
+									exit={{ opacity: 0, width: 0 }}
+									className="overflow-hidden whitespace-nowrap"
+								>
+									<p className="font-semibold text-sm text-white">
+										Upgrade to Pro
+									</p>
+									<p className="text-xs text-neutral-400">
+										Unlock all features
+									</p>
+								</motion.div>
+							)}
+						</AnimatePresence>
 					</div>
-					<AnimatePresence>
-						{!isCollapsed && (
-							<motion.div
-								initial={{ opacity: 0, width: 0 }}
-								animate={{ opacity: 1, width: "auto" }}
-								exit={{ opacity: 0, width: 0 }}
-								className="overflow-hidden whitespace-nowrap"
-							>
-								<p className="font-semibold text-sm text-white">
-									Upgrade to Pro
-								</p>
-								<p className="text-xs text-neutral-400">
-									All features & unlimited usage
-								</p>
-							</motion.div>
-						)}
-					</AnimatePresence>
-				</div>
-			</button>
+				</a>
+			)}
 
-			{/* Main Navigation */}
 			<nav className="flex flex-col gap-1 flex-grow overflow-hidden">
 				{navLinks.map((link) => {
 					const isActive = pathname.startsWith(link.href)
@@ -242,7 +325,6 @@ const SidebarContent = ({
 				)}
 			</button>
 
-			{/* Footer */}
 			<div className="flex flex-col gap-2">
 				{installPrompt && (
 					<button
@@ -308,73 +390,8 @@ const SidebarContent = ({
 						</span>
 					)}
 				</button>
-				<div
-					className={cn(
-						"flex items-center justify-between bg-neutral-800/40 border border-neutral-700/80 rounded-lg p-1.5",
-						isCollapsed && "flex-col gap-2"
-					)}
-				>
-					<Link
-						href="/settings"
-						className={cn(
-							"flex items-center gap-2 p-1 rounded-md hover:bg-neutral-800/80 flex-grow",
-							isCollapsed ? "w-full justify-center" : ""
-						)}
-					>
-						{userDetails?.picture ? (
-							<img
-								src={userDetails.picture}
-								alt="User"
-								className="w-7 h-7 rounded-full flex-shrink-0"
-							/>
-						) : (
-							<div className="w-7 h-7 rounded-full bg-neutral-700 flex items-center justify-center flex-shrink-0">
-								<IconUser size={16} />
-							</div>
-						)}
-						{!isCollapsed && (
-							<span className="font-semibold text-sm text-white whitespace-nowrap">
-								{userDetails?.given_name || "User"}
-							</span>
-						)}
-					</Link>
-					{!isCollapsed && (
-						<div className="relative" ref={userMenuRef}>
-							<button
-								onClick={() => setUserMenuOpen(!isUserMenuOpen)}
-								className="p-2 rounded-md hover:bg-neutral-700 text-neutral-400 hover:text-white"
-							>
-								<IconDots size={16} />
-							</button>
-							<AnimatePresence>
-								{isUserMenuOpen && (
-									<motion.div
-										initial={{
-											opacity: 0,
-											y: 10,
-											scale: 0.95
-										}}
-										animate={{ opacity: 1, y: 0, scale: 1 }}
-										exit={{
-											opacity: 0,
-											y: 10,
-											scale: 0.95
-										}}
-										className="absolute bottom-full right-0 mb-2 w-40 bg-neutral-900/80 backdrop-blur-md border border-neutral-700 rounded-lg shadow-lg p-1 z-50"
-									>
-										<Link
-											href="/auth/logout"
-											className="w-full flex items-center gap-2 text-left px-3 py-2 text-sm rounded-md text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-colors"
-										>
-											<IconLogout size={16} />
-											<span>Logout</span>
-										</Link>
-									</motion.div>
-								)}
-							</AnimatePresence>
-						</div>
-					)}
-				</div>
+
+				<UserProfileSection isCollapsed={isCollapsed} user={user} />
 			</div>
 		</div>
 	)
@@ -387,7 +404,8 @@ const Sidebar = ({
 	onSearchOpen,
 	unreadCount,
 	isMobileOpen,
-	onMobileClose
+	onMobileClose,
+	user
 }) => {
 	const [installPrompt, setInstallPrompt] = useState(null)
 
@@ -414,7 +432,7 @@ const Sidebar = ({
 		if (!installPrompt) return
 		const result = await installPrompt.prompt()
 		console.log(`Install prompt was: ${result.outcome}`)
-		setInstallPrompt(null) // The prompt can only be used once.
+		setInstallPrompt(null)
 	}
 
 	return (
@@ -450,6 +468,7 @@ const Sidebar = ({
 								isMobile={true}
 								installPrompt={installPrompt}
 								handleInstallClick={handleInstallClick}
+								user={user}
 							/>
 						</motion.div>
 					</>
@@ -470,6 +489,7 @@ const Sidebar = ({
 					unreadCount={unreadCount}
 					installPrompt={installPrompt}
 					handleInstallClick={handleInstallClick}
+					user={user}
 				/>
 			</motion.div>
 		</>

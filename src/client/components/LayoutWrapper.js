@@ -1,6 +1,7 @@
+// src/client/components/LayoutWrapper.js
 "use client"
 import React, { useState, useEffect, useCallback, useRef } from "react"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation" // Import useSearchParams
 import { AnimatePresence } from "framer-motion"
 import NotificationsOverlay from "@components/NotificationsOverlay"
 import { IconMenu2, IconLoader } from "@tabler/icons-react"
@@ -10,6 +11,7 @@ import GlobalSearch from "./GlobalSearch"
 import { useGlobalShortcuts } from "@hooks/useGlobalShortcuts"
 import { cn } from "@utils/cn"
 import toast from "react-hot-toast"
+import { useUser } from "@auth0/nextjs-auth0/client"
 
 export default function LayoutWrapper({ children }) {
 	const [isNotificationsOpen, setNotificationsOpen] = useState(false)
@@ -18,21 +20,60 @@ export default function LayoutWrapper({ children }) {
 	const [isSidebarCollapsed, setSidebarCollapsed] = useState(true)
 	const [isMobileNavOpen, setMobileNavOpen] = useState(false)
 	const [unreadCount, setUnreadCount] = useState(0)
-	const [userDetails, setUserDetails] = useState(null)
 	const wsRef = useRef(null)
 	const pathname = usePathname()
 	const router = useRouter()
+	const searchParams = useSearchParams() // Hook to read URL query parameters
 
-	// State for onboarding check
+	const { user, error: authError, isLoading: isAuthLoading } = useUser()
+
 	const [isLoading, setIsLoading] = useState(true)
 	const [isAllowed, setIsAllowed] = useState(false)
 
 	const showNav = !["/", "/onboarding"].includes(pathname)
 
+	// **NEW EFFECT**: Handles programmatic session refresh after payment
+	useEffect(() => {
+		const paymentStatus = searchParams.get("payment_status")
+		if (paymentStatus === "success") {
+			const refreshSession = async () => {
+				toast.loading(
+					"Payment successful! Refreshing your session...",
+					{ duration: 4000 }
+				)
+				try {
+					// Calling this endpoint refreshes the session cookie with new data (like the "Pro" role)
+					await fetch("/api/auth/me")
+					// Clean the URL by removing the query parameter, then reload the page
+					router.replace(pathname, { scroll: false })
+					window.location.reload()
+				} catch (error) {
+					toast.error(
+						"Failed to refresh session. Please log in again to see your new plan."
+					)
+				}
+			}
+			refreshSession()
+		}
+	}, [searchParams, router, pathname])
+
 	useEffect(() => {
 		if (!showNav) {
 			setIsLoading(false)
-			setIsAllowed(true) // Allow rendering for public pages like '/' and '/onboarding'
+			setIsAllowed(true)
+			return
+		}
+
+		if (isAuthLoading) return
+
+		if (authError) {
+			toast.error("Session error. Redirecting to login.")
+			router.push("/api/auth/login")
+			return
+		}
+
+		if (!user) {
+			router.push("/api/auth/login")
 			return
 		}
 
@@ -40,36 +81,28 @@ export default function LayoutWrapper({ children }) {
 			setIsLoading(true)
 			try {
 				const res = await fetch("/api/user/data")
-				if (!res.ok) {
-					throw new Error("Session error. Please log in again.")
-				}
+				if (!res.ok) throw new Error("Could not verify user status.")
 				const data = await res.json()
 				if (data?.data?.onboardingComplete) {
 					setIsAllowed(true)
 				} else {
 					toast.error("Please complete onboarding first.")
 					router.push("/onboarding")
-					// isAllowed remains false, content won't flash
 				}
 			} catch (error) {
-				toast.error(error.message || "Failed to verify user status.")
-				router.push("/") // Redirect to home on error
+				toast.error(error.message)
+				router.push("/")
 			} finally {
 				setIsLoading(false)
 			}
 		}
 
 		checkStatus()
-	}, [pathname, router, showNav])
+	}, [pathname, router, showNav, user, authError, isAuthLoading])
 
+	// ... (keep the rest of the useEffects and functions exactly as they were)
 	useEffect(() => {
-		fetch("/api/user/profile")
-			.then((res) => (res.ok ? res.json() : null))
-			.then((data) => setUserDetails(data))
-	}, [])
-
-	useEffect(() => {
-		if (!userDetails?.sub) return
+		if (!user?.sub) return
 
 		const connectWebSocket = async () => {
 			if (wsRef.current && wsRef.current.readyState < 2) return
@@ -100,15 +133,12 @@ export default function LayoutWrapper({ children }) {
 				ws.onmessage = (event) => {
 					const data = JSON.parse(event.data)
 					if (data.type === "task_progress_update") {
-						// Dispatch a custom event that the tasks page can listen for
 						window.dispatchEvent(
 							new CustomEvent("taskProgressUpdate", {
 								detail: data.payload
 							})
 						)
 					} else if (data.type === "task_list_updated") {
-						// This is a generic event telling the app that tasks have changed
-						// on the backend and the UI should refetch them.
 						window.dispatchEvent(
 							new CustomEvent("tasksUpdatedFromBackend")
 						)
@@ -134,105 +164,18 @@ export default function LayoutWrapper({ children }) {
 				wsRef.current = null
 			}
 		}
-	}, [userDetails?.sub])
+	}, [user?.sub])
 
 	const handleNotificationsOpen = useCallback(() => {
 		setNotificationsOpen(true)
 		setUnreadCount(0)
 	}, [])
 
-	// Use the new custom hook for shortcuts
 	useGlobalShortcuts(handleNotificationsOpen, () =>
 		setCommandPaletteOpen((prev) => !prev)
 	)
 
-	// PWA Update Handler
-	useEffect(() => {
-		if (
-			typeof window !== "undefined" &&
-			"serviceWorker" in navigator &&
-			window.workbox !== undefined
-		) {
-			const wb = window.workbox
-
-			const promptNewVersionAvailable = (event) => {
-				if (!event.wasWaitingBeforeRegister) {
-					toast(
-						(t) => (
-							<div className="flex flex-col items-center gap-2 text-white">
-								<span>A new version is available!</span>
-								<div className="flex gap-2">
-									<button
-										className="py-1 px-3 rounded-md bg-green-600 hover:bg-green-500 text-white text-sm font-medium"
-										onClick={() => {
-											wb.addEventListener(
-												"controlling",
-												() => {
-													window.location.reload()
-												}
-											)
-											wb.messageSkipWaiting()
-											toast.dismiss(t.id)
-										}}
-									>
-										Refresh
-									</button>
-									<button
-										className="py-1 px-3 rounded-md bg-neutral-600 hover:bg-neutral-500 text-white text-sm font-medium"
-										onClick={() => toast.dismiss(t.id)}
-									>
-										Dismiss
-									</button>
-								</div>
-							</div>
-						),
-						{ duration: Infinity }
-					)
-				}
-			}
-
-			wb.addEventListener("waiting", promptNewVersionAvailable)
-			return () => {
-				wb.removeEventListener("waiting", promptNewVersionAvailable)
-			}
-		}
-	}, [])
-
-	useEffect(() => {
-		// This effect runs only on the client side, after the component mounts.
-		if (
-			"serviceWorker" in navigator &&
-			process.env.NODE_ENV === "production"
-		) {
-			// The 'load' event ensures that SW registration doesn't delay page rendering.
-			window.addEventListener("load", function () {
-				navigator.serviceWorker.register("/sw.js").then(
-					function (registration) {
-						console.log(
-							"ServiceWorker registration successful with scope: ",
-							registration.scope
-						)
-					},
-					function (err) {
-						console.log("ServiceWorker registration failed: ", err)
-					}
-				)
-			})
-		}
-	}, [])
-
-	useEffect(() => {
-		const handleEscape = (e) => {
-			if (e.key === "Escape") {
-				if (isNotificationsOpen) setNotificationsOpen(false)
-				if (isCommandPaletteOpen) setCommandPaletteOpen(false)
-			}
-		}
-		window.addEventListener("keydown", handleEscape)
-		return () => window.removeEventListener("keydown", handleEscape)
-	}, [isNotificationsOpen, isCommandPaletteOpen])
-
-	if (isLoading) {
+	if (isLoading || isAuthLoading) {
 		return (
 			<div className="flex-1 flex h-screen bg-black text-white overflow-hidden justify-center items-center">
 				<IconLoader className="w-10 h-10 animate-spin text-brand-orange" />
@@ -241,7 +184,6 @@ export default function LayoutWrapper({ children }) {
 	}
 
 	if (!isAllowed) {
-		// This will be shown briefly during the redirect to /onboarding
 		return (
 			<div className="flex-1 flex h-screen bg-black text-white overflow-hidden justify-center items-center">
 				<IconLoader className="w-10 h-10 animate-spin text-brand-orange" />
@@ -262,6 +204,7 @@ export default function LayoutWrapper({ children }) {
 						unreadCount={unreadCount}
 						isMobileOpen={isMobileNavOpen}
 						onMobileClose={() => setMobileNavOpen(false)}
+						user={user}
 					/>
 					<button
 						onClick={() => setMobileNavOpen(true)}

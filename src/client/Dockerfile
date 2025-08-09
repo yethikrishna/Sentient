@@ -9,8 +9,6 @@ ENV NODE_ENV=production
 
 # ---- MODIFIED SECTION ----
 # Declare all build-time arguments that your application needs.
-# Anything prefixed with NEXT_PUBLIC_ is needed for the client-side bundle.
-# Others are needed for server-side logic during the build (if any).
 ARG NEXT_PUBLIC_APP_SERVER_URL
 ARG AUTH0_SECRET
 ARG INTERNAL_APP_SERVER_URL
@@ -25,6 +23,8 @@ ARG AUTH0_AUDIENCE
 ARG AUTH0_SCOPE
 ARG NEXT_PUBLIC_POSTHOG_KEY
 ARG NEXT_PUBLIC_POSTHOG_HOST
+ARG NEXT_PUBLIC_AUTH0_NAMESPACE # ADD THIS
+ARG NEXT_PUBLIC_LANDING_PAGE_URL # ADD THIS
 
 # Set them as environment variables for the build process
 ENV NEXT_PUBLIC_APP_SERVER_URL=$NEXT_PUBLIC_APP_SERVER_URL
@@ -41,6 +41,8 @@ ENV AUTH0_AUDIENCE=$AUTH0_AUDIENCE
 ENV AUTH0_SCOPE=$AUTH0_SCOPE
 ENV NEXT_PUBLIC_POSTHOG_KEY=$NEXT_PUBLIC_POSTHOG_KEY
 ENV NEXT_PUBLIC_POSTHOG_HOST=$NEXT_PUBLIC_POSTHOG_HOST
+ENV NEXT_PUBLIC_AUTH0_NAMESPACE=$NEXT_PUBLIC_AUTH0_NAMESPACE
+ENV NEXT_PUBLIC_LANDING_PAGE_URL=$NEXT_PUBLIC_LANDING_PAGE_URL
 # --------------------------
 
 # Copy package.json and lock file to leverage Docker cache
@@ -51,7 +53,6 @@ RUN npm ci
 COPY . .
 
 # Build the Next.js application for production
-# This command will now have access to all the ENV vars
 RUN npm run build
 
 

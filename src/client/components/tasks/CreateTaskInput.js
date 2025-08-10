@@ -1,12 +1,13 @@
 "use client"
 import React, { useState, useRef, useEffect } from "react"
-import { IconLoader, IconSend } from "@tabler/icons-react"
+import { IconLoader, IconSend, IconUsersGroup } from "@tabler/icons-react"
 import { cn } from "@utils/cn"
 import { BorderTrail } from "@components/ui/border-trail"
 import { TextLoop } from "@components/ui/TextLoop"
 import toast from "react-hot-toast"
 
 const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
+	const [isSwarmMode, setIsSwarmMode] = useState(false)
 	const [isSaving, setIsSaving] = useState(false)
 	const textareaRef = useRef(null)
 
@@ -14,26 +15,37 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 		const textarea = textareaRef.current
 		if (textarea) {
 			textarea.style.height = "auto"
-			textarea.style.height = `${Math.min(textarea.scrollHeight, 100)}px`
+			textarea.style.height = `${Math.min(textarea.scrollHeight, 150)}px`
 		}
 	}, [prompt])
 
 	const handleAddTask = async () => {
+		setIsSaving(true)
+		let payload = {}
+
 		if (!prompt.trim()) {
 			toast.error("Please describe the task.")
+			setIsSaving(false)
 			return
 		}
-		setIsSaving(true)
+		payload = {
+			prompt: prompt,
+			is_swarm: isSwarmMode
+		}
+
 		try {
 			const response = await fetch("/api/tasks/add", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ prompt, assignee: "ai" })
+				body: JSON.stringify(payload)
 			})
 			const data = await response.json()
 			if (!response.ok)
 				throw new Error(data.error || "Failed to add task")
-			toast.success(data.message || "Task added!")
+			toast.success(
+				data.message ||
+					(isSwarmMode ? "Swarm task initiated!" : "Task added!")
+			)
 			setPrompt("")
 			onTaskAdded()
 		} catch (error) {
@@ -47,7 +59,8 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 		<div className="p-4 flex-shrink-0 bg-transparent">
 			<div
 				className={cn(
-					"relative flex bg-brand-black rounded-full p-1 transition-all overflow-hidden min-h-[50px]"
+					"relative flex bg-brand-black p-1 transition-all overflow-hidden",
+					"rounded-full min-h-[50px]"
 				)}
 			>
 				<BorderTrail size={100} className="bg-brand-orange px-4" />
@@ -69,10 +82,15 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 						placeholder=" "
 						className="w-full rounded-l-full bg-transparent text-white placeholder-transparent border-1 border-brand-orange focus:ring-0 focus:ring-brand-black text-sm z-10 overflow-y-auto self-stretch py-2"
 					/>
+
 					{!prompt && (
-						<div className="absolute top-1/2 left-4 -translate-y-1/2 text-neutral-500 pointer-events-none z-0">
-							<TextLoop className="text-sm px-2">
-								<span>Create a task...</span>
+						<div className="absolute top-1/2 left-4 right-12 -translate-y-1/2 text-neutral-500 pointer-events-none z-0 overflow-hidden">
+							<TextLoop className="text-sm px-2 whitespace-normal md:whitespace-nowrap">
+								<span>
+									{isSwarmMode
+										? "Describe a swarm task..."
+										: "Create a task..."}
+								</span>
 								<span>
 									Summarize my unread emails from today
 								</span>
@@ -80,22 +98,46 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 									Draft a follow-up to the project proposal
 								</span>
 								<span>
-									Schedule a meeting with the design team
+									{isSwarmMode
+										? "Research these topics: AI, ML, and Data Science"
+										: "Schedule a meeting with the design team"}
 								</span>
 							</TextLoop>
 						</div>
 					)}
-					<button
-						onClick={handleAddTask}
-						disabled={isSaving || !prompt.trim()}
-						className="p-3 bg-brand-orange rounded-r-full h-full text-brand-black disabled:opacity-50 hover:bg-opacity-80 transition-colors z-10 flex-shrink-0"
-					>
-						{isSaving ? (
-							<IconLoader size={18} className="animate-spin" />
-						) : (
-							<IconSend size={18} />
-						)}
-					</button>
+					<div className={cn("flex items-center gap-2 z-10")}>
+						<button
+							onClick={() => setIsSwarmMode(!isSwarmMode)}
+							className={cn(
+								"p-3 rounded-full h-full transition-colors",
+								isSwarmMode
+									? "bg-blue-600 text-white"
+									: "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
+							)}
+							data-tooltip-id="tasks-tooltip"
+							data-tooltip-content={
+								isSwarmMode
+									? "Switch to Single Task Mode"
+									: "Switch to Swarm Mode"
+							}
+						>
+							<IconUsersGroup size={18} />
+						</button>
+						<button
+							onClick={handleAddTask}
+							disabled={isSaving || !prompt.trim()}
+							className="p-3 bg-brand-orange rounded-full h-full text-brand-black disabled:opacity-50 hover:bg-opacity-80 transition-colors flex-shrink-0"
+						>
+							{isSaving ? (
+								<IconLoader
+									size={18}
+									className="animate-spin"
+								/>
+							) : (
+								<IconSend size={18} />
+							)}
+						</button>
+					</div>
 				</div>
 			</div>
 		</div>

@@ -24,6 +24,7 @@ pgvector
 qwen-agent
 google-genai
 elevenlabs 
+deepgram-sdk
 librosa
 llama-cpp-python
 faster-whisper

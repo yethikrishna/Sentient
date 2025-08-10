@@ -35,7 +35,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.encoders import ENCODERS_BY_TYPE
 
 from main.config import (
-    APP_SERVER_PORT, STT_PROVIDER, TTS_PROVIDER, ELEVENLABS_API_KEY,
+    APP_SERVER_PORT, STT_PROVIDER, TTS_PROVIDER, ELEVENLABS_API_KEY, DEEPGRAM_API_KEY,
     FASTER_WHISPER_MODEL_SIZE, FASTER_WHISPER_DEVICE, FASTER_WHISPER_COMPUTE_TYPE, ORPHEUS_MODEL_PATH, ORPHEUS_N_GPU_LAYERS
 )
 from main.dependencies import mongo_manager
@@ -55,6 +55,7 @@ from main.files.routes import router as files_router
 from main.voice.routes import router as voice_router, stream as voice_stream
 from main.voice.stt.base import BaseSTT
 from main.voice.stt.elevenlabs import ElevenLabsSTT
+from main.voice.stt.deepgram import DeepgramSTT
 from main.voice.tts.base import BaseTTS
 from main.voice.tts.elevenlabs import ElevenLabsTTS as ElevenLabsTTSImpl
 
@@ -98,6 +99,11 @@ def initialize_stt():
             logger.error("ELEVENLABS_API_KEY not set for STT.")
         else:
             stt_model_instance = ElevenLabsSTT()
+    elif STT_PROVIDER == "DEEPGRAM":
+        if not DEEPGRAM_API_KEY:
+            logger.error("DEEPGRAM_API_KEY not set for STT.")
+        else:
+            stt_model_instance = DeepgramSTT()
     else:
         logger.warning(f"Invalid STT_PROVIDER: '{STT_PROVIDER}'. No STT model loaded.")
 

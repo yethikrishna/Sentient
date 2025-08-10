@@ -5,16 +5,11 @@ class TaskStep(BaseModel):
     tool: str
     description: str
 
-class Answer(BaseModel):
-    question_id: str
-    answer_text: str
-
 class AddTaskRequest(BaseModel):
-    prompt: str
-
-class AnswerClarificationsRequest(BaseModel):
-    task_id: str
-    answers: List[Answer]
+    prompt: Optional[str] = None
+    goal: Optional[str] = None
+    items: Optional[List[Any]] = None
+    is_swarm: bool = False
 
 class UpdateTaskRequest(BaseModel):
     taskId: str

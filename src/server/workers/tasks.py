@@ -10,23 +10,25 @@ from dateutil import rrule
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Dict, Any, Optional, List, Tuple
 from bson import ObjectId
+from celery import group, chord
 from main.analytics import capture_event
 from json_extractor import JsonExtractor
 from workers.utils.api_client import notify_user, push_task_list_update
-from main.config import INTEGRATIONS_CONFIG
+from main.config import INTEGRATIONS_CONFIG # This is the new field
 from main.tasks.prompts import TASK_CREATION_PROMPT
+from mcp_hub.tasks.prompts import RESOURCE_MANAGER_SYSTEM_PROMPT
 from main.llm import run_agent_with_fallback as run_main_agent_with_fallback
 from main.db import MongoManager
 from workers.celery_app import celery_app
 from workers.planner.llm import get_planner_agent # noqa: E501
-from workers.planner.prompts import QUESTION_GENERATOR_SYSTEM_PROMPT
-from workers.proactive.main import run_proactive_pipeline_logic
+from workers.planner.prompts import CONTEXT_RESEARCHER_SYSTEM_PROMPT
+from workers.proactive.main import run_proactive_pipeline_logic # noqa: E501
 from workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions # noqa: E501
 from workers.memory_agent_utils import get_memory_qwen_agent, get_db_manager as get_memory_db_manager # noqa: E501
-from workers.executor.tasks import execute_task_plan
+from workers.executor.tasks import execute_task_plan, run_single_item_worker, aggregate_results_callback
 from main.vector_db import get_conversation_summaries_collection
 from main.chat.prompts import STAGE_1_SYSTEM_PROMPT
-from mcp_hub.memory.utils import cud_memory, initialize_embedding_model, initialize_agents
+from mcp_hub.tasks.prompts import ITEM_EXTRACTOR_SYSTEM_PROMPT
 from workers.utils.text_utils import clean_llm_output
 
 # Imports for poller logic
@@ -189,6 +191,166 @@ def create_task_from_suggestion(user_id: str, suggestion_payload: Dict[str, Any]
         if worker_mongo_manager:
             run_async(worker_mongo_manager.close())
 
+@celery_app.task(name="orchestrate_swarm_task")
+def orchestrate_swarm_task(task_id: str, user_id: str):
+    """
+    Celery task entry point for orchestrating a swarm task.
+    """
+    logger.info(f"Celery worker received task 'orchestrate_swarm_task' for task_id: {task_id}")
+    run_async(async_orchestrate_swarm_task(task_id, user_id))
+
+async def async_orchestrate_swarm_task(task_id: str, user_id: str):
+    """
+    The main orchestration logic for a swarm task.
+    1. Fetches the task.
+    2. Invokes the Resource Manager agent to get an execution plan.
+    3. Updates the task with the plan.
+    4. Dispatches a Celery chord of sub-agent workers.
+    """
+    db_manager = MongoManager()
+    try:
+        task = await db_manager.get_task(task_id, user_id)
+        if not task or task.get("task_type") != "swarm":
+            logger.error(f"Orchestrator: Task {task_id} not found or is not a swarm task.")
+            return
+
+        swarm_details = task.get("swarm_details", {})
+        goal = swarm_details.get("goal")
+        items = swarm_details.get("items")
+
+        # --- NEW: Item Extraction Step ---
+        if not items: # If items list is empty, try to extract from goal
+            logger.info(f"Task {task_id}: Items list is empty. Attempting to extract items from goal.")
+
+            if not goal:
+                 raise ValueError("Swarm task is missing a goal to extract items from.")
+
+            messages = [{'role': 'user', 'content': goal}]
+
+            extractor_response_str = ""
+            for chunk in run_main_agent_with_fallback(system_message=ITEM_EXTRACTOR_SYSTEM_PROMPT, function_list=[], messages=messages):
+                if isinstance(chunk, list) and chunk:
+                    last_message = chunk[-1]
+                    if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
+                        extractor_response_str = last_message["content"]
+
+            extractor_response_str = clean_llm_output(extractor_response_str).strip()
+            extracted_items = JsonExtractor.extract_valid_json(extractor_response_str)
+
+            if not isinstance(extracted_items, list) or not extracted_items:
+                raise ValueError(f"Item Extractor agent failed to extract a list of items from the goal. Response: {extractor_response_str}")
+
+            items = extracted_items # Update local variable
+            logger.info(f"Task {task_id}: Extracted {len(items)} items. Updating task in DB.")
+
+            # Update the task in the DB with the extracted items
+            await db_manager.task_collection.update_one(
+                {"task_id": task_id},
+                {"$set": {"swarm_details.items": items}}
+            )
+
+        if not goal or not items: # Re-check after potential extraction attempt
+            raise ValueError("Swarm task is missing goal or items after extraction attempt.")
+
+        # --- 1. Resource Manager Agent ---
+        logger.info(f"Invoking Resource Manager for user {user_id} with goal: {goal}")
+        
+        user_profile = await db_manager.get_user_profile(user_id)
+        user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
+        
+        available_tools = {}
+        for tool_name, config in INTEGRATIONS_CONFIG.items():
+            if tool_name in ["tasks", "progress_updater"]: continue
+            is_builtin = config.get("auth_type") == "builtin"
+            is_connected = user_integrations.get(tool_name, {}).get("connected", False)
+            if is_builtin or is_connected:
+                available_tools[tool_name] = config.get("description", "")
+        
+        system_prompt = RESOURCE_MANAGER_SYSTEM_PROMPT.format(
+            available_tools_json=json.dumps(list(available_tools.keys()))
+        )
+        
+        items_sample = items[:5]
+        user_prompt = f"Goal: \"{goal}\"\n\nItems (sample of {len(items)} total):\n{json.dumps(items_sample, indent=2, default=str)}"
+        
+        messages = [{'role': 'user', 'content': user_prompt}]
+        
+        manager_response_str = ""
+        for chunk in run_main_agent_with_fallback(system_message=system_prompt, function_list=[], messages=messages):
+            if isinstance(chunk, list) and chunk:
+                last_message = chunk[-1]
+                if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
+                    manager_response_str = last_message["content"]
+
+        manager_response_str = clean_llm_output(manager_response_str).strip()
+
+        if not manager_response_str:
+            raise Exception("Resource Manager agent returned an empty response.")
+        
+        swarm_plan = JsonExtractor.extract_valid_json(manager_response_str)
+
+        if not isinstance(swarm_plan, list) or not all(isinstance(item, dict) for item in swarm_plan):
+            raise Exception(f"Resource Manager returned an invalid plan. Response: {manager_response_str}")
+
+        logger.info(f"Resource Manager created execution plan with {len(swarm_plan)} sub-task(s).")
+
+        # --- 2. Dispatch Worker Tasks ---
+        all_worker_groups = []
+        total_agents = 0
+        for config in swarm_plan:
+            item_indices = config.get("item_indices", [])
+            worker_prompt = config.get("worker_prompt")
+            required_tools = config.get("required_tools", [])
+            
+            if not all([isinstance(item_indices, list), worker_prompt, isinstance(required_tools, list)]):
+                logger.warning(f"Skipping invalid worker configuration: {config}")
+                continue
+
+            valid_indices = [i for i in item_indices if i < len(items)]
+            total_agents += len(valid_indices)
+            task_group = group(run_single_item_worker.s(parent_task_id=task_id, user_id=user_id, item=items[i], worker_prompt=worker_prompt, worker_tools=required_tools) for i in valid_indices)
+            if task_group:
+                all_worker_groups.append(task_group)
+
+        if not all_worker_groups:
+            raise Exception("The execution plan resulted in no valid tasks to run.")
+        
+        parent_run_id = str(uuid.uuid4())
+        run_doc = {
+            "run_id": parent_run_id,
+            "status": "processing",
+            "created_at": datetime.datetime.now(datetime.timezone.utc),
+            "execution_start_time": datetime.datetime.now(datetime.timezone.utc),
+            "plan": swarm_plan,
+            "progress_updates": [{
+                "message": {"type": "info", "content": f"Resource manager created a plan for {total_agents} agents."},
+                "timestamp": datetime.datetime.now(datetime.timezone.utc)
+            }]
+        }
+        await db_manager.task_collection.update_one(
+            {"task_id": task_id},
+            {
+                "$set": {
+                    "status": "processing",
+                    "swarm_details.total_agents": total_agents
+                },
+                "$push": {"runs": run_doc}
+            }
+        )
+        await push_task_list_update(user_id, task_id, "swarm_plan_created")
+
+        header = group(all_worker_groups)
+        callback = aggregate_results_callback.s(parent_task_id=task_id, user_id=user_id, parent_run_id=parent_run_id)
+        chord_task = chord(header, callback)
+        
+        logger.info(f"Dispatching a chord of {total_agents} parallel workers for task {task_id}, run {parent_run_id}.")
+        chord_task.apply_async()
+
+    except Exception as e:
+        logger.error(f"Error in orchestrate_swarm_task for task {task_id}: {e}", exc_info=True)
+        await db_manager.update_task(task_id, {"status": "error", "error": str(e)})
+    finally:
+        await db_manager.close()
 
 @celery_app.task(name="refine_and_plan_ai_task")
 def refine_and_plan_ai_task(task_id: str, user_id: str):
@@ -251,6 +413,11 @@ async def async_refine_and_plan_ai_task(task_id: str, user_id: str):
             if "user_id" in parsed_data:
                 del parsed_data["user_id"]
 
+            # FIX: For immediate tasks, explicitly set run_at to now_utc to avoid timezone issues with created_at.
+            schedule = parsed_data.get('schedule')
+            if schedule and schedule.get('type') == 'once' and schedule.get('run_at') is None:
+                schedule['run_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
             # Inject user's timezone into the schedule object if it exists
             if 'schedule' in parsed_data and parsed_data.get('schedule'):
                 parsed_data['schedule']['timezone'] = user_timezone_str
@@ -279,11 +446,11 @@ def process_task_change_request(task_id: str, user_id: str, user_message: str):
     run_async(async_process_change_request(task_id, user_id, user_message))
 
 async def async_process_change_request(task_id: str, user_id: str, user_message: str):
-    """Async logic for handling task change requests."""
+    """DEPRECATED: This logic is now handled by the main planner flow."""
     db_manager = PlannerMongoManager()
     try:
         # 1. Fetch the task and its full history
-        task = await db_manager.get_task(task_id)
+        task = await db_manager.get_task(task_id) # This is the new field
         if not task:
             logger.error(f"Task Change Request: Task {task_id} not found.")
             return
@@ -298,7 +465,7 @@ async def async_process_change_request(task_id: str, user_id: str, user_message:
 
         # 3. Update task status and chat history in DB
         await db_manager.update_task_field(task_id, {
-            "chat_history": chat_history,
+            "chat_history": chat_history, # This is the new field
             "status": "planning" # Revert to planning to re-evaluate
         })
 
@@ -330,15 +497,15 @@ def process_action_item(user_id: str, action_items: list, topics: list, source_e
     """Orchestrates the pre-planning phase for a new proactive task."""
     run_async(async_process_action_item(user_id, action_items, topics, source_event_id, original_context))
 
-async def get_clarifying_questions(user_id: str, task_description: str, topics: list, original_context: dict, db_manager: PlannerMongoManager) -> List[str]:
+async def run_context_research(user_id: str, task_description: str, topics: list, original_context: dict, db_manager: PlannerMongoManager) -> str:
     """
-    Uses a unified agent to search memory and relevant tools, then generates clarifying questions if needed.
-    Returns a list of questions, which is empty if no clarification is required.
+    Uses a unified agent to search memory and relevant tools to gather context for the planner.
+    Returns a string of synthesized context.
     """
     user_profile = await db_manager.user_profiles_collection.find_one({"user_id": user_id})
     if not user_profile:
-        logger.error(f"User profile not found for {user_id}. Cannot verify context.")
-        return [f"Can you tell me more about '{topic}'?" for topic in topics]
+        logger.error(f"User profile not found for {user_id}. Cannot run research.")
+        return "Could not find user profile to begin research."
 
     user_integrations = user_profile.get("userData", {}).get("integrations", {})
 
@@ -351,7 +518,7 @@ async def get_clarifying_questions(user_id: str, task_description: str, topics: 
     # 3. Always include memory for context verification
     final_tool_names = set(relevant_tool_names)
     final_tool_names.add("memory")
-    
+
     logger.info("Selected tools for context verification: " + ", ".join(final_tool_names))
 
     # 4. Build the MCP server config and prompt info for the agent
@@ -370,20 +537,19 @@ async def get_clarifying_questions(user_id: str, task_description: str, topics: 
 
     if not mcp_servers_for_agent:
         logger.warning(f"No MCP servers could be configured for context search for user {user_id}. Cannot verify context.")
-        return []
+        return "No tools were available to conduct research."
 
     logger.info(f"Context Verifier for user {user_id} will use tools: {list(mcp_servers_for_agent.keys())}")
     
-    """Initializes a unified Qwen agent to verify context and generate clarifying questions."""
     original_context_str = json.dumps(original_context, indent=2, default=str)
 
-    system_prompt = QUESTION_GENERATOR_SYSTEM_PROMPT.format(
+    system_prompt = CONTEXT_RESEARCHER_SYSTEM_PROMPT.format(
         original_context=original_context_str,
     )
     
     tools_config = [{"mcpServers": mcp_servers_for_agent}]
 
-    user_prompt = f"User's task request: '{task_description}'"
+    user_prompt = f"User's task request: '{task_description}'. Please research and provide context."
     messages = [{'role': 'user', 'content': user_prompt}]
 
     final_response_str = ""
@@ -391,14 +557,12 @@ async def get_clarifying_questions(user_id: str, task_description: str, topics: 
         if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
             final_response_str = chunk[-1].get("content", "")
 
-    print ("RAW RESPONSE FROM QUESTION GENERATOR:", final_response_str)
     response_data = JsonExtractor.extract_valid_json(clean_llm_output(final_response_str))
-    print ("PARSED RESPONSE DATA:", response_data)
-    if response_data and isinstance(response_data.get("clarifying_questions"), list):
-        return response_data["clarifying_questions"]
+    if response_data and isinstance(response_data.get("content"), str):
+        return response_data["content"]
     else:
-        logger.error(f"Question generator agent returned invalid data: {response_data}. Cannot ask for clarification.")
-        return [] # Default to no questions on failure
+        logger.error(f"Research agent returned invalid data: {response_data}. Cannot provide context.")
+        return "The research agent failed to return valid context."
 
 async def async_process_action_item(user_id: str, action_items: list, topics: list, source_event_id: str, original_context: dict):
     """Async logic for the proactive task orchestrator."""
@@ -467,23 +631,16 @@ async def async_generate_plan(task_id: str, user_id: str):
 
         task_description = task.get("description", "")
 
-        if task.get("status") == "planning":
-            questions_list = await get_clarifying_questions(user_id, task_description, task.get("topics", []), original_context, db_manager) # noqa
-            if questions_list and isinstance(questions_list, list) and len(questions_list) > 0:
-                logger.info(f"Task {task_id}: Needs clarification. Questions: {questions_list}")
-                questions_for_db = [{"question_id": str(uuid.uuid4()), "text": q.strip(), "answer": None} for q in questions_list]
-                # Store questions at the top level, not in the run.
-                await db_manager.tasks_collection.update_one(
-                    {"task_id": task_id},
-                    {"$set": {"status": "clarification_pending", "clarifying_questions": questions_for_db}}
-                )
-                await notify_user(user_id, f"I have a few questions to help me plan: '{task_description[:50]}...'", task_id, notification_type="taskNeedsApproval")
-                capture_event(user_id, "clarification_needed", {"task_id": task_id, "question_count": len(questions_list)})
-                logger.info(f"Task {task_id} moved to 'clarification_pending'.")
-                return # Stop here, wait for user input
+        # --- New Research Step ---
+        logger.info(f"Task {task_id}: Starting context research phase.")
+        found_context = await run_context_research(user_id, task_description, task.get("topics", []), original_context, db_manager)
 
-        # --- Proceed with planning (Scenario A from spec) ---
-        logger.info(f"Task {task_id}: No clarification needed or answers provided. Generating plan.")
+        # Save the found context to the task's latest run for the planner and executor to use.
+        # This assumes a 'run' object is created or updated here. For simplicity, we'll add it to the top-level task.
+        await db_manager.update_task_field(task_id, {"found_context": found_context})
+
+        # --- Proceed with planning ---
+        logger.info(f"Task {task_id}: Context research complete. Generating plan.")
 
         user_profile = await db_manager.user_profiles_collection.find_one(
             {"user_id": user_id},
@@ -516,27 +673,15 @@ async def async_generate_plan(task_id: str, user_id: str):
 
         current_user_time = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
 
-        # Define latest_run safely before it's used. For new tasks, runs will be empty.
-        latest_run = task["runs"][-1] if task.get("runs") else {}
-        retrieved_context = latest_run.get("found_context", {})
-
         action_items = task.get("action_items", [])
         if not action_items:
             # This is likely a manually created task. Use its description as the action item.
             logger.info(f"Task {task_id}: No 'action_items' field found. Using main description as the action.")
             action_items = [task.get("description", "")]
-        answered_questions = []
-        if latest_run.get("clarifying_questions"):
-            for q in latest_run["clarifying_questions"]:
-                if q.get("answer"):
-                    answered_questions.append(f"User Clarification: Q: {q['text']} A: {q['answer']}")
-
-        if answered_questions:
-            retrieved_context["user_clarifications"] = "\n".join(answered_questions)
 
         available_tools = get_all_mcp_descriptions()
 
-        agent_config = get_planner_agent(available_tools, current_user_time, user_name, user_location, retrieved_context)
+        agent_config = get_planner_agent(available_tools, current_user_time, user_name, user_location, found_context)
 
         user_prompt_content = "Please create a plan for the following action items:\n- " + "\n- ".join(action_items)
         messages = [{'role': 'user', 'content': user_prompt_content}]

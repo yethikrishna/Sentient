@@ -1,17 +1,19 @@
 "use client"
 import React, { useState, useEffect, useCallback, useRef } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { AnimatePresence, motion } from "framer-motion"
+import { AnimatePresence } from "framer-motion"
 import NotificationsOverlay from "@components/NotificationsOverlay"
-import { IconBell, IconMenu2, IconLoader } from "@tabler/icons-react"
+import { IconMenu2, IconLoader } from "@tabler/icons-react"
 import Sidebar from "@components/Sidebar"
-import CommandPalette from "./CommandPallete" // Corrected import path
+import CommandPalette from "./CommandPallete"
+import GlobalSearch from "./GlobalSearch"
 import { useGlobalShortcuts } from "@hooks/useGlobalShortcuts"
 import { cn } from "@utils/cn"
 import toast from "react-hot-toast"
 
 export default function LayoutWrapper({ children }) {
 	const [isNotificationsOpen, setNotificationsOpen] = useState(false)
+	const [isSearchOpen, setSearchOpen] = useState(false)
 	const [isCommandPaletteOpen, setCommandPaletteOpen] = useState(false)
 	const [isSidebarCollapsed, setSidebarCollapsed] = useState(true)
 	const [isMobileNavOpen, setMobileNavOpen] = useState(false)
@@ -144,6 +146,81 @@ export default function LayoutWrapper({ children }) {
 		setCommandPaletteOpen((prev) => !prev)
 	)
 
+	// PWA Update Handler
+	useEffect(() => {
+		if (
+			typeof window !== "undefined" &&
+			"serviceWorker" in navigator &&
+			window.workbox !== undefined
+		) {
+			const wb = window.workbox
+
+			const promptNewVersionAvailable = (event) => {
+				if (!event.wasWaitingBeforeRegister) {
+					toast(
+						(t) => (
+							<div className="flex flex-col items-center gap-2 text-white">
+								<span>A new version is available!</span>
+								<div className="flex gap-2">
+									<button
+										className="py-1 px-3 rounded-md bg-green-600 hover:bg-green-500 text-white text-sm font-medium"
+										onClick={() => {
+											wb.addEventListener(
+												"controlling",
+												() => {
+													window.location.reload()
+												}
+											)
+											wb.messageSkipWaiting()
+											toast.dismiss(t.id)
+										}}
+									>
+										Refresh
+									</button>
+									<button
+										className="py-1 px-3 rounded-md bg-neutral-600 hover:bg-neutral-500 text-white text-sm font-medium"
+										onClick={() => toast.dismiss(t.id)}
+									>
+										Dismiss
+									</button>
+								</div>
+							</div>
+						),
+						{ duration: Infinity }
+					)
+				}
+			}
+
+			wb.addEventListener("waiting", promptNewVersionAvailable)
+			return () => {
+				wb.removeEventListener("waiting", promptNewVersionAvailable)
+			}
+		}
+	}, [])
+
+	useEffect(() => {
+		// This effect runs only on the client side, after the component mounts.
+		if (
+			"serviceWorker" in navigator &&
+			process.env.NODE_ENV === "production"
+		) {
+			// The 'load' event ensures that SW registration doesn't delay page rendering.
+			window.addEventListener("load", function () {
+				navigator.serviceWorker.register("/sw.js").then(
+					function (registration) {
+						console.log(
+							"ServiceWorker registration successful with scope: ",
+							registration.scope
+						)
+					},
+					function (err) {
+						console.log("ServiceWorker registration failed: ", err)
+					}
+				)
+			})
+		}
+	}, [])
+
 	useEffect(() => {
 		const handleEscape = (e) => {
 			if (e.key === "Escape") {
@@ -181,6 +258,7 @@ export default function LayoutWrapper({ children }) {
 							setSidebarCollapsed(!isSidebarCollapsed)
 						}
 						onNotificationsOpen={handleNotificationsOpen}
+						onSearchOpen={() => setSearchOpen(true)}
 						unreadCount={unreadCount}
 						isMobileOpen={isMobileNavOpen}
 						onMobileClose={() => setMobileNavOpen(false)}
@@ -213,6 +291,11 @@ export default function LayoutWrapper({ children }) {
 					<NotificationsOverlay
 						onClose={() => setNotificationsOpen(false)}
 					/>
+				)}
+			</AnimatePresence>
+			<AnimatePresence>
+				{isSearchOpen && (
+					<GlobalSearch onClose={() => setSearchOpen(false)} />
 				)}
 			</AnimatePresence>
 		</>

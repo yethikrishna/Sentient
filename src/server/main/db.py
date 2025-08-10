@@ -72,11 +72,12 @@ class MongoManager:
                 IndexModel([("user_id", ASCENDING), ("status", ASCENDING), ("priority", ASCENDING)], name="task_user_status_priority_idx"),
                 IndexModel([("status", ASCENDING), ("agent_id", ASCENDING)], name="task_status_agent_idx", sparse=True), 
                 IndexModel([("task_id", ASCENDING)], unique=True, name="task_id_unique_idx"),
-                IndexModel([("description", "text")], name="task_description_text_idx"),
+                IndexModel([("name", "text"), ("description", "text")], name="task_text_search_idx"),
             ],
             self.messages_collection: [
                 IndexModel([("message_id", ASCENDING)], unique=True, name="message_id_unique_idx"),
                 IndexModel([("user_id", ASCENDING), ("timestamp", DESCENDING)], name="message_user_timestamp_idx"),
+                IndexModel([("content", "text")], name="message_content_text_idx"),
             ],
             self.user_proactive_preferences_collection: [
                 IndexModel([("user_id", ASCENDING), ("suggestion_type", ASCENDING)], unique=True, name="user_suggestion_preference_unique_idx")
@@ -300,10 +301,13 @@ class MongoManager:
             "chat_history": [],
             "next_execution_at": None,
             "last_execution_at": None,
+            # NEW FIELDS
+            "task_type": task_data.get("task_type", "single"),
+            "swarm_details": task_data.get("swarm_details") # Will be None for single tasks
         }
 
         await self.task_collection.insert_one(task_doc)
-        logger.info(f"Created new task {task_id} for user {user_id} with status 'planning'.")
+        logger.info(f"Created new task {task_id} (type: {task_doc['task_type']}) for user {user_id} with status 'planning'.")
         return task_id
 
     async def get_task(self, task_id: str, user_id: str) -> Optional[Dict]:
@@ -416,7 +420,7 @@ class MongoManager:
         return new_task_id
 
     # --- Message Methods ---
-    async def add_message(self, user_id: str, role: str, content: str, message_id: Optional[str] = None) -> Dict:
+    async def add_message(self, user_id: str, role: str, content: str, message_id: Optional[str] = None, thoughts: Optional[List[str]] = None, tool_calls: Optional[List[Dict]] = None, tool_results: Optional[List[Dict]] = None) -> Dict:
         """
         Adds a single message to the messages collection.
         If a message_id is provided, it's used. Otherwise, a new one is generated.
@@ -441,6 +445,15 @@ class MongoManager:
             "is_summarized": False,
             "summary_id": None,
         }
+
+        # Add new structured fields if they are provided and not empty
+        if thoughts:
+            message_doc["thoughts"] = thoughts
+        if tool_calls:
+            message_doc["tool_calls"] = tool_calls
+        if tool_results:
+            message_doc["tool_results"] = tool_results
+
         await self.messages_collection.insert_one(message_doc)
         logger.info(f"Added message for user {user_id} with role {role}")
         return message_doc

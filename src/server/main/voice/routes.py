@@ -114,6 +114,10 @@ class MyVoiceChatHandler(ReplyOnPause):
             
             await self.send_message(json.dumps({"type": "status", "message": "transcribing"}))
             sample_rate, audio_array = audio
+            
+            if audio_array.dtype != np.int16:
+                audio_array = (audio_array * 32767).astype(np.int16)
+
             transcription = await stt_model_instance.transcribe(audio_array.tobytes(), sample_rate=sample_rate)
             
             if not transcription or not transcription.strip():

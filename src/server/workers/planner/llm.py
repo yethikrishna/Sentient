@@ -24,8 +24,8 @@ def get_planner_agent(available_tools: dict, current_time_str: str, user_name: s
         user_name=user_name,
         user_location=user_location,
         current_time=current_time_str,
-        available_tools=tools_list_str,
-        retrieved_context=context_str
+    available_tools=tools_list_str, # This is the new field
+    retrieved_context=context_str # This is the new field
     )
 
     # This function now returns the necessary components to run the agent with fallback

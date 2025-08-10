@@ -498,7 +498,7 @@ const IntegrationHeader = ({
 	onCategoryChange
 }) => {
 	return (
-		<div className="mb-8 sticky top-0 bg-dark-surface/80 backdrop-blur-sm py-4 z-10">
+		<div className="mb-8 md:sticky md:top-0 bg-dark-surface/80 backdrop-blur-sm py-4 z-10">
 			{/* Redesigned Search Bar */}
 			<div className="relative">
 				<IconSearch

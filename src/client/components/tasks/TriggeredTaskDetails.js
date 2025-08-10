@@ -6,106 +6,9 @@ import { taskStatusColors, priorityMap } from "./constants"
 import { cn } from "@utils/cn"
 import CollapsibleSection from "./CollapsibleSection"
 import ExecutionUpdate from "./ExecutionUpdate"
-import toast from "react-hot-toast"
-import { IconLoader } from "@tabler/icons-react"
+import ReactMarkdown from "react-markdown"
 
-// New component for handling clarification questions
-// New component for handling clarification questions
-const QnaSection = ({
-	questions,
-	task,
-	onAnswerClarifications
-}) => {
-	const [answers, setAnswers] = useState({})
-	const [isSubmitting, setIsSubmitting] = useState(false)
-	const isInputMode = task.status === "clarification_pending"
-
-	const handleAnswerChange = (questionId, text) => {
-		setAnswers((prev) => ({ ...prev, [questionId]: text }))
-	}
-
-	const handleSubmit = async () => {
-		const unansweredQuestions = questions.filter(
-			(q) => !answers[q.question_id]?.trim()
-		)
-		if (unansweredQuestions.length > 0) {
-			toast.error("Please answer all questions before submitting.")
-			return
-		}
-
-		setIsSubmitting(true)
-		const answersPayload = Object.entries(answers).map(
-			([question_id, answer_text]) => ({
-				question_id,
-				answer_text
-			})
-		)
-		await onAnswerClarifications(task.task_id, answersPayload)
-		setIsSubmitting(false)
-	}
-
-	return (
-		<div className="mt-4">
-			<h4 className="font-semibold text-neutral-300 mb-2">
-				Clarifying Questions
-			</h4>
-			<div
-				className={cn(
-					"space-y-4 p-4 rounded-lg border",
-					isInputMode
-						? "bg-yellow-500/10 border-yellow-500/20"
-						: "bg-neutral-800/20 border-neutral-700/50"
-				)}
-			>
-				{questions.map((q, index) => (
-					<div key={q.question_id || index}>
-						<label className="block text-sm font-medium text-neutral-300 mb-2">
-							{q.text}
-						</label>
-						{isInputMode ? (
-							<textarea
-								value={answers[q.question_id] || ""}
-								onChange={(e) =>
-									handleAnswerChange(
-										q.question_id,
-										e.target.value
-									)
-								}
-								rows={2}
-								className="w-full p-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm text-white transition-colors focus:border-yellow-400 focus:ring-0"
-								placeholder="Your answer..."
-							/>
-						) : (
-							<p className="text-sm text-neutral-100 p-2 bg-neutral-900/50 rounded-md whitespace-pre-wrap">
-								{q.answer || (
-									<span className="italic text-neutral-500">
-										No answer provided.
-									</span>
-								)}
-							</p>
-						)}
-					</div>
-				))}
-				{isInputMode && (
-					<div className="flex justify-end">
-						<button
-							onClick={handleSubmit}
-							disabled={isSubmitting}
-							className="px-4 py-2 text-sm font-semibold bg-yellow-400 text-black rounded-md hover:bg-yellow-300 disabled:opacity-50 flex items-center gap-2"
-						>
-							{isSubmitting && (
-								<IconLoader size={16} className="animate-spin" />
-							)}
-							{isSubmitting ? "Submitting..." : "Submit Answers"}
-						</button>
-					</div>
-				)}
-			</div>
-		</div>
-	)
-}
-
-const TriggeredTaskDetails = ({ task, onAnswerClarifications }) => {
+const TriggeredTaskDetails = ({ task }) => {
 	if (!task) return null
 
 	const statusInfo = taskStatusColors[task.status] || taskStatusColors.default
@@ -141,15 +44,19 @@ const TriggeredTaskDetails = ({ task, onAnswerClarifications }) => {
 				</div>
 			</div>
 
-			{/* --- NEW: Q&A Section --- */}
-			{task.clarifying_questions &&
-				task.clarifying_questions.length > 0 && (
-					<QnaSection
-						questions={task.clarifying_questions}
-						task={task}
-						onAnswerClarifications={onAnswerClarifications}
-					/>
-				)}
+			{/* --- Researched Context (if planning) --- */}
+			{task.status === "planning" && task.found_context && (
+				<div>
+					<label className="text-sm font-medium text-neutral-400 block mb-2">
+						Researched Context
+					</label>
+					<div className="bg-neutral-800/50 p-3 rounded-lg text-sm text-neutral-300 whitespace-pre-wrap border border-neutral-700/50">
+						<ReactMarkdown className="prose prose-sm prose-invert">
+							{task.found_context}
+						</ReactMarkdown>
+					</div>
+				</div>
+			)}
 
 			{/* Schedule */}
 			<div>

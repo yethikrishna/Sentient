@@ -1,9 +1,10 @@
 "use client"
 import React from "react"
 import { motion } from "framer-motion"
+import { IconUsersGroup } from "@tabler/icons-react"
 import { cn } from "@utils/cn"
 import { taskStatusColors, priorityMap } from "./constants"
-import { format } from "date-fns"
+import { format, isToday } from "date-fns"
 import { BorderTrail } from "@components/ui/border-trail"
 import { getDisplayName } from "@utils/taskUtils"
 
@@ -28,7 +29,7 @@ const TaskCardList = ({ task, onSelectTask }) => {
 	let dateText = ""
 	if (task.scheduled_date) {
 		try {
-			const date = task.scheduled_date
+			const date = new Date(task.scheduled_date) // Ensure it's a Date object
 			dateText = format(date, "MMM d")
 		} catch (e) {
 			// ignore invalid date
@@ -58,7 +59,18 @@ const TaskCardList = ({ task, onSelectTask }) => {
 				<BorderTrail size={80} className="bg-brand-yellow" />
 			)}
 			<div className="flex bg-transparent p-1 transition-all justify-between items-start gap-4">
-				<p className="font-sans font-semibold text-brand-white flex-1 text-sm line-clamp-2">
+				<p className="font-sans font-semibold text-brand-white flex-1 text-sm line-clamp-2 flex items-center gap-2">
+					{task.task_type === "swarm" && (
+						<span
+							data-tooltip-id="tasks-tooltip"
+							data-tooltip-content="Swarm Task"
+						>
+							<IconUsersGroup
+								size={16}
+								className="text-blue-400"
+							/>
+						</span>
+					)}
 					{getDisplayName(task)}
 				</p>
 				<StatusBadge status={task.status} />

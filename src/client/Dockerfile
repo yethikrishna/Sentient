@@ -4,6 +4,9 @@
 FROM node:20-slim AS builder
 WORKDIR /app
 
+# Set the environment to production for the build stage
+ENV NODE_ENV=production
+
 # ---- MODIFIED SECTION ----
 # Declare all build-time arguments that your application needs.
 # Anything prefixed with NEXT_PUBLIC_ is needed for the client-side bundle.

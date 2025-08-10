@@ -26,33 +26,34 @@ const CollapsibleSection = ({
 	return (
 		<div
 			className={cn(
-				"border-l-2 pl-3 transition-colors",
-				isExpanded ? colorClass : "border-neutral-700"
+				"border-l-4 pl-3 mb-2 rounded-md",
+				colorClass,
+				"bg-neutral-900/60"
 			)}
 		>
 			<button
-				onClick={() => setIsExpanded(!isExpanded)}
-				className="flex items-center gap-2 w-full text-left text-sm font-semibold"
+				className="flex items-center gap-2 w-full text-left focus:outline-none"
+				onClick={() => setIsExpanded((prev) => !prev)}
 			>
-				{icon}
-				<span className="flex-grow">{title}</span>
+				<span>{icon}</span>
+				<span className="font-semibold">{title}</span>
 				<IconChevronDown
 					size={16}
 					className={cn(
-						"transform transition-transform duration-200",
-						isExpanded ? "rotate-180" : "rotate-0"
+						"ml-auto transition-transform",
+						isExpanded ? "rotate-180" : ""
 					)}
 				/>
 			</button>
-			<AnimatePresence>
+			<AnimatePresence initial={false}>
 				{isExpanded && (
 					<motion.div
-						initial={{ height: 0, opacity: 0, marginTop: 0 }}
-						animate={{ height: "auto", opacity: 1, marginTop: 8 }}
-						exit={{ height: 0, opacity: 0, marginTop: 0 }}
-						className="overflow-hidden"
+						initial={{ height: 0, opacity: 0 }}
+						animate={{ height: "auto", opacity: 1 }}
+						exit={{ height: 0, opacity: 0 }}
+						transition={{ duration: 0.2 }}
 					>
-						{children}
+						<div className="mt-2">{children}</div>
 					</motion.div>
 				)}
 			</AnimatePresence>

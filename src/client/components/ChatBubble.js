@@ -10,7 +10,24 @@ import {
 	IconTrash,
 	IconChevronDown,
 	IconChevronUp,
-	IconArrowBackUp
+	IconArrowBackUp,
+	IconTool,
+	IconFileText,
+	IconWorldSearch,
+	IconMapPin,
+	IconShoppingCart,
+	IconChartPie,
+	IconBrandTrello,
+	IconNews,
+	IconListCheck,
+	IconBrandDiscord,
+	IconBrandWhatsapp,
+	IconCalendarEvent,
+	IconBrandSlack,
+	IconBrandNotion,
+	IconBrandGithub,
+	IconBrandGoogleDrive,
+	IconBrandLinkedin
 } from "@tabler/icons-react"
 import { Tooltip } from "react-tooltip"
 import ReactMarkdown from "react-markdown"
@@ -18,12 +35,34 @@ import remarkGfm from "remark-gfm"
 import IconGoogleDocs from "./icons/IconGoogleDocs"
 import IconGoogleSheets from "./icons/IconGoogleSheets"
 import IconGoogleCalendar from "./icons/IconGoogleCalendar"
-import IconGoogleSlides from "./icons/IconGoogleSlides"
-import IconGoogleDrive from "./icons/IconGoogleDrive"
+import IconGoogleSlides from "./icons/IconGoogleSlides" // This is a custom one, not from tabler
 import IconGoogleMail from "./icons/IconGoogleMail"
+import IconGoogleDrive from "./icons/IconGoogleMail"
 import toast from "react-hot-toast"
 import FileCard from "./FileCard"
 
+const toolIcons = {
+	gmail: IconGoogleMail,
+	gdocs: IconFileText,
+	gdrive: IconBrandGoogleDrive,
+	slack: IconBrandSlack,
+	notion: IconBrandNotion,
+	github: IconBrandGithub,
+	internet_search: IconWorldSearch,
+	memory: IconBrain,
+	gmaps: IconMapPin,
+	linkedin: IconBrandLinkedin,
+	gshopping: IconShoppingCart,
+	quickchart: IconChartPie,
+	google_search: IconWorldSearch,
+	trello: IconBrandTrello,
+	news: IconNews,
+	todoist: IconListCheck,
+	discord: IconBrandDiscord,
+	whatsapp: IconBrandWhatsapp,
+	gcalendar_alt: IconCalendarEvent,
+	default: IconTool
+}
 // LinkButton component (no changes needed)
 const LinkButton = ({ href, children }) => {
 	const toolMapping = {
@@ -107,7 +146,7 @@ const ToolCodeBlock = ({ name, code, isExpanded, onToggle }) => {
 		<div className="mb-4 border-l-2 border-green-500 pl-3">
 			<button
 				onClick={onToggle}
-				className="flex items-center gap-2 text-green-400 hover:text-green-300 text-sm font-semibold"
+				className="flex w-full items-center justify-start gap-2 text-green-400 hover:text-green-300 text-sm font-semibold"
 				data-tooltip-id="chat-bubble-tooltip"
 				data-tooltip-content="Click to see the tool call details."
 			>
@@ -143,7 +182,7 @@ const ToolResultBlock = ({ name, result, isExpanded, onToggle }) => {
 		<div className="mb-4 border-l-2 border-purple-500 pl-3">
 			<button
 				onClick={onToggle}
-				className="flex items-center gap-2 text-purple-400 hover:text-purple-300 text-sm font-semibold"
+				className="flex w-full items-center justify-start gap-2 text-purple-400 hover:text-purple-300 text-sm font-semibold"
 				data-tooltip-id="chat-bubble-tooltip"
 				data-tooltip-content="Click to see the result from the tool."
 			>
@@ -169,7 +208,10 @@ const ToolResultBlock = ({ name, result, isExpanded, onToggle }) => {
 const ChatBubble = ({
 	role,
 	content,
-	tools = [],
+	tools = [], // This is for the icons at the bottom, keep it
+	thoughts = [],
+	tool_calls = [],
+	tool_results = [],
 	onReply,
 	onDelete,
 	message,
@@ -184,6 +226,8 @@ const ChatBubble = ({
 	const isUser = role === "user"
 
 	React.useEffect(() => {
+		// This effect handles parsing the reply-to block, which is separate
+		// from the main content parsing.
 		const replyRegex = /<reply_to id="([^"]+)">[\s\S]*?<\/reply_to>\n*/
 		const match = content.match(replyRegex)
 
@@ -202,6 +246,80 @@ const ChatBubble = ({
 		}
 	}, [content, allMessages])
 
+	// This is the core fix. We parse the content string to extract structured data
+	// if it's not already provided as props. This handles both streaming and page-load scenarios.
+	const { finalContent, parsedThoughts, parsedToolCalls, parsedToolResults } =
+		React.useMemo(() => {
+			// If structured data is already provided (from DB on page load), use it directly.
+			if (
+				(thoughts && thoughts.length > 0) ||
+				(tool_calls && tool_calls.length > 0) ||
+				(tool_results && tool_results.length > 0)
+			) {
+				return {
+					finalContent: processedContent.content,
+					parsedThoughts: thoughts,
+					parsedToolCalls: tool_calls,
+					parsedToolResults: tool_results
+				}
+			}
+
+			// Otherwise, parse the raw content string (streaming scenario).
+			const localThoughts = []
+			const localToolCalls = []
+			const localToolResults = []
+			const contentString = processedContent.content || ""
+
+			// Extract thoughts
+			const thoughtRegex = /<think>([\s\S]*?)<\/think>/g
+			let match
+			while ((match = thoughtRegex.exec(contentString)) !== null) {
+				localThoughts.push(match[1].trim())
+			}
+
+			// Extract tool calls
+			const toolCallRegex =
+				/<tool_code name="([^"]+)">([\s\S]*?)<\/tool_code>/g
+			while ((match = toolCallRegex.exec(contentString)) !== null) {
+				localToolCalls.push({
+					tool_name: match[1],
+					parameters: match[2].trim()
+				})
+			}
+
+			// Extract tool results
+			const toolResultRegex =
+				/<tool_result tool_name="([^"]+)">([\s\S]*?)<\/tool_result>/g
+			while ((match = toolResultRegex.exec(contentString)) !== null) {
+				localToolResults.push({
+					tool_name: match[1],
+					result: match[2].trim()
+				})
+			}
+
+			// Extract final answer by removing all other tags.
+			// The <answer> tag takes precedence.
+			const answerMatch = contentString.match(
+				/<answer>([\s\S]*?)<\/answer>/
+			)
+			let final
+			if (answerMatch) {
+				final = answerMatch[1]
+			} else {
+				final = contentString
+					.replace(/<think>[\s\S]*?<\/think>/g, "")
+					.replace(/<tool_code[^>]*>[\s\S]*?<\/tool_code>/g, "")
+					.replace(/<tool_result[^>]*>[\s\S]*?<\/tool_result>/g, "")
+			}
+
+			return {
+				finalContent: final.trim(),
+				parsedThoughts: localThoughts,
+				parsedToolCalls: localToolCalls,
+				parsedToolResults: localToolResults
+			}
+		}, [processedContent.content, thoughts, tool_calls, tool_results])
+
 	// Function to toggle expansion of collapsible sections
 	const toggleExpansion = (id) => {
 		setExpandedStates((prev) => ({ ...prev, [id]: !prev[id] }))
@@ -211,16 +329,11 @@ const ChatBubble = ({
 	// *** UPDATED LOGIC: Function to render message content       ***
 	// ***************************************************************
 	const transformLinkUri = (uri) => {
-		if (uri.startsWith("file:")) {
-			return uri // Keep our custom protocol
-		}
-		// Let ReactMarkdown handle its default security for other links
-		return uri
+		return uri.startsWith("file:") ? uri : uri // Let ReactMarkdown handle its default security
 	}
 	const renderMessageContent = (contentToRender) => {
 		const markdownComponents = {
 			a: ({ href, children }) => {
-				console.log("Link clicked:", href)
 				if (href && href.startsWith("file:")) {
 					const filename = href.substring(5)
 					return <FileCard filename={filename} />
@@ -229,189 +342,121 @@ const ChatBubble = ({
 			}
 		}
 
-		if (isUser || typeof contentToRender !== "string" || !contentToRender) {
-			return [
+		// User message rendering is simple and unchanged
+		if (isUser) {
+			return (
 				<ReactMarkdown
-					key="user-md"
 					className="prose prose-invert"
 					remarkPlugins={[remarkGfm]}
 					children={contentToRender || ""}
 					urlTransform={transformLinkUri}
 					components={markdownComponents}
 				/>
-			]
-		}
-
-		const contentParts = []
-		const regex =
-			/(<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>|<tool_(?:code|call)[^>]*>[\s\S]*?<\/tool_code>|<tool_result[^>]*>[\s\S]*?<\/tool_result>|<answer>[\s\S]*?<\/answer>)/g
-		let lastIndex = 0
-		let inToolCallPhase = false
-
-		for (const match of contentToRender.matchAll(regex)) {
-			const precedingText = contentToRender.substring(
-				lastIndex,
-				match.index
 			)
-
-			// 1. Add any text that came before the current tag, but only if we're not in the "ignore" phase
-			if (precedingText.trim() && !inToolCallPhase) {
-				contentParts.push({ type: "answer", content: precedingText })
-			}
-
-			// 2. Process the matched tag
-			const tag = match[0]
-			let subMatch
-
-			if ((subMatch = tag.match(/<think(?:ing)?>([\s\S]*?)<\/think(?:ing)?>/))) {
-				const thinkContent = subMatch[1]?.trim()
-				if (thinkContent) {
-					contentParts.push({ type: "think", content: thinkContent })
-				}
-			} else if (
-				(subMatch = tag.match(
-					/<tool_(?:code|call) name="([^"]+)">[\s\S]*?<\/tool_code>/
-				))
-			) {
-				// When we find a tool_code, we enter the "ignore" phase and do not render the code itself.
-				inToolCallPhase = true
-			} else if (
-				// CORRECTED REGEX: Added ([\s\S]*?) to capture the result content
-				(subMatch = tag.match(
-					/<tool_result tool_name="([^"]+)">([\s\S]*?)<\/tool_result>/
-				))
-			) {
-				// When we find a tool_result, we exit the "ignore" phase and render the result.
-				inToolCallPhase = false
-				contentParts.push({
-					type: "tool_result",
-					name: subMatch[1],
-					result: subMatch[2] ? subMatch[2].trim() : "{}"
-				})
-			} else if ((subMatch = tag.match(/<answer>([\s\S]*?)<\/answer>/))) {
-				const answerContent = subMatch[1]
-				if (answerContent) {
-					contentParts.push({
-						type: "answer",
-						content: answerContent
-					})
-				}
-			}
-			lastIndex = match.index + tag.length
 		}
 
-		// 3. Add any remaining text after the last tag (this is the final, streaming answer)
-		const remainingText = contentToRender.substring(lastIndex)
-		if (remainingText && !inToolCallPhase) {
-			contentParts.push({ type: "answer", content: remainingText })
-		}
-
-		// 4. Render all the collected parts into React components
-		return contentParts.map((part, index) => {
-			const partId = `${part.type}_${index}`
-
-			if (part.type === "think" && part.content) {
-				return (
-					<div
-						key={partId}
-						className="mb-4 border-l-2 border-yellow-500 pl-3"
-					>
-						<button
-							onClick={() => toggleExpansion(partId)}
-							className="flex items-center gap-2 text-yellow-400 hover:text-yellow-300 text-sm font-semibold"
+		// Assistant message rendering now uses the structured props
+		return (
+			<>
+				{parsedThoughts.map((thought, index) => {
+					const partId = `thought_${index}`
+					return (
+						<div
+							key={partId}
+							className="mb-4 border-l-2 border-yellow-500 pl-3"
 						>
-							{expandedStates[partId] ? (
-								<IconChevronUp size={16} />
-							) : (
-								<IconChevronDown size={16} />
+							<button
+								onClick={() => toggleExpansion(partId)}
+								className="flex items-center gap-2 text-yellow-400 hover:text-yellow-300 text-sm font-semibold"
+							>
+								{expandedStates[partId] ? (
+									<IconChevronUp size={16} />
+								) : (
+									<IconChevronDown size={16} />
+								)}
+								Agent's Thought Process
+							</button>
+							{expandedStates[partId] && (
+								<div className="mt-2 p-3 bg-neutral-800/50 rounded-md">
+									<ReactMarkdown className="prose prose-sm prose-invert text-gray-300 whitespace-pre-wrap">
+										{thought}
+									</ReactMarkdown>
+								</div>
 							)}
-							Agent's Thought Process
-						</button>
-						{expandedStates[partId] && (
-							<div className="mt-2 p-3 bg-neutral-800/50 rounded-md">
-								<ReactMarkdown className="prose prose-sm prose-invert text-gray-300 whitespace-pre-wrap">
-									{part.content}
-								</ReactMarkdown>
-							</div>
-						)}
+						</div>
+					)
+				})}
+
+				{parsedToolCalls.map((call, index) => {
+					const partId = `tool_call_${index}`
+					return (
+						<ToolCodeBlock
+							key={partId}
+							name={call.tool_name}
+							code={call.parameters}
+							isExpanded={!!expandedStates[partId]}
+							onToggle={() => toggleExpansion(partId)}
+						/>
+					)
+				})}
+
+				{parsedToolResults.map((res, index) => {
+					const partId = `tool_result_${index}`
+					return (
+						<ToolResultBlock
+							key={partId}
+							name={res.tool_name}
+							result={res.result}
+							isExpanded={!!expandedStates[partId]}
+							onToggle={() => toggleExpansion(partId)}
+						/>
+					)
+				})}
+
+				{/* Render the final, clean content */}
+				{contentToRender && (
+					<div
+						className={
+							(parsedThoughts.length > 0 ||
+								parsedToolCalls.length > 0 ||
+								parsedToolResults.length > 0) &&
+							"mt-4 pt-4 border-t border-neutral-700/50"
+						}
+					>
+						<ReactMarkdown
+							className="prose prose-invert"
+							remarkPlugins={[remarkGfm]}
+							children={contentToRender}
+							urlTransform={transformLinkUri}
+							components={markdownComponents}
+						/>
 					</div>
-				)
-			}
-			if (part.type === "tool_result") {
-				return (
-					<ToolResultBlock
-						key={partId}
-						name={part.name}
-						result={part.result}
-						isExpanded={!!expandedStates[partId]}
-						onToggle={() => toggleExpansion(partId)}
-					/>
-				)
-			}
-			if (part.type === "answer" && part.content) {
-				return (
-					<ReactMarkdown
-						key={partId}
-						className="prose prose-invert"
-						remarkPlugins={[remarkGfm]}
-						children={part.content}
-						urlTransform={transformLinkUri}
-						components={markdownComponents}
-					/>
-				)
-			}
-			// Note: tool_code parts are never rendered
-			return null
-		})
+				)}
+			</>
+		)
 	}
 
 	const renderedContent = React.useMemo(
-		() => renderMessageContent(processedContent.content),
-		[processedContent.content, expandedStates, isUser]
+		() => renderMessageContent(finalContent),
+		[
+			finalContent,
+			expandedStates,
+			isUser,
+			parsedThoughts,
+			parsedToolCalls,
+			parsedToolResults
+		]
 	)
 
 	// Function to copy message content to clipboard
 	const handleCopyToClipboard = () => {
-		// Parse the raw content to extract only the user-facing parts for copying.
-		const contentToParse = processedContent.content
-		if (!contentToParse || typeof contentToParse !== "string") {
+		const textToCopy = processedContent.content
+		if (!textToCopy) {
 			toast.error("Nothing to copy.")
 			return
 		}
-
-		const answerParts = []
-		const regex =
-			/(<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>|<tool_code[^>]*>[\s\S]*?<\/tool_code>|<tool_result[^>]*>[\s\S]*?<\/tool_result>|<answer>[\s\S]*?<\/answer>)/g
-		let lastIndex = 0
-		let inToolCallPhase = false // To ignore raw text between tool_code and tool_result
-
-		for (const match of contentToParse.matchAll(regex)) {
-			const precedingText = contentToParse.substring(
-				lastIndex,
-				match.index
-			)
-			if (precedingText.trim() && !inToolCallPhase) {
-				answerParts.push(precedingText.trim())
-			}
-
-			const tag = match[0]
-			if (tag.startsWith("<tool_code")) inToolCallPhase = true
-			else if (tag.startsWith("<tool_result")) inToolCallPhase = false
-			else if (tag.startsWith("<answer>")) {
-				const answerContent =
-					tag.match(/<answer>([\s\S]*?)<\/answer>/)?.[1] || ""
-				if (answerContent) answerParts.push(answerContent.trim())
-			}
-			lastIndex = match.index + tag.length
-		}
-		const remainingText = contentToParse.substring(lastIndex)
-		if (remainingText.trim() && !inToolCallPhase) {
-			answerParts.push(remainingText.trim())
-		}
-		const plainText = answerParts.join("\n\n")
-
 		navigator.clipboard
-			.writeText(plainText)
+			.writeText(textToCopy)
 			.then(() => {
 				setCopied(true)
 				setTimeout(() => setCopied(false), 2000)
@@ -444,6 +489,26 @@ const ChatBubble = ({
 				</div>
 			)}
 			{renderedContent}
+			{tools && tools.length > 0 && (
+				<div className="flex items-center gap-2 mt-3 text-xs text-neutral-400">
+					<IconTool size={14} />
+					<div className="flex flex-wrap gap-1.5">
+						{tools.map((toolName) => {
+							const Icon =
+								toolIcons[toolName] || toolIcons.default
+							return (
+								<div
+									key={toolName}
+									className="flex items-center gap-1 bg-neutral-800/60 px-2 py-0.5 rounded-full"
+								>
+									<Icon size={12} />
+									<span>{toolName}</span>
+								</div>
+							)
+						})}
+					</div>
+				</div>
+			)}
 			<div
 				className={cn(
 					"flex items-center gap-2 mt-4 transition-opacity",

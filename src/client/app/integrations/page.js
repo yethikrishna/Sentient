@@ -38,10 +38,12 @@ import {
 	IconBrandLinkedin,
 	IconAlertTriangle,
 	IconEye,
-	IconPlug
+	IconPlug,
+	IconArrowUpCircle
 } from "@tabler/icons-react"
 import { cn } from "@utils/cn"
 import { usePostHog } from "posthog-js/react"
+import { usePlan } from "@hooks/usePlan"
 import InteractiveNetworkBackground from "@components/ui/InteractiveNetworkBackground"
 import { motion, AnimatePresence } from "framer-motion"
 import {
@@ -552,7 +554,13 @@ const IntegrationTag = ({ type }) => {
 	)
 }
 
-const IntegrationCard = ({ integration, icon: Icon }) => {
+const IntegrationCard = ({
+	integration,
+	icon: Icon,
+	isProFeature,
+	isProUser,
+	onUpgradeClick
+}) => {
 	const getTagType = (authType) => {
 		if (authType === "builtin") return "Native"
 		if (["oauth", "manual"].includes(authType)) return "3rd Party"
@@ -565,6 +573,8 @@ const IntegrationCard = ({ integration, icon: Icon }) => {
 
 	const isConnected =
 		integration.connected || integration.auth_type === "builtin"
+
+	const isDisabledForFree = isProFeature && !isProUser
 
 	return (
 		<div className="bg-neutral-900/50 p-4 sm:p-5 rounded-xl transition-all duration-300 border border-neutral-800/70 hover:border-brand-orange hover:-translate-y-1 flex flex-col text-left h-full">
@@ -590,7 +600,19 @@ const IntegrationCard = ({ integration, icon: Icon }) => {
 						</span>
 					</div>
 				</div>
-				{tagType && <IntegrationTag type={tagType} />}
+				<div className="flex flex-col items-end gap-1">
+					{tagType && <IntegrationTag type={tagType} />}
+					{isProFeature && (
+						<span
+							className={cn(
+								"px-2 py-0.5 rounded-full text-xs font-semibold",
+								"bg-yellow-500/20 text-yellow-300"
+							)}
+						>
+							Pro
+						</span>
+					)}
+				</div>
 			</div>
 
 			{/* Middle Section */}
@@ -603,9 +625,19 @@ const IntegrationCard = ({ integration, icon: Icon }) => {
 			{/* Bottom Section */}
 			{isConnectable && (
 				<div className="mt-4 pt-4 border-t border-neutral-800 flex justify-end">
-					<span className="text-sm font-medium text-neutral-400 group-hover:text-white transition-colors">
-						View Details →
-					</span>
+					{isDisabledForFree ? (
+						<button
+							onClick={onUpgradeClick}
+							className="text-sm font-medium text-brand-orange group-hover:text-yellow-300 transition-colors flex items-center gap-1.5"
+						>
+							<IconArrowUpCircle size={16} />
+							Upgrade to Unlock
+						</button>
+					) : (
+						<span className="text-sm font-medium text-neutral-400 group-hover:text-white transition-colors">
+							View Details →
+						</span>
+					)}
 				</div>
 			)}
 		</div>
@@ -630,6 +662,7 @@ const IntegrationsPage = () => {
 		useState(null)
 	const posthog = usePostHog()
 	const router = useRouter()
+	const { plan, isPro, isLoading: isPlanLoading } = usePlan()
 
 	const googleServices = [
 		"gmail",
@@ -679,6 +712,11 @@ const IntegrationsPage = () => {
 			setLoading(false)
 		}
 	}, [])
+
+	const handleUpgradeClick = () => {
+		const dashboardUrl = process.env.NEXT_PUBLIC_LANDING_PAGE_URL
+		if (dashboardUrl) window.open(`${dashboardUrl}/dashboard`, "_blank")
+	}
 
 	const handleConnect = (integration) => {
 		if (integration.name === "whatsapp") {
@@ -1062,13 +1100,18 @@ const IntegrationsPage = () => {
 															"manual"
 														].includes(
 															integration.auth_type
-														)
+														);
+
+														const isProFeature = integration.plan === 'pro';
 
 														const card = (
 															<IntegrationCard
 																integration={
 																	integration
 																}
+																isProFeature={isProFeature}
+																isProUser={isPro}
+																onUpgradeClick={handleUpgradeClick}
 																icon={Icon}
 															/>
 														)
@@ -1109,6 +1152,11 @@ const IntegrationsPage = () => {
 																		</MorphingDialogTrigger>
 																		<MorphingDialogContainer>
 																			<MorphingDialogContent className="pointer-events-auto relative flex h-auto w-full flex-col overflow-hidden border border-neutral-700 bg-neutral-900 sm:w-[600px] rounded-2xl">
+																				{isProFeature && !isPro && (
+																					<div className="absolute top-2 right-2 bg-yellow-500/20 text-yellow-300 text-xs font-bold px-2 py-1 rounded-full z-10">
+																						PRO
+																					</div>
+																				)}
 																				<BorderTrail className="bg-brand-orange" />
 																				<div className="p-4 sm:p-6 overflow-y-auto custom-scrollbar">
 																					<div className="flex items-center gap-4 mb-4">
@@ -1183,7 +1231,19 @@ const IntegrationsPage = () => {
 																									</span>
 																								</button>
 																							) : (
-																								<button
+																								isProFeature && !isPro ? (
+																									<button
+																										onClick={handleUpgradeClick}
+																										className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-brand-orange hover:bg-brand-orange/90 text-brand-black font-semibold text-sm transition-colors"
+																									>
+																										<IconArrowUpCircle
+																											size={
+																												16
+																											}
+																										/>
+																										<span>Upgrade to Pro</span>
+																									</button>
+																								) : (<button
 																									onClick={(
 																										e
 																									) => {
@@ -1202,7 +1262,7 @@ const IntegrationsPage = () => {
 																									<span>
 																										Connect
 																									</span>
-																								</button>
+																								</button>)
 																							)}
 																						</div>
 																					</MorphingDialogDescription>

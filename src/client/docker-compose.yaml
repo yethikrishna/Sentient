@@ -17,8 +17,8 @@ services:
                 - AUTH0_SCOPE=${AUTH0_SCOPE}
                 - NEXT_PUBLIC_POSTHOG_KEY=${NEXT_PUBLIC_POSTHOG_KEY}
                 - NEXT_PUBLIC_POSTHOG_HOST=${NEXT_PUBLIC_POSTHOG_HOST}
-                - NEXT_PUBLIC_AUTH0_NAMESPACE=${NEXT_PUBLIC_AUTH0_NAMESPACE} # ADD THIS
-                - NEXT_PUBLIC_LANDING_PAGE_URL=${NEXT_PUBLIC_LANDING_PAGE_URL} # ADD THIS
+                - NEXT_PUBLIC_AUTH0_NAMESPACE=${NEXT_PUBLIC_AUTH0_NAMESPACE}
+                - NEXT_PUBLIC_LANDING_PAGE_URL=${NEXT_PUBLIC_LANDING_PAGE_URL}
         container_name: sentient-client
         restart: unless-stopped
         ports:

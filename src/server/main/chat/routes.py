@@ -3,13 +3,15 @@ import uuid
 import json
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import asyncio
+from typing import Tuple
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from main.chat.models import ChatMessageInput, DeleteMessageRequest
 from main.chat.utils import generate_chat_llm_stream, parse_assistant_response
-from main.auth.utils import PermissionChecker
-from main.dependencies import mongo_manager
+from main.auth.utils import PermissionChecker, AuthHelper
+from main.dependencies import mongo_manager, auth_helper
+from main.plans import PLAN_LIMITS
 
 router = APIRouter(
     prefix="/chat",
@@ -19,11 +21,23 @@ logger = logging.getLogger(__name__)
 @router.post("/message", summary="Process Chat Message (Overlay Chat)")
 async def chat_endpoint(
     request_body: ChatMessageInput, 
-    user_id: str = Depends(PermissionChecker(required_permissions=["read:chat", "write:chat"]))
+    user_id_and_plan: Tuple[str, str] = Depends(auth_helper.get_current_user_id_and_plan)
 ):
+    user_id, plan = user_id_and_plan
     # 1. Check if there are any user messages
     if not any(msg.get("role") == "user" for msg in request_body.messages):
         raise HTTPException(status_code=400, detail="No user message found in the request.")
+
+    # --- Check Usage Limit ---
+    usage = await mongo_manager.get_or_create_daily_usage(user_id)
+    limit = PLAN_LIMITS[plan].get("text_messages_daily", 0)
+    current_count = usage.get("text_messages", 0)
+
+    if current_count >= limit:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"You have reached your daily message limit of {limit}. Please upgrade or try again tomorrow."
+        )
 
     # 2. Save all new user messages since the last assistant message
     for msg in reversed(request_body.messages):
@@ -32,6 +46,8 @@ async def chat_endpoint(
         if msg.get("role") == "user":
             await mongo_manager.add_message(user_id=user_id, role="user", content=msg.get("content", ""), message_id=msg.get("id"))
 
+    # Increment usage after successfully adding the message
+    await mongo_manager.increment_daily_usage(user_id, "text_messages")
     # Fetch comprehensive user context
     user_profile = await mongo_manager.get_user_profile(user_id)
     user_data = user_profile.get("userData", {}) if user_profile else {}

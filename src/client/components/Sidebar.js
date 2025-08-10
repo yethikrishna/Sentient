@@ -21,12 +21,14 @@ import {
 	IconHeadphones
 } from "@tabler/icons-react"
 import { cn } from "@utils/cn"
+import { usePlan } from "@hooks/usePlan"
 import { motion, AnimatePresence } from "framer-motion"
 import useClickOutside from "@hooks/useClickOutside"
 
 const UserProfileSection = ({ isCollapsed, user }) => {
 	const [isUserMenuOpen, setUserMenuOpen] = useState(false)
 	const userMenuRef = useRef(null)
+	const { isPro, plan } = usePlan()
 	useClickOutside(userMenuRef, () => setUserMenuOpen(false))
 
 	// CHANGED: Use the environment variable for the namespace
@@ -145,10 +147,7 @@ const SidebarContent = ({
 	const [isHelpModalOpen, setHelpModalOpen] = useState(false)
 
 	// CHANGED: Use the environment variable for the namespace
-	const roles =
-		user?.[`${process.env.NEXT_PUBLIC_AUTH0_NAMESPACE}/roles`] || []
-	const isPro = roles.includes("Pro")
-
+	const { isPro } = usePlan()
 	const dashboardUrl = process.env.NEXT_PUBLIC_LANDING_PAGE_URL
 		? `${process.env.NEXT_PUBLIC_LANDING_PAGE_URL}/dashboard`
 		: "#"

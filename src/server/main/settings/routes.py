@@ -1,11 +1,12 @@
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.responses import JSONResponse
 
 from main.dependencies import mongo_manager
-from main.auth.utils import PermissionChecker
+from main.auth.utils import PermissionChecker, AuthHelper
 from main.notifications.whatsapp_client import check_phone_number_exists
+from main.plans import PRO_ONLY_FEATURES
 from main.settings.models import WhatsAppMcpRequest, WhatsAppNotificationNumberRequest, ProfileUpdateRequest, ProactivitySettingsRequest
 
 logger = logging.getLogger(__name__)
@@ -170,9 +171,17 @@ async def get_proactivity_settings(
 @router.post("/proactivity", summary="Update proactivity settings")
 async def update_proactivity_settings(
     request: ProactivitySettingsRequest,
-    user_id: str = Depends(PermissionChecker(required_permissions=["write:config"]))
+    user_id_and_plan: Tuple[str, str] = Depends(auth_helper.get_current_user_id_and_plan)
 ):
+    user_id, plan = user_id_and_plan
     is_enabled = request.enabled
+
+    # --- Check Plan Limit ---
+    if "proactivity" in PRO_ONLY_FEATURES and plan == "free" and is_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="Proactive Assistance is a Pro feature. Please upgrade your plan to enable it."
+        )
 
     update_payload = {"userData.preferences.proactivityEnabled": is_enabled}
     profile_success = await mongo_manager.update_user_profile(user_id, update_payload)

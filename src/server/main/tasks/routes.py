@@ -10,6 +10,7 @@ import uuid
 from main.dependencies import mongo_manager, websocket_manager
 from main.auth.utils import PermissionChecker
 from workers.tasks import generate_plan_from_context, execute_task_plan, calculate_next_run, process_task_change_request, refine_task_details, refine_and_plan_ai_task, cud_memory_task, orchestrate_swarm_task
+from main.plans import PLAN_LIMITS
 from .models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest, TaskActionRequest, TaskChatRequest, ProgressUpdateRequest
 from main.llm import run_agent_with_fallback
 from json_extractor import JsonExtractor
@@ -84,9 +85,18 @@ async def get_task_details(
 @router.post("/add-task", status_code=status.HTTP_201_CREATED)
 async def add_task(
     request: AddTaskRequest,
-    user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"])),
+    user_id_and_plan: Tuple[str, str] = Depends(auth_helper.get_current_user_id_and_plan)
 ):
+    user_id, plan = user_id_and_plan
+    usage = await mongo_manager.get_or_create_daily_usage(user_id)
+
     if request.is_swarm:
+        # --- Check Swarm Task Limits ---
+        limit = PLAN_LIMITS[plan].get("swarm_tasks_daily", 0)
+        current_count = usage.get("swarm_tasks", 0)
+        if current_count >= limit:
+            raise HTTPException(status_code=429, detail=f"You have reached your daily limit of {limit} Swarm tasks.")
+
         if not request.prompt:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A prompt describing the goal and items is required for swarm tasks.")
 
@@ -109,9 +119,35 @@ async def add_task(
         if not task_id:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create swarm task.")
 
+        await mongo_manager.increment_daily_usage(user_id, "swarm_tasks")
         orchestrate_swarm_task.delay(task_id, user_id)
         return {"message": "Swarm task initiated! I'll start planning it out.", "task_id": task_id}
     else:
+        # --- Check Single Task Limits ---
+        # This requires parsing the schedule first to determine the type
+        is_recurring = "every" in request.prompt.lower() or "recurring" in request.prompt.lower()
+        is_triggered = "when" in request.prompt.lower() or "if" in request.prompt.lower() or "on every" in request.prompt.lower()
+
+        if is_recurring:
+            limit = PLAN_LIMITS[plan].get("recurring_tasks_active", 0)
+            active_count = await mongo_manager.task_collection.count_documents({"user_id": user_id, "status": "active", "schedule.type": "recurring"})
+            if active_count >= limit:
+                raise HTTPException(status_code=429, detail=f"You have reached your limit of {limit} active recurring workflows.")
+        elif is_triggered:
+            limit = PLAN_LIMITS[plan].get("triggered_tasks_active", 0)
+            active_count = await mongo_manager.task_collection.count_documents({"user_id": user_id, "status": "active", "schedule.type": "triggered"})
+            if active_count >= limit:
+                raise HTTPException(status_code=429, detail=f"You have reached your limit of {limit} active triggered workflows.")
+        else: # One-time task
+            limit = PLAN_LIMITS[plan].get("one_time_tasks_daily", 0)
+            current_count = usage.get("one_time_tasks", 0)
+            if current_count >= limit:
+                raise HTTPException(status_code=429, detail=f"You have reached your daily limit of {limit} one-time tasks.")
+
+            # We will increment the count after the task is successfully created
+            # To avoid race conditions, this should ideally be part of a transaction with the task creation
+            # For now, we'll increment after successful DB insertion.
+
         if not request.prompt:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt is required for single tasks.")
         task_data = {
@@ -126,6 +162,9 @@ async def add_task(
         if not task_id:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create task.")
 
+        # Increment usage for one-time tasks
+        if not is_recurring and not is_triggered:
+            await mongo_manager.increment_daily_usage(user_id, "one_time_tasks")
         refine_and_plan_ai_task.delay(task_id, user_id)
         return {"message": "Task accepted! I'll start planning it out.", "task_id": task_id}
 

@@ -14,6 +14,7 @@ from celery import group, chord
 from main.analytics import capture_event
 from json_extractor import JsonExtractor
 from workers.utils.api_client import notify_user, push_task_list_update
+from main.plans import PLAN_LIMITS
 from main.config import INTEGRATIONS_CONFIG # This is the new field
 from main.tasks.prompts import TASK_CREATION_PROMPT
 from mcp_hub.tasks.prompts import RESOURCE_MANAGER_SYSTEM_PROMPT
@@ -132,9 +133,33 @@ def cud_memory_task(user_id: str, information: str, source: Optional[str] = None
     This runs the core memory management logic asynchronously.
     """
     logger.info(f"Celery worker received cud_memory_task for user_id: {user_id}")
+    db_manager = MongoManager()
+    try:
+        # --- Enforce Memory Limit ---
+        user_profile = run_async(db_manager.get_user_profile(user_id))
+        plan = user_profile.get("userData", {}).get("plan", "free") if user_profile else "free"
+        limit = PLAN_LIMITS[plan].get("memories_total", 0)
+
+        if limit != float('inf'):
+            from mcp_hub.memory import db as memory_db
+            pool = run_async(memory_db.get_db_pool())
+            async def count_facts():
+                async with pool.acquire() as conn:
+                    return await conn.fetchval("SELECT COUNT(*) FROM facts WHERE user_id = $1", user_id)
+
+            current_count = run_async(count_facts())
+
+            if current_count >= limit:
+                logger.warning(f"User {user_id} on '{plan}' plan reached memory limit of {limit}. CUD operation aborted.")
+                # Optionally notify the user
+                run_async(notify_user(user_id, f"You've reached your memory limit of {limit} facts. Please upgrade to Pro for unlimited memories."))
+                return
+    except Exception as e:
+        logger.error(f"Error checking memory limit for user {user_id}: {e}", exc_info=True)
+    finally:
+        run_async(db_manager.close())
 
     # --- NEW: Fetch user's name before calling cud_memory ---
-    db_manager = MongoManager()
     username = user_id # Default fallback
     try:
         user_profile = run_async(db_manager.get_user_profile(user_id))

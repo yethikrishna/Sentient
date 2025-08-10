@@ -16,6 +16,7 @@ from main.config import MONGO_URI, MONGO_DB_NAME
 USER_PROFILES_COLLECTION = "user_profiles" 
 NOTIFICATIONS_COLLECTION = "notifications" 
 POLLING_STATE_COLLECTION = "polling_state_store" 
+DAILY_USAGE_COLLECTION = "daily_usage"
 PROCESSED_ITEMS_COLLECTION = "processed_items_log" 
 TASK_COLLECTION = "tasks"
 MESSAGES_COLLECTION = "messages"
@@ -32,6 +33,7 @@ class MongoManager:
         self.user_profiles_collection = self.db[USER_PROFILES_COLLECTION]
         self.notifications_collection = self.db[NOTIFICATIONS_COLLECTION]
         self.polling_state_collection = self.db[POLLING_STATE_COLLECTION]
+        self.daily_usage_collection = self.db[DAILY_USAGE_COLLECTION]
         self.processed_items_collection = self.db[PROCESSED_ITEMS_COLLECTION]
         self.task_collection = self.db[TASK_COLLECTION]
         self.messages_collection = self.db[MESSAGES_COLLECTION]
@@ -62,6 +64,10 @@ class MongoManager:
                     ("is_currently_polling", ASCENDING), ("error_backoff_until_timestamp", ASCENDING)
                 ], name="polling_due_tasks_idx"),
                 IndexModel([("is_currently_polling", ASCENDING), ("last_attempted_poll_timestamp", ASCENDING)], name="polling_stale_locks_idx")
+            ],
+            self.daily_usage_collection: [
+                IndexModel([("user_id", ASCENDING), ("date", DESCENDING)], unique=True, name="usage_user_date_unique_idx"),
+                IndexModel([("date", DESCENDING)], name="usage_date_idx", expireAfterSeconds=2 * 24 * 60 * 60) # Expire docs after 2 days
             ],
             self.processed_items_collection: [ 
                 IndexModel([("user_id", ASCENDING), ("service_name", ASCENDING), ("item_id", ASCENDING)], unique=True, name="processed_item_unique_idx_main"),
@@ -165,6 +171,25 @@ class MongoManager:
             upsert=True 
         )
         return result.matched_count > 0 or result.upserted_id is not None
+
+    # --- Usage Tracking Methods ---
+    async def get_or_create_daily_usage(self, user_id: str) -> Dict[str, Any]:
+        today_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+        usage_doc = await self.daily_usage_collection.find_one_and_update(
+            {"user_id": user_id, "date": today_str},
+            {"$setOnInsert": {"user_id": user_id, "date": today_str}},
+            upsert=True,
+            return_document=ReturnDocument.AFTER
+        )
+        return usage_doc
+
+    async def increment_daily_usage(self, user_id: str, feature: str, amount: int = 1):
+        today_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+        await self.daily_usage_collection.update_one(
+            {"user_id": user_id, "date": today_str},
+            {"$inc": {feature: amount}},
+            upsert=True
+        )
 
     # --- Notification Methods ---
     async def get_notifications(self, user_id: str) -> List[Dict]:

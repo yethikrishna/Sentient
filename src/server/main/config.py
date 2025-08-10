@@ -27,6 +27,7 @@ AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN")
 AUTH0_AUDIENCE = os.getenv("AUTH0_AUDIENCE")
 ALGORITHMS = ["RS256"]
 AUTH0_SCOPE = os.getenv("AUTH0_SCOPE")
+AUTH0_NAMESPACE = os.getenv("AUTH0_NAMESPACE", "https://existence-sentient.vercel.app")
 SELF_HOST_AUTH_SECRET = os.getenv("SELF_HOST_AUTH_SECRET")
 AUTH0_MANAGEMENT_CLIENT_ID = os.getenv("AUTH0_MANAGEMENT_CLIENT_ID")
 AUTH0_MANAGEMENT_CLIENT_SECRET = os.getenv("AUTH0_MANAGEMENT_CLIENT_SECRET")
@@ -137,6 +138,7 @@ INTEGRATIONS_CONFIG = {
         "display_name": "Google Docs",
         "description": "Create and manage documents in Google Docs. Allows the agent to generate new, multi-section documents with titles, headings, paragraphs, and bullet points.",
         "auth_type": "oauth",
+        "plan": "pro",
         "icon": "IconFileText",
         "category": "Productivity",
         "mcp_server_config": {
@@ -148,6 +150,7 @@ INTEGRATIONS_CONFIG = {
         "display_name": "Google Slides",
         "description": "Create and manage presentations in Google Slides. The agent can build new slide decks with titles, content, images, and charts based on a structured outline you provide.",
         "auth_type": "oauth",
+        "plan": "pro",
         "icon": "IconPresentation",
         "category": "Productivity",
         "mcp_server_config": {
@@ -159,6 +162,7 @@ INTEGRATIONS_CONFIG = {
         "display_name": "Google Sheets",
         "description": "Create and manage spreadsheets in Google Sheets. The agent can help organize data by creating new spreadsheets with one or more sheets, including headers and rows.",
         "auth_type": "oauth",
+        "plan": "pro",
         "icon": "IconTable",
         "category": "Productivity",
         "mcp_server_config": {
@@ -323,6 +327,7 @@ INTEGRATIONS_CONFIG = {
         "display_name": "LinkedIn",
         "description": "Search for job listings on LinkedIn. Requires you to first upload a 'linkedin_cookies.json' file using the file upload button in the chat.",
         "auth_type": "manual",
+        "plan": "pro",
         "icon": "IconBrandLinkedin",
         "category": "Data & Search",
         "mcp_server_config": {

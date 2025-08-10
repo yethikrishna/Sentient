@@ -19,10 +19,12 @@ import {
 	IconMessageChatbot,
 	IconBrandWhatsapp,
 	IconHelpCircle,
-	IconKeyboard
+	IconKeyboard,
+	IconArrowUpCircle
 } from "@tabler/icons-react"
 import { useState, useEffect, useCallback, Fragment } from "react"
 import { Tooltip } from "react-tooltip"
+import { usePlan } from "@hooks/usePlan"
 import { usePostHog } from "posthog-js/react"
 import { cn } from "@utils/cn"
 import { Switch } from "@headlessui/react"
@@ -688,6 +690,7 @@ const ProactivitySettings = () => {
 	const [isEnabled, setIsEnabled] = useState(false)
 	const [isLoading, setIsLoading] = useState(true)
 	const posthog = usePostHog()
+	const { isPro, plan } = usePlan()
 
 	useEffect(() => {
 		const fetchStatus = async () => {
@@ -707,6 +710,12 @@ const ProactivitySettings = () => {
 	}, [])
 
 	const handleToggle = async (enabled) => {
+		if (plan === "free" && enabled) {
+			toast.error("Proactive Assistance is a Pro feature. Please upgrade your plan.", {
+				duration: 5000
+			});
+			return;
+		}
 		setIsEnabled(enabled) // Optimistic update
 		const toastId = toast.loading(
 			enabled ? "Enabling proactivity..." : "Disabling proactivity..."
@@ -734,41 +743,55 @@ const ProactivitySettings = () => {
 	}
 
 	return (
-		<Switch.Group as="div" className="flex items-center justify-between">
-			<span className="flex-grow flex flex-col">
-				<Switch.Label
-					as="span"
-					className="font-semibold text-lg text-white"
-					passive
-				>
-					Proactive Assistance
-				</Switch.Label>
-				<Switch.Description
-					as="span"
-					className="text-neutral-400 text-sm mt-1 max-w-md"
-				>
-					Allow Sentient to monitor connected apps (like Gmail and
-					Calendar) in the background to find opportunities and
-					suggest tasks for you.
-				</Switch.Description>
-			</span>
-			<Switch
-				checked={isEnabled}
-				onChange={handleToggle}
-				className={cn(
-					isEnabled ? "bg-green-600" : "bg-neutral-700",
-					"relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-orange focus:ring-offset-2 focus:ring-offset-neutral-900"
-				)}
-			>
-				<span
-					aria-hidden="true"
+		<div>
+			<Switch.Group as="div" className="flex items-center justify-between">
+				<span className="flex-grow flex flex-col">
+					<Switch.Label
+						as="span"
+						className="font-semibold text-lg text-white flex items-center gap-2"
+						passive
+					>
+						Proactive Assistance
+						{!isPro && (
+							<span className="text-xs font-bold bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded-full">PRO</span>
+						)}
+					</Switch.Label>
+					<Switch.Description
+						as="span"
+						className="text-neutral-400 text-sm mt-1 max-w-md"
+					>
+						Allow Sentient to monitor connected apps (like Gmail and
+						Calendar) in the background to find opportunities and
+						suggest tasks for you.
+					</Switch.Description>
+				</span>
+				<Switch
+					checked={isEnabled}
+					onChange={handleToggle}
+					disabled={!isPro || isLoading}
 					className={cn(
-						isEnabled ? "translate-x-5" : "translate-x-0",
-						"pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+						"relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-orange focus:ring-offset-2 focus:ring-offset-neutral-900",
+						!isPro ? "cursor-not-allowed bg-neutral-800" : isEnabled ? "bg-green-600" : "bg-neutral-700"
 					)}
-				/>
-			</Switch>
-		</Switch.Group>
+				>
+					<span
+						aria-hidden="true"
+						className={cn(
+							isEnabled ? "translate-x-5" : "translate-x-0",
+							"pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+						)}
+					/>
+				</Switch>
+			</Switch.Group>
+			{!isPro && (
+				<div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-sm text-yellow-200 flex items-center justify-between">
+					<span>This is a Pro feature. Upgrade your plan to enable it.</span>
+					<a href={process.env.NEXT_PUBLIC_LANDING_PAGE_URL ? `${process.env.NEXT_PUBLIC_LANDING_PAGE_URL}/dashboard` : "#"} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 font-semibold hover:text-white">
+						<IconArrowUpCircle size={16} /> Upgrade
+					</a>
+				</div>
+			)}
+		</div>
 	)
 }
 

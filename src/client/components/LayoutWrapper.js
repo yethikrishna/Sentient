@@ -1,6 +1,6 @@
 // src/client/components/LayoutWrapper.js
 "use client"
-import React, { useState, useEffect, useCallback, useRef } from "react"
+import React, { useState, useEffect, useCallback, useRef, createContext } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation" // Import useSearchParams
 import { AnimatePresence } from "framer-motion"
 import NotificationsOverlay from "@components/NotificationsOverlay"
@@ -12,6 +12,12 @@ import { useGlobalShortcuts } from "@hooks/useGlobalShortcuts"
 import { cn } from "@utils/cn"
 import toast from "react-hot-toast"
 import { useUser } from "@auth0/nextjs-auth0/client"
+
+export const PlanContext = createContext({
+	plan: "free",
+	isPro: false,
+	isLoading: true
+})
 
 export default function LayoutWrapper({ children }) {
 	const [isNotificationsOpen, setNotificationsOpen] = useState(false)
@@ -191,7 +197,13 @@ export default function LayoutWrapper({ children }) {
 		)
 	}
 	return (
-		<>
+		<PlanContext.Provider
+			value={{
+				plan: (user?.[`${process.env.NEXT_PUBLIC_AUTH0_NAMESPACE}/roles`] || []).includes("Pro") ? "pro" : "free",
+				isPro: (user?.[`${process.env.NEXT_PUBLIC_AUTH0_NAMESPACE}/roles`] || []).includes("Pro"),
+				isLoading: isAuthLoading
+			}}
+		>
 			{showNav && (
 				<>
 					<Sidebar
@@ -241,6 +253,6 @@ export default function LayoutWrapper({ children }) {
 					<GlobalSearch onClose={() => setSearchOpen(false)} />
 				)}
 			</AnimatePresence>
-		</>
+		</PlanContext.Provider>
 	)
 }

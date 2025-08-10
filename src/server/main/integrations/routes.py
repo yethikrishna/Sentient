@@ -6,10 +6,11 @@ import httpx
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import JSONResponse
+from typing import Tuple
 
 from main.integrations.models import ManualConnectRequest, OAuthConnectRequest, DisconnectRequest
 from main.dependencies import mongo_manager, auth_helper
-from main.auth.utils import aes_encrypt
+from main.auth.utils import aes_encrypt, PermissionChecker
 from main.config import (
     INTEGRATIONS_CONFIG, 
     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
@@ -17,7 +18,8 @@ from main.config import (
     DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET,
     TRELLO_CLIENT_ID,
     GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SLACK_CLIENT_ID,
-    SLACK_CLIENT_SECRET, NOTION_CLIENT_ID, NOTION_CLIENT_SECRET
+    SLACK_CLIENT_SECRET, NOTION_CLIENT_ID, NOTION_CLIENT_SECRET,
+    PRO_ONLY_INTEGRATIONS
 )
 
 logger = logging.getLogger(__name__)
@@ -67,12 +69,23 @@ async def get_integration_sources(user_id: str = Depends(auth_helper.get_current
 
 
 @router.post("/connect/manual", summary="Connect an integration using manual credentials")
-async def connect_manual_integration(request: ManualConnectRequest, user_id: str = Depends(auth_helper.get_current_user_id)):
+async def connect_manual_integration(
+    request: ManualConnectRequest,
+    user_id_and_plan: Tuple[str, str] = Depends(auth_helper.get_current_user_id_and_plan)
+):
+    user_id, plan = user_id_and_plan
     service_name = request.service_name
     service_config = INTEGRATIONS_CONFIG.get(service_name)
 
     if not service_config:
         raise HTTPException(status_code=400, detail="Invalid service name.")
+
+    # --- Check Plan Limit ---
+    if service_name in PRO_ONLY_INTEGRATIONS and plan == "free":
+        raise HTTPException(
+            status_code=403,
+            detail=f"The {service_config.get('display_name', service_name)} integration is a Pro feature. Please upgrade your plan."
+        )
 
     # Allow Trello to use this endpoint despite being 'oauth' type, as its flow provides a token directly.
     if service_config["auth_type"] != "manual" and service_name != "trello":
@@ -133,10 +146,21 @@ async def get_gcalendar_events(
         return JSONResponse(content={"events": []})
 
 @router.post("/connect/oauth", summary="Finalize OAuth2 connection by exchanging code for token")
-async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str = Depends(auth_helper.get_current_user_id)):
+async def connect_oauth_integration(
+    request: OAuthConnectRequest,
+    user_id_and_plan: Tuple[str, str] = Depends(auth_helper.get_current_user_id_and_plan)
+):
+    user_id, plan = user_id_and_plan
     service_name = request.service_name
     if service_name not in INTEGRATIONS_CONFIG or INTEGRATIONS_CONFIG[service_name]["auth_type"] != "oauth":
         raise HTTPException(status_code=400, detail="Invalid service name or auth type is not OAuth.")
+
+    # --- Check Plan Limit ---
+    if service_name in PRO_ONLY_INTEGRATIONS and plan == "free":
+        raise HTTPException(
+            status_code=403,
+            detail=f"The {INTEGRATIONS_CONFIG[service_name].get('display_name', service_name)} integration is a Pro feature. Please upgrade your plan."
+        )
 
     token_url = ""
     token_payload = {}

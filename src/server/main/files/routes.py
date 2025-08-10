@@ -1,9 +1,11 @@
 import os
 import uuid
 import re
+from typing import Tuple
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
-from main.dependencies import auth_helper
+from main.dependencies import auth_helper, mongo_manager
+from main.plans import PLAN_LIMITS
 from main.config import FILE_MANAGEMENT_TEMP_DIR # Import the base directory constant
 from .utils import get_user_temp_dir
 
@@ -25,8 +27,21 @@ def sanitize_filename(filename: str) -> str:
 @router.post("/upload", summary="Upload a file for AI context")
 async def upload_file(
     file: UploadFile = File(...),
-    user_id: str = Depends(auth_helper.get_current_user_id)
+    user_id_and_plan: Tuple[str, str] = Depends(auth_helper.get_current_user_id_and_plan)
 ):
+    user_id, plan = user_id_and_plan
+
+    # --- Check Usage Limit ---
+    usage = await mongo_manager.get_or_create_daily_usage(user_id)
+    limit = PLAN_LIMITS[plan].get("file_uploads_daily", 0)
+    current_count = usage.get("file_uploads", 0)
+
+    if current_count >= limit:
+        raise HTTPException(
+            status_code=429,
+            detail=f"You have reached your daily file upload limit of {limit}. Please upgrade or try again tomorrow."
+        )
+
     # Create a user-specific subdirectory
     safe_user_id = "".join(c for c in user_id if c.isalnum() or c in ('-', '_'))
     user_specific_dir = os.path.join(FILE_MANAGEMENT_TEMP_DIR, safe_user_id)
@@ -41,6 +56,9 @@ async def upload_file(
     try:
         with open(file_path, "wb") as buffer:
             buffer.write(await file.read())
+
+        # Increment usage after successful save
+        await mongo_manager.increment_daily_usage(user_id, "file_uploads")
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": f"Failed to save file: {e}"})
     

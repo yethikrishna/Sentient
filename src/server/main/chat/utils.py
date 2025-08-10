@@ -16,7 +16,7 @@ from openai import OpenAI, APIError
 
 from main.chat.prompts import STAGE_1_SYSTEM_PROMPT, STAGE_2_SYSTEM_PROMPT
 from main.db import MongoManager
-from main.llm import run_agent_with_fallback
+from main.llm import run_agent_with_fallback, LLMProviderDownError
 from main.config import (INTEGRATIONS_CONFIG, ENVIRONMENT, OPENAI_API_KEYS, OPENAI_API_BASE_URL, OPENAI_MODEL_NAME)
 from json_extractor import JsonExtractor
 from workers.utils.text_utils import clean_llm_output
@@ -418,6 +418,9 @@ async def generate_chat_llm_stream(
     except asyncio.CancelledError:
         stream_interrupted = True
         raise
+    except LLMProviderDownError as e:
+        logger.error(f"LLM provider is down for user {user_id}: {e}", exc_info=True)
+        yield json.dumps({"type": "error", "message": "Sorry, our AI provider is currently down. Please try again later."}) + "\n"
     except Exception as e:
         logger.error(f"Error during main chat agent run for user {user_id}: {e}", exc_info=True)
         yield {"type": "error", "message": "An unexpected error occurred in the chat agent."}

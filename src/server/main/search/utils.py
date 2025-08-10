@@ -6,7 +6,7 @@ from typing import Any, AsyncGenerator, Dict, List, Tuple
 
 from main.chat.prompts import STAGE_1_SYSTEM_PROMPT
 from main.config import INTEGRATIONS_CONFIG
-from main.llm import run_agent_with_fallback
+from main.llm import run_agent_with_fallback, LLMProviderDownError
 from json_extractor import JsonExtractor
 # MODIFICATION: Import the class, not the global instance
 from main.db import MongoManager
@@ -127,6 +127,9 @@ async def perform_unified_search(query: str, user_id: str) -> AsyncGenerator[str
         if history_chunk and history_chunk[-1].get("role") == "assistant":
             final_report_content = history_chunk[-1].get("content", "")
 
+    except LLMProviderDownError as e:
+        logger.error(f"LLM provider down during unified search for user {user_id}: {e}", exc_info=True)
+        yield json.dumps({"type": "error", "message": "Sorry, our AI provider is currently down. Please try again later."}) + "\n"
     except Exception as e:
         logger.error(f"Error during unified search stream for user {user_id}: {e}", exc_info=True)
         yield json.dumps({"type": "error", "message": str(e)}) + "\n"

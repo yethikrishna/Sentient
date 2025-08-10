@@ -1,4 +1,3 @@
-# src/server/main/llm.py
 import os
 import logging
 import time
@@ -10,6 +9,10 @@ from main.config import (OPENAI_API_KEYS, OPENAI_API_BASE_URL,
                          OPENAI_MODEL_NAME)
 
 logger = logging.getLogger(__name__)
+
+class LLMProviderDownError(Exception):
+    """Custom exception for when all LLM providers are down."""
+    pass
 
 DEFAULT_SYSTEM_PROMPT = "You are a helpful AI assistant called Sentient, developed by Existence. Your primary goal is to assist the user in managing their digital life by performing actions and providing responses that are deeply personalized to them."
 
@@ -78,4 +81,4 @@ def run_agent_with_fallback(system_message: str, function_list: list, messages: 
                     break  # Break from retry loop to go to next key
 
     # If the loop completes, all keys have failed
-    raise Exception(f"All OpenAI API keys failed after retries. Errors: {errors}")
+    raise LLMProviderDownError(f"All OpenAI API keys failed after retries. Errors: {errors}")

@@ -18,7 +18,7 @@ from workers.executor.prompts import RESULT_GENERATOR_SYSTEM_PROMPT # noqa: E501
 from workers.utils.api_client import notify_user, push_progress_update, push_task_list_update
 from workers.utils.text_utils import clean_llm_output
 from celery import chord, group
-from main.llm import run_agent_with_fallback as run_main_agent_with_fallback
+from main.llm import run_agent_with_fallback as run_main_agent_with_fallback, LLMProviderDownError
 
 # Load environment variables for the worker from its own config
 from workers.executor.config import (MONGO_URI, MONGO_DB_NAME,
@@ -341,6 +341,11 @@ async def async_execute_task_plan(task_id: str, user_id: str, run_id: str):
 
         return {"status": "success", "message": "Task execution complete, generating report."}
 
+    except LLMProviderDownError as e:
+        error_message = "Sorry, our AI provider is currently down. Please try again later."
+        logger.error(f"Task {task_id}: LLM provider down: {e}", exc_info=True)
+        await add_progress_update(db, task_id, run_id, user_id, {"type": "error", "content": error_message}, block_id=block_id)
+        await update_task_run_status(db, task_id, run_id, "error", user_id, details={"error": error_message}, block_id=block_id)
     except Exception as e:
         error_message = f"Executor agent failed: {str(e)}"
         logger.error(f"Task {task_id}: {error_message}", exc_info=True)
@@ -468,6 +473,10 @@ async def async_generate_task_result(task_id: str, run_id: str, user_id: str, ag
         await db.tasks.update_one({"task_id": task_id, "user_id": user_id}, {"$set": {"runs.$[run].result": structured_result}}, array_filters=[{"run.run_id": run_id}])
         logger.info(f"Successfully generated and saved structured result for task {task_id}, run {run_id}.")
         await push_task_list_update(user_id, task_id, run_id)
+    except LLMProviderDownError as e:
+        logger.error(f"LLM provider down during result generation for task {task_id}: {e}", exc_info=True)
+        error_result = {"summary": "Sorry, our AI provider is currently down, so a final report could not be generated."}
+        await db.tasks.update_one({"task_id": task_id, "user_id": user_id}, {"$set": {"runs.$[run].result": error_result}}, array_filters=[{"run.run_id": run_id}])
     except Exception as e:
         logger.error(f"Error in async_generate_task_result for task {task_id}: {e}", exc_info=True)
         error_result = {"summary": f"Failed to generate final report: {str(e)}"}
@@ -591,6 +600,11 @@ async def async_run_single_item_worker(parent_task_id: str, user_id: str, item: 
         await push_update("completed", f"Finished work. Result: {str(final_result)[:100]}")
         return final_result
 
+    except LLMProviderDownError as e:
+        error_str = "Sorry, our AI provider is currently down. Please try again later."
+        logger.error(f"LLM provider down in single item worker {worker_id} for task {parent_task_id}: {e}", exc_info=True)
+        await push_update("error", error_str)
+        return {"error": error_str, "item": item}
     except Exception as e:
         error_str = str(e)
         logger.error(f"Error in single item worker {worker_id} for task {parent_task_id}: {e}", exc_info=True)

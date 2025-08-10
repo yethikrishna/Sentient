@@ -7,8 +7,13 @@ from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from fastmcp.prompts.prompt import Message
+from fastmcp.utilities.logging import configure_logging, get_logger
 
 from . import auth, prompts, utils
+
+# --- Standardized Logging Setup ---
+configure_logging(level="INFO")
+logger = get_logger(__name__)
 
 # Conditionally load .env for local development
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
@@ -50,6 +55,7 @@ async def _execute_tool(ctx: Context, func, *args, **kwargs) -> Dict[str, Any]:
         
         return {"status": "success", "result": simplified_result}
     except Exception as e:
+        logger.error(f"Tool execution failed for '{func.__name__}': {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 
@@ -188,6 +194,7 @@ async def search_repositories(ctx: Context, query: str) -> Dict:
     """
     Searches all of GitHub for repositories matching a given `query`. The query uses standard GitHub search syntax (e.g., 'user:torvalds language:c').
     """
+    logger.info(f"Executing tool: search_repositories with query='{query}'")
     return await _execute_tool(ctx, _search_repos_sync, query=query)
 
 @mcp.tool
@@ -195,6 +202,7 @@ async def createRepo(ctx: Context, name: str, description: str = "", private: bo
     """
     Creates a new repository for the authenticated user with a specified name, description, and visibility.
     """
+    logger.info(f"Executing tool: createRepo with name='{name}'")
     return await _execute_tool(ctx, _create_repo_sync, name, description, private, has_issues, has_projects, has_wiki)
 
 @mcp.tool
@@ -202,6 +210,7 @@ async def removeCollaborator(ctx: Context, owner_repo: str, username: str) -> Di
     """
     Removes a collaborator from a repository.
     """
+    logger.info(f"Executing tool: removeCollaborator from '{owner_repo}' for user='{username}'")
     return await _execute_tool(ctx, _remove_collaborator_sync, owner_repo, username)
 
 @mcp.tool
@@ -209,6 +218,7 @@ async def listRepos(ctx: Context, user_or_org: Optional[str] = None) -> Dict:
     """
     Lists repositories for the authenticated user. Can also list repositories for a specified `user_or_org`.
     """
+    logger.info(f"Executing tool: listRepos for user_or_org='{user_or_org}'")
     return await _execute_tool(ctx, _list_repos_sync, user_or_org)
 
 @mcp.tool
@@ -216,6 +226,7 @@ async def listRepoCollaborators(ctx: Context, owner_repo: str) -> Dict:
     """
     Lists all collaborators for a given repository.
     """
+    logger.info(f"Executing tool: listRepoCollaborators for repo='{owner_repo}'")
     return await _execute_tool(ctx, _list_repo_collaborators_sync, owner_repo)
 
 @mcp.tool
@@ -223,6 +234,7 @@ async def listOrgOutsideCollaborators(ctx: Context, org: str) -> Dict:
     """
     Lists outside collaborators for an organization.
     """
+    logger.info(f"Executing tool: listOrgOutsideCollaborators for org='{org}'")
     return await _execute_tool(ctx, _list_org_outside_collaborators_sync, org)
 
 @mcp.tool
@@ -230,6 +242,7 @@ async def setRepoVisibility(ctx: Context, owner_repo: str, private: bool) -> Dic
     """
     Sets the visibility of a repository to public or private.
     """
+    logger.info(f"Executing tool: setRepoVisibility for repo='{owner_repo}' to private={private}")
     return await _execute_tool(ctx, _set_repo_visibility_sync, owner_repo, private)
 
 @mcp.tool
@@ -237,6 +250,7 @@ async def listBranches(ctx: Context, owner_repo: str) -> Dict:
     """
     Lists all branches in a repository.
     """
+    logger.info(f"Executing tool: listBranches for repo='{owner_repo}'")
     return await _execute_tool(ctx, _list_branches_sync, owner_repo)
 
 @mcp.tool
@@ -244,6 +258,7 @@ async def listRepoContents(ctx: Context, owner_repo: str, path: str = "", ref: s
     """
     Lists the contents of a directory or gets the content of a single file within a repository. Requires the `owner_repo` (e.g., 'owner/repo'), the `path` to the file/directory, and an optional branch `ref`.
     """
+    logger.info(f"Executing tool: listRepoContents for repo='{owner_repo}' at path='{path}'")
     return await _execute_tool(ctx, _list_repo_contents_sync, owner_repo, path, ref)
 
 @mcp.tool
@@ -251,6 +266,7 @@ async def deleteFile(ctx: Context, owner_repo: str, path: str, message: str, bra
     """
     Deletes a file from a repository.
     """
+    logger.info(f"Executing tool: deleteFile for repo='{owner_repo}' at path='{path}'")
     return await _execute_tool(ctx, _delete_file_sync, owner_repo, path, message, branch)
 
 @mcp.tool
@@ -258,6 +274,7 @@ async def createBranch(ctx: Context, owner_repo: str, branch_name: str, from_ref
     """
     Creates a new branch from an existing reference (branch or commit sha).
     """
+    logger.info(f"Executing tool: createBranch for repo='{owner_repo}' named='{branch_name}'")
     return await _execute_tool(ctx, _create_branch_sync, owner_repo, branch_name, from_ref)
 
 @mcp.tool
@@ -265,6 +282,7 @@ async def compareBranches(ctx: Context, owner_repo: str, base: str, head: str) -
     """
     Compares two branches and returns the difference.
     """
+    logger.info(f"Executing tool: compareBranches for repo='{owner_repo}' between '{base}' and '{head}'")
     return await _execute_tool(ctx, _compare_branches_sync, owner_repo, base, head)
 
 @mcp.tool
@@ -272,6 +290,7 @@ async def unprotectBranch(ctx: Context, owner_repo: str, branch: str) -> Dict:
     """
     Removes branch protection rules.
     """
+    logger.info(f"Executing tool: unprotectBranch for repo='{owner_repo}' branch='{branch}'")
     return await _execute_tool(ctx, _unprotect_branch_sync, owner_repo, branch)
 
 @mcp.tool
@@ -279,6 +298,7 @@ async def protectBranch(ctx: Context, owner_repo: str, branch: str, required_sta
     """
     Applies branch protection rules.
     """
+    logger.info(f"Executing tool: protectBranch for repo='{owner_repo}' branch='{branch}'")
     return await _execute_tool(ctx, _protect_branch_sync, owner_repo, branch, required_status_checks, enforce_admins, required_pull_request_reviews)
 
 @mcp.tool
@@ -305,6 +325,7 @@ async def updateRepoSettings(
     Update repository settings.
     Only the parameters you supply will be changed.
     """
+    logger.info(f"Executing tool: updateRepoSettings for repo='{owner_repo}'")
     kwargs = {k: v for k, v in locals().items()
               if v is not None and k not in {"ctx", "owner_repo"}}
     return await _execute_tool(ctx, _update_repo_settings_sync, owner_repo, **kwargs)
@@ -314,11 +335,13 @@ async def archiveRepo(ctx: Context, owner_repo: str) -> Dict:
     """
     Archives a repository, making it read-only.
     """
+    logger.info(f"Executing tool: archiveRepo for repo='{owner_repo}'")
     return await _execute_tool(ctx, _archive_repo_sync, owner_repo)
 
 @mcp.tool
 async def forkRepo(ctx: Context, owner_repo: str, organization: Optional[str] = None) -> Dict:
     """Forks a repository into the authenticated user's account or a specified organization."""
+    logger.info(f"Executing tool: forkRepo for repo='{owner_repo}'")
     return await _execute_tool(ctx, _fork_repo_sync, owner_repo, organization)
 
 @mcp.tool
@@ -326,6 +349,7 @@ async def transferRepo(ctx: Context, owner_repo: str, new_owner: str) -> Dict:
     """
     Transfers a repository to a new owner.
     """
+    logger.info(f"Executing tool: transferRepo for repo='{owner_repo}' to '{new_owner}'")
     return await _execute_tool(ctx, _transfer_repo_sync, owner_repo, new_owner)
 
 @mcp.tool
@@ -333,6 +357,7 @@ async def getRepoInfo(ctx: Context, owner_repo: str) -> Dict:
     """
     Gets detailed information for a specific repository. Use format 'owner/repo'.
     """
+    logger.info(f"Executing tool: getRepoInfo for repo='{owner_repo}'")
     return await _execute_tool(ctx, _get_repo_info_sync, owner_repo)
 
 # ----------------------------------------------------------
@@ -343,6 +368,7 @@ async def listIssues(ctx: Context, owner_repo: str, state: str = "open") -> Dict
     """
     Lists issues for a repository. State can be 'open', 'closed', or 'all'.
     """
+    logger.info(f"Executing tool: listIssues for repo='{owner_repo}' with state='{state}'")
     return await _execute_tool(ctx, _list_issues_sync, owner_repo, state)
 
 @mcp.tool
@@ -350,6 +376,7 @@ async def createIssue(ctx: Context, owner_repo: str, title: str, body: str = "",
     """
     Creates a new issue in a specified repository. Requires the `owner_repo`, a `title`, and an optional `body`, `labels`, and `assignees`.
     """
+    logger.info(f"Executing tool: createIssue in repo='{owner_repo}' with title='{title}'")
     return await _execute_tool(ctx, _create_issue_sync, owner_repo, title, body, labels, assignees)
 
 @mcp.tool
@@ -357,6 +384,7 @@ async def updateIssue(ctx: Context, owner_repo: str, issue_number: int, title: O
     """
     Updates an existing issue's title, body, state, labels, or assignees. Requires the `owner_repo` and `issue_number`.
     """
+    logger.info(f"Executing tool: updateIssue #{issue_number} in repo='{owner_repo}'")
     return await _execute_tool(ctx, _update_issue_sync, owner_repo, issue_number, title, body, state, labels, assignees)
 
 @mcp.tool
@@ -364,6 +392,7 @@ async def closeIssue(ctx: Context, owner_repo: str, issue_number: int) -> Dict:
     """
     Closes an issue.
     """
+    logger.info(f"Executing tool: closeIssue #{issue_number} in repo='{owner_repo}'")
     return await _execute_tool(ctx, _close_issue_sync, owner_repo, issue_number)
 
 @mcp.tool
@@ -371,6 +400,7 @@ async def addLabelsToIssue(ctx: Context, owner_repo: str, issue_number: int, lab
     """
     Adds one or more labels to an issue.
     """
+    logger.info(f"Executing tool: addLabelsToIssue for issue #{issue_number} in repo='{owner_repo}'")
     return await _execute_tool(ctx, _add_labels_to_issue_sync, owner_repo, issue_number, labels)
 
 @mcp.tool
@@ -378,6 +408,7 @@ async def addIssueComment(ctx: Context, owner_repo: str, issue_number: int, body
     """
     Adds a comment to an issue.
     """
+    logger.info(f"Executing tool: addIssueComment to issue #{issue_number} in repo='{owner_repo}'")
     return await _execute_tool(ctx, _add_issue_comment_sync, owner_repo, issue_number, body)
 
 @mcp.tool
@@ -385,6 +416,7 @@ async def getIssueDetails(ctx: Context, owner_repo: str, issue_number: int) -> D
     """
     Gets detailed information about a single issue.
     """
+    logger.info(f"Executing tool: getIssueDetails for issue #{issue_number} in repo='{owner_repo}'")
     return await _execute_tool(ctx, _get_issue_details_sync, owner_repo, issue_number)
 
 @mcp.tool
@@ -392,6 +424,7 @@ async def listOrgIssues(ctx: Context, org: str, state: str = "open") -> Dict:
     """
     Lists all issues for a given organization.
     """
+    logger.info(f"Executing tool: listOrgIssues for org='{org}' with state='{state}'")
     return await _execute_tool(ctx, _list_org_issues_sync, org, state)
 
 @mcp.tool
@@ -399,6 +432,7 @@ async def listIssuesByAssignee(ctx: Context, org: str, assignee: str) -> Dict:
     """
     Lists issues assigned to a specific user within an organization.
     """
+    logger.info(f"Executing tool: listIssuesByAssignee for org='{org}' with assignee='{assignee}'")
     return await _execute_tool(ctx, _list_issues_by_assignee_sync, org, assignee)
 
 # --- NOTE: Many more tools would be added here following the same pattern ---

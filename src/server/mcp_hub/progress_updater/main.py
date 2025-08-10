@@ -6,7 +6,12 @@ from typing import Dict, Any
 
 from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
+from fastmcp.utilities.logging import configure_logging, get_logger
 from . import auth
+
+# --- Standardized Logging Setup ---
+configure_logging(level="INFO")
+logger = get_logger(__name__)
 
 # Load .env file for 'dev-local' environment.
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
@@ -33,6 +38,7 @@ async def update_progress(ctx: Context, task_id: str, run_id: str, update_messag
     Sends a progress update for a specific task run. This tool is intended to be called by executor agents to report their status, actions, or results back to the main server and user.
     The `update_message` can be a simple string or a structured dictionary.
     """
+    logger.info(f"Executing tool: update_progress for task_id='{task_id}', run_id='{run_id}'")
     try:
         user_id = auth.get_user_id_from_context(ctx)
 
@@ -44,6 +50,7 @@ async def update_progress(ctx: Context, task_id: str, run_id: str, update_messag
 
         return {"status": "success", "result": "Progress update pushed to main server."}
     except Exception as e:
+        logger.error(f"Tool update_progress failed: {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 if __name__ == "__main__":

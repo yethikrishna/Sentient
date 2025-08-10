@@ -7,8 +7,13 @@ from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from qwen_agent.agents import Assistant
 from json_extractor import JsonExtractor
+from fastmcp.utilities.logging import configure_logging, get_logger
 
 from . import auth, prompts, utils
+
+# --- Standardized Logging Setup ---
+configure_logging(level="INFO")
+logger = get_logger(__name__)
 
 # --- LLM and Environment Configuration ---
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
@@ -45,6 +50,7 @@ async def generate_presentation_json(ctx: Context, topic: str, previous_tool_res
     Step 1 of 2 for creating a presentation. Generates a structured JSON outline for a presentation based on a given `topic`.
     An internal AI designs the slide titles, content, and suggests images or charts. The output is used by `execute_presentation_creation`.
     """
+    logger.info(f"Executing tool: generate_presentation_json with topic='{topic}'")
     try:
         user_id = auth.get_user_id_from_context(ctx)
         user_profile = await auth.users_collection.find_one({"user_id": user_id})
@@ -75,6 +81,7 @@ async def generate_presentation_json(ctx: Context, topic: str, previous_tool_res
 
         return {"status": "success", "result": {"outline_json": json.dumps(outline_json_obj)}}
     except Exception as e:
+        logger.error(f"Tool generate_presentation_json failed: {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 @mcp.tool()
@@ -82,6 +89,7 @@ async def execute_presentation_creation(ctx: Context, outline_json: str) -> Dict
     """
     Step 2 of 2 for creating a presentation. Takes the `outline_json` from `generate_presentation_json` and builds the actual Google Slides file, populating it with titles, content, and images.
     """
+    logger.info(f"Executing tool: execute_presentation_creation")
     try:
         user_id = auth.get_user_id_from_context(ctx)
         creds = await auth.get_google_creds(user_id)
@@ -98,6 +106,7 @@ async def execute_presentation_creation(ctx: Context, outline_json: str) -> Dict
         
         return presentation_result
     except Exception as e:
+        logger.error(f"Tool execute_presentation_creation failed: {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 if __name__ == "__main__":

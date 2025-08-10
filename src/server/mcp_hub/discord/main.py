@@ -4,8 +4,13 @@ from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from fastmcp.prompts.prompt import Message
+from fastmcp.utilities.logging import configure_logging, get_logger
 
 from . import auth, prompts, utils
+
+# --- Standardized Logging Setup ---
+configure_logging(level="INFO")
+logger = get_logger(__name__)
 
 # Conditionally load .env for local development
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
@@ -41,6 +46,7 @@ async def _execute_tool(ctx: Context, method_name: str, *args, **kwargs) -> Dict
         
         return {"status": "success", "result": result}
     except Exception as e:
+        logger.error(f"Tool execution failed for method '{method_name}': {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 @mcp.tool
@@ -48,6 +54,7 @@ async def list_guilds(ctx: Context) -> Dict:
     """
     Lists the Discord servers (guilds) that the authenticated user's bot is a member of, returning their names and IDs.
     """
+    logger.info("Executing tool: list_guilds")
     return await _execute_tool(ctx, "list_guilds")
 
 @mcp.tool
@@ -55,6 +62,7 @@ async def list_channels(ctx: Context, guild_id: str) -> Dict:
     """
     Retrieves a list of all text and voice channels within a specified Discord server (guild), returning their names and IDs.
     """
+    logger.info(f"Executing tool: list_channels with guild_id='{guild_id}'")
     return await _execute_tool(ctx, "list_channels", guild_id)
 
 @mcp.tool
@@ -62,6 +70,7 @@ async def send_channel_message(ctx: Context, channel_id: str, content: str) -> D
     """
     Sends a text message to a specific Discord channel, identified by its `channel_id`.
     """
+    logger.info(f"Executing tool: send_channel_message to channel_id='{channel_id}'")
     return await _execute_tool(ctx, "send_channel_message", channel_id, content)
 
 # --- Server Execution ---

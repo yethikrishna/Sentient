@@ -10,11 +10,16 @@ from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from fastmcp.prompts.prompt import Message
 from googleapiclient.errors import HttpError
+from fastmcp.utilities.logging import configure_logging, get_logger
 
 # Local imports for modularity
 from . import auth
 from . import prompts
 from . import utils as helpers
+
+# --- Standardized Logging Setup ---
+configure_logging(level="INFO")
+logger = get_logger(__name__)
 
 # Conditionally load .env for local development
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
@@ -65,9 +70,11 @@ async def _execute_tool(ctx: Context, func, *args, **kwargs) -> Dict[str, Any]:
         result = await asyncio.to_thread(func, service, *args, **kwargs)
         return {"status": "success", "result": result}
     except HttpError as e:
+        logger.error(f"Google API Error in '{func.__name__}': {e.content.decode()}", exc_info=True)
         # Catching HttpError specifically to get more details
         return {"status": "failure", "error": f"Google API Error: {e.content.decode()}"}
     except Exception as e:
+        logger.error(f"Tool execution failed for '{func.__name__}': {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 # --- Sync Tool Implementations ---
@@ -240,36 +247,43 @@ def _catchup_sync(service, user_info: Dict = None):
 @mcp.tool()
 async def sendEmail(ctx: Context, to: str, subject: str, body: str) -> Dict[str, Any]:
     """Compose and send a new email message to one or more recipients."""
+    logger.info(f"Executing tool: sendEmail to='{to}'")
     return await _execute_tool(ctx, _send_email_sync, to=to, subject=subject, body=body)
 
 @mcp.tool()
 async def replyToEmail(ctx: Context, message_id: str, body: str, reply_all: bool = False) -> Dict[str, Any]:
     """Send a reply to an existing email message, either to the sender only or to all recipients."""
+    logger.info(f"Executing tool: replyToEmail to message_id='{message_id}'")
     return await _execute_tool(ctx, _reply_to_email_sync, message_id=message_id, body=body, reply_all=reply_all)
 
 @mcp.tool()
 async def getLatestEmails(ctx: Context, max_results: int = 10) -> Dict[str, Any]:
     """Retrieve the most recent email messages from your inbox, sorted by date received."""
+    logger.info(f"Executing tool: getLatestEmails with max_results={max_results}")
     return await _execute_tool(ctx, _list_emails_sync, query="in:inbox", max_results=max_results)
 
 @mcp.tool()
 async def getUnreadEmails(ctx: Context, max_results: int = 10) -> Dict[str, Any]:
     """Retrieve unread email messages from your inbox."""
+    logger.info(f"Executing tool: getUnreadEmails with max_results={max_results}")
     return await _execute_tool(ctx, _list_emails_sync, query="is:unread in:inbox", max_results=max_results)
 
 @mcp.tool()
 async def createLabel(ctx: Context, name: str) -> Dict[str, Any]:
     """Create a new Gmail label for organizing emails."""
+    logger.info(f"Executing tool: createLabel with name='{name}'")
     return await _execute_tool(ctx, _create_label_sync, name=name)
 
 @mcp.tool()
 async def applyLabels(ctx: Context, message_id: str, label_ids: List[str]) -> Dict[str, Any]:
     """Add one or more labels to a specific email message."""
+    logger.info(f"Executing tool: applyLabels to message_id='{message_id}'")
     return await _execute_tool(ctx, _modify_email_sync, message_id=message_id, add_labels=label_ids)
 
 @mcp.tool()
 async def createDraft(ctx: Context, to: str, subject: str, body: str) -> Dict[str, Any]:
     """Create a new draft email that can be edited before sending."""
+    logger.info(f"Executing tool: createDraft to='{to}'")
     def _sync(service, to, subject, body):
         msg = MIMEText(body)
         msg["to"] = to
@@ -283,6 +297,7 @@ async def createDraft(ctx: Context, to: str, subject: str, body: str) -> Dict[st
 @mcp.tool()
 async def listDrafts(ctx: Context) -> Dict[str, Any]:
     """List all saved draft emails in the user's account."""
+    logger.info("Executing tool: listDrafts")
     def _sync(service):
         drafts = service.users().drafts().list(userId="me").execute().get('drafts', [])
         # Fetch details for each draft to show subject/to
@@ -297,11 +312,13 @@ async def listDrafts(ctx: Context) -> Dict[str, Any]:
 @mcp.tool()
 async def markAsRead(ctx: Context, message_id: str) -> Dict[str, Any]:
     """Mark an email message as read."""
+    logger.info(f"Executing tool: markAsRead for message_id='{message_id}'")
     return await _execute_tool(ctx, _modify_email_sync, message_id=message_id, remove_labels=["UNREAD"])
 
 @mcp.tool()
 async def moveToTrash(ctx: Context, message_id: str) -> Dict[str, Any]:
     """Move an email message to the trash."""
+    logger.info(f"Executing tool: moveToTrash for message_id='{message_id}'")
     def _sync(service, message_id):
         service.users().messages().trash(userId="me", id=message_id).execute()
         return {"message": "Email moved to trash."}
@@ -310,21 +327,25 @@ async def moveToTrash(ctx: Context, message_id: str) -> Dict[str, Any]:
 @mcp.tool()
 async def archiveEmail(ctx: Context, message_id: str) -> Dict[str, Any]:
     """Remove an email message from the inbox without deleting it (archive)."""
+    logger.info(f"Executing tool: archiveEmail for message_id='{message_id}'")
     return await _execute_tool(ctx, _modify_email_sync, message_id=message_id, remove_labels=["INBOX"])
 
 @mcp.tool()
 async def searchWithAttachments(ctx: Context, max_results: int = 5) -> Dict[str, Any]:
     """Search for email messages that have file attachments."""
+    logger.info(f"Executing tool: searchWithAttachments with max_results={max_results}")
     return await _execute_tool(ctx, _list_emails_sync, query="has:attachment", max_results=max_results)
 
 @mcp.tool()
 async def searchInFolder(ctx: Context, folder_name: str, max_results: int = 10) -> Dict[str, Any]:
     """Search for email messages within a specific Gmail folder or label."""
+    logger.info(f"Executing tool: searchInFolder for folder='{folder_name}'")
     return await _execute_tool(ctx, _list_emails_sync, query=f"in:{folder_name}", max_results=max_results)
 
 @mcp.tool()
 async def createFilter(ctx: Context, from_email: Optional[str] = None, to_email: Optional[str] = None, subject: Optional[str] = None, add_label_id: Optional[str] = None, remove_label_ids: Optional[List[str]] = None) -> Dict[str, Any]:
     """Create a new Gmail filter that automatically applies actions to incoming messages."""
+    logger.info(f"Executing tool: createFilter")
     criteria = {k: v for k, v in locals().items() if k in ['from_email', 'to_email', 'subject'] and v is not None}
     action = {"addLabelIds": [add_label_id] if add_label_id else [], "removeLabelIds": remove_label_ids or []}
     if not criteria or not (action["addLabelIds"] or action["removeLabelIds"]):
@@ -334,26 +355,31 @@ async def createFilter(ctx: Context, from_email: Optional[str] = None, to_email:
 @mcp.tool()
 async def deleteFilter(ctx: Context, filter_id: str) -> Dict[str, Any]:
     """Delete a Gmail filter."""
+    logger.info(f"Executing tool: deleteFilter with filter_id='{filter_id}'")
     return await _execute_tool(ctx, _delete_filter_sync, filter_id=filter_id)
 
 @mcp.tool()
 async def cancelScheduled(ctx: Context, message_id: str) -> Dict[str, Any]:
     """Cancel a scheduled email. This is done by moving the email to trash."""
+    logger.info(f"Executing tool: cancelScheduled for message_id='{message_id}'")
     return await moveToTrash(ctx, message_id)
 
 @mcp.tool()
 async def catchup(ctx: Context) -> Dict[str, Any]:
     """Get a quick compact summary of all unread emails from your primary inbox."""
+    logger.info("Executing tool: catchup")
     return await _execute_tool(ctx, _catchup_sync)
 
 @mcp.tool()
 async def readEmail(ctx: Context, message_id: str) -> Dict[str, Any]:
     """Retrieve and read the content of a specific email message by its unique ID."""
+    logger.info(f"Executing tool: readEmail with message_id='{message_id}'")
     return await _execute_tool(ctx, _read_email_sync, message_id=message_id)
 
 @mcp.tool()
 async def getEmailsByThread(ctx: Context, thread_id: str) -> Dict[str, Any]:
     """Retrieve all email messages that belong to the same conversation thread."""
+    logger.info(f"Executing tool: getEmailsByThread with thread_id='{thread_id}'")
     def _sync(service, thread_id):
         thread = service.users().threads().get(userId='me', id=thread_id).execute()
         return [helpers._simplify_message(m) for m in thread.get('messages', [])]
@@ -362,26 +388,31 @@ async def getEmailsByThread(ctx: Context, thread_id: str) -> Dict[str, Any]:
 @mcp.tool()
 async def getEmailsBySender(ctx: Context, sender_email: str, max_results: int = 10) -> Dict[str, Any]:
     """Retrieve email messages from a specific sender email address."""
+    logger.info(f"Executing tool: getEmailsBySender with sender_email='{sender_email}'")
     return await _execute_tool(ctx, _list_emails_sync, query=f"from:{sender_email}", max_results=max_results)
 
 @mcp.tool()
 async def searchEmails(ctx: Context, query: str, max_results: int = 10) -> Dict[str, Any]:
     """Search for email messages using Gmail search operators and syntax."""
+    logger.info(f"Executing tool: searchEmails with query='{query}'")
     return await _execute_tool(ctx, _list_emails_sync, query=query, max_results=max_results)
 
 @mcp.tool()
 async def listLabels(ctx: Context) -> Dict[str, Any]:
     """List all available Gmail labels in the user's account."""
+    logger.info("Executing tool: listLabels")
     return await _execute_tool(ctx, _list_labels_sync)
 
 @mcp.tool()
 async def removeLabels(ctx: Context, message_id: str, label_ids: List[str]) -> Dict[str, Any]:
     """Remove one or more labels from a specific email message."""
+    logger.info(f"Executing tool: removeLabels from message_id='{message_id}'")
     return await _execute_tool(ctx, _modify_email_sync, message_id=message_id, remove_labels=label_ids)
 
 @mcp.tool()
 async def updateDraft(ctx: Context, draft_id: str, to: Optional[str] = None, subject: Optional[str] = None, body: Optional[str] = None) -> Dict[str, Any]:
     """Update an existing draft email with new content."""
+    logger.info(f"Executing tool: updateDraft for draft_id='{draft_id}'")
     def _sync(service, draft_id, to, subject, body):
         msg = MIMEText(body)
         if to:
@@ -397,6 +428,7 @@ async def updateDraft(ctx: Context, draft_id: str, to: Optional[str] = None, sub
 @mcp.tool()
 async def deleteDraft(ctx: Context, draft_id: str) -> Dict[str, Any]:
     """Delete a saved draft email."""
+    logger.info(f"Executing tool: deleteDraft with draft_id='{draft_id}'")
     def _sync(service, draft_id):
         service.users().drafts().delete(userId="me", id=draft_id).execute()
         return {"message": "Draft deleted."}
@@ -405,11 +437,13 @@ async def deleteDraft(ctx: Context, draft_id: str) -> Dict[str, Any]:
 @mcp.tool()
 async def markAsUnread(ctx: Context, message_id: str) -> Dict[str, Any]:
     """Mark an email message as unread."""
+    logger.info(f"Executing tool: markAsUnread for message_id='{message_id}'")
     return await _execute_tool(ctx, _modify_email_sync, message_id=message_id, add_labels=["UNREAD"])
 
 @mcp.tool()
 async def restoreFromTrash(ctx: Context, message_id: str) -> Dict[str, Any]:
     """Restore an email message from the trash to the inbox."""
+    logger.info(f"Executing tool: restoreFromTrash for message_id='{message_id}'")
     def _sync(service, message_id):
         service.users().messages().untrash(userId="me", id=message_id).execute()
         return {"message": "Email restored from trash."}
@@ -418,6 +452,7 @@ async def restoreFromTrash(ctx: Context, message_id: str) -> Dict[str, Any]:
 @mcp.tool()
 async def searchByDate(ctx: Context, before: Optional[str] = None, after: Optional[str] = None, max_results: int = 10) -> Dict[str, Any]:
     """Search for email messages within a specific date range (YYYY/MM/DD format)."""
+    logger.info(f"Executing tool: searchByDate with before='{before}', after='{after}'")
     query_parts = []
     if before: query_parts.append(f"before:{before}")
     if after: query_parts.append(f"after:{after}")
@@ -427,12 +462,14 @@ async def searchByDate(ctx: Context, before: Optional[str] = None, after: Option
 @mcp.tool()
 async def searchBySize(ctx: Context, size_mb: int, comparison: str = "larger", max_results: int = 5) -> Dict[str, Any]:
     """Search for large email messages above a specified size in MB."""
+    logger.info(f"Executing tool: searchBySize with size_mb={size_mb}")
     op = ">" if comparison == "larger" else "<"
     return await _execute_tool(ctx, _list_emails_sync, query=f"size:{size_mb}m", max_results=max_results)
 
 @mcp.tool()
 async def forwardEmail(ctx: Context, message_id: str, to: str) -> Dict[str, Any]:
     """Forward an existing email message to new recipients."""
+    logger.info(f"Executing tool: forwardEmail for message_id='{message_id}' to='{to}'")
     def _sync(service, message_id, to):
         original_msg = service.users().messages().get(userId="me", id=message_id, format='full').execute()
         headers = {h['name'].lower(): h['value'] for h in original_msg['payload']['headers']}
@@ -450,11 +487,13 @@ async def forwardEmail(ctx: Context, message_id: str, to: str) -> Dict[str, Any]
 @mcp.tool()
 async def listFilters(ctx: Context) -> Dict[str, Any]:
     """List all Gmail filters in the user's account."""
+    logger.info("Executing tool: listFilters")
     return await _execute_tool(ctx, _list_filters_sync)
 
 @mcp.tool()
 async def scheduleEmail(ctx: Context, to: str, subject: str, body: str, send_at_iso: str) -> Dict[str, Any]:
     """Create an email to be sent at a specified future time (ISO 8601 format)."""
+    logger.info(f"Executing tool: scheduleEmail to='{to}' at '{send_at_iso}'")
     # Gmail API doesn't have a direct schedule send. The common workaround is to save a draft and use a separate scheduler (like Celery Beat)
     # to send it. For simplicity here, we will simulate it by sending immediately and returning a "scheduled" message.
     # A full implementation would require a separate scheduler worker.
@@ -463,6 +502,7 @@ async def scheduleEmail(ctx: Context, to: str, subject: str, body: str, send_at_
 @mcp.tool()
 async def listScheduled(ctx: Context) -> Dict[str, Any]:
     """List all scheduled emails. (Simulated)"""
+    logger.info("Executing tool: listScheduled")
     # Since we don't have a real scheduler, we return an empty list.
     return {"status": "success", "result": "No scheduled emails found (scheduling is simulated)."}
 

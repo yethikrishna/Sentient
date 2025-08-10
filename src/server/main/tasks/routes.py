@@ -3,13 +3,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional, Tuple
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import uuid
 
 from main.dependencies import mongo_manager, websocket_manager
 from main.auth.utils import PermissionChecker
-from workers.tasks import generate_plan_from_context, execute_task_plan, calculate_next_run, process_task_change_request, refine_task_details, refine_and_plan_ai_task, cud_memory_task, orchestrate_swarm_task
+from main.tasks.models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest, TaskActionRequest, TaskChatRequest, ProgressUpdateRequest
+from workers.tasks import generate_plan_from_context, execute_task_plan, calculate_next_run, refine_and_plan_ai_task, orchestrate_swarm_task
 from main.llm import run_agent_with_fallback, LLMProviderDownError
 from json_extractor import JsonExtractor
 from .prompts import TASK_CREATION_PROMPT

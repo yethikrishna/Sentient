@@ -301,10 +301,13 @@ class MongoManager:
             "chat_history": [],
             "next_execution_at": None,
             "last_execution_at": None,
+            # NEW FIELDS
+            "task_type": task_data.get("task_type", "single"),
+            "swarm_details": task_data.get("swarm_details") # Will be None for single tasks
         }
 
         await self.task_collection.insert_one(task_doc)
-        logger.info(f"Created new task {task_id} for user {user_id} with status 'planning'.")
+        logger.info(f"Created new task {task_id} (type: {task_doc['task_type']}) for user {user_id} with status 'planning'.")
         return task_id
 
     async def get_task(self, task_id: str, user_id: str) -> Optional[Dict]:

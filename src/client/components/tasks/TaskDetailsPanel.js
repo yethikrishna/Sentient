@@ -11,7 +11,8 @@ import {
 	IconPlayerPlay,
 	IconArchive,
 	IconCircleCheck,
-	IconClipboardList
+	IconClipboardList,
+	IconUsersGroup
 } from "@tabler/icons-react"
 import { getDisplayName } from "@utils/taskUtils"
 import RecurringTaskDetails from "./RecurringTaskDetails"
@@ -29,7 +30,6 @@ const TaskDetailsPanel = ({
 	onApprove,
 	onDelete,
 	onRerun,
-	onAnswerClarifications,
 	onArchiveTask,
 	className,
 	onSendChatMessage
@@ -53,7 +53,12 @@ const TaskDetailsPanel = ({
 			return []
 		}
 
-		const requiredTools = new Set(plan.map((step) => step.tool))
+		// FIX: Filter out any null, undefined, or empty tool names from the plan
+		// to prevent errors when rendering the missing tools buttons.
+		const requiredTools = new Set(
+			plan.map((step) => step.tool).filter(Boolean)
+		)
+
 		const connectedTools = new Set(
 			integrations
 				.filter((i) => i.connected || i.auth_type === "builtin")
@@ -174,7 +179,12 @@ const TaskDetailsPanel = ({
 									className="w-full bg-transparent text-2xl font-bold text-white focus:ring-0 focus:border-brand-orange border-b-2 border-transparent"
 								/>
 							) : (
-								<h2 className="text-lg md:text-xl font-bold text-white leading-snug">
+								<h2 className="text-lg md:text-xl font-bold text-white leading-snug flex items-center gap-2">
+									{task.task_type === "swarm" && (
+										<span className="p-1.5 bg-blue-500/20 text-blue-300 rounded-md">
+											<IconUsersGroup size={20} />
+										</span>
+									)}
 									{getDisplayName(task)}
 								</h2>
 							)}
@@ -201,16 +211,10 @@ const TaskDetailsPanel = ({
 								handleStepChange={handleStepChange}
 								allTools={allTools}
 								integrations={integrations}
-								onAnswerClarifications={onAnswerClarifications}
 								onSendChatMessage={onSendChatMessage}
 							/>
 						) : scheduleType === "recurring" ? (
 							<RecurringTaskDetails
-								task={task}
-								onAnswerClarifications={onAnswerClarifications}
-							/>
-						) : scheduleType === "triggered" ? (
-							<TriggeredTaskDetails
 								task={task}
 								onAnswerClarifications={onAnswerClarifications}
 							/>
@@ -226,7 +230,6 @@ const TaskDetailsPanel = ({
 								handleStepChange={handleStepChange}
 								allTools={allTools}
 								integrations={integrations}
-								onAnswerClarifications={onAnswerClarifications}
 								onSendChatMessage={onSendChatMessage}
 							/>
 						)}

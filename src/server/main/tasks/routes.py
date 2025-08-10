@@ -9,8 +9,8 @@ import uuid
 
 from main.dependencies import mongo_manager, websocket_manager
 from main.auth.utils import PermissionChecker
-from workers.tasks import generate_plan_from_context, execute_task_plan, calculate_next_run, process_task_change_request, refine_task_details, refine_and_plan_ai_task, cud_memory_task
-from .models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest, AnswerClarificationsRequest, TaskActionRequest, TaskChatRequest, ProgressUpdateRequest
+from workers.tasks import generate_plan_from_context, execute_task_plan, calculate_next_run, process_task_change_request, refine_task_details, refine_and_plan_ai_task, cud_memory_task, orchestrate_swarm_task
+from .models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest, TaskActionRequest, TaskChatRequest, ProgressUpdateRequest
 from main.llm import run_agent_with_fallback
 from json_extractor import JsonExtractor
 from .prompts import TASK_CREATION_PROMPT
@@ -86,22 +86,48 @@ async def add_task(
     request: AddTaskRequest,
     user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"])),
 ):
-	# All new tasks are assigned to the AI by default.
-	# Create a placeholder task immediately.
-	task_data = {
-		"name": request.prompt,
-		"description": request.prompt, # The refiner will use this to generate a better name and description
-		"priority": 1,  # Default priority
-		"schedule": None,
-		"assignee": "ai"
-	}
-	task_id = await mongo_manager.add_task(user_id, task_data)
-	if not task_id:
-		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create task.")
+    if request.is_swarm:
+        if not request.prompt:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A prompt describing the goal and items is required for swarm tasks.")
 
-	# Asynchronously refine details and then trigger planning
-	refine_and_plan_ai_task.delay(task_id, user_id)
-	return {"message": "Task accepted! I'll start planning it out.", "task_id": task_id}
+        task_data = {
+            "name": request.prompt,
+            "description": f"Swarm task to achieve the goal: {request.prompt}",
+            "priority": 1,
+            "assignee": "ai",
+            "task_type": "swarm",
+            "swarm_details": {
+                "goal": request.prompt, # The full prompt is the goal
+                "items": [], # Items will be extracted by the orchestrator
+                "total_agents": 0,
+                "completed_agents": 0,
+                "progress_updates": [],
+                "aggregated_results": []
+            }
+        }
+        task_id = await mongo_manager.add_task(user_id, task_data)
+        if not task_id:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create swarm task.")
+
+        orchestrate_swarm_task.delay(task_id, user_id)
+        return {"message": "Swarm task initiated! I'll start planning it out.", "task_id": task_id}
+    else:
+        if not request.prompt:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt is required for single tasks.")
+        task_data = {
+            "name": request.prompt,
+            "description": request.prompt,
+            "priority": 1,
+            "schedule": None,
+            "assignee": "ai",
+            "task_type": "single"
+        }
+        task_id = await mongo_manager.add_task(user_id, task_data)
+        if not task_id:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create task.")
+
+        refine_and_plan_ai_task.delay(task_id, user_id)
+        return {"message": "Task accepted! I'll start planning it out.", "task_id": task_id}
 
 @router.post("/fetch-tasks")
 async def fetch_tasks(
@@ -204,47 +230,6 @@ async def task_action(
     else:
         raise HTTPException(status_code=400, detail="Invalid task action.")
 
-@router.post("/answer-clarifications", status_code=status.HTTP_200_OK)
-async def answer_clarifications(
-    request: AnswerClarificationsRequest, 
-    user_id: str = Depends(PermissionChecker(required_permissions=["write:tasks"]))
-):
-    task = await mongo_manager.get_task(request.task_id, user_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found or permission denied.")
-    
-    success = await mongo_manager.add_answers_to_task(request.task_id, [ans.dict() for ans in request.answers], user_id)
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to save answers to the task.")
-    
-    # --- NEW LOGIC: Save answers to memory ---
-    try:
-        if task.get("runs"):
-            latest_run = task["runs"][-1]
-            questions = latest_run.get("clarifying_questions", [])
-            question_map = {q.get("question_id"): q.get("text") for q in questions}
-
-            for answer in request.answers:
-                question_text = question_map.get(answer.question_id)
-                if question_text:
-                    # Format as a fact
-                    fact_to_remember = f"In response to the question '{question_text}', the user provided the answer: '{answer.answer_text}'"
-                    # Dispatch to memory worker
-                    cud_memory_task.delay(user_id=user_id, information=fact_to_remember, source=f"task_clarification_{request.task_id}")
-            logger.info(f"Dispatched {len(request.answers)} clarification answers to memory for task {request.task_id}.")
-    except Exception as e:
-        # Don't fail the whole request if memory dispatch fails, just log it.
-        logger.error(f"Failed to dispatch clarification answers to memory for task {request.task_id}: {e}", exc_info=True)
-    # --- END NEW LOGIC ---
-
-    # Set status to trigger re-planning and call the planner worker
-    await mongo_manager.update_task(request.task_id, {"status": "clarification_answered"})
-    # Re-trigger the planner
-    generate_plan_from_context.delay(request.task_id, user_id)
-    logger.info(f"Answers submitted for task {request.task_id}. Re-triggering planner.")
-    
-    return JSONResponse(content={"message": "Answers submitted. Task is being re-planned."})
-
 @router.post("/rerun-task")
 async def rerun_task(
     request: TaskIdRequest,
@@ -292,26 +277,52 @@ async def approve_task(
         update_data["enabled"] = True
         logger.info(f"Approving triggered task {task_id}. Setting status to 'active'.")
     else: # One-off task
-        update_data["status"] = "pending"
         run_at_time = None
         if schedule_data.get("type") == "once" and schedule_data.get("run_at"):
-            # This logic to parse local time to UTC is important
             run_at_time_str = schedule_data.get("run_at")
-            if len(run_at_time_str) == 16: run_at_time_str += ":00"
-            user_timezone_str = schedule_data.get("timezone", "UTC")
-            try:
-                user_tz = ZoneInfo(user_timezone_str)
-            except ZoneInfoNotFoundError:
-                user_tz = ZoneInfo("UTC")
-            naive_run_at_time = datetime.fromisoformat(run_at_time_str)
-            utc_run_at_time = naive_run_at_time.replace(tzinfo=user_tz).astimezone(timezone.utc)
-            run_at_time = utc_run_at_time
+            if isinstance(run_at_time_str, str):
+                if len(run_at_time_str) == 16: run_at_time_str += ":00"
+                user_timezone_str = schedule_data.get("timezone", "UTC")
+                try:
+                    user_tz = ZoneInfo(user_timezone_str)
+                except ZoneInfoNotFoundError:
+                    user_tz = ZoneInfo("UTC")
+                naive_run_at_time = datetime.fromisoformat(run_at_time_str)
+                utc_run_at_time = naive_run_at_time.replace(tzinfo=user_tz).astimezone(timezone.utc)
+                run_at_time = utc_run_at_time
         
-        # If scheduled in the future, set next_execution_at. Otherwise, it will be null and run_due_tasks will pick it up immediately.
+        # If run_at is in the future, schedule it. Otherwise, run it now.
         if run_at_time and run_at_time > datetime.now(timezone.utc):
+            # It's a future-scheduled task, so it becomes 'pending'.
+            update_data["status"] = "pending"
             update_data["next_execution_at"] = run_at_time
+            await mongo_manager.update_task(task_id, update_data)
+            return JSONResponse(content={"message": "Task approved and scheduled for the future."})
         else:
-            update_data["next_execution_at"] = datetime.now(timezone.utc) # Set to now to be picked up by next scheduler run
+            # It's an immediate task.
+            now = datetime.now(timezone.utc)
+            new_run = {
+                "run_id": str(uuid.uuid4()),
+                "status": "processing",
+                "plan": task_doc.get("plan", []),
+                "created_at": now,
+                "execution_start_time": now
+            }
+
+            await mongo_manager.task_collection.update_one(
+                {"task_id": task_id},
+                {
+                    "$push": {"runs": new_run},
+                    "$set": {
+                        "status": "processing",
+                        "last_execution_at": now,
+                        "next_execution_at": None
+                    }
+                }
+            )
+
+            execute_task_plan.delay(task_id, user_id, new_run['run_id'])
+            return JSONResponse(content={"message": "Task approved and execution has been initiated."})
     
     if update_data:
         success = await mongo_manager.update_task(task_id, update_data)

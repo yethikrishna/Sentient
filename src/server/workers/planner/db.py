@@ -109,16 +109,6 @@ class PlannerMongoManager:  # noqa: E501
         )
         logger.info(f"Updated task {task_id} with a generated plan. Matched: {result.matched_count}")
 
-    async def update_task_with_questions(self, task_id: str, status: str, questions: list):
-        """Updates a task with clarifying questions and a new status."""
-        update_doc = {
-            "status": status,
-            "clarifying_questions": questions,
-            "updated_at": datetime.datetime.now(datetime.timezone.utc)
-        }
-        await self.tasks_collection.update_one({"task_id": task_id}, {"$set": update_doc})
-        logger.info(f"Updated task {task_id} with {len(questions)} clarifying questions.")
-
     async def get_task(self, task_id: str) -> Optional[Dict]:
         """Fetches a single task by its ID."""
         return await self.tasks_collection.find_one({"task_id": task_id})

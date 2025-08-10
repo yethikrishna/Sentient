@@ -205,16 +205,6 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("QUICKCHART_MCP_SERVER_URL", "http://localhost:9008/sse")
         }
     },
-    "progress_updater": { # Built-in tool for executor
-        "display_name": "Progress Updater",
-        "description": "Internal tool for the system to provide real-time progress updates on long-running tasks.",
-        "auth_type": "builtin",
-        "icon": "IconActivity", # Will need to add this icon
-        "mcp_server_config": {
-            "name": "progress_updater_server",
-            "url": os.getenv("PROGRESS_UPDATER_MCP_SERVER_URL", "http://localhost:9011/sse")
-        }
-    },
     "chat_tools": { # Built-in, for chat agent
         "display_name": "Chat Agent Tools",
         "description": "Internal tools for the main conversational agent, such as handing off complex tasks to the planning system and checking task status.",

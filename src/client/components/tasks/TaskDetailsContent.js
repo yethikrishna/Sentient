@@ -11,65 +11,18 @@ import {
 	IconUser,
 	IconX,
 	IconLoader,
-	IconSend
+	IconSend,
+	IconInfoCircle,
+	IconLink,
+	IconWorldSearch
 } from "@tabler/icons-react"
 import ScheduleEditor from "@components/tasks/ScheduleEditor"
 import ExecutionUpdate from "./ExecutionUpdate"
 import ChatBubble from "@components/ChatBubble"
 import { TextShimmer } from "@components/ui/text-shimmer"
-import { IconInfoCircle } from "@tabler/icons-react"
-
-const TaskChatSection = ({ task, onSendChatMessage }) => {
-	const [message, setMessage] = useState("")
-	const chatEndRef = React.useRef(null)
-
-	useEffect(() => {
-		chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
-	}, [task.chat_history])
-
-	const handleSend = () => {
-		if (message.trim()) {
-			onSendChatMessage(task.task_id, message)
-			setMessage("")
-		}
-	}
-
-	return (
-		<div className="mt-6 pt-6 border-t border-neutral-800">
-			<h4 className="font-semibold text-neutral-300 mb-4">
-				Task Conversation
-			</h4>
-			<div className="space-y-4 max-h-64 overflow-y-auto custom-scrollbar pr-2">
-				{(task.chat_history || []).map((msg, index) => (
-					<ChatBubble
-						key={index}
-						role={msg.role}
-						content={msg.content}
-						message={msg}
-					/>
-				))}
-				<div ref={chatEndRef} />
-			</div>
-			<div className="mt-4 flex items-center gap-2">
-				<input
-					type="text"
-					value={message}
-					onChange={(e) => setMessage(e.target.value)}
-					onKeyDown={(e) => e.key === "Enter" && handleSend()}
-					placeholder="Ask for changes or follow-ups..."
-					className="flex-grow p-2 bg-neutral-800 border border-neutral-700 rounded-lg text-sm"
-				/>
-				<button
-					onClick={handleSend}
-					className="p-2 bg-blue-600 rounded-lg text-white hover:bg-blue-500 disabled:opacity-50"
-					disabled={!message.trim()}
-				>
-					<IconSend size={16} />
-				</button>
-			</div>
-		</div>
-	)
-}
+import CollapsibleSection from "./CollapsibleSection"
+import FileCard from "@components/FileCard"
+import ReactMarkdown from "react-markdown"
 
 // New component for handling clarification questions
 const QnaSection = ({ questions, task, onAnswerClarifications }) => {
@@ -166,6 +119,234 @@ const QnaSection = ({ questions, task, onAnswerClarifications }) => {
 	)
 }
 
+const TaskChatSection = ({ task, onSendChatMessage }) => {
+	const [message, setMessage] = useState("")
+	const chatEndRef = React.useRef(null)
+
+	useEffect(() => {
+		chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
+	}, [task.chat_history])
+
+	const handleSend = () => {
+		if (message.trim()) {
+			onSendChatMessage(task.task_id, message)
+			setMessage("")
+		}
+	}
+
+	return (
+		<div className="mt-6 pt-6 border-t border-neutral-800">
+			<h4 className="font-semibold text-neutral-300 mb-4">
+				Task Conversation
+			</h4>
+			<div className="space-y-4 max-h-64 overflow-y-auto custom-scrollbar pr-2">
+				{(task.chat_history || []).map((msg, index) => (
+					<ChatBubble
+						key={index}
+						role={msg.role}
+						content={msg.content}
+						message={msg}
+					/>
+				))}
+				<div ref={chatEndRef} />
+			</div>
+			<div className="mt-4 flex items-center gap-2">
+				<input
+					type="text"
+					value={message}
+					onChange={(e) => setMessage(e.target.value)}
+					onKeyDown={(e) => e.key === "Enter" && handleSend()}
+					placeholder="Ask for changes or follow-ups..."
+					className="flex-grow p-2 bg-neutral-800 border border-neutral-700 rounded-lg text-sm"
+				/>
+				<button
+					onClick={handleSend}
+					className="p-2 bg-blue-600 rounded-lg text-white hover:bg-blue-500 disabled:opacity-50"
+					disabled={!message.trim()}
+				>
+					<IconSend size={16} />
+				</button>
+			</div>
+		</div>
+	)
+}
+
+const TaskResultDisplay = ({ result }) => {
+	if (!result) return null
+
+	// Handle simple string results for backward compatibility
+	if (typeof result === "string") {
+		return (
+			<div>
+				<h4 className="font-semibold text-neutral-300 mb-2">Result</h4>
+				<div className="text-sm bg-neutral-800/50 p-3 rounded-lg whitespace-pre-wrap border border-neutral-700/50">
+					<ReactMarkdown>{result}</ReactMarkdown>
+				</div>
+			</div>
+		)
+	}
+
+	const { summary, links_created, links_found, files_created, tools_used } =
+		result
+
+	return (
+		<div className="space-y-4">
+			<h4 className="font-semibold text-neutral-300">Final Report</h4>
+
+			{summary && (
+				<div className="text-sm bg-neutral-800/50 p-4 rounded-lg border border-neutral-700/50">
+					<ReactMarkdown className="prose prose-sm prose-invert">
+						{summary}
+					</ReactMarkdown>
+				</div>
+			)}
+
+			{(links_created?.length > 0 || links_found?.length > 0) && (
+				<CollapsibleSection title="Relevant Links">
+					<div className="space-y-2 pt-2">
+						{links_created.map((link, i) => (
+							<div
+								key={`created-${i}`}
+								className="flex items-center gap-2 text-sm p-2 bg-neutral-800/30 rounded-md"
+							>
+								<IconLink size={16} className="text-blue-400" />
+								<a
+									href={link.url}
+									target="_blank"
+									rel="noopener noreferrer"
+									className="text-blue-400 hover:underline truncate"
+								>
+									{link.description || link.url}
+								</a>
+							</div>
+						))}
+						{links_found.map((link, i) => (
+							<div
+								key={`found-${i}`}
+								className="flex items-center gap-2 text-sm p-2 bg-neutral-800/30 rounded-md"
+							>
+								<IconWorldSearch
+									size={16}
+									className="text-green-400"
+								/>
+								<a
+									href={link.url}
+									target="_blank"
+									rel="noopener noreferrer"
+									className="text-green-400 hover:underline truncate"
+								>
+									{link.description || link.url}
+								</a>
+							</div>
+						))}
+					</div>
+				</CollapsibleSection>
+			)}
+
+			{files_created?.length > 0 && (
+				<CollapsibleSection title="Files Created">
+					<div className="space-y-2 pt-2">
+						{files_created.map((file, i) => (
+							<FileCard
+								key={`file-${i}`}
+								filename={file.filename}
+							/>
+						))}
+					</div>
+				</CollapsibleSection>
+			)}
+
+			{tools_used?.length > 0 && (
+				<CollapsibleSection title="Tools Used">
+					<div className="flex flex-wrap gap-2 pt-2">
+						{tools_used.map((tool) => (
+							<span
+								key={tool}
+								className="bg-neutral-700 text-xs font-medium px-2 py-1 rounded-full"
+							>
+								{tool}
+							</span>
+						))}
+					</div>
+				</CollapsibleSection>
+			)}
+		</div>
+	)
+}
+
+const SwarmDetailsSection = ({ swarmDetails }) => {
+	if (!swarmDetails) return null
+
+	const {
+		goal,
+		total_agents = 0,
+		completed_agents = 0,
+		progress_updates = [],
+		aggregated_results = []
+	} = swarmDetails
+
+	const progress =
+		total_agents > 0 ? (completed_agents / total_agents) * 100 : 0
+
+	return (
+		<div className="space-y-4">
+			<div>
+				<label className="text-sm font-medium text-neutral-400 block mb-2">
+					Swarm Goal
+				</label>
+				<div className="bg-neutral-800/50 p-3 rounded-lg text-sm text-neutral-300">
+					{goal}
+				</div>
+			</div>
+			<div>
+				<label className="text-sm font-medium text-neutral-400 block mb-2">
+					Swarm Progress
+				</label>
+				<div className="bg-neutral-800/50 p-3 rounded-lg space-y-2">
+					<div className="flex justify-between items-center text-xs font-mono text-neutral-300">
+						<span>
+							{completed_agents} / {total_agents} Agents Complete
+						</span>
+						<span>{Math.round(progress)}%</span>
+					</div>
+					<div className="w-full bg-neutral-700 rounded-full h-2.5">
+						<div
+							className="bg-blue-500 h-2.5 rounded-full"
+							style={{ width: `${progress}%` }}
+						></div>
+					</div>
+				</div>
+			</div>
+			<CollapsibleSection title="Live Log">
+				<div className="space-y-2 bg-neutral-800/50 p-3 rounded-lg max-h-60 overflow-y-auto custom-scrollbar">
+					{progress_updates.map((update, index) => (
+						<div
+							key={index}
+							className="text-xs font-mono text-neutral-400"
+						>
+							<span className="text-neutral-500">
+								[
+								{new Date(
+									update.timestamp
+								).toLocaleTimeString()}
+								]
+							</span>{" "}
+							[{update.status}] {update.message}
+						</div>
+					))}
+				</div>
+			</CollapsibleSection>
+			{aggregated_results.length > 0 && (
+				<CollapsibleSection title="Aggregated Results">
+					<pre className="text-xs bg-neutral-800/50 p-3 rounded-lg whitespace-pre-wrap font-mono border border-neutral-700/50 max-h-96 overflow-auto custom-scrollbar">
+						{JSON.stringify(aggregated_results, null, 2)}
+					</pre>
+				</CollapsibleSection>
+			)}
+		</div>
+	)
+}
+
 const TaskDetailsContent = ({
 	task,
 	isEditing,
@@ -177,7 +358,6 @@ const TaskDetailsContent = ({
 	handleStepChange,
 	allTools,
 	integrations,
-	onAnswerClarifications,
 	onSendChatMessage
 }) => {
 	if (!task) {
@@ -211,6 +391,25 @@ const TaskDetailsContent = ({
 
 	return (
 		<div className="space-y-6">
+			{/* --- SWARM DETAILS (if applicable) --- */}
+			{displayTask.task_type === "swarm" && (
+				<SwarmDetailsSection swarmDetails={displayTask.swarm_details} />
+			)}
+
+			{/* --- Researched Context (if planning) --- */}
+			{displayTask.status === "planning" && displayTask.found_context && (
+				<div>
+					<label className="text-sm font-medium text-neutral-400 block mb-2">
+						Researched Context
+					</label>
+					<div className="bg-neutral-800/50 p-3 rounded-lg text-sm text-neutral-300 whitespace-pre-wrap border border-neutral-700/50">
+						<ReactMarkdown className="prose prose-sm prose-invert">
+							{displayTask.found_context}
+						</ReactMarkdown>
+					</div>
+				</div>
+			)}
+
 			{/* --- META INFO & ASSIGNEE --- */}
 			<div className="grid grid-cols-2 gap-6">
 				<div>
@@ -265,15 +464,19 @@ const TaskDetailsContent = ({
 				</div>
 			</div>
 
-			{/* --- NEW: Q&A Section --- */}
-			{displayTask.clarifying_questions &&
-				displayTask.clarifying_questions.length > 0 && (
-					<QnaSection
-						questions={displayTask.clarifying_questions}
-						task={displayTask}
-						onAnswerClarifications={onAnswerClarifications}
-					/>
-				)}
+			{/* --- Researched Context (if planning) --- */}
+			{displayTask.status === "planning" && displayTask.found_context && (
+				<div>
+					<label className="text-sm font-medium text-neutral-400 block mb-2">
+						Researched Context
+					</label>
+					<div className="bg-neutral-800/50 p-3 rounded-lg text-sm text-neutral-300 whitespace-pre-wrap border border-neutral-700/50">
+						<ReactMarkdown className="prose prose-sm prose-invert">
+							{displayTask.found_context}
+						</ReactMarkdown>
+					</div>
+				</div>
+			)}
 
 			{/* --- DESCRIPTION --- */}
 			<div>
@@ -474,14 +677,7 @@ const TaskDetailsContent = ({
 								</div>
 							)}
 						{run.result && (
-							<div>
-								<h4 className="font-semibold text-neutral-300 mb-2">
-									Result
-								</h4>
-								<pre className="text-xs bg-neutral-800/50 p-3 rounded-lg whitespace-pre-wrap font-mono border border-neutral-700/50">
-									{JSON.stringify(run.result, null, 2)}
-								</pre>
-							</div>
+							<TaskResultDisplay result={run.result} />
 						)}
 						{run.error && (
 							<div>

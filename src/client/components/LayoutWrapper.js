@@ -10,18 +10,22 @@ import GlobalSearch from "./GlobalSearch"
 import { useGlobalShortcuts } from "@hooks/useGlobalShortcuts"
 import { cn } from "@utils/cn"
 import toast from "react-hot-toast"
+import { subscribeUser } from "@app/actions"
 
 // Helper function to convert VAPID key
 function urlBase64ToUint8Array(base64String) {
-	const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-	const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-	const rawData = window.atob(base64);
-	const outputArray = new Uint8Array(rawData.length);
+	const padding = "=".repeat((4 - (base64String.length % 4)) % 4)
+	const base64 = (base64String + padding)
+		.replace(/-/g, "+")
+		.replace(/_/g, "/")
+	const rawData = atob(base64)
+	const outputArray = new Uint8Array(rawData.length)
 	for (let i = 0; i < rawData.length; ++i) {
-		outputArray[i] = rawData.charCodeAt(i);
+		outputArray[i] = rawData.charCodeAt(i)
 	}
-	return outputArray;
+	return outputArray
 }
+
 export default function LayoutWrapper({ children }) {
 	const [isNotificationsOpen, setNotificationsOpen] = useState(false)
 	const [isSearchOpen, setSearchOpen] = useState(false)
@@ -189,11 +193,9 @@ export default function LayoutWrapper({ children }) {
 	// PWA Update Handler
 
 	useEffect(() => {
-		// This effect runs only on the client side, after the component mounts.
-		if (
-			"serviceWorker" in navigator &&
-			process.env.NODE_ENV !== "development"
-		) {
+		// This effect runs only on the client side to register the service worker.
+		// It's enabled for all environments to allow testing in development.
+		if ("serviceWorker" in navigator) {
 			// The 'load' event ensures that SW registration doesn't delay page rendering.
 			window.addEventListener("load", function () {
 				navigator.serviceWorker.register("/sw.js").then(
@@ -265,73 +267,51 @@ export default function LayoutWrapper({ children }) {
 		}
 	}, [])
 
-	useEffect(() => {
-		// This effect runs only on the client side, after the component mounts.
-		if (
-			"serviceWorker" in navigator &&
-			process.env.NODE_ENV === "production"
-		) {
-			// The 'load' event ensures that SW registration doesn't delay page rendering.
-			window.addEventListener("load", function () {
-				navigator.serviceWorker.register("/sw.js").then(
-					function (registration) {
-						console.log(
-							"ServiceWorker registration successful with scope: ",
-							registration.scope
-						)
-					},
-					function (err) {
-						console.log("ServiceWorker registration failed: ", err)
-					}
-				)
-			})
-		}
-	}, [])
-
 	const subscribeToPushNotifications = useCallback(async () => {
-		if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-		if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) {
-			console.warn("VAPID public key not configured. Skipping push subscription.");
-			return;
+		if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+			console.log("Push notifications not supported by this browser.")
+			return
 		}
-		console.log("VAPID Public Key is configured. Proceeding with push subscription.");
+		if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) {
+			console.warn(
+				"VAPID public key not configured. Skipping push subscription."
+			)
+			return
+		}
 
 		try {
-			const registration = await navigator.serviceWorker.ready;
-			console.log("Service Worker is ready:", registration);
-
-			let subscription = await registration.pushManager.getSubscription();
-			console.log("Existing subscription:", subscription);
+			const registration = await navigator.serviceWorker.ready
+			let subscription = await registration.pushManager.getSubscription()
 
 			if (subscription === null) {
-				console.log("No existing subscription found. Requesting permission...");
-				const permission = await window.Notification.requestPermission();
-				console.log("Notification permission status:", permission);
+				const permission = await window.Notification.requestPermission()
+				if (permission !== "granted") {
+					console.log("Notification permission not granted.")
+					return
+				}
 
-				if (permission !== "granted") return;
+				console.log("Permission granted. Subscribing...")
+				const applicationServerKey = urlBase64ToUint8Array(
+					process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+				)
 
-				console.log("Permission granted. Subscribing to push manager...");
 				subscription = await registration.pushManager.subscribe({
 					userVisibleOnly: true,
-					applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY),
-				});
-				console.log("New subscription created:", subscription);
+					applicationServerKey
+				})
 
-				const response = await fetch("/api/notifications/subscribe", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify(subscription),
-				});
-
-				if (!response.ok) {
-					throw new Error("Failed to send subscription to server.");
-				}
-				console.log("Subscription successfully sent to server.");
+				console.log("New subscription created:", subscription)
+				const serializedSub = JSON.parse(JSON.stringify(subscription))
+				await subscribeUser(serializedSub)
+				toast.success("Subscribed to push notifications!")
+			} else {
+				console.log("User is already subscribed.")
 			}
 		} catch (error) {
-			console.error("Error during push notification subscription:", error);
+			console.error("Error during push notification subscription:", error)
+			toast.error("Failed to subscribe to push notifications.")
 		}
-	}, []);
+	}, [])
 
 	useEffect(() => {
 		if (showNav && userDetails?.sub) subscribeToPushNotifications()
@@ -406,4 +386,3 @@ export default function LayoutWrapper({ children }) {
 		</>
 	)
 }
-

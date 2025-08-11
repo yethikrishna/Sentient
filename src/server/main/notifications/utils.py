@@ -2,32 +2,11 @@ import logging
 from typing import Optional, Dict, Any
 import datetime
 import json
-from pywebpush import webpush, WebPushException
 
 from main.dependencies import mongo_manager, websocket_manager
 from main.notifications.whatsapp_client import send_whatsapp_message # Import the new client
-from main.config import VAPID_PRIVATE_KEY, VAPID_ADMIN_EMAIL
 
 logger = logging.getLogger(__name__)
-
-async def send_push_notification(subscription_info: Dict, payload: Dict):
-    if not VAPID_PRIVATE_KEY or not VAPID_ADMIN_EMAIL:
-        logger.warning("VAPID keys not configured. Skipping push notification.")
-        return
-
-    try:
-        webpush(
-            subscription_info=subscription_info,
-            data=json.dumps(payload),
-            vapid_private_key=VAPID_PRIVATE_KEY,
-            vapid_claims={"sub": VAPID_ADMIN_EMAIL}
-        )
-        logger.info(f"Successfully sent push notification.")
-    except WebPushException as ex:
-        logger.error(f"Failed to send push notification: {ex}")
-        # This can happen if the subscription is expired or invalid.
-    except Exception as e:
-        logger.error(f"An unexpected error occurred sending push notification: {e}")
 
 async def create_and_push_notification(user_id: str, message: str, task_id: Optional[str] = None, notification_type: str = "general", payload: Optional[Dict[str, Any]] = None):
     """
@@ -87,19 +66,6 @@ async def create_and_push_notification(user_id: str, message: str, task_id: Opti
                     await send_whatsapp_message(wa_prefs["chatId"], message)
                 else:
                     logger.info(f"WhatsApp notifications disabled or not configured for user {user_id}.")
-
-        # 4. Send PWA Push Notification
-        subscription_info = user_profile.get("userData", {}).get("pwa_subscription")
-        if subscription_info:
-            logger.info(f"Found PWA push subscription for user {user_id}. Attempting to send.")
-            push_payload = {
-                "title": "Sentient Notification",
-                "body": message,
-                "data": {
-                    "url": f"/tasks?taskId={task_id}" if task_id else "/chat"
-                }
-            }
-            await send_push_notification(subscription_info, push_payload)
 
     except Exception as e:
         logger.error(f"Error creating/pushing notification for user {user_id}: {e}", exc_info=True)

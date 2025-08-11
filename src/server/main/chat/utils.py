@@ -16,7 +16,7 @@ from openai import OpenAI, APIError
 
 from main.chat.prompts import STAGE_1_SYSTEM_PROMPT, STAGE_2_SYSTEM_PROMPT
 from main.db import MongoManager
-from main.llm import run_agent_with_fallback
+from main.llm import run_agent_with_fallback, LLMProviderDownError
 from main.config import (INTEGRATIONS_CONFIG, ENVIRONMENT, OPENAI_API_KEYS, OPENAI_API_BASE_URL, OPENAI_MODEL_NAME)
 from json_extractor import JsonExtractor
 from workers.utils.text_utils import clean_llm_output
@@ -149,66 +149,36 @@ def parse_assistant_response(raw_content: str) -> Dict[str, Any]:
     thoughts = []
     tool_calls = []
     tool_results = []
-    answer_parts = []
 
-    # Regex to find all tags, using backreference for correct closing tag
-    tag_regex = re.compile(r'(<(think(?:ing)?|tool_code|tool_call|tool_result|answer)[\s\S]*?>[\s\S]*?<\/\2>)', re.DOTALL)
+    # Extract thoughts
+    think_matches = re.findall(r'<think>([\s\S]*?)</think>', raw_content, re.DOTALL)
+    thoughts.extend([match.strip() for match in think_matches])
 
-    last_index = 0
-    in_tool_call_phase = False
+    # Extract tool calls (supporting both tool_code and tool_call)
+    tool_call_matches = re.findall(r'<tool_(?:code|call) name="([^"]+)">([\s\S]*?)</tool_code>', raw_content, re.DOTALL)
+    for match in tool_call_matches:
+        tool_calls.append({
+            "tool_name": match[0],
+            "parameters": match[1].strip()
+        })
 
-    for match in tag_regex.finditer(raw_content):
-        # Capture text between tags as part of the answer if not in a tool call phase
-        preceding_text = raw_content[last_index:match.start()].strip()
-        if preceding_text and not in_tool_call_phase:
-            answer_parts.append(preceding_text)
+    # Extract tool results
+    tool_result_matches = re.findall(r'<tool_result tool_name="([^"]+)">([\s\S]*?)</tool_result>', raw_content, re.DOTALL)
+    for match in tool_result_matches:
+        tool_results.append({
+            "tool_name": match[0],
+            "result": match[1].strip()
+        })
 
-        tag_content = match.group(1)
-
-        # Extract thoughts
-        think_match = re.search(r'<think(?:ing)?>([\s\S]*?)</think(?:ing)?>', tag_content, re.DOTALL)
-        if think_match:
-            thoughts.append(think_match.group(1).strip())
-            last_index = match.end()
-            continue
-
-        # Extract tool calls
-        tool_code_match = re.search(r'<tool_(?:code|call) name="([^"]+)">([\s\S]*?)</tool_code>', tag_content, re.DOTALL)
-        if tool_code_match:
-            in_tool_call_phase = True
-            tool_calls.append({
-                "tool_name": tool_code_match.group(1),
-                "parameters": tool_code_match.group(2).strip()
-            })
-            last_index = match.end()
-            continue
-
-        # Extract tool results
-        tool_result_match = re.search(r'<tool_result tool_name="([^"]+)">([\s\S]*?)</tool_result>', tag_content, re.DOTALL)
-        if tool_result_match:
-            in_tool_call_phase = False
-            tool_results.append({
-                "tool_name": tool_result_match.group(1),
-                "result": tool_result_match.group(2).strip()
-            })
-            last_index = match.end()
-            continue
-
-        # Extract final answer parts
-        answer_match = re.search(r'<answer>([\s\S]*?)</answer>', tag_content, re.DOTALL)
-        if answer_match:
-            answer_parts.append(answer_match.group(1).strip())
-            last_index = match.end()
-            continue
-
-        last_index = match.end()
-
-    # Capture any trailing text after the last tag
-    trailing_text = raw_content[last_index:].strip()
-    if trailing_text and not in_tool_call_phase:
-        answer_parts.append(trailing_text)
-
-    final_content = "\n\n".join(filter(None, answer_parts))
+    # Determine final content
+    final_content = ""
+    answer_match = re.search(r'<answer>([\s\S]*?)</answer>', raw_content, re.DOTALL)
+    if answer_match:
+        # If <answer> tag exists, it is the definitive final content
+        final_content = answer_match.group(1).strip()
+    else:
+        # Otherwise, strip all known tags to get the final content
+        final_content = re.sub(r'<(?:think|tool_code|tool_call|tool_result)[\s\S]*?>[\s\S]*?</(?:think|tool_code|tool_call|tool_result)>', '', raw_content, flags=re.DOTALL).strip()
 
     return {
         "final_content": final_content,
@@ -328,33 +298,41 @@ async def generate_chat_llm_stream(
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue[Optional[Any]] = asyncio.Queue()
     
-    # --- Prepare message history for Stage 2 based on topic change detection ---
+    # --- Prepare message history for Stage 2 ---
     stage_2_expanded_messages = []
+    messages_for_stage2 = []
+
     if topic_changed:
         logger.info(f"Topic change detected for user {user_id}. Truncating history for Stage 2.")
         # Find the last user message and send only that
         last_user_message = next((msg for msg in reversed(messages) if msg.get("role") == "user"), None)
         if last_user_message:
-            stage_2_expanded_messages.append({
-                "role": "user",
-                "content": last_user_message.get("content", "")
-            })
+            messages_for_stage2 = [last_user_message]
     else:
         logger.info(f"No topic change detected for user {user_id}. Using full history for Stage 2.")
-        for msg in messages:
+        messages_for_stage2 = messages
+
+    # --- REFACTORED HISTORY RECONSTRUCTION ---
+    # This loop "unrolls" our stored message format into the multi-message sequence the agent expects.
+    for msg in messages_for_stage2:
+        if msg.get("role") == "user":
             stage_2_expanded_messages.append({
-                "role": msg.get("role", "user"),
+                "role": "user",
                 "content": msg.get("content", "")
             })
+        elif msg.get("role") == "assistant":
+            # This is the fix. We are now only adding the final, clean 'content'
+            # field from the assistant's message to the history.
+            # The thoughts, tool_calls, and tool_results are ignored,
+            # so the LLM will not see its own internal monologue from the previous turn.
+            if msg.get("content"):
+                stage_2_expanded_messages.append({
+                    "role": "assistant",
+                    "content": msg.get("content")
+                })
 
-    if not stage_2_expanded_messages:
+    if not any(msg.get("role") == "user" for msg in stage_2_expanded_messages):
         logger.error(f"Message history for Stage 2 is empty for user {user_id}. This should not happen.")
-        # As a fallback, use the last message anyway
-        last_message = messages[-1] if messages else {}
-        stage_2_expanded_messages.append({
-            "role": last_message.get("role", "user"),
-            "content": last_message.get("content", "Hello.")
-        })
 
     # Inject a system note if some requested tools are disconnected
     if disconnected_requested_tools:
@@ -370,12 +348,18 @@ async def generate_chat_llm_stream(
         else:
             # This case is unlikely but safe to handle.
             stage_2_expanded_messages.append({'role': 'system', 'content': system_note})
+            
+    logger.info(f"Reconstructed history for Stage 2 Agent (user: {user_id}):\\n{json.dumps(stage_2_expanded_messages, indent=2)}")
 
     system_prompt = STAGE_2_SYSTEM_PROMPT.format(
         username=username,
         location=location,
         current_user_time=current_user_time
     )
+
+    # --- ADDED LOGGING ---
+    logger.info(f"Reconstructed history for Stage 2 Agent (user: {user_id}):\n{json.dumps(stage_2_expanded_messages, indent=2)}")
+    # --- END LOGGING ---
 
     def worker():
         try:
@@ -418,6 +402,9 @@ async def generate_chat_llm_stream(
     except asyncio.CancelledError:
         stream_interrupted = True
         raise
+    except LLMProviderDownError as e:
+        logger.error(f"LLM provider is down for user {user_id}: {e}", exc_info=True)
+        yield json.dumps({"type": "error", "message": "Sorry, our AI provider is currently down. Please try again later."}) + "\n"
     except Exception as e:
         logger.error(f"Error during main chat agent run for user {user_id}: {e}", exc_info=True)
         yield {"type": "error", "message": "An unexpected error occurred in the chat agent."}
@@ -517,15 +504,77 @@ async def process_voice_command(
         tools = [{"mcpServers": filtered_mcp_servers}]
         logger.info(f"Voice Command Tools (Stage 2): {list(filtered_mcp_servers.keys())}")
 
-        # History truncation logic
+        # --- Prepare message history for Stage 2 ---
         stage_2_expanded_messages = []
+        messages_for_stage2 = []
+
         if topic_changed:
+            logger.info(f"Topic change detected for user {user_id}. Truncating history for Stage 2.")
+            # Find the last user message and send only that
             last_user_message = next((msg for msg in reversed(qwen_formatted_history) if msg.get("role") == "user"), None)
             if last_user_message:
-                stage_2_expanded_messages.append({"role": "user", "content": last_user_message.get("content", "")})
+                messages_for_stage2 = [last_user_message]
         else:
-            for msg in qwen_formatted_history:
-                stage_2_expanded_messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
+            logger.info(f"No topic change detected for user {user_id}. Using full history for Stage 2.")
+            messages_for_stage2 = qwen_formatted_history
+
+        # --- REFACTORED HISTORY RECONSTRUCTION ---
+        # This loop "unrolls" our stored message format into the multi-message sequence the agent expects.
+        for msg in messages_for_stage2:
+            if msg.get("role") == "user":
+                stage_2_expanded_messages.append({
+                    "role": "user",
+                    "content": msg.get("content", "")
+                })
+            elif msg.get("role") == "assistant":
+                # An assistant turn can have thoughts, multiple tool calls, and a final answer.
+                # We must reconstruct this sequence for the agent's context.
+
+                # 1. Add a preliminary message containing all thoughts for that turn.
+                if msg.get("thoughts"):
+                    thought_content = "\n".join([f"<think>{thought}</think>" for thought in msg["thoughts"]])
+                    stage_2_expanded_messages.append({
+                        "role": "assistant",
+                        "content": thought_content
+                    })
+
+                # 2. Add the sequence of tool calls and their corresponding results.
+                tool_calls = msg.get("tool_calls", [])
+                tool_results = msg.get("tool_results", [])
+
+                for i in range(len(tool_calls)):
+                    tool_call = tool_calls[i]
+                    stage_2_expanded_messages.append({
+                        "role": "assistant",
+                        "content": None,  # Important for the agent to recognize this as a tool call message
+                        "function_call": {
+                            "name": tool_call.get("tool_name"),
+                            "arguments": tool_call.get("parameters")
+                        }
+                    })
+
+                    # Add the corresponding tool result.
+                    if i < len(tool_results):
+                        tool_result = tool_results[i]
+                        result_content = tool_result.get("result")
+                        if not isinstance(result_content, str):
+                            result_content = json.dumps(result_content)
+
+                        stage_2_expanded_messages.append({
+                            "role": "function",
+                            "name": tool_result.get("tool_name"),
+                            "content": result_content
+                        })
+
+                # 3. Add the final user-facing answer as a separate assistant message if it exists.
+                if msg.get("content"):
+                    stage_2_expanded_messages.append({
+                        "role": "assistant",
+                        "content": msg.get("content")
+                    })
+
+        if not any(msg.get("role") == "user" for msg in stage_2_expanded_messages):
+            logger.error(f"Message history for Stage 2 is empty for user {user_id}. This should not happen.")
 
         # Handle disconnected tools note
         if disconnected_requested_tools:
@@ -545,6 +594,10 @@ async def process_voice_command(
             location=location,
             current_user_time=current_user_time
         )
+
+        # --- ADDED LOGGING ---
+        logger.info(f"Reconstructed history for Stage 2 Agent (user: {user_id}):\n{json.dumps(stage_2_expanded_messages, indent=2)}")
+        # --- END LOGGING ---
 
         await send_status_update({"type": "status", "message": "thinking"})
 

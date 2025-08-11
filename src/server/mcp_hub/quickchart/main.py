@@ -7,8 +7,13 @@ from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from fastmcp.prompts.prompt import Message
+from fastmcp.utilities.logging import configure_logging, get_logger
 
 from . import auth, prompts, utils
+
+# --- Standardized Logging Setup ---
+configure_logging(level="INFO")
+logger = get_logger(__name__)
 
 # Load .env file for 'dev-local' environment.
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
@@ -42,11 +47,13 @@ async def generate_chart(ctx: Context, chart_config: Dict[str, Any]) -> Dict[str
     Generates a public URL for a chart image.
     Requires a `chart_config` dictionary that follows the Chart.js configuration format.
     """
+    logger.info(f"Executing tool: generate_chart")
     try:
         auth.get_user_id_from_context(ctx)
         chart_url = utils.generate_chart_url(chart_config)
         return {"status": "success", "result": {"chart_url": chart_url}}
     except Exception as e:
+        logger.error(f"Tool generate_chart failed: {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 @mcp.tool
@@ -55,12 +62,14 @@ async def download_chart(ctx: Context, chart_config: Dict[str, Any], output_path
     Generates a chart and downloads it as a PNG image to a local file path.
     Requires a `chart_config` dictionary. If `output_path` is not specified, it saves to the user's Desktop or home directory.
     """
+    logger.info(f"Executing tool: download_chart")
     try:
         auth.get_user_id_from_context(ctx)
         chart_url = utils.generate_chart_url(chart_config)
         saved_path = await utils.download_chart_image(chart_url, output_path)
         return {"status": "success", "result": f"Chart saved successfully to: {saved_path}"}
     except Exception as e:
+        logger.error(f"Tool download_chart failed: {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 

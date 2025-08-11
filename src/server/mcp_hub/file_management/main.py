@@ -9,8 +9,14 @@ from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from fastmcp.prompts.prompt import Message
 from pathlib import Path
+from fastmcp.utilities.logging import configure_logging, get_logger
 
 from . import auth
+
+# --- Standardized Logging Setup ---
+configure_logging(level="INFO")
+logger = get_logger(__name__)
+
 # --- Environment Setup ---
 # Load environment variables from a .env file.
 # By default, load_dotenv() looks for .env in the current directory and its parents.
@@ -54,6 +60,7 @@ async def read_file(ctx: Context, filename: str) -> Dict[str, Any]:
     """
     Reads the content of a specified file from the temporary storage and extracts its text content. The `filename` should be one of the files returned by `list_files`.
     """
+    logger.info(f"Executing tool: read_file with filename='{filename}'")
     try:
         user_id = auth.get_user_id_from_context(ctx)
         safe_user_id = "".join(c for c in user_id if c.isalnum() or c in ('-', '_'))
@@ -86,6 +93,7 @@ async def read_file(ctx: Context, filename: str) -> Dict[str, Any]:
 
         return {"status": "success", "result": content}
     except Exception as e:
+        logger.error(f"Tool read_file failed: {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 @mcp.tool()
@@ -93,6 +101,7 @@ async def write_file(ctx: Context, filename: str, content: str) -> Dict[str, Any
     """
     Writes or overwrites a file in the temporary storage with the provided `content`.
     """
+    logger.info(f"Executing tool: write_file with filename='{filename}'")
     try:
         user_id = auth.get_user_id_from_context(ctx)
         safe_user_id = "".join(c for c in user_id if c.isalnum() or c in ('-', '_'))
@@ -106,6 +115,7 @@ async def write_file(ctx: Context, filename: str, content: str) -> Dict[str, Any
             f.write(content)
         return {"status": "success", "result": f"File '{filename}' written successfully."}
     except Exception as e:
+        logger.error(f"Tool write_file failed: {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 @mcp.tool()
@@ -113,6 +123,7 @@ async def list_files(ctx: Context) -> Dict[str, Any]:
     """
     Lists all files currently available in the user's temporary storage area.
     """
+    logger.info("Executing tool: list_files")
     try:
         user_id = auth.get_user_id_from_context(ctx)
         # Sanitize user_id to ensure it's safe for use in a file path
@@ -127,6 +138,7 @@ async def list_files(ctx: Context) -> Dict[str, Any]:
         # Return just the filenames, not the relative path
         return {"status": "success", "result": files}
     except Exception as e:
+        logger.error(f"Tool list_files failed: {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 # --- Server Execution ---

@@ -13,8 +13,13 @@ if ENVIRONMENT == 'dev-local':
 from fastmcp import FastMCP, Context
 from fastmcp.exceptions import ToolError
 from fastmcp.prompts.prompt import Message
+from fastmcp.utilities.logging import configure_logging, get_logger
 
 from . import auth, prompts, utils
+
+# --- Standardized Logging Setup ---
+configure_logging(level="INFO")
+logger = get_logger(__name__)
 
 mcp = FastMCP(
     name="AccuWeatherServer",
@@ -40,6 +45,7 @@ async def getCurrentWeather(ctx: Context, location: str) -> Dict[str, Any]:
     """
     Fetches the current weather conditions for a given location, including temperature, 'real feel' temperature, humidity, wind speed, and UV index.
     """
+    logger.info(f"Executing tool: getCurrentWeather with location='{location}'")
     try:
         api_key = auth.get_accuweather_api_key()
         location_details = await utils.get_location_details(location, api_key)
@@ -59,6 +65,7 @@ async def getCurrentWeather(ctx: Context, location: str) -> Dict[str, Any]:
             }
         }
     except Exception as e:
+        logger.error(f"Tool getCurrentWeather failed: {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 @mcp.tool
@@ -66,6 +73,7 @@ async def getForecast(ctx: Context, location: str, days: int = 1) -> Dict[str, A
     """
     Retrieves the daily weather forecast for a specified location for up to 5 days. The forecast includes minimum and maximum temperatures and day/night weather conditions.
     """
+    logger.info(f"Executing tool: getForecast with location='{location}', days={days}")
     try:
         if not 1 <= days <= 5:
             raise ToolError("Forecast can only be retrieved for 1 to 5 days.")
@@ -99,6 +107,7 @@ async def getForecast(ctx: Context, location: str, days: int = 1) -> Dict[str, A
             }
         }
     except Exception as e:
+        logger.error(f"Tool getForecast failed: {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 # --- Server Execution ---

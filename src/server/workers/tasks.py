@@ -32,6 +32,7 @@ from mcp_hub.tasks.prompts import ITEM_EXTRACTOR_SYSTEM_PROMPT
 from workers.utils.text_utils import clean_llm_output
 
 # Imports for poller logic
+from main.llm import LLMProviderDownError
 from workers.poller.gmail.service import GmailPollingService
 from workers.poller.gcalendar.service import GCalendarPollingService
 from workers.poller.gmail.db import PollerMongoManager as GmailPollerDB
@@ -346,6 +347,9 @@ async def async_orchestrate_swarm_task(task_id: str, user_id: str):
         logger.info(f"Dispatching a chord of {total_agents} parallel workers for task {task_id}, run {parent_run_id}.")
         chord_task.apply_async()
 
+    except LLMProviderDownError as e:
+        logger.error(f"LLM provider down during swarm orchestration for {task_id}: {e}", exc_info=True)
+        await db_manager.update_task(task_id, {"status": "error", "error": "Sorry, our AI provider is currently down. Please try again later."})
     except Exception as e:
         logger.error(f"Error in orchestrate_swarm_task for task {task_id}: {e}", exc_info=True)
         await db_manager.update_task(task_id, {"status": "error", "error": str(e)})
@@ -433,6 +437,9 @@ async def async_refine_and_plan_ai_task(task_id: str, user_id: str):
         generate_plan_from_context.delay(task_id, user_id)
         logger.info(f"Refinement complete for AI task {task_id}, dispatched to planner.")
 
+    except LLMProviderDownError as e:
+        logger.error(f"LLM provider down during task refinement for {task_id}: {e}", exc_info=True)
+        await db_manager.update_task_field(task_id, {"status": "error", "error": "Sorry, our AI provider is currently down. Please try again later."})
     except Exception as e:
         logger.error(f"Error refining and planning AI task {task_id}: {e}", exc_info=True)
         await db_manager.update_task_field(task_id, {"status": "error", "error": "Failed during initial refinement."})
@@ -717,6 +724,9 @@ async def async_generate_plan(task_id: str, user_id: str):
         logger.info(f"Sent task_list_updated push notification for user {user_id}")
 
 
+    except LLMProviderDownError as e:
+        logger.error(f"LLM provider down during plan generation for task {task_id}: {e}", exc_info=True)
+        await db_manager.update_task_status(task_id, "error", {"error": "Sorry, our AI provider is currently down. Please try again later."})
     except Exception as e:
         logger.error(f"Error generating plan for task {task_id}: {e}", exc_info=True)
         await db_manager.update_task_status(task_id, "error", {"error": str(e)})

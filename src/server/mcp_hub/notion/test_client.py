@@ -61,8 +61,8 @@ def run_agent_interaction():
             print("\nAgent: ", end="", flush=True)
             
             last_assistant_text = ""
-            final_response_from_run = None
             final_assistant_message = None
+            final_response = None
             for response in agent.run(messages=messages):
                 if isinstance(response, list) and response and response[-1].get("role") == "assistant":
                     current_text = response[-1].get("content", "")
@@ -71,6 +71,10 @@ def run_agent_interaction():
                         print(delta, end="", flush=True)
                         last_assistant_text = current_text
                     final_assistant_message = response[-1]
+                final_response = response
+                
+            
+            print ("\n FINAL RESPONSE: ", final_response)
 
             print()
             if final_assistant_message:

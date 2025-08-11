@@ -5,8 +5,13 @@ from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from fastmcp.prompts.prompt import Message
+from fastmcp.utilities.logging import configure_logging, get_logger
 
 from . import auth, prompts, utils
+
+# --- Standardized Logging Setup ---
+configure_logging(level="INFO")
+logger = get_logger(__name__)
 
 # Conditionally load .env for local development
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
@@ -42,6 +47,7 @@ async def _execute_tool(ctx: Context, func, **kwargs) -> Dict[str, Any]:
         result = await func(api_key=api_key, **kwargs)
         return {"status": "success", "result": result}
     except Exception as e:
+        logger.error(f"Tool execution failed for '{func.__name__}': {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 # --- Tool Definitions ---
@@ -51,6 +57,7 @@ async def get_top_headlines(ctx: Context, query: Optional[str] = None, category:
     Fetches the latest top headlines. Can be filtered by a search `query`, a specific `category` (e.g., 'business', 'technology'), or a `country` code (e.g., 'us', 'gb').
     Valid categories: business, entertainment, general, health, science, sports, technology.
     """
+    logger.info(f"Executing tool: get_top_headlines with query='{query}', category='{category}', country='{country}'")
     return await _execute_tool(ctx, utils.fetch_top_headlines, query=query, category=category, country=country)
 
 @mcp.tool
@@ -59,6 +66,7 @@ async def search_everything(ctx: Context, query: str, language: str = 'en', sort
     Performs a broad search for articles on a specific `query` across a wide range of sources.
     `sort_by` can be 'relevancy', 'popularity', or 'publishedAt'.
     """
+    logger.info(f"Executing tool: search_everything with query='{query}'")
     return await _execute_tool(ctx, utils.search_everything, query=query, language=language, sort_by=sort_by)
 
 # --- Server Execution ---

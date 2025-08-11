@@ -13,7 +13,6 @@ from fastrtc.utils import audio_to_float32, get_current_context
 
 from main.auth.utils import PermissionChecker
 from main.dependencies import mongo_manager
-from main.llm import get_qwen_assistant
 from main.chat.utils import process_voice_command
 from main.config import ENVIRONMENT, HF_TOKEN
 

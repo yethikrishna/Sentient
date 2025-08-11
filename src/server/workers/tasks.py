@@ -21,10 +21,9 @@ from main.llm import run_agent_with_fallback as run_main_agent_with_fallback
 from main.db import MongoManager
 from workers.celery_app import celery_app
 from workers.planner.llm import get_planner_agent # noqa: E501
-from workers.planner.prompts import CONTEXT_RESEARCHER_SYSTEM_PROMPT
+from workers.planner.prompts import CONTEXT_RESEARCHER_SYSTEM_PROMPT, TOOL_SELECTOR_SYSTEM_PROMPT 
 from workers.proactive.main import run_proactive_pipeline_logic # noqa: E501
 from workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions # noqa: E501
-from workers.memory_agent_utils import get_memory_qwen_agent, get_db_manager as get_memory_db_manager # noqa: E501
 from workers.executor.tasks import execute_task_plan, run_single_item_worker, aggregate_results_callback
 from main.vector_db import get_conversation_summaries_collection
 from main.chat.prompts import STAGE_1_SYSTEM_PROMPT
@@ -79,9 +78,9 @@ async def _select_relevant_tools(query: str, available_tools_map: Dict[str, str]
         return []
 
     try:
-        prompt = f"The user is trying to perform the following task: \"{query}\" Choose the relevant tools needed to complete the task, as well as any tools where important information or context can be found related to the task. \n (For example, if the user is asking to perform a task using Gmail, you should definitely include gmail in the selected tools, but also include gpeople which can be used to find relevant contacts.)"
+        prompt = f"The user is trying to perform the following task: \"{query}\""
 
-        messages = [{'role': 'user', 'content': prompt}]
+        messages = [{'role':'system', 'content': TOOL_SELECTOR_SYSTEM_PROMPT}, {'role': 'user', 'content': prompt}]
 
         def _run_selector_sync():
             final_content_str = ""

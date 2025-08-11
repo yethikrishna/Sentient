@@ -1556,6 +1556,10 @@ export default function ChatPage() {
 										onReply={handleReply}
 										message={msg}
 										allMessages={displayedMessages}
+										isStreaming={
+											thinking &&
+											i === displayedMessages.length - 1
+										}
 										onDelete={handleDeleteMessage}
 									/>
 								</div>

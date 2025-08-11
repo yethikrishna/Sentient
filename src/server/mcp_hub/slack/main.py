@@ -7,8 +7,13 @@ from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from fastmcp.prompts.prompt import Message
+from fastmcp.utilities.logging import configure_logging, get_logger
 
 from . import auth, prompts, utils
+
+# --- Standardized Logging Setup ---
+configure_logging(level="INFO")
+logger = get_logger(__name__)
 
 # Conditionally load .env for local development
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
@@ -45,6 +50,7 @@ async def _execute_tool(ctx: Context, method_name: str, *args, **kwargs) -> Dict
         
         return {"status": "success", "result": result}
     except Exception as e:
+        logger.error(f"Tool execution failed for method '{method_name}': {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 @mcp.tool
@@ -52,6 +58,7 @@ async def slack_list_channels(ctx: Context, limit: int = 100, cursor: Optional[s
     """
     Retrieves a list of public channels in the user's Slack workspace, returning their names and IDs.
     """
+    logger.info(f"Executing tool: slack_list_channels with limit={limit}")
     return await _execute_tool(ctx, "list_channels", limit, cursor)
 
 @mcp.tool
@@ -59,6 +66,7 @@ async def slack_post_message(ctx: Context, channel_id: str, text: str) -> Dict:
     """
     Sends a text message to a specified channel, identified by its `channel_id`.
     """
+    logger.info(f"Executing tool: slack_post_message to channel_id='{channel_id}'")
     return await _execute_tool(ctx, "post_message", channel_id, text)
 
 @mcp.tool
@@ -66,6 +74,7 @@ async def slack_reply_to_thread(ctx: Context, channel_id: str, thread_ts: str, t
     """
     Posts a reply within a message thread. Requires the `channel_id` and the timestamp (`thread_ts`) of the parent message.
     """
+    logger.info(f"Executing tool: slack_reply_to_thread in channel_id='{channel_id}'")
     return await _execute_tool(ctx, "reply_to_thread", channel_id, thread_ts, text)
 
 @mcp.tool
@@ -73,6 +82,7 @@ async def slack_add_reaction(ctx: Context, channel_id: str, timestamp: str, reac
     """
     Adds an emoji reaction to a specific message. Requires the `channel_id`, the message `timestamp`, and the `reaction` name (e.g., 'thumbsup', 'tada').
     """
+    logger.info(f"Executing tool: slack_add_reaction '{reaction}' to message in channel_id='{channel_id}'")
     return await _execute_tool(ctx, "add_reaction", channel_id, timestamp, reaction)
 
 @mcp.tool
@@ -80,6 +90,7 @@ async def slack_get_channel_history(ctx: Context, channel_id: str, limit: int = 
     """
     Retrieves the most recent messages from a specific channel.
     """
+    logger.info(f"Executing tool: slack_get_channel_history for channel_id='{channel_id}'")
     return await _execute_tool(ctx, "get_channel_history", channel_id, limit)
 
 @mcp.tool
@@ -87,6 +98,7 @@ async def slack_get_thread_replies(ctx: Context, channel_id: str, thread_ts: str
     """
     Retrieves all replies within a specific message thread.
     """
+    logger.info(f"Executing tool: slack_get_thread_replies for thread in channel_id='{channel_id}'")
     return await _execute_tool(ctx, "get_thread_replies", channel_id, thread_ts)
 
 @mcp.tool
@@ -94,6 +106,7 @@ async def slack_get_users(ctx: Context, limit: int = 100, cursor: Optional[str] 
     """
     Retrieves a list of all users in the Slack workspace.
     """
+    logger.info(f"Executing tool: slack_get_users with limit={limit}")
     return await _execute_tool(ctx, "get_users", limit, cursor)
 
 @mcp.tool
@@ -101,6 +114,7 @@ async def slack_get_user_profile(ctx: Context, user_id: str) -> Dict:
     """
     Retrieves the profile information for a single user, given their `user_id`.
     """
+    logger.info(f"Executing tool: slack_get_user_profile for user_id='{user_id}'")
     return await _execute_tool(ctx, "get_user_profile", user_id)
 
 # --- Server Execution ---

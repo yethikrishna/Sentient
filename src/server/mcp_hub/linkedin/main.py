@@ -4,8 +4,13 @@ from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from fastmcp.prompts.prompt import Message
+from fastmcp.utilities.logging import configure_logging, get_logger
 
 from . import auth, prompts, utils
+
+# --- Standardized Logging Setup ---
+configure_logging(level="INFO")
+logger = get_logger(__name__)
 
 # Load environment
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
@@ -36,6 +41,7 @@ async def job_search(ctx: Context, search_query: str, num_jobs: int = 10) -> Dic
     Searches for job listings on LinkedIn based on a search query and scrapes a specified number of jobs.
     It saves the results to a CSV file and returns the file path.
     """
+    logger.info(f"Executing tool: job_search with query='{search_query}', num_jobs={num_jobs}")
     try:
         user_id = auth.get_user_id_from_context(ctx)
         await auth.check_linkedin_integration(user_id)
@@ -47,6 +53,7 @@ async def job_search(ctx: Context, search_query: str, num_jobs: int = 10) -> Dic
         
         return {"status": "success", "result": f"Job search complete. Results saved to: {file_path}"}
     except Exception as e:
+        logger.error(f"Tool job_search failed: {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 if __name__ == "__main__":

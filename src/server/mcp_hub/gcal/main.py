@@ -7,12 +7,17 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from fastmcp.prompts.prompt import Message
+from fastmcp.utilities.logging import configure_logging, get_logger
 
 # Local imports
 from . import auth
 from . import prompts
 from . import utils
 from . import utils
+
+# --- Standardized Logging Setup ---
+configure_logging(level="INFO")
+logger = get_logger(__name__)
 
 # Conditionally load .env for local development
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
@@ -60,6 +65,7 @@ async def _execute_tool(ctx: Context, func, *args, **kwargs) -> Dict[str, Any]:
         result = await asyncio.to_thread(func, service, *args, **kwargs)
         return {"status": "success", "result": result}
     except Exception as e:
+        logger.error(f"Tool execution failed for '{func.__name__}': {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 # --- Tool Definitions ---
@@ -69,6 +75,7 @@ async def createEvent(ctx: Context, summary: str, start_time: str, end_time: str
     """
     Creates a new event on a specified calendar. Requires a summary (title), start time, and end time in ISO 8601 format. Optionally accepts location, description, and a list of attendee emails.
     """
+    logger.info(f"Executing tool: createEvent with summary='{summary}'")
     def _create_event_sync(service, user_info: Dict, **kwargs):
         event = {
             "summary": kwargs.get('summary'),
@@ -92,6 +99,7 @@ async def updateEvent(ctx: Context, event_id: str, calendar_id: str = "primary",
     """
     Updates an existing calendar event. Requires the `event_id` and at least one new property to change, such as summary, start/end times, location, or description.
     """
+    logger.info(f"Executing tool: updateEvent with event_id='{event_id}'")
     def _update_event_sync(service, user_info: Dict, **kwargs):
         event_to_update = service.events().get(calendarId=kwargs.get('calendar_id'), eventId=kwargs.get('event_id')).execute()
 
@@ -117,6 +125,7 @@ async def getCalendars(ctx: Context) -> Dict[str, Any]:
     """
     Retrieves a list of all calendars the user has access to, returning their summary, ID, and access role.
     """
+    logger.info("Executing tool: getCalendars")
     def _get_calendars_sync(service, user_info: Dict):
         calendar_list = service.calendarList().list().execute()
         simplified = [utils._simplify_calendar_list_entry(c) for c in calendar_list.get("items", [])]
@@ -129,6 +138,7 @@ async def createCalendar(ctx: Context, summary: str) -> Dict[str, Any]:
     """
     Creates a new secondary calendar with a given summary (title).
     """
+    logger.info(f"Executing tool: createCalendar with summary='{summary}'")
     def _create_calendar_sync(service, user_info: Dict, summary: str):
 
         calendar_body = {'summary': summary}
@@ -142,6 +152,7 @@ async def deleteCalendar(ctx: Context, calendar_id: str) -> Dict[str, Any]:
     """
     Deletes a secondary calendar. Requires the `calendar_id`. The primary calendar cannot be deleted.
     """
+    logger.info(f"Executing tool: deleteCalendar with calendar_id='{calendar_id}'")
     if calendar_id.lower() == "primary":
         return {"status": "failure", "error": "The primary calendar cannot be deleted."}
     def _delete_calendar_sync(service, user_info: Dict, calendar_id: str):
@@ -155,6 +166,7 @@ async def getEvents(ctx: Context, calendar_id: str = "primary", time_min: Option
     """
     Searches for events on a specified calendar. Can be filtered by a time range (`time_min`, `time_max`) and a text query. Returns a list of simplified event objects.
     """
+    logger.info(f"Executing tool: getEvents with calendar_id='{calendar_id}', query='{query}'")
     def _get_events_sync(service, user_info: Dict, calendar_id: str, time_min: Optional[str], time_max: Optional[str], query: Optional[str]):
         start_time = time_min or datetime.now(timezone.utc).isoformat()
         events_result = service.events().list(
@@ -206,6 +218,7 @@ async def deleteEvent(ctx: Context, event_id: str, calendar_id: str = "primary")
     """
     Permanently deletes an event from a calendar. Requires the `event_id`.
     """
+    logger.info(f"Executing tool: deleteEvent with event_id='{event_id}'")
     def _delete_event_sync(service, user_info: Dict, event_id: str, calendar_id: str):
         service.events().delete(calendarId=calendar_id, eventId=event_id, sendUpdates="all").execute()
         return f"Event {event_id} deleted successfully."
@@ -217,6 +230,7 @@ async def getCalendar(ctx: Context, calendar_id: str = "primary") -> Dict[str, A
     """
     Retrieves detailed information for a single calendar by its `calendar_id`.
     """
+    logger.info(f"Executing tool: getCalendar with calendar_id='{calendar_id}'")
     def _get_calendar_sync(service, user_info: Dict, calendar_id: str):
         return service.calendars().get(calendarId=calendar_id).execute()
     
@@ -227,6 +241,7 @@ async def updateCalendar(ctx: Context, calendar_id: str, new_summary: Optional[s
     """
     Updates the summary or description of a secondary calendar. Requires the `calendar_id`.
     """
+    logger.info(f"Executing tool: updateCalendar with calendar_id='{calendar_id}'")
     if calendar_id.lower() == "primary":
         return {"status": "failure", "error": "The primary calendar's properties cannot be updated this way."}
     def _update_calendar_sync(service, user_info: Dict, calendar_id: str, new_summary: Optional[str], new_description: Optional[str]):
@@ -251,6 +266,7 @@ async def respondToEvent(ctx: Context, event_id: str, response_status: str, cale
     """
     Sets the user's attendance status for an event they are invited to. Requires the `event_id` and a `response_status` ('accepted', 'declined', 'tentative').
     """
+    logger.info(f"Executing tool: respondToEvent for event_id='{event_id}' with status='{response_status}'")
     def _respond_to_event_sync(service, user_info: Dict, event_id: str, response_status: str, calendar_id: str):
         valid_statuses = ["accepted", "declined", "tentative"]
         if response_status not in valid_statuses:

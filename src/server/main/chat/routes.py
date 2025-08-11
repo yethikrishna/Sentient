@@ -6,7 +6,7 @@ import asyncio
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import JSONResponse, StreamingResponse
-from main.chat.models import ChatMessageInput, DeleteMessageRequest
+from main.chat.models import ChatMessageInput, DeleteMessageRequest # noqa: E501
 from main.chat.utils import generate_chat_llm_stream, parse_assistant_response
 from main.auth.utils import PermissionChecker
 from main.dependencies import mongo_manager
@@ -21,16 +21,29 @@ async def chat_endpoint(
     request_body: ChatMessageInput, 
     user_id: str = Depends(PermissionChecker(required_permissions=["read:chat", "write:chat"]))
 ):
-    # 1. Check if there are any user messages
-    if not any(msg.get("role") == "user" for msg in request_body.messages):
+    # 1. Extract and save only the new user message(s) from the request payload.
+    # The client sends its current state, so we find the last assistant message
+    # and treat everything after it as new user input.
+    last_assistant_index = -1
+    for i in range(len(request_body.messages) - 1, -1, -1):
+        if request_body.messages[i].get("role") == "assistant":
+            last_assistant_index = i
+            break
+
+    new_user_messages = request_body.messages[last_assistant_index + 1:]
+
+    if not any(msg.get("role") == "user" for msg in new_user_messages):
         raise HTTPException(status_code=400, detail="No user message found in the request.")
 
-    # 2. Save all new user messages since the last assistant message
-    for msg in reversed(request_body.messages):
-        if msg.get("role") == "assistant":
-            break
+    for msg in new_user_messages:
         if msg.get("role") == "user":
+            # The add_message function prevents duplicates based on message_id
             await mongo_manager.add_message(user_id=user_id, role="user", content=msg.get("content", ""), message_id=msg.get("id"))
+
+    # 2. Fetch the canonical, clean history from the database. This is the source of truth.
+    db_history = await mongo_manager.get_message_history(user_id, limit=30)
+    # The history from DB is newest-to-oldest, we need oldest-to-newest for the LLM.
+    clean_history_for_llm = list(reversed(db_history))
 
     # Fetch comprehensive user context
     user_profile = await mongo_manager.get_user_profile(user_id)
@@ -49,7 +62,7 @@ async def chat_endpoint(
         try:
             async for event in generate_chat_llm_stream(
                 user_id,
-                request_body.messages,
+                clean_history_for_llm, # Use the clean history from the database
                 user_context,
                 db_manager=mongo_manager
             ):

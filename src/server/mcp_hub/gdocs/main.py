@@ -6,8 +6,13 @@ from typing import Dict, Any, Optional, List
 from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from googleapiclient.errors import HttpError
+from fastmcp.utilities.logging import configure_logging, get_logger
 
 from . import auth, prompts, utils
+
+# --- Standardized Logging Setup ---
+configure_logging(level="INFO")
+logger = get_logger(__name__)
 
 # --- LLM and Environment Configuration ---
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
@@ -43,6 +48,7 @@ async def _execute_tool(ctx: Context, func, service_types=['docs', 'drive'], **k
     except HttpError as e:
         return {"status": "failure", "error": f"Google API Error: {e.content.decode()}"}
     except Exception as e:
+        logger.error(f"Tool execution failed for '{func.__name__}': {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 @mcp.tool()
@@ -50,6 +56,7 @@ async def createDocument(ctx: Context, title: str) -> Dict[str, Any]:
     """
     Creates a new, empty Google Docs document with a specified title.
     """
+    logger.info(f"Executing tool: createDocument with title='{title}'")
     def _create(docs_service, title):
         doc = docs_service.documents().create(body={"title": title}).execute()
         return {"documentId": doc["documentId"], "title": doc["title"]}
@@ -60,6 +67,7 @@ async def listDocuments(ctx: Context, query: Optional[str] = None) -> Dict[str, 
     """
     Searches for Google Docs documents in the user's Drive. Can be filtered by a search `query` in the document's name or content.
     """
+    logger.info(f"Executing tool: listDocuments with query='{query}'")
     def _list(drive_service, query):
         q = "mimeType='application/vnd.google-apps.document'"
         if query:
@@ -73,6 +81,7 @@ async def getDocument(ctx: Context, document_id: str) -> Dict[str, Any]:
     """
     Retrieves the full content of a Google Docs document as plain text, given its `document_id`.
     """
+    logger.info(f"Executing tool: getDocument with document_id='{document_id}'")
     def _get(docs_service, document_id):
         doc = docs_service.documents().get(documentId=document_id).execute()
         return {"title": doc.get("title"), "content": utils._parse_document_content(doc)}
@@ -83,6 +92,7 @@ async def deleteDocument(ctx: Context, document_id: str) -> Dict[str, Any]:
     """
     Permanently deletes a Google Docs document. Requires the `document_id`.
     """
+    logger.info(f"Executing tool: deleteDocument with document_id='{document_id}'")
     def _delete(drive_service, document_id):
         drive_service.files().delete(fileId=document_id).execute()
         return {"message": f"Document {document_id} deleted successfully."}
@@ -93,6 +103,7 @@ async def shareDocument(ctx: Context, document_id: str, email_address: str, role
     """
     Shares a Google Docs document with a specific user via their `email_address`. The `role` can be 'reader', 'commenter', or 'writer'.
     """
+    logger.info(f"Executing tool: shareDocument for document_id='{document_id}' with email='{email_address}'")
     def _share(drive_service, document_id, email_address, role, share_type):
         permission = {'type': share_type, 'role': role, 'emailAddress': email_address}
         drive_service.permissions().create(fileId=document_id, body=permission, sendNotificationEmail=True).execute()
@@ -104,6 +115,7 @@ async def appendText(ctx: Context, document_id: str, text: str) -> Dict[str, Any
     """
     Adds new text to the very end of a specified Google Docs document.
     """
+    logger.info(f"Executing tool: appendText to document_id='{document_id}'")
     def _append(docs_service, document_id, text):
         doc = docs_service.documents().get(documentId=document_id, fields="body(content)").execute()
         end_index = doc['body']['content'][-1]['endIndex'] - 1
@@ -117,6 +129,7 @@ async def insertText(ctx: Context, document_id: str, text: str, index: int) -> D
     """
     Inserts text at a specific character `index` within a Google Docs document.
     """
+    logger.info(f"Executing tool: insertText at index={index} in document_id='{document_id}'")
     def _insert(docs_service, document_id, text, index):
         requests = [{'insertText': {'location': {'index': index}, 'text': text}}]
         docs_service.documents().batchUpdate(documentId=document_id, body={'requests': requests}).execute()
@@ -128,6 +141,7 @@ async def replaceText(ctx: Context, document_id: str, find_text: str, replace_te
     """
     Finds and replaces all occurrences of a specific string (`find_text`) with a new string (`replace_text`) within a document.
     """
+    logger.info(f"Executing tool: replaceText in document_id='{document_id}'")
     def _replace(docs_service, document_id, find_text, replace_text):
         requests = [{'replaceAllText': {'containsText': {'text': find_text, 'matchCase': False}, 'replaceText': replace_text}}]
         response = docs_service.documents().batchUpdate(documentId=document_id, body={'requests': requests}).execute()

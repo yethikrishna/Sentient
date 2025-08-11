@@ -2,7 +2,7 @@
 
 ![README Banner](./.github/assets/banner.png)
 
-<h1>Sentient: Your Personal AI Assistant</h1>
+<h1>Open-Source Personal Assistant</h1>
   
 <!-- Badges -->
 <p>
@@ -24,7 +24,7 @@
 </p>
    
 <h4>
-    <a href="https://www.youtube.com/watch?v=x0kdm2fYXIs">View Demo</a>
+    <a href="https://youtu.be/wCmWFUX_ZrM?si=WpqLu_Dskh7ayxGE">View Demo</a>
   <span> · </span>
     <a href="https://sentient-2.gitbook.io/docs">Documentation</a>
   <span> · </span>
@@ -38,7 +38,9 @@
 
 <br />
 
-> **Sentient** is a personal AI assistant for anyone and everyone who wants to live their life more productively.
+> Sentient is an advanced personal assistant and the first step towards fully autonomous agents that will automate monotonous busywork for us, so that we can focus on what matters.
+>
+> Our goal is to give everyone personal super-intelligence.
 >
 > It acts as your central command center, bridging the gap between your goals and the actions required to achieve them. It is designed to be a truly proactive partner that understands you, manages your digital life, and gets things done—without you having to type long, complex prompts.
 >
@@ -53,84 +55,46 @@
 
 ---
 
-<div align="center">
-  <h2><a href="https://chat.whatsapp.com/IOHxuf2W8cKEuyZrMo8DOJ">💬 Join our WhatsApp Community! 💬</a></h2>
-  <p>Interested in trying Sentient out? Join our community to get the latest updates, ask questions, and connect with the team.</p>
-</div>
+## ✨ Current Features
 
----
-
-## ✨ Features
-
-Sentient is a powerful, web-based platform designed for seamless interaction, automation, and intelligence.
-
-<img width="1460" height="885" alt="image" src="https://github.com/user-attachments/assets/8f967a06-cd0f-405c-946b-39d3f9094f81" />
+<img width="1916" height="891" alt="image" src="https://github.com/user-attachments/assets/8566eb83-cb74-4cfc-84cb-1f8ba5b5d152" />
 
 <div align="center">
-  <p>The Home page is your central chat interface to talk with your AI assistant.</p>
+  <p>Text Chat</p>
 </div>
 
-<img width="1628" height="903" alt="image" src="https://github.com/user-attachments/assets/3c557a71-acdd-402f-a33c-e4da91a69ebc" />
+<img width="1916" height="891" alt="image" src="https://github.com/user-attachments/assets/7718aed6-4538-4811-b850-7a246d362dcd" />
 
 <div align="center">
-  <p>The Tasks page gives you a unified view of all your tasks, where the AI assists in execution.</p>
+  <p>Voice Chat</p>
 </div>
 
-<img width="1673" height="904" alt="image" src="https://github.com/user-attachments/assets/85534686-09d5-49e8-95b7-6e207c022816" />
+<img width="1916" height="891" alt="image" src="https://github.com/user-attachments/assets/03ff343c-d2eb-4ca4-98ce-8ed31e11dd8c" />
 
 <div align="center">
-  <p>The Integrations page is where you connect all your apps.</p>
+  <p>Manage background tasks from the Tasks page - create Recurring, Triggered, Scheduled or Swarm tasks.</p>
 </div>
 
-<img width="1637" height="915" alt="image" src="https://github.com/user-attachments/assets/980ddb1d-f0df-456f-a918-89d35bab3352" />
+<img width="1916" height="891" alt="image" src="https://github.com/user-attachments/assets/ccb1b22b-2199-4c4d-aca1-402e2b608c2d" />
 
 <div align="center">
-  <p>The Settings page is where you can customize the application.</p>
+  <p>Sentient learns memories about you - that it uses to personalize actions and responses.</p>
 </div>
 
+<img width="1916" height="891" alt="image" src="https://github.com/user-attachments/assets/ee8b9fb4-a916-48b7-92c3-c194765a846a" />
 
-### 💬 Unified Chat Interface
-The home page is a universal chat screen where you can talk with Sentient about anything. Use **text or voice** to ask questions, give commands, or simply have a conversation. The chat is also supercharged with tools like Internet Search, Weather, News, and Shopping for any specific queries.
+<div align="center">
+  <p>Connect all your tools. (20+ apps supported already)</p>
+</div>
 
-### 🤖 Autonomous Task Management
-The **Tasks page** is your mission control center. Here you can add, view, and manage all your to-dos.
-- **AI-Assisted Execution:** Describe a high-level goal, and Sentient will generate a detailed, step-by-step plan to achieve it using its integrated tools.
-- **Asynchronous Workflows:** Approve a plan, and Sentient gets to work in the background, handling complex, multi-step workflows without interrupting you. You can monitor progress in real-time.
-- **Unified View:** Track active, pending, and completed tasks all in one place.
+### 🚀 Getting Started
 
-### 🔌 Seamless Integrations
-The **Integrations page** is where you connect Sentient to your digital life. Our **Model Context Protocol (MCP)** hub allows for a powerful, distributed system of tools. Current integrations include:
-- **Google Suite:** Gmail, Google Calendar, Google Drive, Google Docs, Google Sheets, and Google Slides.
-- **Productivity:** Slack and Notion.
-- **Developer:** GitHub.
-- **Information:** Internet Search (Google Search), News (NewsAPI), Weather (AccuWeather), Google Shopping and Google Maps.
-- **Miscellaneous:** QuickChart for generating charts on the fly.
-
-### 🧠 Proactive Intelligence & Learning
-Sentient doesn't just wait for commands. It proactively scans connected apps like **Gmail** and **Google Calendar** to understand your schedule and priorities.
-- **Contextual Awareness:** It identifies action items, suggests tasks, and learns important facts about you.
-- **Personalized Memory:** Key details about your preferences, relationships, and goals are stored via an integration with **Supermemory**, creating a rich, personalized knowledge base that helps the agent serve you better over time.
-
-### ⚙️ Full Customization
-The **Settings page** gives you complete control over your agent.
-- **Manage Connections:** Easily connect or disconnect your apps.
-- **Privacy Filters:** Set custom filters to prevent Sentient from processing context containing sensitive information.
-- **Notifications:** Configure WhatsApp notifications to stay updated on the go.
+To access Sentient, head over to [our website.](https://sentient.existence.technology/)
 
 ### 🔒 Self-Hostable
 The entire platform is open-source and can be self-hosted and configured to run fully locally, ensuring your data stays private. [Check the relevant docs for more info.](https://sentient-2.gitbook.io/docs/getting-started/running-sentient-from-source-self-host)
 
 ---
-
-## 🚀 Future Roadmap
-
-We are constantly working to expand Sentient's capabilities. Here is a glimpse of what's planned for the future:
-
-- **OS-Level Integration:** Launch native apps for `Windows`, `MacOS`, `Android` and `iOS` for deeper, more proactive assistance.
-- **Expanded Integrations:** Add support for more popular services, such as the `Microsoft 365 Suite`, `Spotify`, and more.
-- **Advanced Conversational AI:** Enhance the chat experience with more natural voice interactions, better memory, and more sophisticated reasoning.
-- **Richer Task Execution:** Improve the planning and execution pipeline and provide richer visual feedback for tasks.
-- **Custom Tool Integrations:** Create a framework that allows users to easily add any app of their choice.
 
 ## :wave: Contributing
 

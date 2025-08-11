@@ -1,6 +1,7 @@
 import logging
 from typing import Optional, Dict, Any
 import datetime
+import json
 
 from main.dependencies import mongo_manager, websocket_manager
 from main.notifications.whatsapp_client import send_whatsapp_message # Import the new client

@@ -8,10 +8,15 @@ from typing import Dict, Any, List
 from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from fastmcp.exceptions import ToolError
+from fastmcp.utilities.logging import configure_logging, get_logger
 
 from . import auth, prompts
 from main.vector_db import get_conversation_summaries_collection
 from main.db import MongoManager
+
+# --- Standardized Logging Setup ---
+configure_logging(level="INFO")
+logger = get_logger(__name__)
 
 # --- Environment and Server Initialization ---
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
@@ -43,6 +48,7 @@ async def semantic_search(ctx: Context, query: str) -> Dict[str, Any]:
     Performs a semantic (meaning-based) search of the user's long-term conversation summaries.
     Use this to find information about topics, concepts, or past decisions when the exact time is unknown (e.g., 'what did we decide about the marketing plan?').
     """
+    logger.info(f"Executing tool: semantic_search with query='{query}'")
     try:
         user_id = auth.get_user_id_from_context(ctx)
         collection = get_conversation_summaries_collection()
@@ -62,6 +68,7 @@ async def semantic_search(ctx: Context, query: str) -> Dict[str, Any]:
             
         return {"status": "success", "result": {"summaries": documents}}
     except Exception as e:
+        logger.error(f"Tool semantic_search failed: {e}", exc_info=True)
         return {"status": "failure", "error": f"An unexpected error occurred during semantic search: {str(e)}"}
 
 @mcp.tool()
@@ -70,6 +77,7 @@ async def time_based_search(ctx: Context, start_date: str, end_date: str) -> Dic
     Retrieves a log of all messages within a specific date range. Use this when the user asks about a conversation on a specific day or period (e.g., 'what did we talk about yesterday afternoon?').
     Dates must be in ISO 8601 format (e.g., '2024-07-29T00:00:00Z').
     """
+    logger.info(f"Executing tool: time_based_search from '{start_date}' to '{end_date}'")
     db_manager = None
     try:
         user_id = auth.get_user_id_from_context(ctx)
@@ -97,6 +105,7 @@ async def time_based_search(ctx: Context, start_date: str, end_date: str) -> Dic
         
         return {"status": "success", "result": {"conversation": conversation_log}}
     except Exception as e:
+        logger.error(f"Tool time_based_search failed: {e}", exc_info=True)
         return {"status": "failure", "error": f"An unexpected error occurred during time-based search: {str(e)}"}
     finally:
         if db_manager:

@@ -6,8 +6,21 @@ from pymongo.errors import DuplicateKeyError
 from typing import Dict, List, Optional, Any
 import datetime
 from datetime import timezone # Ensure timezone imported
+import json
 
-from workers.poller.gmail.config import MONGO_URI, MONGO_DB_NAME # Import from local config
+from workers.poller.gmail.config import MONGO_URI, MONGO_DB_NAME, ENVIRONMENT # Import from local config
+from workers.utils.crypto import aes_decrypt
+
+DB_ENCRYPTION_ENABLED = ENVIRONMENT == 'stag'
+
+def _decrypt_field(data: Any) -> Any:
+    if not DB_ENCRYPTION_ENABLED or data is None or not isinstance(data, str):
+        return data
+    try:
+        decrypted_str = aes_decrypt(data)
+        return json.loads(decrypted_str)
+    except Exception:
+        return data
 
 USER_PROFILES_COLLECTION = "user_profiles"
 POLLING_STATE_COLLECTION = "polling_state_store"
@@ -29,7 +42,14 @@ class PollerMongoManager:
         pass
 
     async def get_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
-        return await self.user_profiles_collection.find_one({"user_id": user_id})
+        doc = await self.user_profiles_collection.find_one({"user_id": user_id})
+        if DB_ENCRYPTION_ENABLED and doc and "userData" in doc:
+            user_data = doc["userData"]
+            SENSITIVE_USER_DATA_FIELDS = ["onboardingAnswers", "personalInfo", "pwa_subscription", "privacyFilters"]
+            for field in SENSITIVE_USER_DATA_FIELDS:
+                if field in user_data and user_data[field] is not None:
+                    user_data[field] = _decrypt_field(user_data[field])
+        return doc
 
     async def get_polling_state(self, user_id: str, service_name: str, poll_type: str) -> Optional[Dict[str, Any]]:
         return await self.polling_state_collection.find_one({"user_id": user_id, "service_name": service_name, "poll_type": poll_type})

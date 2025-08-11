@@ -30,7 +30,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ollama")
 def get_generator_agent():
     llm_cfg = {
         'model': OPENAI_MODEL_NAME,
-        'model_server': f"{OPENAI_API_BASE_URL.rstrip('/')}/v1",
+        'model_server': OPENAI_API_BASE_URL,
         'api_key': OPENAI_API_KEY,
     }
     return Assistant(llm=llm_cfg, system_message=prompts.JSON_GENERATOR_SYSTEM_PROMPT, function_list=[])

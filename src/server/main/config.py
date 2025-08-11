@@ -40,6 +40,7 @@ AES_SECRET_KEY_HEX = os.getenv("AES_SECRET_KEY")
 AES_IV_HEX = os.getenv("AES_IV")
 AES_SECRET_KEY = bytes.fromhex(AES_SECRET_KEY_HEX) if AES_SECRET_KEY_HEX and len(AES_SECRET_KEY_HEX) == 64 else None
 AES_IV = bytes.fromhex(AES_IV_HEX) if AES_IV_HEX and len(AES_IV_HEX) == 32 else None
+DB_ENCRYPTION_ENABLED = os.getenv('ENVIRONMENT') == 'stag'
 
 # --- PWA Push Notifications ---
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY")

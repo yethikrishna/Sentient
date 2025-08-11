@@ -21,6 +21,9 @@ if ENVIRONMENT == 'dev-local':
     dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
     if os.path.exists(dotenv_path):
         load_dotenv(dotenv_path=dotenv_path, override=True)
+
+DB_ENCRYPTION_ENABLED = os.getenv('ENVIRONMENT') == 'stag'
+
 MONGO_URI = os.getenv("MONGO_URI")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
 AES_SECRET_KEY_HEX = os.getenv("AES_SECRET_KEY")
@@ -28,6 +31,15 @@ AES_IV_HEX = os.getenv("AES_IV")
 
 AES_SECRET_KEY: Optional[bytes] = bytes.fromhex(AES_SECRET_KEY_HEX) if AES_SECRET_KEY_HEX and len(AES_SECRET_KEY_HEX) == 64 else None
 AES_IV: Optional[bytes] = bytes.fromhex(AES_IV_HEX) if AES_IV_HEX and len(AES_IV_HEX) == 32 else None
+
+def _decrypt_field(data: Any) -> Any:
+    if not DB_ENCRYPTION_ENABLED or data is None or not isinstance(data, str):
+        return data
+    try:
+        decrypted_str = aes_decrypt(data)
+        return json.loads(decrypted_str)
+    except Exception:
+        return data
 
 def aes_decrypt(encrypted_data: str) -> str:
     if not AES_SECRET_KEY or not AES_IV:
@@ -59,12 +71,18 @@ async def get_user_info(user_id: str) -> Dict[str, Any]:
     """Fetches user info like email and privacy filters from their profile."""
     user_doc = await users_collection.find_one(
         {"user_id": user_id},
-        {"userData.personalInfo.email": 1, "userData.privacyFilters": 1}
+        {"userData.personalInfo": 1, "userData.privacyFilters": 1}
     )
     if not user_doc:
         return {"email": None, "privacy_filters": {}}
 
     user_data = user_doc.get("userData", {})
+
+    if "personalInfo" in user_data:
+        user_data["personalInfo"] = _decrypt_field(user_data["personalInfo"])
+    if "privacyFilters" in user_data:
+        user_data["privacyFilters"] = _decrypt_field(user_data["privacyFilters"])
+
     personal_info = user_data.get("personalInfo", {})
 
     # Handle both old and new privacy filter formats

@@ -216,7 +216,7 @@ const NotificationItem = ({
 	)
 }
 
-const NotificationsOverlay = ({ onClose }) => {
+const NotificationsOverlay = ({ onClose, notifRefreshKey }) => {
 	const [notifications, setNotifications] = useState([])
 	const [isLoading, setIsLoading] = useState(true)
 	const [error, setError] = useState(null)
@@ -271,7 +271,7 @@ const NotificationsOverlay = ({ onClose }) => {
 	useEffect(() => {
 		fetchNotifications()
 		fetchUserTimezone()
-	}, [fetchNotifications, fetchUserTimezone])
+	}, [fetchNotifications, fetchUserTimezone, notifRefreshKey])
 
 	const handleDelete = async (e, notificationId) => {
 		if (e && e.stopPropagation) e.stopPropagation()

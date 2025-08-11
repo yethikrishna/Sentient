@@ -33,6 +33,7 @@ export default function LayoutWrapper({ children }) {
 	const [isSidebarCollapsed, setSidebarCollapsed] = useState(true)
 	const [isMobileNavOpen, setMobileNavOpen] = useState(false)
 	const [unreadCount, setUnreadCount] = useState(0)
+	const [notifRefreshKey, setNotifRefreshKey] = useState(0)
 	const [userDetails, setUserDetails] = useState(null)
 	const wsRef = useRef(null)
 	const pathname = usePathname()
@@ -116,6 +117,7 @@ export default function LayoutWrapper({ children }) {
 					const data = JSON.parse(event.data)
 					if (data.type === "new_notification") {
 						setUnreadCount((prev) => prev + 1)
+						setNotifRefreshKey((prev) => prev + 1)
 						toast(
 							(t) => (
 								<div className="flex items-center gap-3">
@@ -374,6 +376,7 @@ export default function LayoutWrapper({ children }) {
 			<AnimatePresence>
 				{isNotificationsOpen && (
 					<NotificationsOverlay
+						notifRefreshKey={notifRefreshKey}
 						onClose={() => setNotificationsOpen(false)}
 					/>
 				)}

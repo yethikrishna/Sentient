@@ -64,7 +64,7 @@ export async function subscribeUser(subscription) {
 
 		await userProfiles.updateOne(
 			{ user_id: userId },
-			{ $set: { "userData.pwa_subscription": subscription } },
+			{ $addToSet: { "userData.pwa_subscriptions": subscription } },
 			{ upsert: true }
 		)
 
@@ -79,7 +79,7 @@ export async function subscribeUser(subscription) {
 	}
 }
 
-export async function unsubscribeUser() {
+export async function unsubscribeUser(endpoint) {
 	const session = await auth0.getSession()
 	if (!session?.user) {
 		throw new Error("Not authenticated")
@@ -92,10 +92,12 @@ export async function unsubscribeUser() {
 
 		await userProfiles.updateOne(
 			{ user_id: userId },
-			{ $unset: { "userData.pwa_subscription": "" } }
+			{ $pull: { "userData.pwa_subscriptions": { endpoint: endpoint } } }
 		)
 
-		console.log(`[Actions] Subscription removed for user: ${userId}`)
+		console.log(
+			`[Actions] Subscription with endpoint ${endpoint} removed for user: ${userId}`
+		)
 		return { success: true }
 	} catch (error) {
 		console.error("[Actions] Error removing subscription:", error)
@@ -132,39 +134,64 @@ export async function sendNotificationToCurrentUser(payload) {
 			.collection("user_profiles")
 			.findOne(
 				{ user_id: userId },
-				{ projection: { "userData.pwa_subscription": 1 } }
+				{ projection: { "userData.pwa_subscriptions": 1 } }
 			)
 
-		const subscription = userProfile?.userData?.pwa_subscription
+		const subscriptions = userProfile?.userData?.pwa_subscriptions
 
-		if (!subscription) {
+		if (
+			!subscriptions ||
+			!Array.isArray(subscriptions) ||
+			subscriptions.length === 0
+		) {
 			console.log(
 				`[Actions] No push subscription found for user ${userId}.`
 			)
 			return { success: false, error: "No subscription found for user." }
 		}
 
-		await webpush.sendNotification(subscription, JSON.stringify(payload))
+		let successCount = 0
+		const promises = subscriptions.map((subscription) => {
+			return webpush
+				.sendNotification(subscription, JSON.stringify(payload))
+				.then(() => {
+					successCount++
+					console.log(
+						`[Actions] Push notification sent successfully to endpoint for user ${userId}.`
+					)
+				})
+				.catch(async (error) => {
+					console.error(
+						`[Actions] Error sending push notification to an endpoint for user ${userId}:`,
+						error.statusCode
+					)
+					if (error.statusCode === 410 || error.statusCode === 404) {
+						console.log(
+							`[Actions] Subscription for user ${userId} is invalid. Removing from DB.`
+						)
+						await unsubscribeUser(subscription.endpoint)
+					}
+				})
+		})
 
-		console.log(
-			`[Actions] Push notification sent successfully to user ${userId}.`
-		)
-		return { success: true }
+		await Promise.all(promises)
+
+		if (successCount > 0) {
+			return {
+				success: true,
+				message: `Sent notifications to ${successCount} of ${subscriptions.length} devices.`
+			}
+		} else {
+			return {
+				success: false,
+				error: "Failed to send notifications to any device."
+			}
+		}
 	} catch (error) {
 		console.error(
-			`[Actions] Error sending push notification to user ${userId}:`,
+			`[Actions] General error sending push notifications to user ${userId}:`,
 			error
 		)
-
-		// If the subscription is expired or invalid, the push service returns an error (e.g., 410 Gone).
-		// We should handle this by removing the invalid subscription from the database.
-		if (error.statusCode === 410 || error.statusCode === 404) {
-			console.log(
-				`[Actions] Subscription for user ${userId} is invalid. Removing from DB.`
-			)
-			await unsubscribeUser()
-		}
-
-		return { success: false, error: "Failed to send push notification." }
+		return { success: false, error: "A general error occurred." }
 	}
 }

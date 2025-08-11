@@ -29,6 +29,7 @@ import { Switch } from "@headlessui/react"
 
 import InteractiveNetworkBackground from "@components/ui/InteractiveNetworkBackground"
 import CollapsibleSection from "@components/tasks/CollapsibleSection"
+import { sendNotificationToCurrentUser } from "@app/actions"
 
 const HelpTooltip = ({ content }) => (
 	<div className="fixed bottom-6 left-6 z-40">
@@ -50,6 +51,48 @@ const questionSections = {
 	context: {
 		title: "About You",
 		icon: <IconUser />
+	}
+}
+
+const handleTestInApp = async () => {
+	const toastId = toast.loading("Sending test in-app notification...")
+	try {
+		const response = await fetch("/api/testing/notification", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ type: "in-app" })
+		})
+		const result = await response.json()
+		if (!response.ok) {
+			throw new Error(result.detail || "Failed to send notification.")
+		}
+		// The notification will arrive via WebSocket, so no success toast here.
+		// The LayoutWrapper will show the toast. I'll just dismiss the loading one.
+		toast.dismiss(toastId)
+		toast("In-app notification sent. It should appear shortly.")
+	} catch (error) {
+		toast.error(`Error: ${error.message}`, { id: toastId })
+	}
+}
+
+const handleTestPush = async () => {
+	const toastId = toast.loading("Sending test push notification...")
+	try {
+		const result = await sendNotificationToCurrentUser({
+			title: "Test Push Notification",
+			body: "This is a test push notification from Sentient.",
+			data: { url: "/tasks" } // Example data
+		})
+		if (result.success) {
+			toast.success(
+				result.message || "Push notification sent successfully!",
+				{ id: toastId }
+			)
+		} else {
+			toast.error(`Failed to send: ${result.error}`, { id: toastId })
+		}
+	} catch (error) {
+		toast.error(`Error: ${error.message}`, { id: toastId })
 	}
 }
 
@@ -628,6 +671,31 @@ const TestingTools = () => {
 						{verificationResult.message}
 					</p>
 				)}
+			</div>
+			{/* Notification Test Tools */}
+			<div className="bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800 mt-6">
+				<h3 className="font-semibold text-lg text-white mb-2">
+					Test Notifications
+				</h3>
+				<p className="text-gray-400 text-sm mb-4">
+					Send test notifications to verify your setup. In-app
+					notifications appear as toasts, while push notifications are
+					sent to your subscribed devices.
+				</p>
+				<div className="flex flex-col sm:flex-row gap-4">
+					<button
+						onClick={handleTestInApp}
+						className="flex items-center justify-center py-2 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors"
+					>
+						Test In-App Notification
+					</button>
+					<button
+						onClick={handleTestPush}
+						className="flex items-center justify-center py-2 px-4 rounded-lg bg-green-600 hover:bg-green-500 text-white font-medium transition-colors"
+					>
+						Test Push Notification
+					</button>
+				</div>
 			</div>
 			{/* Poller Test Tool */}
 			<div className="bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800 mt-6">

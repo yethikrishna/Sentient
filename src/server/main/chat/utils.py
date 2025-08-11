@@ -321,46 +321,10 @@ async def generate_chat_llm_stream(
                 "content": msg.get("content", "")
             })
         elif msg.get("role") == "assistant":
-            # An assistant turn can have thoughts, multiple tool calls, and a final answer.
-            # We must reconstruct this sequence for the agent's context.
-
-            # 1. Add a preliminary message containing all thoughts for that turn.
-            if msg.get("thoughts"):
-                thought_content = "\n".join([f"<think>{thought}</think>" for thought in msg["thoughts"]])
-                stage_2_expanded_messages.append({
-                    "role": "assistant",
-                    "content": thought_content
-                })
-
-            # 2. Add the sequence of tool calls and their corresponding results.
-            tool_calls = msg.get("tool_calls", [])
-            tool_results = msg.get("tool_results", [])
-
-            for i in range(len(tool_calls)):
-                tool_call = tool_calls[i]
-                stage_2_expanded_messages.append({
-                    "role": "assistant",
-                    "content": None,  # Important for the agent to recognize this as a tool call message
-                    "function_call": {
-                        "name": tool_call.get("tool_name"),
-                        "arguments": tool_call.get("parameters")
-                    }
-                })
-
-                # Add the corresponding tool result.
-                if i < len(tool_results):
-                    tool_result = tool_results[i]
-                    result_content = tool_result.get("result")
-                    if not isinstance(result_content, str):
-                        result_content = json.dumps(result_content)
-
-                    stage_2_expanded_messages.append({
-                        "role": "function",
-                        "name": tool_result.get("tool_name"),
-                        "content": result_content
-                    })
-
-            # 3. Add the final user-facing answer as a separate assistant message if it exists.
+            # This is the fix. We are now only adding the final, clean 'content'
+            # field from the assistant's message to the history.
+            # The thoughts, tool_calls, and tool_results are ignored,
+            # so the LLM will not see its own internal monologue from the previous turn.
             if msg.get("content"):
                 stage_2_expanded_messages.append({
                     "role": "assistant",
@@ -384,6 +348,8 @@ async def generate_chat_llm_stream(
         else:
             # This case is unlikely but safe to handle.
             stage_2_expanded_messages.append({'role': 'system', 'content': system_note})
+            
+    logger.info(f"Reconstructed history for Stage 2 Agent (user: {user_id}):\\n{json.dumps(stage_2_expanded_messages, indent=2)}")
 
     system_prompt = STAGE_2_SYSTEM_PROMPT.format(
         username=username,

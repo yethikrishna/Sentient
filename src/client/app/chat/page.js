@@ -1508,8 +1508,8 @@ export default function ChatPage() {
 							</div>
 						</div>
 					) : displayedMessages.length === 0 && !thinking ? (
-						<div className="flex-1 flex flex-col justify-center items-center p-4 md:p-6 text-center">
-							<div>
+						<div className="flex-1 flex flex-col justify-center items-center p-4 md:p-6">
+							<div className="text-center">
 								<h1 className="text-4xl sm:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-b from-neutral-100 to-neutral-400 py-4">
 									{getGreeting()},{" "}
 									{userDetails?.given_name || "User"}

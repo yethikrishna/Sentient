@@ -41,6 +41,10 @@ AES_IV_HEX = os.getenv("AES_IV")
 AES_SECRET_KEY = bytes.fromhex(AES_SECRET_KEY_HEX) if AES_SECRET_KEY_HEX and len(AES_SECRET_KEY_HEX) == 64 else None
 AES_IV = bytes.fromhex(AES_IV_HEX) if AES_IV_HEX and len(AES_IV_HEX) == 32 else None
 
+# --- PWA Push Notifications ---
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY")
+VAPID_ADMIN_EMAIL = os.getenv("VAPID_ADMIN_EMAIL")
+
 # --- LLM ---
 OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL", "http://localhost:11434/v1/")
 OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "qwen3:4b")

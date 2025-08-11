@@ -2,7 +2,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 
-from main.notifications.models import CreateNotificationRequest, DeleteNotificationRequest
+from main.notifications.models import CreateNotificationRequest, DeleteNotificationRequest, PushSubscription
 from main.notifications.utils import create_and_push_notification
 from main.dependencies import mongo_manager, auth_helper
 from main.auth.utils import PermissionChecker
@@ -42,3 +42,29 @@ async def delete_notification(
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found or user does not have permission.")
     return JSONResponse(content={"message": "Notification deleted successfully."})
+
+@router.post("/subscribe", summary="Subscribe to PWA Push Notifications")
+async def subscribe_to_push(
+    subscription: PushSubscription,
+    user_id: str = Depends(PermissionChecker(required_permissions=["write:notifications"]))
+):
+    # Pydantic automatically validates the incoming subscription object.
+    # We need to store it in the user's profile.
+    update_payload = {"userData.pwa_subscription": subscription.dict()}
+    success = await mongo_manager.update_user_profile(user_id, update_payload)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to save push subscription.")
+    return JSONResponse(content={"message": "Successfully subscribed to push notifications."})
+@router.post("/subscribe", summary="Subscribe to PWA Push Notifications")
+async def subscribe_to_push(
+    subscription: PushSubscription,
+    user_id: str = Depends(PermissionChecker(required_permissions=["write:notifications"]))
+):
+    # Pydantic automatically validates the incoming subscription object.
+    # We need to store it in the user's profile.
+    update_payload = {"userData.pwa_subscription": subscription.dict()}
+    success = await mongo_manager.update_user_profile(user_id, update_payload)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to save push subscription.")
+    return JSONResponse(content={"message": "Successfully subscribed to push notifications."})
+

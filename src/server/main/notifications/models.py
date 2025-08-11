@@ -10,3 +10,11 @@ class CreateNotificationRequest(BaseModel):
 
 class DeleteNotificationRequest(BaseModel):
     notification_id: str
+class PushSubscriptionKeys(BaseModel):
+    p256dh: str
+    auth: str
+
+class PushSubscription(BaseModel):
+    endpoint: str
+    expirationTime: Optional[float] = None
+    keys: PushSubscriptionKeys

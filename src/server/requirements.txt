@@ -24,6 +24,7 @@ pgvector
 qwen-agent
 google-genai
 elevenlabs
+pywebpush
 deepgram-sdk
 librosa
 torch

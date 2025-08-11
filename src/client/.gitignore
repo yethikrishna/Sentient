@@ -42,3 +42,4 @@ next-env.d.ts
 /public/workbox-*.js
 
 # End of https://www.toptal.com/developers/gitignore/api/nextjs
+certificates

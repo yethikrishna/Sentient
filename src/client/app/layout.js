@@ -63,7 +63,6 @@ export default function RootLayout({ children }) {
 					href="/favicon-16x16.png"
 				/>
 				<meta name="theme-color" content="#F1A21D" />
-				<link rel="manifest" href="/manifest.json" />
 			</head>
 			<body className="font-sans">
 				<Auth0Provider>

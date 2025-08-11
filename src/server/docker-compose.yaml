@@ -90,6 +90,22 @@ services:
         networks:
             - sentient_network
 
+    # 6. LiteLLM Proxy for Gemini Models
+    litellm:
+        image: ghcr.io/berriai/litellm:main-latest  # Use the latest stable image
+        container_name: litellm-proxy
+        restart: unless-stopped
+        networks:
+        - sentient_network  # Join the shared network for internal access
+        volumes:
+        - ./litellm-config.yaml:/app/config.yaml:ro  # Mount your config (create in src\server if needed)
+        command: ["--config", "/app/config.yaml", "--port", "4000"]  # Run with config; optional: add "--detailed_debug"
+        env_file:
+        - ./.env  # Loads GEMINI_API_KEY and others
+        # depends_on: []  # No dependencies needed, but add if required (e.g., for a DB)
+        # ports:  # Optional: Expose if you need external access (e.g., for testing)
+        #   - "4000:4000"
+
 # Defines the shared network for all services
 networks:
     sentient_network:

@@ -65,6 +65,10 @@ def get_all_mcp_descriptions() -> Dict[str, str]:
     
     mcp_descriptions = {}
     for name, config in INTEGRATIONS_CONFIG.items():
+        # The planner agent should not have access to the tasks MCP,
+        # as it can lead to recursive loops. The tasks MCP is for the chat agent.
+        if name == "tasks":
+            continue
         display_name = config.get("display_name")
         description = config.get("description")
         if display_name and description:

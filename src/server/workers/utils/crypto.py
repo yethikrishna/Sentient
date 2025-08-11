@@ -3,6 +3,7 @@ import base64
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.backends import default_backend
+import json
 
 from dotenv import load_dotenv
 
@@ -62,3 +63,29 @@ def aes_decrypt(encrypted_data: str) -> str:
     unpadder = padding.PKCS7(algorithms.AES.block_size).unpadder()
     unpadded_data = unpadder.update(decrypted) + unpadder.finalize()
     return unpadded_data.decode()
+
+
+def aes_encrypt(data: str) -> str:
+    if not AES_SECRET_KEY or not AES_IV:
+        raise ValueError("AES encryption keys are not configured for worker.")
+    backend = default_backend()
+    cipher = Cipher(algorithms.AES(AES_SECRET_KEY), modes.CBC(AES_IV), backend=backend)
+    encryptor = cipher.encryptor()
+    padder = padding.PKCS7(algorithms.AES.block_size).padder()
+    padded_data = padder.update(data.encode()) + padder.finalize()
+    encrypted = encryptor.update(padded_data) + encryptor.finalize()
+    return base64.b64encode(encrypted).decode()
+
+
+def aes_decrypt(encrypted_data: str) -> str:
+    if not AES_SECRET_KEY or not AES_IV:
+        raise ValueError("AES encryption keys are not configured for worker.")
+    backend = default_backend()
+    cipher = Cipher(algorithms.AES(AES_SECRET_KEY), modes.CBC(AES_IV), backend=backend)
+    decryptor = cipher.decryptor()
+    encrypted_bytes = base64.b64decode(encrypted_data)
+    decrypted = decryptor.update(encrypted_bytes) + decryptor.finalize()
+    unpadder = padding.PKCS7(algorithms.AES.block_size).unpadder()
+    unpadded_data = unpadder.update(decrypted) + unpadder.finalize()
+    return unpadded_data.decode()
+

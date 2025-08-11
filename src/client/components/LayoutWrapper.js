@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { AnimatePresence } from "framer-motion"
 import NotificationsOverlay from "@components/NotificationsOverlay"
-import { IconMenu2, IconLoader } from "@tabler/icons-react"
+import { IconMenu2, IconLoader, IconX } from "@tabler/icons-react"
 import Sidebar from "@components/Sidebar"
 import CommandPalette from "./CommandPallete"
 import GlobalSearch from "./GlobalSearch"
@@ -11,6 +11,17 @@ import { useGlobalShortcuts } from "@hooks/useGlobalShortcuts"
 import { cn } from "@utils/cn"
 import toast from "react-hot-toast"
 
+// Helper function to convert VAPID key
+function urlBase64ToUint8Array(base64String) {
+	const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+	const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+	const rawData = window.atob(base64);
+	const outputArray = new Uint8Array(rawData.length);
+	for (let i = 0; i < rawData.length; ++i) {
+		outputArray[i] = rawData.charCodeAt(i);
+	}
+	return outputArray;
+}
 export default function LayoutWrapper({ children }) {
 	const [isNotificationsOpen, setNotificationsOpen] = useState(false)
 	const [isSearchOpen, setSearchOpen] = useState(false)
@@ -99,7 +110,36 @@ export default function LayoutWrapper({ children }) {
 					)
 				ws.onmessage = (event) => {
 					const data = JSON.parse(event.data)
-					if (data.type === "task_progress_update") {
+					if (data.type === "new_notification") {
+						setUnreadCount((prev) => prev + 1)
+						toast(
+							(t) => (
+								<div className="flex items-center gap-3">
+									<span className="flex-1">
+										{data.notification.message}
+									</span>
+									<button
+										onClick={() => {
+											handleNotificationsOpen()
+											toast.dismiss(t.id)
+										}}
+										className="py-1 px-3 rounded-md bg-brand-orange text-black text-sm font-semibold"
+									>
+										View
+									</button>
+									<button
+										onClick={() => toast.dismiss(t.id)}
+										className="p-1.5 rounded-full hover:bg-neutral-700"
+									>
+										<IconX size={16} />
+									</button>
+								</div>
+							),
+							{
+								duration: 6000
+							}
+						)
+					} else if (data.type === "task_progress_update") {
 						// Dispatch a custom event that the tasks page can listen for
 						window.dispatchEvent(
 							new CustomEvent("taskProgressUpdate", {
@@ -145,6 +185,33 @@ export default function LayoutWrapper({ children }) {
 	useGlobalShortcuts(handleNotificationsOpen, () =>
 		setCommandPaletteOpen((prev) => !prev)
 	)
+
+	// PWA Update Handler
+
+	useEffect(() => {
+		// This effect runs only on the client side, after the component mounts.
+		if (
+			"serviceWorker" in navigator &&
+			process.env.NODE_ENV !== "development"
+		) {
+			// The 'load' event ensures that SW registration doesn't delay page rendering.
+			window.addEventListener("load", function () {
+				navigator.serviceWorker.register("/sw.js").then(
+					function (registration) {
+						console.log(
+							"ServiceWorker registration successful with scope: ",
+							registration.scope
+						)
+					},
+					function (err) {
+						console.log("ServiceWorker registration failed: ", err)
+					}
+				)
+			})
+		}
+	}, [])
+
+	// Removed duplicate subscribeToPushNotifications declaration
 
 	// PWA Update Handler
 	useEffect(() => {
@@ -221,16 +288,54 @@ export default function LayoutWrapper({ children }) {
 		}
 	}, [])
 
-	useEffect(() => {
-		const handleEscape = (e) => {
-			if (e.key === "Escape") {
-				if (isNotificationsOpen) setNotificationsOpen(false)
-				if (isCommandPaletteOpen) setCommandPaletteOpen(false)
-			}
+	const subscribeToPushNotifications = useCallback(async () => {
+		if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+		if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) {
+			console.warn("VAPID public key not configured. Skipping push subscription.");
+			return;
 		}
-		window.addEventListener("keydown", handleEscape)
-		return () => window.removeEventListener("keydown", handleEscape)
-	}, [isNotificationsOpen, isCommandPaletteOpen])
+		console.log("VAPID Public Key is configured. Proceeding with push subscription.");
+
+		try {
+			const registration = await navigator.serviceWorker.ready;
+			console.log("Service Worker is ready:", registration);
+
+			let subscription = await registration.pushManager.getSubscription();
+			console.log("Existing subscription:", subscription);
+
+			if (subscription === null) {
+				console.log("No existing subscription found. Requesting permission...");
+				const permission = await window.Notification.requestPermission();
+				console.log("Notification permission status:", permission);
+
+				if (permission !== "granted") return;
+
+				console.log("Permission granted. Subscribing to push manager...");
+				subscription = await registration.pushManager.subscribe({
+					userVisibleOnly: true,
+					applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY),
+				});
+				console.log("New subscription created:", subscription);
+
+				const response = await fetch("/api/notifications/subscribe", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(subscription),
+				});
+
+				if (!response.ok) {
+					throw new Error("Failed to send subscription to server.");
+				}
+				console.log("Subscription successfully sent to server.");
+			}
+		} catch (error) {
+			console.error("Error during push notification subscription:", error);
+		}
+	}, []);
+
+	useEffect(() => {
+		if (showNav && userDetails?.sub) subscribeToPushNotifications()
+	}, [showNav, userDetails, subscribeToPushNotifications])
 
 	if (isLoading) {
 		return (
@@ -301,3 +406,4 @@ export default function LayoutWrapper({ children }) {
 		</>
 	)
 }
+

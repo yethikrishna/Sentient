@@ -40,6 +40,6 @@ export const config = {
 		 * - api (API routes)
 		 * - PWA files (manifest, icons, service worker, workbox)
 		 */
-		"/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|api|manifest.json|sw.js|workbox-.*\\.js$|.*\\.png$).*)"
+		"/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|api|manifest.json|manifest.webmanifest|sw.js|workbox-.*\\.js$|.*\\.png$).*)"
 	]
 }

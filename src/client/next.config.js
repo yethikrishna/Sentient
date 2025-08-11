@@ -19,7 +19,10 @@ const withPWA = nextPWA({
 			) {
 				return true
 			}
-			if (process.env.NODE_ENV == "development" && !asset.name.startsWith("static/runtime/")) {
+			if (
+				process.env.NODE_ENV == "development" &&
+				!asset.name.startsWith("static/runtime/")
+			) {
 				return true
 			}
 			return false
@@ -102,4 +105,4 @@ if (process.env.NODE_ENV === "production") {
 	nextConfig.output = "standalone"
 }
 
-export default withPWA(nextConfig)
+export default nextConfig

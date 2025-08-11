@@ -6,7 +6,7 @@
 	"author": "existence",
 	"type": "module",
 	"scripts": {
-		"dev": "next dev",
+		"dev": "next dev --experimental-https",
 		"build": "next build",
 		"start": "next start",
 		"lint": "eslint .",
@@ -44,8 +44,8 @@
 		"node-fetch": "^3.3.2",
 		"posthog-js": "^1.257.0",
 		"posthog-node": "^5.5.0",
+		"web-push": "^3.6.7",
 		"react": "^19.0.0",
-		"next-pwa": "^5.6.0",
 		"react-dnd": "^16.0.1",
 		"react-dnd-html5-backend": "^16.0.1",
 		"react-dom": "^19.0.0",

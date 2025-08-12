@@ -6,8 +6,13 @@ from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from fastmcp.prompts.prompt import Message
+from fastmcp.utilities.logging import configure_logging, get_logger
 
 from . import auth, prompts, utils
+
+# --- Standardized Logging Setup ---
+configure_logging(level="INFO")
+logger = get_logger(__name__)
 
 # Conditionally load .env for local development
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
@@ -42,6 +47,7 @@ async def _execute_tool(ctx: Context, func, **kwargs) -> Dict[str, Any]:
         
         return {"status": "success", "result": result}
     except Exception as e:
+        logger.error(f"Tool execution failed for '{func.__name__}': {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 @mcp.tool
@@ -49,6 +55,7 @@ async def search_places(ctx: Context, query: str) -> Dict:
     """
     Searches for a location (like a restaurant, landmark, or address) based on a text `query`. Returns a list of potential matches with their name, address, and ID.
     """
+    logger.info(f"Executing tool: search_places with query='{query}'")
     return await _execute_tool(ctx, utils.search_places_util, query=query)
 
 @mcp.tool
@@ -57,6 +64,7 @@ async def get_directions(ctx: Context, origin: str, destination: str, mode: Opti
     Calculates a route between an `origin` and a `destination`.
     The travel `mode` can be specified as 'DRIVING', 'WALKING', 'BICYCLING', or 'TRANSIT'.
     """
+    logger.info(f"Executing tool: get_directions from='{origin}' to='{destination}'")
     return await _execute_tool(ctx, utils.get_directions_util, origin=origin, destination=destination, mode=mode)
 
 if __name__ == "__main__":

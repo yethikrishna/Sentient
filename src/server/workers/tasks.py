@@ -17,15 +17,15 @@ from workers.utils.api_client import notify_user, push_task_list_update
 from main.plans import PLAN_LIMITS
 from main.config import INTEGRATIONS_CONFIG # This is the new field
 from main.tasks.prompts import TASK_CREATION_PROMPT
+from mcp_hub.memory.utils import initialize_embedding_model, initialize_agents, cud_memory
 from mcp_hub.tasks.prompts import RESOURCE_MANAGER_SYSTEM_PROMPT
 from main.llm import run_agent_with_fallback as run_main_agent_with_fallback
 from main.db import MongoManager
 from workers.celery_app import celery_app
 from workers.planner.llm import get_planner_agent # noqa: E501
-from workers.planner.prompts import CONTEXT_RESEARCHER_SYSTEM_PROMPT
+from workers.planner.prompts import CONTEXT_RESEARCHER_SYSTEM_PROMPT, TOOL_SELECTOR_SYSTEM_PROMPT 
 from workers.proactive.main import run_proactive_pipeline_logic # noqa: E501
 from workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions # noqa: E501
-from workers.memory_agent_utils import get_memory_qwen_agent, get_db_manager as get_memory_db_manager # noqa: E501
 from workers.executor.tasks import execute_task_plan, run_single_item_worker, aggregate_results_callback
 from main.vector_db import get_conversation_summaries_collection
 from main.chat.prompts import STAGE_1_SYSTEM_PROMPT
@@ -33,6 +33,7 @@ from mcp_hub.tasks.prompts import ITEM_EXTRACTOR_SYSTEM_PROMPT
 from workers.utils.text_utils import clean_llm_output
 
 # Imports for poller logic
+from main.llm import LLMProviderDownError
 from workers.poller.gmail.service import GmailPollingService
 from workers.poller.gcalendar.service import GCalendarPollingService
 from workers.poller.gmail.db import PollerMongoManager as GmailPollerDB
@@ -79,9 +80,9 @@ async def _select_relevant_tools(query: str, available_tools_map: Dict[str, str]
         return []
 
     try:
-        prompt = f"The user is trying to perform the following task: \"{query}\" Choose the relevant tools needed to complete the task, as well as any tools where important information or context can be found related to the task. \n (For example, if the user is asking to perform a task using Gmail, you should definitely include gmail in the selected tools, but also include gpeople which can be used to find relevant contacts.)"
+        prompt = f"The user is trying to perform the following task: \"{query}\""
 
-        messages = [{'role': 'user', 'content': prompt}]
+        messages = [{'role':'system', 'content': TOOL_SELECTOR_SYSTEM_PROMPT}, {'role': 'user', 'content': prompt}]
 
         def _run_selector_sync():
             final_content_str = ""
@@ -371,6 +372,9 @@ async def async_orchestrate_swarm_task(task_id: str, user_id: str):
         logger.info(f"Dispatching a chord of {total_agents} parallel workers for task {task_id}, run {parent_run_id}.")
         chord_task.apply_async()
 
+    except LLMProviderDownError as e:
+        logger.error(f"LLM provider down during swarm orchestration for {task_id}: {e}", exc_info=True)
+        await db_manager.update_task(task_id, {"status": "error", "error": "Sorry, our AI provider is currently down. Please try again later."})
     except Exception as e:
         logger.error(f"Error in orchestrate_swarm_task for task {task_id}: {e}", exc_info=True)
         await db_manager.update_task(task_id, {"status": "error", "error": str(e)})
@@ -458,6 +462,9 @@ async def async_refine_and_plan_ai_task(task_id: str, user_id: str):
         generate_plan_from_context.delay(task_id, user_id)
         logger.info(f"Refinement complete for AI task {task_id}, dispatched to planner.")
 
+    except LLMProviderDownError as e:
+        logger.error(f"LLM provider down during task refinement for {task_id}: {e}", exc_info=True)
+        await db_manager.update_task_field(task_id, {"status": "error", "error": "Sorry, our AI provider is currently down. Please try again later."})
     except Exception as e:
         logger.error(f"Error refining and planning AI task {task_id}: {e}", exc_info=True)
         await db_manager.update_task_field(task_id, {"status": "error", "error": "Failed during initial refinement."})
@@ -742,6 +749,9 @@ async def async_generate_plan(task_id: str, user_id: str):
         logger.info(f"Sent task_list_updated push notification for user {user_id}")
 
 
+    except LLMProviderDownError as e:
+        logger.error(f"LLM provider down during plan generation for task {task_id}: {e}", exc_info=True)
+        await db_manager.update_task_status(task_id, "error", {"error": "Sorry, our AI provider is currently down. Please try again later."})
     except Exception as e:
         logger.error(f"Error generating plan for task {task_id}: {e}", exc_info=True)
         await db_manager.update_task_status(task_id, "error", {"error": str(e)})

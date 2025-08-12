@@ -6,11 +6,16 @@ from typing import Dict, Any
 from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from fastmcp.prompts.prompt import Message
+from fastmcp.utilities.logging import configure_logging, get_logger
 
 # Local imports
 from . import auth
 from . import prompts
 from . import utils
+
+# --- Standardized Logging Setup ---
+configure_logging(level="INFO")
+logger = get_logger(__name__)
 
 # Conditionally load .env for local development
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
@@ -44,6 +49,7 @@ async def gdrive_search(ctx: Context, query: str) -> Dict[str, Any]:
     """
     Searches for files and folders in Google Drive using a `query`. The query should follow the Google Drive API's search syntax (e.g., `name contains 'report'` or `mimeType='application/pdf'`). Returns a list of matching files with their metadata.
     """
+    logger.info(f"Executing tool: gdrive_search with query='{query}'")
     try:
         user_id = auth.get_user_id_from_context(ctx)
         creds = await auth.get_google_creds(user_id)
@@ -83,6 +89,7 @@ async def gdrive_search(ctx: Context, query: str) -> Dict[str, Any]:
             
         return {"status": "success", "result": {"files_found": search_results}}
     except Exception as e:
+        logger.error(f"Tool gdrive_search failed: {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 @mcp.tool()
@@ -90,6 +97,7 @@ async def gdrive_read_file(ctx: Context, file_id: str) -> Dict[str, Any]:
     """
     Retrieves the content of a file from Google Drive, given its `file_id`. It automatically converts Google Docs/Sheets/Slides to a readable text format and returns other files (like PDFs or images) as base64-encoded strings.
     """
+    logger.info(f"Executing tool: gdrive_read_file with file_id='{file_id}'")
     try:
         user_id = auth.get_user_id_from_context(ctx)
         creds = await auth.get_google_creds(user_id)
@@ -101,6 +109,7 @@ async def gdrive_read_file(ctx: Context, file_id: str) -> Dict[str, Any]:
         
         return {"status": "success", "result": file_content}
     except Exception as e:
+        logger.error(f"Tool gdrive_read_file failed: {e}", exc_info=True)
         return {"status": "failure", "error": f"Failed to read file: {e}"}
 
 # --- Server Execution ---

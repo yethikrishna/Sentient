@@ -5,11 +5,16 @@ from typing import Dict, Any
 from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from fastmcp.prompts.prompt import Message
+from fastmcp.utilities.logging import configure_logging, get_logger
 
 # Local imports
 from . import auth
 from . import prompts
 from . import utils
+
+# --- Standardized Logging Setup ---
+configure_logging(level="INFO")
+logger = get_logger(__name__)
 
 # Conditionally load .env for local development
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
@@ -44,6 +49,7 @@ async def google_search(ctx: Context, query: str) -> Dict[str, Any]:
     """
     Performs a web search for a given `query` using the Google Custom Search API. Returns a list of search results including titles, links, and snippets.
     """
+    logger.info(f"Executing tool: google_search with query='{query}'")
     try:
         user_id = auth.get_user_id_from_context(ctx)
         keys = await auth.get_google_api_keys(user_id)
@@ -57,6 +63,7 @@ async def google_search(ctx: Context, query: str) -> Dict[str, Any]:
         
         return {"status": "success", "result": search_results}
     except Exception as e:
+        logger.error(f"Tool google_search failed: {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 

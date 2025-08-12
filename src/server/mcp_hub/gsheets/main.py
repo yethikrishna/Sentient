@@ -7,9 +7,14 @@ from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from qwen_agent.agents import Assistant
 from json_extractor import JsonExtractor
+from fastmcp.utilities.logging import configure_logging, get_logger
 
 from .tools import register_tools
 from . import auth, prompts, utils
+
+# --- Standardized Logging Setup ---
+configure_logging(level="INFO")
+logger = get_logger(__name__)
 
 # --- LLM and Environment Configuration ---
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
@@ -25,7 +30,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ollama")
 def get_generator_agent():
     llm_cfg = {
         'model': OPENAI_MODEL_NAME,
-        'model_server': f"{OPENAI_API_BASE_URL.rstrip('/')}/v1",
+        'model_server': OPENAI_API_BASE_URL,
         'api_key': OPENAI_API_KEY,
     }
     return Assistant(llm=llm_cfg, system_message=prompts.JSON_GENERATOR_SYSTEM_PROMPT, function_list=[])
@@ -48,6 +53,7 @@ async def generate_sheet_json(ctx: Context, topic: str, previous_tool_response: 
     Step 1 of 2 for creating a complex sheet. Generates the structured JSON required by `execute_sheet_creation`.
     Provide a `topic` for the sheet. The tool's internal AI will design the sheet's title, tabs, headers, and data.
     """
+    logger.info(f"Executing tool: generate_sheet_json with topic='{topic}'")
     try:
         user_id = auth.get_user_id_from_context(ctx)
         user_profile = await auth.users_collection.find_one({"user_id": user_id})
@@ -77,6 +83,7 @@ async def generate_sheet_json(ctx: Context, topic: str, previous_tool_response: 
 
         return {"status": "success", "result": sheet_json}
     except Exception as e:
+        logger.error(f"Tool generate_sheet_json failed: {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 @mcp.tool()
@@ -84,6 +91,7 @@ async def execute_sheet_creation(ctx: Context, title: str, sheets_json: str) -> 
     """
     Step 2 of 2 for creating a complex sheet. Takes the `title` and `sheets_json` output from `generate_sheet_json` and builds the actual Google Spreadsheet file, populating it with data and formatting.
     """
+    logger.info(f"Executing tool: execute_sheet_creation with title='{title}'")
     try:
         user_id = auth.get_user_id_from_context(ctx)
         creds = await auth.get_google_creds(user_id)
@@ -99,6 +107,7 @@ async def execute_sheet_creation(ctx: Context, title: str, sheets_json: str) -> 
         
         return spreadsheet_result
     except Exception as e:
+        logger.error(f"Tool execute_sheet_creation failed: {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 if __name__ == "__main__":

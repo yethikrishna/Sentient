@@ -83,4 +83,8 @@ async def get_notion_creds(user_id: str) -> Dict[str, str]:
 
 def authenticate_notion(creds: Dict[str, str]) -> AsyncClient:
     """Authenticates and returns the Notion async client."""
-    return AsyncClient(auth=creds["token"])
+    # Instantiate the client first
+    client = AsyncClient(auth=creds["token"])
+    # Modify the headers of the underlying httpx client to prevent caching
+    client.client.headers["Cache-Control"] = "no-cache"
+    return client

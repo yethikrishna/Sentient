@@ -4,8 +4,13 @@ from typing import Dict, Any
 from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from fastmcp.prompts.prompt import Message
+from fastmcp.utilities.logging import configure_logging, get_logger
 
 from . import auth, utils
+
+# --- Standardized Logging Setup ---
+configure_logging(level="INFO")
+logger = get_logger(__name__)
 
 # Load environment
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
@@ -36,6 +41,7 @@ async def send_message(ctx: Context, message: str) -> Dict[str, Any]:
     """
     Sends a text message to the user's primary WhatsApp number. Use this for notifications, alerts, or delivering results of a long-running task.
     """
+    logger.info(f"Executing tool: send_message")
     try:
         user_id = auth.get_user_id_from_context(ctx)
         chat_id = await auth.get_whatsapp_chat_id(user_id)
@@ -48,6 +54,7 @@ async def send_message(ctx: Context, message: str) -> Dict[str, Any]:
             raise Exception("Failed to send message via WAHA service or received an unexpected response.")
     
     except Exception as e:
+        logger.error(f"Tool send_message failed: {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 if __name__ == "__main__":

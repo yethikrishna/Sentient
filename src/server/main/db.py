@@ -11,7 +11,45 @@ from pymongo.errors import DuplicateKeyError
 from typing import Dict, List, Optional, Any, Tuple
 
 # Import config from the current 'main' directory
-from main.config import MONGO_URI, MONGO_DB_NAME
+from main.config import MONGO_URI, MONGO_DB_NAME, ENVIRONMENT
+from main.auth.utils import aes_encrypt, aes_decrypt
+
+DB_ENCRYPTION_ENABLED = ENVIRONMENT == 'stag'
+
+def _encrypt_field(data: Any) -> Any:
+    if not DB_ENCRYPTION_ENABLED or data is None:
+        return data
+    data_str = json.dumps(data)
+    return aes_encrypt(data_str)
+
+def _decrypt_field(data: Any) -> Any:
+    if not DB_ENCRYPTION_ENABLED or data is None or not isinstance(data, str):
+        return data
+    try:
+        decrypted_str = aes_decrypt(data)
+        return json.loads(decrypted_str)
+    except Exception:
+        return data
+
+def _encrypt_doc(doc: Dict, fields: List[str]):
+    if not DB_ENCRYPTION_ENABLED or not doc:
+        return
+    for field in fields:
+        if field in doc and doc[field] is not None:
+            doc[field] = _encrypt_field(doc[field])
+
+def _decrypt_doc(doc: Optional[Dict], fields: List[str]):
+    if not DB_ENCRYPTION_ENABLED or not doc:
+        return
+    for field in fields:
+        if field in doc and doc[field] is not None:
+            doc[field] = _decrypt_field(doc[field])
+
+def _decrypt_docs(docs: List[Dict], fields: List[str]):
+    if not DB_ENCRYPTION_ENABLED or not docs:
+        return
+    for doc in docs:
+        _decrypt_doc(doc, fields)
 
 USER_PROFILES_COLLECTION = "user_profiles" 
 NOTIFICATIONS_COLLECTION = "notifications" 
@@ -116,11 +154,26 @@ class MongoManager:
     # --- User Profile Methods ---
     async def get_user_profile(self, user_id: str) -> Optional[Dict]:
         if not user_id: return None
-        return await self.user_profiles_collection.find_one({"user_id": user_id})
+        doc = await self.user_profiles_collection.find_one({"user_id": user_id})
+        if DB_ENCRYPTION_ENABLED and doc and "userData" in doc:
+            user_data = doc["userData"]
+            SENSITIVE_USER_DATA_FIELDS = ["onboardingAnswers", "personalInfo", "pwa_subscription", "privacyFilters"]
+            for field in SENSITIVE_USER_DATA_FIELDS:
+                if field in user_data and user_data[field] is not None:
+                    user_data[field] = _decrypt_field(user_data[field])
+        return doc
 
     async def update_user_profile(self, user_id: str, profile_data: Dict) -> bool:
         if not user_id or not profile_data: return False
         if "_id" in profile_data: del profile_data["_id"] 
+
+        if DB_ENCRYPTION_ENABLED:
+            SENSITIVE_USER_DATA_FIELDS = ["onboardingAnswers", "personalInfo", "pwa_subscription", "privacyFilters"]
+            data_to_update = profile_data.copy()
+            for key, value in profile_data.items():
+                if key.startswith("userData.") and key.split('.')[1] in SENSITIVE_USER_DATA_FIELDS:
+                    data_to_update[key] = _encrypt_field(value)
+            profile_data = data_to_update
         
         update_operations = {"$set": {}, "$setOnInsert": {}}
         now_utc = datetime.datetime.now(datetime.timezone.utc)
@@ -199,6 +252,13 @@ class MongoManager:
         )
         notifications_list = user_doc.get("notifications", []) if user_doc else []
 
+        if DB_ENCRYPTION_ENABLED:
+            SENSITIVE_NOTIFICATION_FIELDS = ["message", "suggestion_payload"]
+            for notification in notifications_list:
+                for field in SENSITIVE_NOTIFICATION_FIELDS:
+                    if field in notification and notification[field] is not None:
+                        notification[field] = _decrypt_field(notification[field])
+
         # Serialize datetime objects before returning, as they are not JSON-serializable by default.
         for notification in notifications_list:
             if isinstance(notification.get("timestamp"), datetime.datetime):
@@ -211,6 +271,13 @@ class MongoManager:
         # across all database and application layers.
         notification_data["timestamp"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         notification_data["id"] = str(uuid.uuid4())
+
+        if DB_ENCRYPTION_ENABLED:
+            SENSITIVE_NOTIFICATION_FIELDS = ["message", "suggestion_payload"]
+            for field in SENSITIVE_NOTIFICATION_FIELDS:
+                if field in notification_data and notification_data[field] is not None:
+                    notification_data[field] = _encrypt_field(notification_data[field])
+
         result = await self.notifications_collection.update_one(
             {"user_id": user_id},
             {"$push": {
@@ -331,22 +398,33 @@ class MongoManager:
             "swarm_details": task_data.get("swarm_details") # Will be None for single tasks
         }
 
+        SENSITIVE_TASK_FIELDS = ["name", "description", "plan", "runs", "original_context", "chat_history", "error", "found_context", "clarifying_questions", "result", "swarm_details"]
+        _encrypt_doc(task_doc, SENSITIVE_TASK_FIELDS)
+
         await self.task_collection.insert_one(task_doc)
         logger.info(f"Created new task {task_id} (type: {task_doc['task_type']}) for user {user_id} with status 'planning'.")
         return task_id
 
     async def get_task(self, task_id: str, user_id: str) -> Optional[Dict]:
         """Fetches a single task by its ID, ensuring it belongs to the user."""
-        return await self.task_collection.find_one({"task_id": task_id, "user_id": user_id})
+        doc = await self.task_collection.find_one({"task_id": task_id, "user_id": user_id})
+        SENSITIVE_TASK_FIELDS = ["name", "description", "plan", "runs", "original_context", "chat_history", "error", "found_context", "clarifying_questions", "result", "swarm_details"]
+        _decrypt_doc(doc, SENSITIVE_TASK_FIELDS)
+        return doc
 
     async def get_all_tasks_for_user(self, user_id: str) -> List[Dict]:
         """Fetches all tasks for a given user."""
         cursor = self.task_collection.find({"user_id": user_id}).sort("created_at", -1)
-        return await cursor.to_list(length=None)
+        docs = await cursor.to_list(length=None)
+        SENSITIVE_TASK_FIELDS = ["name", "description", "plan", "runs", "original_context", "chat_history", "error", "found_context", "clarifying_questions", "result", "swarm_details"]
+        _decrypt_docs(docs, SENSITIVE_TASK_FIELDS)
+        return docs
 
     async def update_task(self, task_id: str, updates: Dict) -> bool:
         """Updates an existing task document."""
         updates["updated_at"] = datetime.datetime.now(datetime.timezone.utc)
+        SENSITIVE_TASK_FIELDS = ["name", "description", "plan", "runs", "original_context", "chat_history", "error", "found_context", "clarifying_questions", "result", "swarm_details"]
+        _encrypt_doc(updates, SENSITIVE_TASK_FIELDS)
         result = await self.task_collection.update_one(
             {"task_id": task_id},
             {"$set": updates}
@@ -479,6 +557,9 @@ class MongoManager:
         if tool_results:
             message_doc["tool_results"] = tool_results
 
+        SENSITIVE_MESSAGE_FIELDS = ["content", "thoughts", "tool_calls", "tool_results"]
+        _encrypt_doc(message_doc, SENSITIVE_MESSAGE_FIELDS)
+
         await self.messages_collection.insert_one(message_doc)
         logger.info(f"Added message for user {user_id} with role {role}")
         return message_doc
@@ -497,6 +578,9 @@ class MongoManager:
 
         cursor = self.messages_collection.find(query).sort("timestamp", DESCENDING).limit(limit)
         messages = await cursor.to_list(length=limit)
+
+        SENSITIVE_MESSAGE_FIELDS = ["content", "thoughts", "tool_calls", "tool_results"]
+        _decrypt_docs(messages, SENSITIVE_MESSAGE_FIELDS)
 
         # Serialize datetime and ObjectId objects for JSON response
         for msg in messages:

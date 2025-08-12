@@ -7,8 +7,13 @@ from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from fastmcp.exceptions import ToolError
 from fastmcp.prompts.prompt import Message
+from fastmcp.utilities.logging import configure_logging, get_logger
 
 from . import auth, prompts, utils
+
+# --- Standardized Logging Setup ---
+configure_logging(level="INFO")
+logger = get_logger(__name__)
 
 # Load environment
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
@@ -34,6 +39,7 @@ async def _execute_tool(ctx: Context, func, *args, **kwargs) -> Dict[str, Any]:
         
         return {"status": "success", "result": result}
     except Exception as e:
+        logger.error(f"Tool execution failed for '{func.__name__}': {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 # --- Tool Implementations (Sync wrappers) ---
@@ -113,6 +119,7 @@ async def search_contacts(ctx: Context, query: str) -> Dict:
     """
     Searches for contacts in the user's Google Contacts by a `query` string, which can be a name, email, or phone number. Returns a list of matching contacts with their `resourceName`.
     """
+    logger.info(f"Executing tool: search_contacts with query='{query}'")
     return await _execute_tool(ctx, _search_contacts_sync, query=query)
 
 @mcp.tool
@@ -120,6 +127,7 @@ async def create_contact(ctx: Context, given_name: str, family_name: Optional[st
     """
     Creates a new contact in Google Contacts. Requires a `given_name` and can optionally include `family_name`, `email_address`, and `phone_number`.
     """
+    logger.info(f"Executing tool: create_contact for name='{given_name}'")
     return await _execute_tool(ctx, _create_contact_sync, given_name=given_name, family_name=family_name, email_address=email_address, phone_number=phone_number)
 
 @mcp.tool
@@ -127,6 +135,7 @@ async def delete_contact(ctx: Context, resource_name: str) -> Dict:
     """
     Deletes a contact. Requires the contact's unique `resource_name`, which should be obtained by using `search_contacts` first.
     """
+    logger.info(f"Executing tool: delete_contact for resource_name='{resource_name}'")
     return await _execute_tool(ctx, _delete_contact_sync, resource_name=resource_name)
 
 @mcp.tool
@@ -136,6 +145,7 @@ async def update_contact_field(ctx: Context, resource_name: str, field_to_update
     'field_to_update' can be 'email', 'phone', or 'name'.
     Requires the `resource_name` (from `search_contacts`), the `field_to_update` ('email', 'phone', or 'name'), and the `new_value`.
     """
+    logger.info(f"Executing tool: update_contact_field for resource_name='{resource_name}'")
     return await _execute_tool(ctx, _update_contact_field_sync, resource_name=resource_name, field_to_update=field_to_update, new_value=new_value)
 
 

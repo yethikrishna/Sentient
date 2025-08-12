@@ -7,7 +7,7 @@ from typing import Tuple
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import JSONResponse, StreamingResponse
-from main.chat.models import ChatMessageInput, DeleteMessageRequest
+from main.chat.models import ChatMessageInput, DeleteMessageRequest # noqa: E501
 from main.chat.utils import generate_chat_llm_stream, parse_assistant_response
 from main.auth.utils import PermissionChecker, AuthHelper
 from main.dependencies import mongo_manager, auth_helper
@@ -44,10 +44,16 @@ async def chat_endpoint(
         if msg.get("role") == "assistant":
             break
         if msg.get("role") == "user":
+            # The add_message function prevents duplicates based on message_id
             await mongo_manager.add_message(user_id=user_id, role="user", content=msg.get("content", ""), message_id=msg.get("id"))
 
     # Increment usage after successfully adding the message
     await mongo_manager.increment_daily_usage(user_id, "text_messages")
+    # 2. Fetch the canonical, clean history from the database. This is the source of truth.
+    db_history = await mongo_manager.get_message_history(user_id, limit=30)
+    # The history from DB is newest-to-oldest, we need oldest-to-newest for the LLM.
+    clean_history_for_llm = list(reversed(db_history))
+
     # Fetch comprehensive user context
     user_profile = await mongo_manager.get_user_profile(user_id)
     user_data = user_profile.get("userData", {}) if user_profile else {}
@@ -56,16 +62,13 @@ async def chat_endpoint(
     user_context = {
         "name": personal_info.get("name", "User"),
         "timezone": personal_info.get("timezone", "UTC"),
-        "location": personal_info.get("location"),
     }
 
-    async def event_stream_generator():
         assistant_response_buffer = ""
         assistant_message_id = None
         try:
             async for event in generate_chat_llm_stream(
                 user_id,
-                request_body.messages,
                 user_context,
                 db_manager=mongo_manager
             ):

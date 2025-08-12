@@ -4,8 +4,11 @@ from typing import Dict, Any, List, Optional
 
 from googleapiclient.errors import HttpError
 from fastmcp import FastMCP, Context
+from fastmcp.utilities.logging import get_logger
 
 from . import auth
+
+logger = get_logger(__name__)
 
 # ---------- helpers ----------
 
@@ -18,8 +21,10 @@ async def _safe_call(coro):
     try:
         return {"status": "success", "result": await coro}
     except HttpError as e:
+        logger.error(f"Google API Error: {e.content.decode()}", exc_info=True)
         return {"status": "failure", "error": e.content.decode()}
     except Exception as e:
+        logger.error(f"Tool execution failed: {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 
@@ -32,6 +37,7 @@ def register_tools(mcp: FastMCP):
         """
         Creates a new, empty Google Spreadsheet with a given title.
         """
+        logger.info(f"Executing tool: createSpreadsheet with title='{title}'")
         service = await _get_service(ctx)
         return await _safe_call(
             asyncio.to_thread(
@@ -46,6 +52,7 @@ def register_tools(mcp: FastMCP):
         """
         Retrieves metadata for a specific spreadsheet, such as its ID, title, and sheet names.
         """
+        logger.info(f"Executing tool: getSpreadsheet with spreadsheet_id='{spreadsheet_id}'")
         service = await _get_service(ctx)
         return await _safe_call(
             asyncio.to_thread(
@@ -60,6 +67,7 @@ def register_tools(mcp: FastMCP):
         """
         Lists all Google Sheets files in the user's Google Drive.
         """
+        logger.info("Executing tool: listSpreadsheets")
         from googleapiclient.discovery import build
 
         service = await _get_service(ctx)
@@ -80,6 +88,7 @@ def register_tools(mcp: FastMCP):
         """
         Permanently deletes a spreadsheet file from Google Drive.
         """
+        logger.info(f"Executing tool: deleteSpreadsheet with spreadsheet_id='{spreadsheet_id}'")
         from googleapiclient.discovery import build
 
         service = await _get_service(ctx)
@@ -97,6 +106,7 @@ def register_tools(mcp: FastMCP):
         """
         Adds a new sheet (tab) to an existing spreadsheet.
         """
+        logger.info(f"Executing tool: addSheet with spreadsheet_id='{spreadsheet_id}', title='{sheet_title}'")
         service = await _get_service(ctx)
         body = {"requests": [{"addSheet": {"properties": {"title": sheet_title}}}]}
         return await _safe_call(
@@ -112,6 +122,7 @@ def register_tools(mcp: FastMCP):
         """
         Deletes a sheet (tab) from a spreadsheet, given its `sheet_id`.
         """
+        logger.info(f"Executing tool: deleteSheet with spreadsheet_id='{spreadsheet_id}', sheet_id={sheet_id}")
         service = await _get_service(ctx)
         body = {"requests": [{"deleteSheet": {"sheetId": sheet_id}}]}
         return await _safe_call(
@@ -129,6 +140,7 @@ def register_tools(mcp: FastMCP):
         """
         Renames a specific sheet (tab) within a spreadsheet.
         """
+        logger.info(f"Executing tool: renameSheet with spreadsheet_id='{spreadsheet_id}', sheet_id={sheet_id}")
         service = await _get_service(ctx)
         body = {
             "requests": [
@@ -160,6 +172,7 @@ def register_tools(mcp: FastMCP):
         """
         Retrieves cell values from a specified range (e.g., 'Sheet1!A1:B5').
         """
+        logger.info(f"Executing tool: getValues for spreadsheet_id='{spreadsheet_id}', range='{range_name}'")
         service = await _get_service(ctx)
         return await _safe_call(
             asyncio.to_thread(
@@ -185,6 +198,7 @@ def register_tools(mcp: FastMCP):
         """
         Writes new values to a specified cell range (e.g., 'Sheet1!A1:B5').
         """
+        logger.info(f"Executing tool: updateValues for spreadsheet_id='{spreadsheet_id}', range='{range_name}'")
         service = await _get_service(ctx)
         body = {"values": values}
         return await _safe_call(
@@ -211,6 +225,7 @@ def register_tools(mcp: FastMCP):
         """
         Writes a single value to a single cell (e.g., 'Sheet1!A1').
         """
+        logger.info(f"Executing tool: editCell for spreadsheet_id='{spreadsheet_id}', cell='{cell}'")
         return await updateValues(ctx, spreadsheet_id, cell, [[value]])
 
     # ---- Row / Column ----
@@ -226,6 +241,7 @@ def register_tools(mcp: FastMCP):
         """
         Reads all data from one or more specified rows.
         """
+        logger.info(f"Executing tool: readRows for spreadsheet_id='{spreadsheet_id}', sheet='{sheet_title}'")
         range_name = f"{sheet_title}!{start_row}:{end_row or ''}"
         return await getValues(ctx, spreadsheet_id, range_name)
 
@@ -240,6 +256,7 @@ def register_tools(mcp: FastMCP):
         """
         Reads all data from one or more specified columns.
         """
+        logger.info(f"Executing tool: readColumns for spreadsheet_id='{spreadsheet_id}', sheet='{sheet_title}'")
         range_name = f"{sheet_title}!{start_col}:{end_col or ''}"
         return await getValues(ctx, spreadsheet_id, range_name)
 
@@ -250,6 +267,7 @@ def register_tools(mcp: FastMCP):
         """
         Reads only the first row of a sheet, which typically contains the headers.
         """
+        logger.info(f"Executing tool: readHeadings for spreadsheet_id='{spreadsheet_id}', sheet='{sheet_title}'")
         return await getValues(ctx, spreadsheet_id, f"{sheet_title}!1:1")
 
     @mcp.tool()
@@ -263,6 +281,7 @@ def register_tools(mcp: FastMCP):
         """
         Inserts a new row with specified data into a sheet.
         """
+        logger.info(f"Executing tool: insertRow for spreadsheet_id='{spreadsheet_id}', sheet_id={sheet_id}")
         service = await _get_service(ctx)
         body = {
             "requests": [
@@ -310,6 +329,7 @@ def register_tools(mcp: FastMCP):
         """
         Overwrites an entire existing row with new data.
         """
+        logger.info(f"Executing tool: editRow for spreadsheet_id='{spreadsheet_id}', sheet='{sheet_title}', row={row_index}")
         range_name = f"{sheet_title}!{row_index}:{row_index}"
         return await updateValues(ctx, spreadsheet_id, range_name, [values])
 
@@ -323,6 +343,7 @@ def register_tools(mcp: FastMCP):
         """
         Inserts a new, empty column into a sheet at a specific index.
         """
+        logger.info(f"Executing tool: insertColumn for spreadsheet_id='{spreadsheet_id}', sheet_id={sheet_id}")
         service = await _get_service(ctx)
         body = {
             "requests": [
@@ -357,6 +378,7 @@ def register_tools(mcp: FastMCP):
         """
         Overwrites an entire existing column with new data.
         """
+        logger.info(f"Executing tool: editColumn for spreadsheet_id='{spreadsheet_id}', sheet='{sheet_title}', col='{col_letter}'")
         range_name = f"{sheet_title}!{col_letter}:{col_letter}"
         return await updateValues(
             ctx, spreadsheet_id, range_name, [[v] for v in values]
@@ -374,6 +396,7 @@ def register_tools(mcp: FastMCP):
         """
         Shares the spreadsheet with a user via their email address, specifying a role ('reader', 'commenter', 'writer').
         """
+        logger.info(f"Executing tool: shareSpreadsheet for spreadsheet_id='{spreadsheet_id}' with email='{email}'")
         from googleapiclient.discovery import build
 
         service = await _get_service(ctx)
@@ -405,6 +428,7 @@ def register_tools(mcp: FastMCP):
         """
         Applies formatting (like bold, font size, background color) to a range of cells.
         """
+        logger.info(f"Executing tool: formatCells for spreadsheet_id='{spreadsheet_id}', sheet_id={sheet_id}")
         service = await _get_service(ctx)
         requests = []
         cell_format = {}

@@ -16,6 +16,7 @@ from json_extractor import JsonExtractor
 from workers.utils.api_client import notify_user, push_task_list_update
 from main.config import INTEGRATIONS_CONFIG # This is the new field
 from main.tasks.prompts import TASK_CREATION_PROMPT
+from mcp_hub.memory.utils import initialize_embedding_model, initialize_agents, cud_memory
 from mcp_hub.tasks.prompts import RESOURCE_MANAGER_SYSTEM_PROMPT
 from main.llm import run_agent_with_fallback as run_main_agent_with_fallback
 from main.db import MongoManager

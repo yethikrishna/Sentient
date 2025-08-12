@@ -3,16 +3,17 @@ import uuid
 import json
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 
 from main.config import ENVIRONMENT
 from main.dependencies import auth_helper
 from main.notifications.whatsapp_client import (check_phone_number_exists,
                                                  send_whatsapp_message)
+from main.notifications.utils import create_and_push_notification
 from workers.tasks import (cud_memory_task, proactive_reasoning_pipeline, run_due_tasks,
                            schedule_proactivity_polling, schedule_trigger_polling)
 
-from .models import ContextInjectionRequest, WhatsAppTestRequest
+from .models import ContextInjectionRequest, WhatsAppTestRequest, TestNotificationRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter(
@@ -146,6 +147,31 @@ async def trigger_poller(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to trigger poller task."
         )
+
+
+@router.post("/notification", summary="Send a test notification")
+async def send_test_notification(
+    request: TestNotificationRequest,
+    user_id: str = Depends(auth_helper.get_current_user_id)
+):
+    _check_allowed_environments(
+        ["dev-local", "selfhost"],
+        "This endpoint is only available in development or self-host environments."
+    )
+
+    if request.type == "in-app":
+        try:
+            await create_and_push_notification(
+                user_id=user_id,
+                message="This is a test in-app notification from the developer tools.",
+                notification_type="general"
+            )
+            return {"message": "Test in-app notification sent successfully."}
+        except Exception as e:
+            logger.error(f"Failed to send test in-app notification for user {user_id}: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to send test notification.")
+    else:
+        raise HTTPException(status_code=400, detail="Invalid notification type specified.")
 
 
 @router.post("/whatsapp/verify", summary="Verify if a WhatsApp number exists")

@@ -14,7 +14,7 @@ import httpx
 from qwen_agent.tools.base import BaseTool, register_tool
 from openai import OpenAI, APIError
 
-from main.chat.prompts import STAGE_1_SYSTEM_PROMPT, STAGE_2_SYSTEM_PROMPT
+from main.chat.prompts import STAGE_1_SYSTEM_PROMPT, STAGE_2_SYSTEM_PROMPT # noqa: E501
 from main.db import MongoManager
 from main.llm import run_agent_with_fallback, LLMProviderDownError
 from main.config import (INTEGRATIONS_CONFIG, ENVIRONMENT, OPENAI_API_KEYS, OPENAI_API_BASE_URL, OPENAI_MODEL_NAME)
@@ -285,6 +285,19 @@ async def generate_chat_llm_stream(
                         "url": mcp_config["url"],
                         "headers": {"X-User-ID": user_id},
                         "transport": "sse"
+                    }
+            elif config.get("auth_type") == "composio":
+                connection_id = user_integrations.get(tool_name, {}).get("connection_id")
+                if connection_id:
+                    from main.config import COMPOSIO_API_KEY
+                    filtered_mcp_servers[server_name] = {
+                        "url": mcp_config["url"],
+                        "headers": {
+                            "X-Composio-API-Key": COMPOSIO_API_KEY,
+                            "X-User-ID": user_id,
+                            "X-Connection-ID": connection_id
+                        },
+                        "transport": "sse" # Composio MCPs also support SSE
                     }
         tools = [{"mcpServers": filtered_mcp_servers}]
 

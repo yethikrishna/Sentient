@@ -23,6 +23,7 @@ pgvector
 # --- AI & Machine Learning ---
 qwen-agent
 google-genai
+composio
 elevenlabs 
 deepgram-sdk
 librosa

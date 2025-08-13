@@ -53,7 +53,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ollama")
 OPENAI_API_KEYS = list(filter(None, [
     os.getenv("OPENAI_API_KEY"),
     os.getenv("OPENAI_API_KEY_FALLBACK_1"),
-    os.getenv("OPENAI_API_KEY_FALLBACK_2"),
+    os.getenv("OPENAI_API_KEY_FALLBACK_2")
 ]))
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 COMPOSIO_API_KEY = os.getenv("COMPOSIO_API_KEY")
@@ -114,7 +114,7 @@ INTEGRATIONS_CONFIG = {
         "category": "Productivity",
         "mcp_server_config": {
             "name": "gdrive_server",
-            "url": "https://mcp.composio.dev/api/v1/execute/gdrive"
+            "url": os.getenv("GDRIVE_MCP_SERVER_URL", "http://localhost:9003/sse")
         }
     },
     "gcalendar": {
@@ -136,7 +136,7 @@ INTEGRATIONS_CONFIG = {
         "category": "Communication",
         "mcp_server_config": {
             "name": "gmail_server",
-            "url": "https://mcp.composio.dev/api/v1/execute/gmail"
+            "url": os.getenv("GMAIL_MCP_SERVER_URL", "http://localhost:9001/sse")
         }
     },
     "gdocs": {

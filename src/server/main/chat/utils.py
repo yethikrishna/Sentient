@@ -216,7 +216,7 @@ def _get_tool_lists(user_integrations: Dict) -> Tuple[Dict, Dict]:
         if auth_type == "builtin":
             connected_tools[tool_name] = config.get("description", "")
         # For user-configured tools, check the 'connected' flag from the DB
-        elif auth_type in ["oauth", "manual"]:
+        elif auth_type in ["oauth", "manual", "composio"]:
             if user_integrations.get(tool_name, {}).get("connected", False):
                 connected_tools[tool_name] = config.get("description", "")
             else:
@@ -277,28 +277,23 @@ async def generate_chat_llm_stream(
         filtered_mcp_servers = {}
         for tool_name in final_tool_names:
             config = INTEGRATIONS_CONFIG.get(tool_name, {})
-            if config:
-                mcp_config = config.get("mcp_server_config", {})
-                if mcp_config and mcp_config.get("url") and mcp_config.get("name"):
-                    server_name = mcp_config["name"]
-                    filtered_mcp_servers[server_name] = {
-                        "url": mcp_config["url"],
-                        "headers": {"X-User-ID": user_id},
-                        "transport": "sse"
-                    }
-            elif config.get("auth_type") == "composio":
-                connection_id = user_integrations.get(tool_name, {}).get("connection_id")
-                if connection_id:
-                    from main.config import COMPOSIO_API_KEY
-                    filtered_mcp_servers[server_name] = {
-                        "url": mcp_config["url"],
-                        "headers": {
-                            "X-Composio-API-Key": COMPOSIO_API_KEY,
-                            "X-User-ID": user_id,
-                            "X-Connection-ID": connection_id
-                        },
-                        "transport": "sse" # Composio MCPs also support SSE
-                    }
+            if not config:
+                continue
+
+            mcp_config = config.get("mcp_server_config", {})
+            if not (mcp_config and mcp_config.get("url") and mcp_config.get("name")):
+                continue
+
+            server_name = mcp_config["name"]
+            base_url = mcp_config["url"]
+            headers = {"X-User-ID": user_id}
+
+            # If we've made it this far, the tool is configured correctly.
+            filtered_mcp_servers[server_name] = {
+                "url": base_url,
+                "headers": headers,
+                "transport": "sse"
+            }
         tools = [{"mcpServers": filtered_mcp_servers}]
 
         logger.info(f"Final tools for agent: {list(filtered_mcp_servers.keys())}")

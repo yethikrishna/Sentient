@@ -370,6 +370,7 @@ async def initiate_composio_connection(
         raise HTTPException(status_code=500, detail=f"Auth Config ID for {service_name} is not configured on the server.")
 
     try:
+        logger.info(f"Initiating Composio for {service_name} with auth_config_id={auth_config_id}")
         callback_url = f"{os.getenv('APP_BASE_URL', 'http://localhost:3000')}/integrations"
         connection_request = composio.connected_accounts.initiate(
             user_id=user_id,
@@ -419,6 +420,8 @@ async def finalize_composio_connection(
 
         if not connected_account or connected_account.status != "ACTIVE":
             raise HTTPException(status_code=400, detail="Connection could not be verified or is not active.")
+
+        logger.info(f"Finalized Composio connection for {service_name}: ID {connected_account_id}")
 
         update_payload = {
             f"userData.integrations.{service_name}.connection_id": connected_account.id,

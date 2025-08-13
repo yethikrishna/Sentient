@@ -868,12 +868,22 @@ export default function ChatPage() {
 
 		webrtcClientRef.current?.disconnect()
 
-		// --- ADD POSTHOG EVENT TRACKING ---
+		// --- ADD POSTHOG EVENT TRACKING & USAGE UPDATE ---
 		if (voiceModeStartTimeRef.current) {
 			const duration_seconds = Math.round(
 				(Date.now() - voiceModeStartTimeRef.current) / 1000
 			)
 			posthog?.capture("voice_mode_used", { duration_seconds })
+
+			// Send usage update to the server
+			fetch("/api/voice/update-usage", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ duration_seconds })
+			}).catch((err) =>
+				console.error("Failed to update voice usage:", err)
+			)
+
 			voiceModeStartTimeRef.current = null // Reset after tracking
 		}
 		// --- END POSTHOG EVENT TRACKING ---

@@ -758,7 +758,7 @@ const ProactivitySettings = () => {
 	const [isEnabled, setIsEnabled] = useState(false)
 	const [isLoading, setIsLoading] = useState(true)
 	const posthog = usePostHog()
-	const { isPro, plan } = usePlan()
+	const { isPro, plan, isLoading: isPlanLoading } = usePlan()
 
 	useEffect(() => {
 		const fetchStatus = async () => {
@@ -778,11 +778,14 @@ const ProactivitySettings = () => {
 	}, [])
 
 	const handleToggle = async (enabled) => {
-		if (plan === "free" && enabled) {
-			toast.error("Proactive Assistance is a Pro feature. Please upgrade your plan.", {
-				duration: 5000
-			});
-			return;
+		if (!isPro && enabled) {
+			toast.error(
+				"Proactive Assistance is a Pro feature. Please upgrade.",
+				{
+					duration: 4000
+				}
+			)
+			return
 		}
 		setIsEnabled(enabled) // Optimistic update
 		const toastId = toast.loading(
@@ -812,7 +815,10 @@ const ProactivitySettings = () => {
 
 	return (
 		<div>
-			<Switch.Group as="div" className="flex items-center justify-between">
+			<Switch.Group
+				as="div"
+				className="flex items-center justify-between"
+			>
 				<span className="flex-grow flex flex-col">
 					<Switch.Label
 						as="span"
@@ -821,7 +827,9 @@ const ProactivitySettings = () => {
 					>
 						Proactive Assistance
 						{!isPro && (
-							<span className="text-xs font-bold bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded-full">PRO</span>
+							<span className="text-xs font-bold bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded-full">
+								PRO
+							</span>
 						)}
 					</Switch.Label>
 					<Switch.Description
@@ -835,11 +843,15 @@ const ProactivitySettings = () => {
 				</span>
 				<Switch
 					checked={isEnabled}
-					onChange={handleToggle}
-					disabled={!isPro || isLoading}
+					onChange={!isPlanLoading ? handleToggle : () => {}}
+					disabled={!isPro || isLoading || isPlanLoading}
 					className={cn(
-						"relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-orange focus:ring-offset-2 focus:ring-offset-neutral-900",
-						!isPro ? "cursor-not-allowed bg-neutral-800" : isEnabled ? "bg-green-600" : "bg-neutral-700"
+						"relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-orange focus:ring-offset-2 focus:ring-offset-neutral-900",
+						!isPro
+							? "cursor-not-allowed bg-neutral-800"
+							: isEnabled
+								? "bg-green-600"
+								: "bg-neutral-700"
 					)}
 				>
 					<span
@@ -853,8 +865,19 @@ const ProactivitySettings = () => {
 			</Switch.Group>
 			{!isPro && (
 				<div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-sm text-yellow-200 flex items-center justify-between">
-					<span>This is a Pro feature. Upgrade your plan to enable it.</span>
-					<a href={process.env.NEXT_PUBLIC_LANDING_PAGE_URL ? `${process.env.NEXT_PUBLIC_LANDING_PAGE_URL}/dashboard` : "#"} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 font-semibold hover:text-white">
+					<span>
+						This is a Pro feature. Upgrade your plan to enable it.
+					</span>
+					<a
+						href={
+							process.env.NEXT_PUBLIC_LANDING_PAGE_URL
+								? `${process.env.NEXT_PUBLIC_LANDING_PAGE_URL}/dashboard`
+								: "#"
+						}
+						target="_blank"
+						rel="noopener noreferrer"
+						className="flex items-center gap-1.5 font-semibold hover:text-white"
+					>
 						<IconArrowUpCircle size={16} /> Upgrade
 					</a>
 				</div>

@@ -24,6 +24,7 @@ async def chat_endpoint(
     user_id_and_plan: Tuple[str, str] = Depends(auth_helper.get_current_user_id_and_plan)
 ):
     user_id, plan = user_id_and_plan
+
     # 1. Check if there are any user messages
     if not any(msg.get("role") == "user" for msg in request_body.messages):
         raise HTTPException(status_code=400, detail="No user message found in the request.")
@@ -44,17 +45,19 @@ async def chat_endpoint(
         if msg.get("role") == "assistant":
             break
         if msg.get("role") == "user":
-            # The add_message function prevents duplicates based on message_id
-            await mongo_manager.add_message(user_id=user_id, role="user", content=msg.get("content", ""), message_id=msg.get("id"))
+            await mongo_manager.add_message(
+                user_id=user_id,
+                role="user",
+                content=msg.get("content", ""),
+                message_id=msg.get("id")
+            )
+            await mongo_manager.increment_daily_usage(user_id, "text_messages")
 
-    # Increment usage after successfully adding the message
-    await mongo_manager.increment_daily_usage(user_id, "text_messages")
-    # 2. Fetch the canonical, clean history from the database. This is the source of truth.
+    # 3. Fetch clean history from DB
     db_history = await mongo_manager.get_message_history(user_id, limit=30)
-    # The history from DB is newest-to-oldest, we need oldest-to-newest for the LLM.
     clean_history_for_llm = list(reversed(db_history))
 
-    # Fetch comprehensive user context
+    # 4. Fetch comprehensive user context
     user_profile = await mongo_manager.get_user_profile(user_id)
     user_data = user_profile.get("userData", {}) if user_profile else {}
     personal_info = user_data.get("personalInfo", {})
@@ -64,8 +67,10 @@ async def chat_endpoint(
         "timezone": personal_info.get("timezone", "UTC"),
     }
 
+    async def event_stream_generator():
         assistant_response_buffer = ""
         assistant_message_id = None
+
         try:
             async for event in generate_chat_llm_stream(
                 user_id,
@@ -81,20 +86,17 @@ async def chat_endpoint(
 
                 yield json.dumps(event) + "\n"
         except asyncio.CancelledError:
-            print(f"[INFO] Client disconnected, stream cancelled for user {user_id}.")
+            logger.info(f"Client disconnected, stream cancelled for user {user_id}.")
         except Exception as e:
-            print(f"[ERROR] Error in chat stream for user {user_id}: {e}")
+            logger.error(f"Error in chat stream for user {user_id}: {e}")
             error_response = {
                 "type": "error",
                 "message": "Sorry, I encountered an error while processing your request."
             }
-            yield (json.dumps(error_response) + "\n").encode("utf-8")
+            yield json.dumps(error_response) + "\n"
         finally:
-            # Save the complete assistant response at the end of the stream
             if assistant_response_buffer.strip() and assistant_message_id:
-                # NEW: Parse the response before saving
                 parsed_response = parse_assistant_response(assistant_response_buffer.strip())
-
                 await mongo_manager.add_message(
                     user_id=user_id,
                     role="assistant",
@@ -111,8 +113,8 @@ async def chat_endpoint(
         media_type="application/x-ndjson",
         headers={
             "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",  # Disable Nginx buffering
-            "Transfer-Encoding": "chunked",  # Hint chunked encoding
+            "X-Accel-Buffering": "no",
+            "Transfer-Encoding": "chunked",
         }
     )
 @router.get("/history", summary="Get message history for a user")

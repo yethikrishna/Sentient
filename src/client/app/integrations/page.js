@@ -662,7 +662,7 @@ const IntegrationsPage = () => {
 		useState(null)
 	const posthog = usePostHog()
 	const router = useRouter()
-	const { plan, isPro, isLoading: isPlanLoading } = usePlan()
+	const { isPro } = usePlan()
 
 	const googleServices = [
 		"gmail",
@@ -914,7 +914,7 @@ const IntegrationsPage = () => {
 			toast.error(`Connection failed: ${error}`)
 			window.history.replaceState({}, document.title, "/integrations")
 		}
-	}, [fetchIntegrations, posthog])
+	}, [fetchIntegrations, posthog, router])
 
 	const allIntegrations = useMemo(() => {
 		return [...userIntegrations, ...defaultTools]
@@ -992,7 +992,7 @@ const IntegrationsPage = () => {
 								/>
 								<div>
 									<h3 className="font-semibold text-white">
-										Proactive Assistance
+										Autopilot Mode
 									</h3>
 									<p className="text-neutral-400 text-sm mt-1">
 										For some integrations like Gmail and
@@ -1100,18 +1100,26 @@ const IntegrationsPage = () => {
 															"manual"
 														].includes(
 															integration.auth_type
-														);
+														)
 
-														const isProFeature = integration.plan === 'pro';
+														const isProFeature =
+															integration.plan ===
+															"pro"
 
 														const card = (
 															<IntegrationCard
 																integration={
 																	integration
 																}
-																isProFeature={isProFeature}
-																isProUser={isPro}
-																onUpgradeClick={handleUpgradeClick}
+																isProFeature={
+																	isProFeature
+																}
+																isProUser={
+																	isPro
+																}
+																onUpgradeClick={
+																	handleUpgradeClick
+																}
 																icon={Icon}
 															/>
 														)
@@ -1152,11 +1160,12 @@ const IntegrationsPage = () => {
 																		</MorphingDialogTrigger>
 																		<MorphingDialogContainer>
 																			<MorphingDialogContent className="pointer-events-auto relative flex h-auto w-full flex-col overflow-hidden border border-neutral-700 bg-neutral-900 sm:w-[600px] rounded-2xl">
-																				{isProFeature && !isPro && (
-																					<div className="absolute top-2 right-2 bg-yellow-500/20 text-yellow-300 text-xs font-bold px-2 py-1 rounded-full z-10">
-																						PRO
-																					</div>
-																				)}
+																				{isProFeature &&
+																					!isPro && (
+																						<div className="absolute top-2 right-2 bg-yellow-500/20 text-yellow-300 text-xs font-bold px-2 py-1 rounded-full z-10">
+																							PRO
+																						</div>
+																					)}
 																				<BorderTrail className="bg-brand-orange" />
 																				<div className="p-4 sm:p-6 overflow-y-auto custom-scrollbar">
 																					<div className="flex items-center gap-4 mb-4">
@@ -1230,20 +1239,27 @@ const IntegrationsPage = () => {
 																										Disconnect
 																									</span>
 																								</button>
+																							) : isProFeature &&
+																							  !isPro ? (
+																								<button
+																									onClick={
+																										handleUpgradeClick
+																									}
+																									className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-brand-orange hover:bg-brand-orange/90 text-brand-black font-semibold text-sm transition-colors"
+																								>
+																									<IconArrowUpCircle
+																										size={
+																											16
+																										}
+																									/>
+																									<span>
+																										Upgrade
+																										to
+																										Pro
+																									</span>
+																								</button>
 																							) : (
-																								isProFeature && !isPro ? (
-																									<button
-																										onClick={handleUpgradeClick}
-																										className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-brand-orange hover:bg-brand-orange/90 text-brand-black font-semibold text-sm transition-colors"
-																									>
-																										<IconArrowUpCircle
-																											size={
-																												16
-																											}
-																										/>
-																										<span>Upgrade to Pro</span>
-																									</button>
-																								) : (<button
+																								<button
 																									onClick={(
 																										e
 																									) => {
@@ -1262,7 +1278,7 @@ const IntegrationsPage = () => {
 																									<span>
 																										Connect
 																									</span>
-																								</button>)
+																								</button>
 																							)}
 																						</div>
 																					</MorphingDialogDescription>

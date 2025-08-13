@@ -1,6 +1,12 @@
 // src/client/components/LayoutWrapper.js
 "use client"
-import React, { useState, useEffect, useCallback, useRef, createContext } from "react"
+import React, {
+	useState,
+	useEffect,
+	useCallback,
+	useRef,
+	createContext
+} from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation" // Import useSearchParams
 import { AnimatePresence } from "framer-motion"
 import NotificationsOverlay from "@components/NotificationsOverlay"
@@ -11,7 +17,7 @@ import GlobalSearch from "./GlobalSearch"
 import { useGlobalShortcuts } from "@hooks/useGlobalShortcuts"
 import { cn } from "@utils/cn"
 import toast from "react-hot-toast"
-import { useUser } from "@auth0/nextjs-auth0/client"
+import { useUser } from "@auth0/nextjs-auth0"
 
 export const PlanContext = createContext({
 	plan: "free",
@@ -91,12 +97,12 @@ export default function LayoutWrapper({ children }) {
 
 		if (authError) {
 			toast.error("Session error. Redirecting to login.")
-			router.push("/api/auth/login")
+			router.push("/auth/login")
 			return
 		}
 
 		if (!user) {
-			router.push("/api/auth/login")
+			router.push("/auth/login")
 			return
 		}
 
@@ -374,8 +380,18 @@ export default function LayoutWrapper({ children }) {
 	return (
 		<PlanContext.Provider
 			value={{
-				plan: (user?.[`${process.env.NEXT_PUBLIC_AUTH0_NAMESPACE}/roles`] || []).includes("Pro") ? "pro" : "free",
-				isPro: (user?.[`${process.env.NEXT_PUBLIC_AUTH0_NAMESPACE}/roles`] || []).includes("Pro"),
+				plan: (
+					user?.[
+						`${process.env.NEXT_PUBLIC_AUTH0_NAMESPACE}/roles`
+					] || []
+				).includes("Pro")
+					? "pro"
+					: "free",
+				isPro: (
+					user?.[
+						`${process.env.NEXT_PUBLIC_AUTH0_NAMESPACE}/roles`
+					] || []
+				).includes("Pro"),
 				isLoading: isAuthLoading
 			}}
 		>

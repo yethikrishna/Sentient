@@ -1,20 +1,22 @@
 import asyncio
 import json
 import logging
+from pydantic import BaseModel
 import uuid
 import time
-from typing import AsyncGenerator, Dict, Any
+from typing import AsyncGenerator, Dict, Any, Tuple
 import re
 import numpy as np
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from functools import partial
 from fastrtc import AlgoOptions, ReplyOnPause, SileroVadOptions, Stream, get_cloudflare_turn_credentials_async, get_cloudflare_turn_credentials
 from fastrtc.utils import audio_to_float32, get_current_context
 
-from main.auth.utils import PermissionChecker
-from main.dependencies import mongo_manager
+from main.auth.utils import AuthHelper
+from main.dependencies import mongo_manager, auth_helper
 from main.chat.utils import process_voice_command
 from main.config import ENVIRONMENT, HF_TOKEN
+from main.plans import PLAN_LIMITS
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/voice", tags=["Voice"])
@@ -22,16 +24,32 @@ router = APIRouter(prefix="/voice", tags=["Voice"])
 rtc_token_cache: Dict[str, Dict] = {}
 TOKEN_EXPIRATION_SECONDS = 600
 
-
+# Define the Pydantic model for voice usage request
+class VoiceUsageRequest(BaseModel):
+    duration_seconds: int
 
 @router.post("/initiate", summary="Initiate a voice chat session")
 async def initiate_voice_session(
-    user_id: str = Depends(PermissionChecker(required_permissions=["read:chat"]))
+    user_id_and_plan: Tuple[str, str] = Depends(auth_helper.get_current_user_id_and_plan)
 ):
     """
     Generates a short-lived, single-use token for authenticating a WebRTC/WebSocket voice stream
     and provides the necessary ICE server configuration.
     """
+    user_id, plan = user_id_and_plan
+
+    # --- Check Usage Limit ---
+    usage = await mongo_manager.get_or_create_daily_usage(user_id)
+    limit_seconds = PLAN_LIMITS[plan].get("voice_chat_daily_seconds", 0)
+    used_seconds = usage.get("voice_chat_seconds", 0)
+
+    if used_seconds >= limit_seconds:
+        raise HTTPException(
+            status_code=429,
+            detail=f"You have used all of your daily voice chat time ({int(limit_seconds/60)} minutes). Please upgrade or try again tomorrow."
+        )
+    # --- End Limit Check ---
+
     # Clean up expired tokens to prevent the cache from growing indefinitely
     now = time.time()
     expired_tokens = [token for token, data in rtc_token_cache.items() if data["expires_at"] < now]
@@ -220,3 +238,14 @@ async def end_voice_session(rtc_token: str):
         del rtc_token_cache[rtc_token]
         return {"status": "terminated"}
     return {"status": "not_found"}
+
+@router.post("/update-usage", summary="Update daily voice chat usage")
+async def update_voice_usage(
+    request: VoiceUsageRequest,
+    user_id: str = Depends(auth_helper.get_current_user_id)
+):
+    if request.duration_seconds < 0:
+        raise HTTPException(status_code=400, detail="Invalid duration.")
+    
+    await mongo_manager.increment_daily_usage(user_id, "voice_chat_seconds", request.duration_seconds)
+    return {"message": "Usage updated successfully."}

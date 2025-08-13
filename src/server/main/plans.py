@@ -3,25 +3,25 @@ PLAN_LIMITS = {
         "text_messages_daily": 50,
         "sync_tasks_daily": 5,
         "voice_chat_daily_seconds": 2 * 60,
-        "one_time_tasks_daily": 5,
-        "recurring_tasks_active": 3,
-        "triggered_tasks_active": 2,
+        "one_time_tasks_daily": 5, # async tasks
+        "recurring_tasks_active": 3, # recurring workflows
+        "triggered_tasks_active": 2, # triggered workflows
         "swarm_tasks_daily": 1,
         "swarm_sub_agents_max": 10,
-        "file_uploads_daily": 3,
-        "memories_total": 100,
+        "file_uploads_daily": 3, # New
+        "memories_total": 100, # New
     },
     "pro": {
         "text_messages_daily": 100,
         "sync_tasks_daily": float('inf'),  # Unlimited
         "voice_chat_daily_seconds": 10 * 60,
-        "one_time_tasks_daily": 20,
-        "recurring_tasks_active": 10,
-        "triggered_tasks_active": 10,
+        "one_time_tasks_daily": 20, # async tasks
+        "recurring_tasks_active": 10, # recurring workflows
+        "triggered_tasks_active": 10, # triggered workflows
         "swarm_tasks_daily": 5,
         "swarm_sub_agents_max": 50,
-        "file_uploads_daily": 20,
-        "memories_total": float('inf'),  # Unlimited
+        "file_uploads_daily": 20, # New
+        "memories_total": float('inf'),  # New
     },
     "selfhost": { # Self-host plan has unlimited access
         "text_messages_daily": float('inf'),
@@ -40,8 +40,13 @@ PLAN_LIMITS = {
 # Features that are exclusively for Pro users
 PRO_ONLY_FEATURES = [
     "proactivity",
-    "calendar_mirroring", # Assuming this is part of proactivity
-    "inbox_mirroring"  # Assuming this is part of proactivity
+    "calendar_mirroring",
+    "inbox_mirroring"
+]
+
+PRO_ONLY_INTEGRATIONS = [
+    "gdocs", "gslides", "gsheets", # GSuite
+    "linkedin"
 ]
 
 PRO_ONLY_INTEGRATIONS = [

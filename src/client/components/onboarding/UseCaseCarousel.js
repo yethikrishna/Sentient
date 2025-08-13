@@ -34,7 +34,7 @@ const useCases = [
 	},
 	{
 		icon: <IconBrain className="w-8 h-8 text-brand-orange" />,
-		title: "Proactive Assistance",
+		title: "Autopilot Mode",
 		description:
 			"I monitor your connected apps for important events and suggest actions you can take, helping you stay ahead."
 	}

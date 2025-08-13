@@ -144,6 +144,7 @@ INTEGRATIONS_CONFIG = {
         "description": "Create and manage documents in Google Docs. Allows the agent to generate new, multi-section documents with titles, headings, paragraphs, and bullet points.",
         "auth_type": "oauth",
         "plan": "pro",
+        "plan": "pro",
         "icon": "IconFileText",
         "category": "Productivity",
         "mcp_server_config": {
@@ -156,6 +157,7 @@ INTEGRATIONS_CONFIG = {
         "description": "Create and manage presentations in Google Slides. The agent can build new slide decks with titles, content, images, and charts based on a structured outline you provide.",
         "auth_type": "oauth",
         "plan": "pro",
+        "plan": "pro",
         "icon": "IconPresentation",
         "category": "Productivity",
         "mcp_server_config": {
@@ -167,6 +169,7 @@ INTEGRATIONS_CONFIG = {
         "display_name": "Google Sheets",
         "description": "Create and manage spreadsheets in Google Sheets. The agent can help organize data by creating new spreadsheets with one or more sheets, including headers and rows.",
         "auth_type": "oauth",
+        "plan": "pro",
         "plan": "pro",
         "icon": "IconTable",
         "category": "Productivity",
@@ -332,6 +335,7 @@ INTEGRATIONS_CONFIG = {
         "display_name": "LinkedIn",
         "description": "Search for job listings on LinkedIn. Requires you to first upload a 'linkedin_cookies.json' file using the file upload button in the chat.",
         "auth_type": "manual",
+        "plan": "pro",
         "plan": "pro",
         "icon": "IconBrandLinkedin",
         "category": "Data & Search",

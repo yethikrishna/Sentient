@@ -31,10 +31,8 @@ const UserProfileSection = ({ isCollapsed, user }) => {
 	const { isPro, plan } = usePlan()
 	useClickOutside(userMenuRef, () => setUserMenuOpen(false))
 
-	// CHANGED: Use the environment variable for the namespace
-	const roles =
-		user?.[`${process.env.NEXT_PUBLIC_AUTH0_NAMESPACE}/roles`] || []
-	const isPro = roles.includes("Pro")
+	// FIX: Removed the redundant and conflicting declaration of 'isPro'.
+	// The 'isPro' constant from the usePlan() hook is the correct one to use.
 	const planName = isPro ? "Pro" : "Basic"
 
 	const dashboardUrl = process.env.NEXT_PUBLIC_LANDING_PAGE_URL
@@ -116,7 +114,7 @@ const UserProfileSection = ({ isCollapsed, user }) => {
 									<span>Account & Billing</span>
 								</a>
 								<a
-									href="/api/auth/logout"
+									href="/auth/logout"
 									className="w-full flex items-center gap-2 text-left px-3 py-2 text-sm rounded-md text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-colors"
 								>
 									<IconLogout size={16} />

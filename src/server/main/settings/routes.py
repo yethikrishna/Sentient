@@ -2,7 +2,7 @@ import logging
 from typing import Dict, Any, Tuple
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.responses import JSONResponse
-
+from main.dependencies import auth_helper
 from main.dependencies import mongo_manager
 from main.auth.utils import PermissionChecker, AuthHelper
 from main.notifications.whatsapp_client import check_phone_number_exists
@@ -183,6 +183,13 @@ async def update_proactivity_settings(
             detail="Proactive Assistance is a Pro feature. Please upgrade your plan to enable it."
         )
 
+    # --- Check Plan Limit ---
+    if "proactivity" in PRO_ONLY_FEATURES and plan == "free" and is_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="Autopilot Mode is a Pro feature. Please upgrade your plan to enable it."
+        )
+
     update_payload = {"userData.preferences.proactivityEnabled": is_enabled}
     profile_success = await mongo_manager.update_user_profile(user_id, update_payload)
     if not profile_success:
@@ -204,3 +211,4 @@ async def update_proactivity_settings(
 
     message = "Proactivity enabled. I will now start monitoring your connected apps for helpful suggestions." if is_enabled else "Proactivity disabled."
     return JSONResponse(content={"message": message})
+

@@ -5,8 +5,9 @@ from typing import List, Dict
 import datetime
 
 from main.dependencies import auth_helper
-from main.auth.utils import PermissionChecker
+from main.auth.utils import AuthHelper
 from . import db, utils
+from main.plans import PLAN_LIMITS
 from .models import CreateMemoryRequest, UpdateMemoryRequest
 
 logger = logging.getLogger(__name__)
@@ -67,9 +68,21 @@ async def get_memory_graph(
 @router.post("/", summary="Create a new memory for a user")
 async def create_memory(
     request: CreateMemoryRequest,
-    user_id: str = Depends(PermissionChecker(required_permissions=["write:memory"]))
+    user_id_and_plan: tuple = Depends(auth_helper.get_current_user_id_and_plan)
 ):
+    user_id, plan = user_id_and_plan
     try:
+        # --- Enforce Memory Limit ---
+        limit = PLAN_LIMITS[plan].get("memories_total", 0)
+        if limit != float('inf'):
+            pool = await db.get_db_pool()
+            async with pool.acquire() as conn:
+                current_count = await conn.fetchval("SELECT COUNT(*) FROM facts WHERE user_id = $1", user_id)
+            if current_count >= limit:
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=f"You have reached your memory limit of {limit} facts. Please upgrade to Pro for unlimited memories."
+                )
         result_message = await utils.create_memory(user_id, request.content, request.source)
         return JSONResponse(content={"message": result_message}, status_code=status.HTTP_201_CREATED)
     except Exception as e:
@@ -80,7 +93,7 @@ async def create_memory(
 async def update_memory(
     memory_id: int,
     request: UpdateMemoryRequest,
-    user_id: str = Depends(PermissionChecker(required_permissions=["write:memory"]))
+    user_id: str = Depends(auth_helper.get_current_user_id)
 ):
     try:
         result_message = await utils.update_memory(user_id, memory_id, request.content)
@@ -94,7 +107,7 @@ async def update_memory(
 @router.delete("/{memory_id}", summary="Delete a memory")
 async def delete_memory(
     memory_id: int,
-    user_id: str = Depends(PermissionChecker(required_permissions=["write:memory"]))
+    user_id: str = Depends(auth_helper.get_current_user_id)
 ):
     try:
         result_message = await utils.delete_memory(user_id, memory_id)

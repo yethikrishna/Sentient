@@ -19,8 +19,8 @@ from main.config import (
     TRELLO_CLIENT_ID,
     GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SLACK_CLIENT_ID,
     SLACK_CLIENT_SECRET, NOTION_CLIENT_ID, NOTION_CLIENT_SECRET,
-    PRO_ONLY_INTEGRATIONS
 )
+from main.plans import PRO_ONLY_INTEGRATIONS
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +79,13 @@ async def connect_manual_integration(
 
     if not service_config:
         raise HTTPException(status_code=400, detail="Invalid service name.")
+
+    # --- Check Plan Limit ---
+    if service_name in PRO_ONLY_INTEGRATIONS and plan == "free":
+        raise HTTPException(
+            status_code=403,
+            detail=f"The {service_config.get('display_name', service_name)} integration is a Pro feature. Please upgrade your plan."
+        )
 
     # --- Check Plan Limit ---
     if service_name in PRO_ONLY_INTEGRATIONS and plan == "free":
@@ -154,6 +161,13 @@ async def connect_oauth_integration(
     service_name = request.service_name
     if service_name not in INTEGRATIONS_CONFIG or INTEGRATIONS_CONFIG[service_name]["auth_type"] != "oauth":
         raise HTTPException(status_code=400, detail="Invalid service name or auth type is not OAuth.")
+
+    # --- Check Plan Limit ---
+    if service_name in PRO_ONLY_INTEGRATIONS and plan == "free":
+        raise HTTPException(
+            status_code=403,
+            detail=f"The {INTEGRATIONS_CONFIG[service_name].get('display_name', service_name)} integration is a Pro feature. Please upgrade your plan."
+        )
 
     # --- Check Plan Limit ---
     if service_name in PRO_ONLY_INTEGRATIONS and plan == "free":

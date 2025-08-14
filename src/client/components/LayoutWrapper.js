@@ -7,7 +7,8 @@ import React, {
 	useRef,
 	createContext
 } from "react"
-import { usePathname, useRouter, useSearchParams } from "next/navigation" // Import useSearchParams
+// Import useSearchParams
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { AnimatePresence } from "framer-motion"
 import NotificationsOverlay from "@components/NotificationsOverlay"
 import { IconMenu2, IconLoader, IconX } from "@tabler/icons-react"
@@ -19,6 +20,7 @@ import { cn } from "@utils/cn"
 import toast from "react-hot-toast"
 import { useUser } from "@auth0/nextjs-auth0"
 
+// ... (keep the rest of your imports and context creation)
 export const PlanContext = createContext({
 	plan: "free",
 	isPro: false,
@@ -26,7 +28,7 @@ export const PlanContext = createContext({
 })
 import { subscribeUser } from "@app/actions"
 
-// Helper function to convert VAPID key
+// ... (keep your urlBase64ToUint8Array function)
 function urlBase64ToUint8Array(base64String) {
 	const padding = "=".repeat((4 - (base64String.length % 4)) % 4)
 	const base64 = (base64String + padding)
@@ -41,6 +43,7 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 export default function LayoutWrapper({ children }) {
+	// ... (keep all your existing state declarations)
 	const [isNotificationsOpen, setNotificationsOpen] = useState(false)
 	const [isSearchOpen, setSearchOpen] = useState(false)
 	const [isCommandPaletteOpen, setCommandPaletteOpen] = useState(false)
@@ -61,31 +64,45 @@ export default function LayoutWrapper({ children }) {
 
 	const showNav = !["/", "/onboarding"].includes(pathname)
 
-	// **NEW EFFECT**: Handles programmatic session refresh after payment
 	useEffect(() => {
 		const paymentStatus = searchParams.get("payment_status")
-		if (paymentStatus === "success") {
+		const needsRefresh = searchParams.get("refresh_session")
+
+		// Check for either trigger
+		if (paymentStatus === "success" || needsRefresh === "true") {
+			// CRITICAL FIX: Clean the URL synchronously *before* doing anything else.
+			// This prevents the refresh loop.
+			window.history.replaceState(null, "", pathname)
+
 			const refreshSession = async () => {
-				toast.loading(
-					"Payment successful! Refreshing your session...",
-					{ duration: 4000 }
-				)
+				const toastId = toast.loading("Updating your session...", {
+					duration: 4000
+				})
 				try {
-					// Calling this endpoint refreshes the session cookie with new data (like the "Pro" role)
-					await fetch("/api/auth/me")
-					// Clean the URL by removing the query parameter, then reload the page
-					router.replace(pathname, { scroll: false })
+					// Call the API to get a new session cookie
+					const res = await fetch("/api/auth/refresh-session")
+					if (!res.ok) {
+						const errorData = await res.json()
+						throw new Error(
+							errorData.error || "Session refresh failed."
+						)
+					}
+
+					// Now that the cookie is updated and the URL is clean, reload the page.
+					// This will re-run server components and hooks with the new session data.
 					window.location.reload()
 				} catch (error) {
 					toast.error(
-						"Failed to refresh session. Please log in again to see your new plan."
+						`Failed to refresh session: ${error.message}. Please log in again to see your new plan.`,
+						{ id: toastId }
 					)
 				}
 			}
 			refreshSession()
 		}
-	}, [searchParams, router, pathname])
+	}, [searchParams, router, pathname]) // Dependencies are correct
 
+	// ... (keep the rest of your useEffects and functions exactly as they were)
 	useEffect(() => {
 		if (!showNav) {
 			setIsLoading(false)
@@ -129,7 +146,7 @@ export default function LayoutWrapper({ children }) {
 		checkStatus()
 	}, [pathname, router, showNav, user, authError, isAuthLoading])
 
-	// ... (keep the rest of the useEffects and functions exactly as they were)
+	// ... (keep the rest of your useEffects and functions exactly as they were)
 	useEffect(() => {
 		if (!user?.sub) return
 
@@ -258,8 +275,6 @@ export default function LayoutWrapper({ children }) {
 		}
 	}, [])
 
-	// Removed duplicate subscribeToPushNotifications declaration
-
 	// PWA Update Handler
 	useEffect(() => {
 		if (
@@ -377,6 +392,10 @@ export default function LayoutWrapper({ children }) {
 			</div>
 		)
 	}
+
+	console.log(user[`${process.env.NEXT_PUBLIC_AUTH0_NAMESPACE}/roles`])
+
+	// ... (rest of the component is unchanged)
 	return (
 		<PlanContext.Provider
 			value={{

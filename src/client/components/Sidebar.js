@@ -246,7 +246,6 @@ const SidebarContent = ({
 			{!isPro && (
 				<a
 					href={dashboardUrl}
-					target="_blank"
 					rel="noopener noreferrer"
 					className={cn(
 						"w-full bg-neutral-800/40 border border-neutral-700/80 rounded-lg p-2.5 text-left mb-2 hover:bg-neutral-800/80 transition-colors",

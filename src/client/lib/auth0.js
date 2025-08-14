@@ -23,7 +23,7 @@ export const auth0 = isSelfHost
 			// Preserve custom claims like roles from the ID token
 			async beforeSessionSaved(session, idToken) {
 				return session
-			}
+		},
 		})
 
 export async function getBackendAuthHeader() {

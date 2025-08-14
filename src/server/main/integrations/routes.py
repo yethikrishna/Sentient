@@ -1,14 +1,18 @@
+import os
 import datetime
 import json
 import base64
 import asyncio
+import time
+import uuid
 import httpx
 import logging
+from composio import Composio, types
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import JSONResponse
 from typing import Tuple
 
-from main.integrations.models import ManualConnectRequest, OAuthConnectRequest, DisconnectRequest
+from main.integrations.models import ManualConnectRequest, OAuthConnectRequest, DisconnectRequest, ComposioInitiateRequest, ComposioFinalizeRequest
 from main.dependencies import mongo_manager, auth_helper
 from main.auth.utils import aes_encrypt, PermissionChecker
 from main.config import (
@@ -16,13 +20,17 @@ from main.config import (
     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
     TODOIST_CLIENT_ID, TODOIST_CLIENT_SECRET,
     DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET,
-    TRELLO_CLIENT_ID,
+    TRELLO_CLIENT_ID, COMPOSIO_API_KEY,
     GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SLACK_CLIENT_ID,
     SLACK_CLIENT_SECRET, NOTION_CLIENT_ID, NOTION_CLIENT_SECRET,
 )
 from main.plans import PRO_ONLY_INTEGRATIONS
 
 logger = logging.getLogger(__name__)
+
+# Initialize Composio SDK
+composio = Composio(api_key=COMPOSIO_API_KEY)
+
 
 router = APIRouter(
     prefix="/integrations",
@@ -43,7 +51,13 @@ async def get_integration_sources(user_id: str = Depends(auth_helper.get_current
         source_info["name"] = name
         user_connection = user_integrations.get(name, {})
         source_info["connected"] = user_connection.get("connected", False)
-        
+
+        # Add Composio-specific config for the client
+        if source_info["auth_type"] == "composio":
+            # The client needs the auth_config_id to initiate the connection
+            source_info["auth_config_id"] = os.getenv(f"{name.upper()}_AUTH_CONFIG_ID")
+
+
         # Add public config needed by the client for OAuth flow
         if source_info["auth_type"] == "oauth":
             # Define a list of Google services to avoid matching 'github' with 'g'
@@ -62,6 +76,11 @@ async def get_integration_sources(user_id: str = Depends(auth_helper.get_current
                 source_info["client_id"] = DISCORD_CLIENT_ID
             elif name == 'todoist':
                 source_info["client_id"] = TODOIST_CLIENT_ID
+            # For Composio, we need the auth_config_id
+            elif name == 'gmail':
+                source_info["auth_config_id"] = os.getenv("GMAIL_AUTH_CONFIG_ID")
+            elif name == 'gdrive':
+                source_info["auth_config_id"] = os.getenv("GDRIVE_AUTH_CONFIG_ID")
 
         all_sources.append(source_info)
 
@@ -372,4 +391,86 @@ async def disconnect_integration(request: DisconnectRequest, user_id: str = Depe
         return JSONResponse(content={"message": f"{service_name} disconnected successfully."})
     except Exception as e:
         logger.error(f"Error disconnecting integration {service_name} for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/connect/composio/initiate", summary="Initiate Composio OAuth flow")
+async def initiate_composio_connection(
+    request: ComposioInitiateRequest,
+    user_id: str = Depends(auth_helper.get_current_user_id)
+):
+    service_name = request.service_name
+    service_config = INTEGRATIONS_CONFIG.get(service_name)
+    if not service_config or service_config.get("auth_type") != "composio":
+        raise HTTPException(status_code=400, detail="Invalid service for Composio connection.")
+
+    auth_config_id = os.getenv(f"{service_name.upper()}_AUTH_CONFIG_ID")
+    if not auth_config_id:
+        raise HTTPException(status_code=500, detail=f"Auth Config ID for {service_name} is not configured on the server.")
+
+    try:
+        logger.info(f"Initiating Composio for {service_name} with auth_config_id={auth_config_id}")
+        callback_url = f"{os.getenv('APP_BASE_URL', 'http://localhost:3000')}/integrations"
+        connection_request = composio.connected_accounts.initiate(
+            user_id=user_id,
+            auth_config_id=auth_config_id,
+            callback_url=callback_url,
+            config={
+                "authScheme": "OAUTH2"
+            }
+        )
+
+        return JSONResponse(content={"redirect_url": connection_request.redirect_url})
+    except Exception as e:
+        logger.error(f"Error initiating Composio connection for {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/connect/composio/finalize", summary="Finalize Composio OAuth flow")
+async def finalize_composio_connection(
+    request: ComposioFinalizeRequest,
+    user_id: str = Depends(auth_helper.get_current_user_id)
+):
+    service_name = request.service_name
+    connected_account_id = request.connectedAccountId
+
+    try:
+        timeout = 120  # Wait for up to 2 minutes
+        start_time = time.time()
+        connected_account = None
+
+        # Manually implement the polling logic to work around the SDK bug in wait_for_connection.
+        while time.time() - start_time < timeout:
+            # Use asyncio.to_thread to run the synchronous SDK call in a separate thread
+            # The .get() method is an alias for .retrieve() and fetches the account by its ID.
+            connected_account = await asyncio.to_thread(
+                composio.connected_accounts.get, connected_account_id
+            )
+
+            if connected_account and connected_account.status == "ACTIVE":
+                break  # Success!
+
+            if connected_account and connected_account.status == "FAILED":
+                raise HTTPException(status_code=400, detail="Connection failed during authentication with the provider.")
+
+            await asyncio.sleep(2)  # Wait for 2 seconds before polling again
+        else:
+            # This block runs if the while loop finishes without a `break`
+            raise TimeoutError("Connection verification timed out.")
+
+        if not connected_account or connected_account.status != "ACTIVE":
+            raise HTTPException(status_code=400, detail="Connection could not be verified or is not active.")
+
+        logger.info(f"Finalized Composio connection for {service_name}: ID {connected_account_id}")
+
+        update_payload = {
+            f"userData.integrations.{service_name}.connection_id": connected_account.id,
+            f"userData.integrations.{service_name}.connected": True,
+            f"userData.integrations.{service_name}.auth_type": "composio"
+        }
+        await mongo_manager.update_user_profile(user_id, update_payload)
+
+        return JSONResponse(content={"message": f"{service_name} connected successfully via Composio."})
+    except Exception as e:
+        logger.error(f"Error finalizing Composio connection for {user_id}: {e}", exc_info=True)
+        if isinstance(e, TimeoutError) or "timed out" in str(e).lower():
+            raise HTTPException(status_code=408, detail="Connection verification timed out. Please try again.")
         raise HTTPException(status_code=500, detail=str(e))

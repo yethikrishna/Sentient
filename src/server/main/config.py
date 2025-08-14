@@ -54,9 +54,10 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ollama")
 OPENAI_API_KEYS = list(filter(None, [
     os.getenv("OPENAI_API_KEY"),
     os.getenv("OPENAI_API_KEY_FALLBACK_1"),
-    os.getenv("OPENAI_API_KEY_FALLBACK_2"),
+    os.getenv("OPENAI_API_KEY_FALLBACK_2")
 ]))
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+COMPOSIO_API_KEY = os.getenv("COMPOSIO_API_KEY")
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "models/gemini-embedding-001")
 
 # --- Voice ---
@@ -108,8 +109,8 @@ INTEGRATIONS_CONFIG = {
     },
     "gdrive": {
         "display_name": "Google Drive",
-        "description": "Access and manage files in your Google Drive. Allows the agent to search for files by name or content and read the contents of various file types like documents and spreadsheets.",
-        "auth_type": "oauth",
+        "description": "Connect to search and read files in your Google Drive. Powered by Composio to ensure security without extensive permissions.",
+        "auth_type": "composio",
         "icon": "IconBrandGoogleDrive",
         "category": "Productivity",
         "mcp_server_config": {
@@ -130,8 +131,8 @@ INTEGRATIONS_CONFIG = {
     },
     "gmail": {
         "display_name": "Gmail",
-        "description": "Read, send, and manage emails. The agent can search your inbox, send new emails, create drafts, reply to threads, forward messages, and manage emails by deleting them or marking them as read/unread.",
-        "auth_type": "oauth",
+        "description": "Connect to read, send, and manage emails. Powered by Composio to ensure security without extensive permissions.",
+        "auth_type": "composio",
         "icon": "IconMail",
         "category": "Communication",
         "mcp_server_config": {

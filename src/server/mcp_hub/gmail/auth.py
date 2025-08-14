@@ -5,9 +5,6 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.backends import default_backend
 import motor.motor_asyncio
-from google.oauth2.credentials import Credentials
-from google.oauth2 import service_account
-from googleapiclient.discovery import build, Resource
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
 from json_extractor import JsonExtractor
@@ -98,26 +95,20 @@ async def get_user_info(user_id: str) -> Dict[str, Any]:
         "privacy_filters": gmail_filters
     }
 
-
-async def get_google_creds(user_id: str) -> Credentials:
-    """Fetches Google OAuth token from MongoDB for a given user_id."""
+async def get_composio_connection_id(user_id: str, toolkit: str) -> str:
+    """
+    Fetches the Composio connection ID for a given toolkit from the user's profile.
+    """
     user_doc = await users_collection.find_one({"user_id": user_id})
     if not user_doc or not user_doc.get("userData"):
         raise ToolError(f"User profile or userData not found for user_id: {user_id}.")
     
     user_data = user_doc["userData"]
-    gmail_data = user_data.get("integrations", {}).get("gmail")
-    if not gmail_data or not gmail_data.get("connected") or not gmail_data.get("credentials"):
-        raise ToolError(f"Gmail integration not connected. Please use the default connect flow.")
+    integration = user_data.get("integrations", {}).get(toolkit)
 
-    try:
-        decrypted_creds_str = aes_decrypt(gmail_data["credentials"])
-        token_info = JsonExtractor.extract_valid_json(decrypted_creds_str)
-        if not token_info:
-            raise ToolError("Failed to parse decrypted credentials for Gmail.")
-        return Credentials.from_authorized_user_info(token_info)
-    except Exception as e:
-        raise ToolError(f"Failed to decrypt or parse default OAuth token for Gmail: {e}")
+    if integration and integration.get("connected"):
+        connection_id = integration.get("connection_id")
+        if connection_id:
+            return connection_id
 
-def authenticate_gmail(creds: Credentials) -> Resource:
-    return build("gmail", "v1", credentials=creds)
+    raise ToolError(f"No active Composio connection found for {toolkit}. Please connect it in settings.")

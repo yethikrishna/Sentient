@@ -563,13 +563,16 @@ const IntegrationCard = ({
 }) => {
 	const getTagType = (authType) => {
 		if (authType === "builtin") return "Native"
-		if (["oauth", "manual"].includes(authType)) return "3rd Party"
+		if (["oauth", "manual", "composio"].includes(authType))
+			return "3rd Party"
 		return null
 	}
 
 	const tagType = getTagType(integration.auth_type)
 
-	const isConnectable = ["oauth", "manual"].includes(integration.auth_type)
+	const isConnectable = ["oauth", "manual", "composio"].includes(
+		integration.auth_type
+	)
 
 	const isConnected =
 		integration.connected || integration.auth_type === "builtin"
@@ -697,7 +700,9 @@ const IntegrationsPage = () => {
 			]
 			const connectable = integrationsWithIcons.filter(
 				(i) =>
-					(i.auth_type === "oauth" || i.auth_type === "manual") &&
+					(i.auth_type === "oauth" ||
+						i.auth_type === "manual" ||
+						i.auth_type === "composio") &&
 					!hiddenTools.includes(i.name)
 			)
 			const builtIn = integrationsWithIcons.filter(
@@ -726,6 +731,11 @@ const IntegrationsPage = () => {
 
 		if (integration.name === "linkedin") {
 			setLinkedInToConnect(integration)
+			return
+		}
+
+		if (integration.auth_type === "composio") {
+			handleComposioConnect(integration)
 			return
 		}
 
@@ -810,6 +820,38 @@ const IntegrationsPage = () => {
 		}
 	}
 
+	const handleComposioConnect = async (integration) => {
+		const { name: serviceName, auth_config_id: authConfigId } = integration
+		if (!authConfigId) {
+			toast.error(
+				`Auth Config ID for ${integration.display_name} is not configured.`
+			)
+			return
+		}
+		setProcessingIntegration(serviceName)
+		try {
+			// Store service name for callback handling
+			localStorage.setItem("composio_pending_service", serviceName)
+
+			const response = await fetch(
+				"/api/settings/integrations/connect/composio/initiate",
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ service_name: serviceName })
+				}
+			)
+			const data = await response.json()
+			if (!response.ok)
+				throw new Error(data.error || "Failed to start connection.")
+			window.location.href = data.redirect_url
+		} catch (error) {
+			toast.error(`Connection failed: ${error.message}`)
+			setProcessingIntegration(null)
+			localStorage.removeItem("composio_pending_service")
+		}
+	}
+
 	const handleDisconnect = async () => {
 		if (!disconnectingIntegration) return
 
@@ -844,8 +886,62 @@ const IntegrationsPage = () => {
 
 	useEffect(() => {
 		fetchIntegrations()
+
+		// --- Handle Composio OAuth Callback ---
 		const urlParams = new URLSearchParams(window.location.search)
-		// Use `get` which returns the first value, which is fine here.
+		const composioStatus = urlParams.get("status")
+		const connectedAccountId = urlParams.get("connectedAccountId")
+		const pendingService = localStorage.getItem("composio_pending_service")
+
+		if (
+			composioStatus === "success" &&
+			connectedAccountId &&
+			pendingService
+		) {
+			const finalizeConnection = async () => {
+				const toastId = toast.loading(
+					`Finalizing ${pendingService} connection...`
+				)
+				localStorage.removeItem("composio_pending_service") // Clean up immediately
+				try {
+					const response = await fetch(
+						"/api/settings/integrations/connect/composio/finalize",
+						{
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({
+								service_name: pendingService,
+								connectedAccountId: connectedAccountId
+							})
+						}
+					)
+					const data = await response.json()
+					if (!response.ok) {
+						throw new Error(
+							data.error || "Failed to finalize connection."
+						)
+					}
+
+					toast.success(data.message, { id: toastId })
+					posthog?.capture("integration_connected", {
+						integration_name: pendingService,
+						auth_type: "composio"
+					})
+					fetchIntegrations() // Refresh the list
+				} catch (error) {
+					toast.error(`Error: ${error.message}`, { id: toastId })
+				} finally {
+					// Clean up URL
+					window.history.replaceState(
+						{},
+						document.title,
+						"/integrations"
+					)
+				}
+			}
+			finalizeConnection()
+		}
+
 		const success = urlParams.get("integration_success")
 		const error = urlParams.get("integration_error")
 
@@ -900,7 +996,8 @@ const IntegrationsPage = () => {
 			}
 		}
 
-		if (success) {
+		if (success && !composioStatus) {
+			// Avoid double-toasting for Composio
 			const capitalized =
 				success.charAt(0).toUpperCase() + success.slice(1)
 			posthog?.capture("integration_connected", {
@@ -910,7 +1007,8 @@ const IntegrationsPage = () => {
 			toast.success(`Successfully connected to ${capitalized}!`)
 			setSparkleTrigger((c) => c + 1)
 			window.history.replaceState({}, document.title, "/integrations")
-		} else if (error) {
+		} else if (error && !composioStatus) {
+			// Avoid showing generic error on composio callback
 			toast.error(`Connection failed: ${error}`)
 			window.history.replaceState({}, document.title, "/integrations")
 		}
@@ -1097,7 +1195,8 @@ const IntegrationsPage = () => {
 															] || IconPlaceholder
 														const isConnectable = [
 															"oauth",
-															"manual"
+															"manual",
+															"composio"
 														].includes(
 															integration.auth_type
 														)
@@ -1264,9 +1363,18 @@ const IntegrationsPage = () => {
 																										e
 																									) => {
 																										e.stopPropagation()
-																										handleConnect(
-																											integration
-																										)
+																										if (
+																											integration.auth_type ===
+																											"composio"
+																										) {
+																											handleComposioConnect(
+																												integration
+																											)
+																										} else {
+																											handleConnect(
+																												integration
+																											)
+																										}
 																									}}
 																									className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-brand-orange hover:bg-brand-orange/90 text-brand-black font-semibold text-sm transition-colors"
 																								>

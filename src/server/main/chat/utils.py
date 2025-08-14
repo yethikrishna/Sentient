@@ -14,7 +14,7 @@ import httpx
 from qwen_agent.tools.base import BaseTool, register_tool
 from openai import OpenAI, APIError
 
-from main.chat.prompts import STAGE_1_SYSTEM_PROMPT, STAGE_2_SYSTEM_PROMPT
+from main.chat.prompts import STAGE_1_SYSTEM_PROMPT, STAGE_2_SYSTEM_PROMPT # noqa: E501
 from main.db import MongoManager
 from main.llm import run_agent_with_fallback, LLMProviderDownError
 from main.config import (INTEGRATIONS_CONFIG, ENVIRONMENT, OPENAI_API_KEYS, OPENAI_API_BASE_URL, OPENAI_MODEL_NAME)
@@ -216,7 +216,7 @@ def _get_tool_lists(user_integrations: Dict) -> Tuple[Dict, Dict]:
         if auth_type == "builtin":
             connected_tools[tool_name] = config.get("description", "")
         # For user-configured tools, check the 'connected' flag from the DB
-        elif auth_type in ["oauth", "manual"]:
+        elif auth_type in ["oauth", "manual", "composio"]:
             if user_integrations.get(tool_name, {}).get("connected", False):
                 connected_tools[tool_name] = config.get("description", "")
             else:
@@ -277,15 +277,23 @@ async def generate_chat_llm_stream(
         filtered_mcp_servers = {}
         for tool_name in final_tool_names:
             config = INTEGRATIONS_CONFIG.get(tool_name, {})
-            if config:
-                mcp_config = config.get("mcp_server_config", {})
-                if mcp_config and mcp_config.get("url") and mcp_config.get("name"):
-                    server_name = mcp_config["name"]
-                    filtered_mcp_servers[server_name] = {
-                        "url": mcp_config["url"],
-                        "headers": {"X-User-ID": user_id},
-                        "transport": "sse"
-                    }
+            if not config:
+                continue
+
+            mcp_config = config.get("mcp_server_config", {})
+            if not (mcp_config and mcp_config.get("url") and mcp_config.get("name")):
+                continue
+
+            server_name = mcp_config["name"]
+            base_url = mcp_config["url"]
+            headers = {"X-User-ID": user_id}
+
+            # If we've made it this far, the tool is configured correctly.
+            filtered_mcp_servers[server_name] = {
+                "url": base_url,
+                "headers": headers,
+                "transport": "sse"
+            }
         tools = [{"mcpServers": filtered_mcp_servers}]
 
         logger.info(f"Final tools for agent: {list(filtered_mcp_servers.keys())}")

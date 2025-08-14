@@ -18,7 +18,7 @@ from main.config import INTEGRATIONS_CONFIG # This is the new field
 from main.tasks.prompts import TASK_CREATION_PROMPT
 from mcp_hub.memory.utils import initialize_embedding_model, initialize_agents, cud_memory
 from mcp_hub.tasks.prompts import RESOURCE_MANAGER_SYSTEM_PROMPT
-from main.llm import run_agent_with_fallback as run_main_agent_with_fallback
+from main.llm import run_agent as run_main_agent
 from main.db import MongoManager
 from workers.celery_app import celery_app
 from workers.planner.llm import get_planner_agent # noqa: E501
@@ -85,7 +85,7 @@ async def _select_relevant_tools(query: str, available_tools_map: Dict[str, str]
 
         def _run_selector_sync():
             final_content_str = ""
-            for chunk in run_main_agent_with_fallback(system_message=STAGE_1_SYSTEM_PROMPT, function_list=[], messages=messages):
+            for chunk in run_main_agent(system_message=STAGE_1_SYSTEM_PROMPT, function_list=[], messages=messages):
                 if isinstance(chunk, list) and chunk:
                     last_message = chunk[-1]
                     if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
@@ -277,7 +277,7 @@ async def async_orchestrate_swarm_task(task_id: str, user_id: str):
         messages = [{'role': 'user', 'content': user_prompt}]
         
         manager_response_str = ""
-        for chunk in run_main_agent_with_fallback(system_message=system_prompt, function_list=[], messages=messages):
+        for chunk in run_main_agent(system_message=system_prompt, function_list=[], messages=messages):
             if isinstance(chunk, list) and chunk:
                 last_message = chunk[-1]
                 if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
@@ -394,7 +394,7 @@ async def async_refine_and_plan_ai_task(task_id: str, user_id: str):
         messages = [{'role': 'user', 'content': task["description"]}]
 
         response_str = ""
-        for chunk in run_main_agent_with_fallback(system_message=system_prompt, function_list=[], messages=messages):
+        for chunk in run_main_agent(system_message=system_prompt, function_list=[], messages=messages):
             if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
                 response_str = chunk[-1].get("content", "")
 
@@ -694,7 +694,7 @@ async def async_generate_plan(task_id: str, user_id: str):
         messages = [{'role': 'user', 'content': user_prompt_content}]
 
         final_response_str = ""
-        for chunk in run_main_agent_with_fallback(system_message=agent_config["system_message"], function_list=agent_config["function_list"], messages=messages):
+        for chunk in run_main_agent(system_message=agent_config["system_message"], function_list=agent_config["function_list"], messages=messages):
             if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
                 final_response_str = chunk[-1].get("content", "")
 
@@ -766,7 +766,7 @@ async def async_refine_task_details(task_id: str):
         messages = [{'role': 'user', 'content': task["description"]}] # Use the raw prompt for parsing
 
         response_str = ""
-        for chunk in run_main_agent_with_fallback(system_message=system_prompt, function_list=[], messages=messages):
+        for chunk in run_main_agent(system_message=system_prompt, function_list=[], messages=messages):
             if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
                 response_str = chunk[-1].get("content", "")
 
@@ -1169,7 +1169,7 @@ Core Instructions:
 """
             # --- END MODIFIED PROMPT ---
 
-            for response_chunk in run_main_agent_with_fallback(system_message=system_prompt, function_list=[], messages=messages):
+            for response_chunk in run_main_agent(system_message=system_prompt, function_list=[], messages=messages):
                  if isinstance(response_chunk, list) and response_chunk and response_chunk[-1].get("role") == "assistant":
                     summary_text = response_chunk[-1].get("content", "")
 

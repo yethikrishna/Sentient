@@ -12,7 +12,7 @@ from datetime import datetime
 
 from . import auth, prompts
 from main.dependencies import mongo_manager # This is the main server's mongo manager
-from main.llm import run_agent_with_fallback
+from main.llm import run_agent
 from main.config import INTEGRATIONS_CONFIG
 from main.tasks.utils import clean_llm_output
 from workers.tasks import refine_and_plan_ai_task

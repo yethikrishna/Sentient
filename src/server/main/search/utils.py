@@ -6,7 +6,7 @@ from typing import Any, AsyncGenerator, Dict, List, Tuple
 
 from main.chat.prompts import STAGE_1_SYSTEM_PROMPT
 from main.config import INTEGRATIONS_CONFIG
-from main.llm import run_agent_with_fallback, LLMProviderDownError
+from main.llm import run_agent, LLMProviderDownError
 from json_extractor import JsonExtractor
 # MODIFICATION: Import the class, not the global instance
 from main.db import MongoManager
@@ -39,7 +39,7 @@ async def _select_search_tools(query: str, user_id: str, user_integrations: Dict
 
         def _run_selector_sync():
             final_content_str = ""
-            for chunk in run_agent_with_fallback(system_message=STAGE_1_SYSTEM_PROMPT, function_list=[], messages=messages):
+            for chunk in run_agent(system_message=STAGE_1_SYSTEM_PROMPT, function_list=[], messages=messages):
                 if isinstance(chunk, list) and chunk:
                     last_message = chunk[-1]
                     if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
@@ -105,7 +105,7 @@ async def perform_unified_search(query: str, user_id: str) -> AsyncGenerator[str
 
     try:
         # The agent's run method is a generator that yields the complete history at each step.
-        for history_chunk in run_agent_with_fallback(
+        for history_chunk in run_agent(
             system_message=UNIFIED_SEARCH_SYSTEM_PROMPT,
             function_list=[{"mcpServers": mcp_servers_to_use}],
             messages=messages

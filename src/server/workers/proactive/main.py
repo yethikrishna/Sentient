@@ -4,7 +4,7 @@ import json
 import datetime
 from typing import Dict, Any
 
-from main.llm import run_agent_with_fallback
+from main.llm import run_agent
 from json_extractor import JsonExtractor
 from workers.utils.api_client import notify_user
 from workers.proactive.prompts import (
@@ -29,7 +29,7 @@ async def formulate_search_queries(user_id: str, event_type: str, event_data: Di
     messages = [{'role': 'user', 'content': prompt}]
 
     response_str = ""
-    for chunk in run_agent_with_fallback(system_message=QUERY_FORMULATION_SYSTEM_PROMPT, function_list=[], messages=messages):
+    for chunk in run_agent(system_message=QUERY_FORMULATION_SYSTEM_PROMPT, function_list=[], messages=messages):
         if isinstance(chunk, list) and chunk:
             last_message = chunk[-1]
             if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
@@ -62,7 +62,7 @@ async def standardize_suggestion_type(suggestion_type_description: str) -> str:
         messages = [{'role': 'user', 'content': prompt}]
 
         response_str = ""
-        for chunk in run_agent_with_fallback(system_message=SUGGESTION_TYPE_STANDARDIZER_SYSTEM_PROMPT, function_list=[], messages=messages):
+        for chunk in run_agent(system_message=SUGGESTION_TYPE_STANDARDIZER_SYSTEM_PROMPT, function_list=[], messages=messages):
             if isinstance(chunk, list) and chunk:
                 last_message = chunk[-1]
                 if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
@@ -102,7 +102,7 @@ async def run_proactive_reasoner(scratchpad: Dict[str, Any]) -> Dict[str, Any]:
     messages = [{'role': 'user', 'content': user_prompt}]
 
     response_str = ""
-    for chunk in run_agent_with_fallback(system_message=PROACTIVE_REASONER_SYSTEM_PROMPT, function_list=[], messages=messages):
+    for chunk in run_agent(system_message=PROACTIVE_REASONER_SYSTEM_PROMPT, function_list=[], messages=messages):
         if isinstance(chunk, list) and chunk:
             last_message = chunk[-1]
             if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):

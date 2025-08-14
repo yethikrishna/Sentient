@@ -4,9 +4,10 @@ from typing import Dict, Any
 import json
 
 from . import prompts
-from fastmcp.utilities.logging import get_logger
+import logging
+from main.llm import run_agent
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # Use the main server's LLM config
 OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL", "http://localhost:11434/v1/") # Keep for consistency in config
@@ -55,15 +56,14 @@ def run_agent_with_prompt(agent_config: Dict[str, Any], user_prompt: str) -> str
     messages = [{'role': 'user', 'content': user_prompt}]
     final_content = ""
     
-    # Import here to avoid circular dependency issues at module load time
-    from main.llm import run_agent_with_fallback
+    # Removed: # Import here to avoid circular dependency issues at module load time
     
     try:
-        for chunk in run_agent_with_fallback(system_message=system_message, function_list=[], messages=messages):
+        for chunk in run_agent(system_message=system_message, function_list=[], messages=messages):
             if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
                 final_content = chunk[-1].get("content", "")
     except Exception as e:
-        logger.error(f"Agent '{agent_name}' failed after trying all keys: {e}")
+        logger.error(f"Agent '{agent_name}' failed: {e}")
         return "" # Return empty on failure
 
     logger.debug(f"Agent '{agent_name}' raw response:\n---RESPONSE START---\n{final_content}\n---RESPONSE END---")

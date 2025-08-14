@@ -18,7 +18,7 @@ from workers.executor.prompts import RESULT_GENERATOR_SYSTEM_PROMPT # noqa: E501
 from workers.utils.api_client import notify_user, push_progress_update, push_task_list_update
 from workers.utils.text_utils import clean_llm_output
 from celery import chord, group
-from main.llm import run_agent_with_fallback as run_main_agent_with_fallback, LLMProviderDownError
+from main.llm import run_agent as run_main_agent, LLMProviderDownError
 
 # Load environment variables for the worker from its own config
 from workers.executor.config import (MONGO_URI, MONGO_DB_NAME,
@@ -289,7 +289,7 @@ async def async_execute_task_plan(task_id: str, user_id: str, run_id: str):
 
         final_assistant_content = ""
         final_history = []
-        for current_history in run_main_agent_with_fallback(
+        for current_history in run_main_agent(
             system_message=full_plan_prompt,
             function_list=tools_config,
             messages=initial_messages
@@ -456,7 +456,7 @@ async def async_generate_task_result(task_id: str, run_id: str, user_id: str, ag
 
         response_str = ""
         # This is a non-streaming call, so we just need the final result.
-        for chunk in run_main_agent_with_fallback(system_message=RESULT_GENERATOR_SYSTEM_PROMPT, function_list=[], messages=messages):
+        for chunk in run_main_agent(system_message=RESULT_GENERATOR_SYSTEM_PROMPT, function_list=[], messages=messages):
             if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
                 response_str = chunk[-1].get("content", "")
 

@@ -1245,15 +1245,21 @@ const IntegrationsPage = () => {
 							</div>
 							<button
 								onClick={() => setOtherIntegrationsOpen(true)}
-								className="mt-12 py-2 px-5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-sm font-medium"
+								className="mt-12 py-2 px-5 w-48 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-sm font-medium flex items-center justify-between gap-4"
 							>
-								Other Integrations
+								<span className="flex items-center">
+									Other Integrations
+								</span>
+								<span className="flex items-center gap-2">
+									<IconBrandGithub className="w-6 h-6" />
+									<IconBrandSlack className="w-6 h-6" />
+								</span>
 							</button>
 						</>
 					)}
 				</main>
 				<footer className="p-4">
-					<div className="w-full max-w-lg mx-auto relative">
+					<div className="w-full max-w-lg mx-auto">
 						<input
 							type="text"
 							placeholder="Search integrations..."
@@ -1262,13 +1268,6 @@ const IntegrationsPage = () => {
 							value={searchQuery}
 							onChange={(e) => setSearchQuery(e.target.value)}
 						/>
-						<div className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center">
-							<img
-								src="/images/audi-logo.png"
-								alt="Sponsor"
-								className="h-4 opacity-50"
-							/>
-						</div>
 					</div>
 				</footer>
 			</div>

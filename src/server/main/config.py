@@ -51,11 +51,6 @@ VAPID_ADMIN_EMAIL = os.getenv("VAPID_ADMIN_EMAIL")
 OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL", "http://localhost:11434/v1/")
 OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "qwen3:4b")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ollama")
-OPENAI_API_KEYS = list(filter(None, [
-    os.getenv("OPENAI_API_KEY"),
-    os.getenv("OPENAI_API_KEY_FALLBACK_1"),
-    os.getenv("OPENAI_API_KEY_FALLBACK_2")
-]))
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 COMPOSIO_API_KEY = os.getenv("COMPOSIO_API_KEY")
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "models/gemini-embedding-001")

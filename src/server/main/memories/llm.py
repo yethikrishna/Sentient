@@ -5,7 +5,7 @@ from typing import Dict, Any
 import json
 
 from . import prompts
-from main.llm import run_agent_with_fallback
+from main.llm import run_agent
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ def run_agent_with_prompt(agent_config: Dict[str, Any], user_prompt: str) -> str
     final_content = ""
 
     try:
-        for chunk in run_agent_with_fallback(system_message=system_message, function_list=[], messages=messages):
+        for chunk in run_agent(system_message=system_message, function_list=[], messages=messages):
             if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
                 final_content = chunk[-1].get("content", "")
     except Exception as e:

@@ -15,7 +15,7 @@ from .models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest, TaskAction
 from main.llm import run_agent_with_fallback
 from main.tasks.models import AddTaskRequest, UpdateTaskRequest, TaskIdRequest, TaskActionRequest, TaskChatRequest, ProgressUpdateRequest
 from workers.tasks import generate_plan_from_context, execute_task_plan, calculate_next_run, refine_and_plan_ai_task, orchestrate_swarm_task
-from main.llm import run_agent_with_fallback, LLMProviderDownError
+from main.llm import run_agent, LLMProviderDownError
 from json_extractor import JsonExtractor
 from .prompts import TASK_CREATION_PROMPT
 
@@ -55,7 +55,7 @@ async def generate_plan_from_prompt(
         messages = [{'role': 'user', 'content': request.prompt}]
 
         response_str = ""
-        for chunk in run_agent_with_fallback(system_message=system_prompt, function_list=[], messages=messages):
+        for chunk in run_agent(system_message=system_prompt, function_list=[], messages=messages):
             if isinstance(chunk, list) and chunk:
                 last_message = chunk[-1]
                 if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):

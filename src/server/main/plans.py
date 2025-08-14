@@ -40,13 +40,10 @@ PLAN_LIMITS = {
 # Features that are exclusively for Pro users
 PRO_ONLY_FEATURES = [
     "proactivity",
+    # TODO: Implement Calendar Mirroring feature and enforce this Pro-only limit.
     "calendar_mirroring",
+    # TODO: Implement Inbox Mirroring feature and enforce this Pro-only limit.
     "inbox_mirroring"
-]
-
-PRO_ONLY_INTEGRATIONS = [
-    "gdocs", "gslides", "gsheets", # GSuite
-    "linkedin"
 ]
 
 PRO_ONLY_INTEGRATIONS = [

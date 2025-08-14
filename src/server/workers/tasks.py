@@ -240,6 +240,11 @@ async def async_orchestrate_swarm_task(task_id: str, user_id: str):
             logger.error(f"Orchestrator: Task {task_id} not found or is not a swarm task.")
             return
 
+        # --- Get user plan to check limits ---
+        user_profile = await db_manager.get_user_profile(user_id)
+        plan = user_profile.get("userData", {}).get("plan", "free") if user_profile else "free"
+        sub_agent_limit = PLAN_LIMITS[plan].get("swarm_sub_agents_max", 10)
+
         swarm_details = task.get("swarm_details", {})
         goal = swarm_details.get("goal")
         items = swarm_details.get("items")
@@ -328,6 +333,10 @@ async def async_orchestrate_swarm_task(task_id: str, user_id: str):
             worker_prompt = config.get("worker_prompt")
             required_tools = config.get("required_tools", [])
             
+            # --- Enforce sub-agent limit ---
+            if total_agents > sub_agent_limit:
+                raise Exception(f"Swarm plan exceeds the sub-agent limit for your plan ({total_agents} > {sub_agent_limit}). Please reduce the number of items or upgrade your plan.")
+
             if not all([isinstance(item_indices, list), worker_prompt, isinstance(required_tools, list)]):
                 logger.warning(f"Skipping invalid worker configuration: {config}")
                 continue

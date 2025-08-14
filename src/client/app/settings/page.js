@@ -779,12 +779,9 @@ const ProactivitySettings = () => {
 
 	const handleToggle = async (enabled) => {
 		if (!isPro && enabled) {
-			toast.error(
-				"Proactive Assistance is a Pro feature. Please upgrade.",
-				{
-					duration: 4000
-				}
-			)
+			toast.error("Autpilot Mode is a Pro feature. Please upgrade.", {
+				duration: 4000
+			})
 			return
 		}
 		setIsEnabled(enabled) // Optimistic update
@@ -825,7 +822,7 @@ const ProactivitySettings = () => {
 						className="font-semibold text-lg text-white flex items-center gap-2"
 						passive
 					>
-						Proactive Assistance
+						Autpilot Mode
 						{!isPro && (
 							<span className="text-xs font-bold bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded-full">
 								PRO

@@ -180,14 +180,7 @@ async def update_proactivity_settings(
     if "proactivity" in PRO_ONLY_FEATURES and plan == "free" and is_enabled:
         raise HTTPException(
             status_code=403,
-            detail="Proactive Assistance is a Pro feature. Please upgrade your plan to enable it."
-        )
-
-    # --- Check Plan Limit ---
-    if "proactivity" in PRO_ONLY_FEATURES and plan == "free" and is_enabled:
-        raise HTTPException(
-            status_code=403,
-            detail="Autopilot Mode is a Pro feature. Please upgrade your plan to enable it."
+            detail="Autpilot Mode is a Pro feature. Please upgrade your plan to enable it."
         )
 
     update_payload = {"userData.preferences.proactivityEnabled": is_enabled}

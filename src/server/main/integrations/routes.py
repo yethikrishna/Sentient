@@ -106,13 +106,6 @@ async def connect_manual_integration(
             detail=f"The {service_config.get('display_name', service_name)} integration is a Pro feature. Please upgrade your plan."
         )
 
-    # --- Check Plan Limit ---
-    if service_name in PRO_ONLY_INTEGRATIONS and plan == "free":
-        raise HTTPException(
-            status_code=403,
-            detail=f"The {service_config.get('display_name', service_name)} integration is a Pro feature. Please upgrade your plan."
-        )
-
     # Allow Trello to use this endpoint despite being 'oauth' type, as its flow provides a token directly.
     if service_config["auth_type"] != "manual" and service_name != "trello":
         raise HTTPException(status_code=400, detail=f"Service '{service_name}' does not support this connection method.")
@@ -180,13 +173,6 @@ async def connect_oauth_integration(
     service_name = request.service_name
     if service_name not in INTEGRATIONS_CONFIG or INTEGRATIONS_CONFIG[service_name]["auth_type"] != "oauth":
         raise HTTPException(status_code=400, detail="Invalid service name or auth type is not OAuth.")
-
-    # --- Check Plan Limit ---
-    if service_name in PRO_ONLY_INTEGRATIONS and plan == "free":
-        raise HTTPException(
-            status_code=403,
-            detail=f"The {INTEGRATIONS_CONFIG[service_name].get('display_name', service_name)} integration is a Pro feature. Please upgrade your plan."
-        )
 
     # --- Check Plan Limit ---
     if service_name in PRO_ONLY_INTEGRATIONS and plan == "free":

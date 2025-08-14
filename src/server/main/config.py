@@ -194,17 +194,6 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("GMAPS_MCP_SERVER_URL", "http://localhost:9016/sse")
         }
     },
-    "gshopping": {
-        "display_name": "Google Shopping",
-        "description": "Search for products online. The agent can find items to purchase by searching Google Shopping and returning a list of products with titles, links, and prices.",
-        "auth_type": "builtin",
-        "icon": "IconShoppingCart",
-        "category": "Utilities",
-        "mcp_server_config": {
-            "name": "gshopping_server",
-            "url": os.getenv("GSHOPPING_MCP_SERVER_URL", "http://localhost:9017/sse")
-        }
-    },
     "slack": {
         "display_name": "Slack",
         "description": "Connect to your Slack workspace. Allows the agent to list channels, post messages, reply in threads, add reactions, read channel history, and get user information.",
@@ -325,17 +314,6 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("WHATSAPP_MCP_SERVER_URL", "http://localhost:9024/sse")
         }
     },
-    "linkedin": {
-        "display_name": "LinkedIn",
-        "description": "Search for job listings on LinkedIn. Requires you to first upload a 'linkedin_cookies.json' file using the file upload button in the chat.",
-        "auth_type": "manual",
-        "icon": "IconBrandLinkedin",
-        "category": "Data & Search",
-        "mcp_server_config": {
-            "name": "linkedin_server",
-            "url": os.getenv("LINKEDIN_MCP_SERVER_URL", "http://localhost:9027/sse")
-        }
-    },
     "tasks": {
         "display_name": "Internal Task Manager",
         "description": "Manages asynchronous, background tasks. Use 'create_task_from_prompt' to create a new task from a natural language prompt.",
@@ -345,17 +323,6 @@ INTEGRATIONS_CONFIG = {
         "mcp_server_config": {
             "name": "tasks_server",
             "url": os.getenv("TASKS_MCP_SERVER_URL", "http://localhost:9018/sse/")
-        }
-    },
-    "todoist": {
-        "display_name": "Todoist",
-        "description": "Manage your tasks and projects in Todoist. The agent can list projects, get tasks, create new tasks, and mark tasks as complete.",
-        "auth_type": "oauth",
-        "icon": "IconBrandTodoist",
-        "category": "Productivity",
-        "mcp_server_config": {
-            "name": "todoist_server",
-            "url": os.getenv("TODOIST_MCP_SERVER_URL", "http://localhost:9021/sse")
         }
     },
     "discord": {

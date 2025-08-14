@@ -22,16 +22,13 @@ Here is the complete list of available tools you can select from:
     "gmail": "Use this tool to send and manage emails in Gmail.",
     "gmaps": "Use this tool for navigation, location search, and directions.",
     "gpeople": "Use this tool for storing and organizing personal and professional contacts.",
-    "gshopping": "Use this tool for searching and comparing products across online stores.",
     "gsheets": "Use this tool to create and edit spreadsheets in Google Sheets.",
     "gslides": "Use this tool for creating and sharing slide decks.",
     "internet_search": "Use this tool to search for information on the internet.",
-    "linkedin": "Use this tool only when the user asks you to search for jobs.",
     "news": "Use this tool to get current news updates and articles.",
     "notion": "Use this tool for creating, editing and managing pages in Notion.",
     "quickchart": "Use this tool to generate charts and graphs quickly from data inputs.",
     "slack": "Use this tool to perform actions in the messaging platform Slack.",
-    "todoist": "Use this tool to organize a user's to-do list.",
     "trello": "Use this tool for managing boards in Trello.",
     "whatsapp": "Use this tool only for sending Whatsapp messages to the user."
 }

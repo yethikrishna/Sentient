@@ -27,11 +27,9 @@ import {
 	IconClockHour4,
 	IconMessageChatbot,
 	IconMapPin,
-	IconShoppingCart,
 	IconChartPie,
 	IconBrandTrello,
 	IconNews,
-	IconListCheck,
 	IconBrandDiscord,
 	IconBrandWhatsapp,
 	IconCalendarEvent
@@ -40,8 +38,7 @@ import {
 	IconBrandSlack,
 	IconBrandNotion,
 	IconBrandGithub,
-	IconBrandGoogleDrive,
-	IconBrandLinkedin
+	IconBrandGoogleDrive
 } from "@tabler/icons-react"
 import IconGoogleMail from "@components/icons/IconGoogleMail"
 import toast from "react-hot-toast"
@@ -68,13 +65,10 @@ const toolIcons = {
 	internet_search: IconWorldSearch,
 	memory: IconBrain,
 	gmaps: IconMapPin,
-	linkedin: IconBrandLinkedin,
-	gshopping: IconShoppingCart,
 	quickchart: IconChartPie,
 	google_search: IconWorldSearch,
 	trello: IconBrandTrello,
 	news: IconNews,
-	todoist: IconListCheck,
 	discord: IconBrandDiscord,
 	whatsapp: IconBrandWhatsapp,
 	gcalendar_alt: IconCalendarEvent,

@@ -135,16 +135,6 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("GMAPS_MCP_SERVER_URL", "http://localhost:9016/sse")
         }
     },
-    "gshopping": {
-        "display_name": "Google Shopping",
-        "description": "Search for products online. The agent can find items to purchase by searching Google Shopping and returning a list of products with titles, links, and prices.",
-        "auth_type": "builtin",
-        "icon": "IconShoppingCart",
-        "mcp_server_config": {
-            "name": "gshopping_server",
-            "url": os.getenv("GSHOPPING_MCP_SERVER_URL", "http://localhost:9017/sse")
-        }
-    },
     "slack": { # User-configurable Manual
         "display_name": "Slack",
         "description": "Connect to your Slack workspace. Allows the agent to list channels, post messages, reply in threads, add reactions, read channel history, and get user information.",
@@ -243,16 +233,6 @@ INTEGRATIONS_CONFIG = {
         "mcp_server_config": {
             "name": "whatsapp_server",
             "url": os.getenv("WHATSAPP_MCP_SERVER_URL", "http://localhost:9024/sse")
-        }
-    },
-    "linkedin": {
-        "display_name": "LinkedIn",
-        "description": "Search for job listings on LinkedIn. Requires you to first upload a 'linkedin_cookies.json' file using the file upload button in the chat.",
-        "auth_type": "manual",
-        "icon": "IconBrandLinkedin",
-        "mcp_server_config": {
-            "name": "linkedin_server",
-            "url": os.getenv("LINKEDIN_MCP_SERVER_URL", "http://localhost:9027/sse")
         }
     },
     "tasks": {

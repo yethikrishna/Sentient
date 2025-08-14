@@ -36,7 +36,6 @@ import {
 	IconWorldSearch,
 	IconSearch,
 	IconSparkles,
-	IconBrandLinkedin,
 	IconAlertTriangle,
 	IconEye,
 	IconPlug
@@ -58,7 +57,6 @@ import {
 import { Tooltip } from "react-tooltip"
 import ModalDialog from "@components/ModalDialog"
 import { useRouter } from "next/navigation"
-import IconBrandTodoist from "@components/icons/IconBrandTodoist"
 
 const integrationColorIcons = {
 	gmail: IconMail,
@@ -70,7 +68,6 @@ const integrationColorIcons = {
 	gslides: IconPresentation,
 	gsheets: IconTable,
 	gmaps: IconMapPin,
-	gshopping: IconShoppingCart,
 	slack: IconBrandSlack,
 	notion: IconBrandNotion,
 	accuweather: IconCloud,
@@ -80,11 +77,9 @@ const integrationColorIcons = {
 	trello: IconBrandTrello,
 	github: IconBrandGithub,
 	news: IconNews,
-	todoist: IconBrandTodoist,
 	discord: IconBrandDiscord,
 	whatsapp: IconBrandWhatsapp,
-	file_management: IconFile,
-	linkedin: IconBrandLinkedin
+	file_management: IconFile
 }
 
 const IconPlaceholder = IconSettingsCog
@@ -153,69 +148,6 @@ const WhatsAppConnectModal = ({ integration, onClose, onSuccess }) => {
 		<ModalDialog
 			title={`Connect to ${integration.display_name}`}
 			description="Connect a number for the agent to use as a tool."
-			onConfirm={handleSubmit}
-			onCancel={onClose}
-			confirmButtonText={isSubmitting ? "Connecting..." : "Connect"}
-			isConfirmDisabled={isSubmitting}
-			extraContent={modalContent}
-		/>
-	)
-}
-
-const LinkedInConnectModal = ({ integration, onClose, onSuccess }) => {
-	const [isSubmitting, setIsSubmitting] = useState(false)
-	const posthog = usePostHog()
-
-	if (!integration) return null
-
-	const handleSubmit = async () => {
-		setIsSubmitting(true)
-		try {
-			const response = await fetch(
-				"/api/settings/integrations/connect/manual",
-				{
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						service_name: "linkedin",
-						credentials: { setup_complete: true } // Dummy credentials
-					})
-				}
-			)
-			const data = await response.json()
-			if (!response.ok) {
-				throw new Error(
-					data.detail || "Failed to connect LinkedIn Agent"
-				)
-			}
-			posthog?.capture("integration_connected", {
-				integration_name: "linkedin",
-				auth_type: "manual"
-			})
-			toast.success("LinkedIn Agent connected successfully!")
-			onSuccess()
-			onClose()
-		} catch (error) {
-			toast.error(error.message)
-		} finally {
-			setIsSubmitting(false)
-		}
-	}
-
-	const modalContent = (
-		<div className="text-left space-y-4 my-4">
-			<p className="text-sm text-gray-400">
-				This will enable the LinkedIn job search tool for your account.
-				The system uses a shared, pre-configured session to perform
-				searches.
-			</p>
-		</div>
-	)
-
-	return (
-		<ModalDialog
-			title={`Connect to ${integration.display_name}`}
-			description="Enable the agent to search for jobs on LinkedIn."
 			onConfirm={handleSubmit}
 			onCancel={onClose}
 			confirmButtonText={isSubmitting ? "Connecting..." : "Connect"}
@@ -626,7 +558,6 @@ const IntegrationsPage = () => {
 	const [selectedIntegration, setSelectedIntegration] = useState(null)
 	const [activeManualIntegration, setActiveManualIntegration] = useState(null)
 	const [whatsAppToConnect, setWhatsAppToConnect] = useState(null)
-	const [linkedInToConnect, setLinkedInToConnect] = useState(null)
 	const [sparkleTrigger, setSparkleTrigger] = useState(0)
 	const [privacyModalService, setPrivacyModalService] = useState(null)
 	const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false)
@@ -644,8 +575,7 @@ const IntegrationsPage = () => {
 		"gslides",
 		"gsheets",
 		"gmaps",
-		"gpeople",
-		"gshopping"
+		"gpeople"
 	]
 
 	const fetchIntegrations = useCallback(async () => {
@@ -695,11 +625,6 @@ const IntegrationsPage = () => {
 			return
 		}
 
-		if (integration.name === "linkedin") {
-			setLinkedInToConnect(integration)
-			return
-		}
-
 		if (integration.auth_type === "composio") {
 			handleComposioConnect(integration)
 			return
@@ -735,7 +660,6 @@ const IntegrationsPage = () => {
 				gsheets: "https://www.googleapis.com/auth/spreadsheets",
 				gmaps: "https://www.googleapis.com/auth/cloud-platform",
 				gpeople: "https://www.googleapis.com/auth/contacts",
-				gshopping: "https://www.googleapis.com/auth/content",
 				github: "repo user",
 				notion: "read_content write_content insert_content", // This is not a scope, it's just for user to know. Notion doesn't use scopes in the URL.
 				slack: "channels:history,channels:read,chat:write,users:read,reactions:write"
@@ -760,9 +684,6 @@ const IntegrationsPage = () => {
 				authUrl = `https://api.notion.com/v1/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
 					redirectUri
 				)}&response_type=code&owner=user&state=${serviceName}`
-			} else if (serviceName === "todoist") {
-				const scope = "data:read_write"
-				authUrl = `https://todoist.com/oauth/authorize?client_id=${clientId}&scope=${scope}&state=${serviceName}`
 			} else if (serviceName === "discord") {
 				// Scopes for Discord: identify (read user info), guilds (list servers), bot (add bot to servers), applications.commands (for slash commands)
 				const scope = "identify guilds bot applications.commands"
@@ -1497,15 +1418,6 @@ const IntegrationsPage = () => {
 					<WhatsAppConnectModal
 						integration={whatsAppToConnect}
 						onClose={() => setWhatsAppToConnect(null)}
-						onSuccess={fetchIntegrations}
-					/>
-				)}
-			</AnimatePresence>
-			<AnimatePresence>
-				{linkedInToConnect && (
-					<LinkedInConnectModal
-						integration={linkedInToConnect}
-						onClose={() => setLinkedInToConnect(null)}
 						onSuccess={fetchIntegrations}
 					/>
 				)}

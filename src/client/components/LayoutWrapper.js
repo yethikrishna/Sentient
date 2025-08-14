@@ -74,31 +74,38 @@ export default function LayoutWrapper({ children }) {
 			// This prevents the refresh loop.
 			window.history.replaceState(null, "", pathname)
 
-			const refreshSession = async () => {
-				const toastId = toast.loading("Updating your session...", {
-					duration: 4000
-				})
-				try {
-					// Call the API to get a new session cookie
-					const res = await fetch("/api/auth/refresh-session")
-					if (!res.ok) {
-						const errorData = await res.json()
-						throw new Error(
-							errorData.error || "Session refresh failed."
-						)
-					}
+			// const refreshSession = async () => {
+			// 	const toastId = toast.loading("Updating your session...", {
+			// 		duration: 4000
+			// 	})
+			// 	try {
+			// 		// Call the API to get a new session cookie
+			// 		const res = await fetch("/api/auth/refresh-session")
+			// 		if (!res.ok) {
+			// 			const errorData = await res.json()
+			// 			throw new Error(
+			// 				errorData.error || "Session refresh failed."
+			// 			)
+			// 		}
 
-					// Now that the cookie is updated and the URL is clean, reload the page.
-					// This will re-run server components and hooks with the new session data.
-					window.location.reload()
-				} catch (error) {
-					toast.error(
-						`Failed to refresh session: ${error.message}. Please log in again to see your new plan.`,
-						{ id: toastId }
-					)
-				}
-			}
-			refreshSession()
+			// 		// Now that the cookie is updated and the URL is clean, reload the page.
+			// 		// This will re-run server components and hooks with the new session data.
+			// 		window.location.reload()
+			// 	} catch (error) {
+			// 		toast.error(
+			// 			`Failed to refresh session: ${error.message}. Please log in again to see your new plan.`,
+			// 			{ id: toastId }
+			// 		)
+			// 	}
+			// }
+			// refreshSession()
+
+			const logoutUrl = new URL("/auth/logout", window.location.origin)
+			logoutUrl.searchParams.set(
+				"returnTo",
+				`${process.env.NEXT_PUBLIC_APP_BASE_URL}`
+			)
+			window.location.assign(logoutUrl.toString())
 		}
 	}, [searchParams, router, pathname]) // Dependencies are correct
 
@@ -393,7 +400,7 @@ export default function LayoutWrapper({ children }) {
 		)
 	}
 
-	console.log(user[`${process.env.NEXT_PUBLIC_AUTH0_NAMESPACE}/roles`])
+	console.log(user?.[`${process.env.NEXT_PUBLIC_AUTH0_NAMESPACE}/roles`])
 
 	// ... (rest of the component is unchanged)
 	return (

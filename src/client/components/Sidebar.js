@@ -106,7 +106,6 @@ const UserProfileSection = ({ isCollapsed, user }) => {
 							>
 								<a
 									href={dashboardUrl}
-									target="_blank"
 									rel="noopener noreferrer"
 									className="w-full flex items-center gap-2 text-left px-3 py-2 text-sm rounded-md text-neutral-200 hover:bg-neutral-700/50 transition-colors"
 								>

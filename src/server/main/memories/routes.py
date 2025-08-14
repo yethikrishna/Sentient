@@ -5,7 +5,7 @@ from typing import List, Dict
 import datetime
 
 from main.dependencies import auth_helper
-from main.auth.utils import AuthHelper
+from main.auth.utils import AuthHelper, PermissionChecker
 from . import db, utils
 from main.plans import PLAN_LIMITS
 from .models import CreateMemoryRequest, UpdateMemoryRequest

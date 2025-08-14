@@ -813,7 +813,7 @@ def _event_matches_filter(event_data: Dict[str, Any], task_filter: Dict[str, Any
     Checks if an event's data matches the conditions defined in a task's filter.
     Supports complex, MongoDB-like query syntax including $or, $and, $not,
     and operators like $eq, $ne, $in, $nin, $contains, $regex.
-    """pdat
+    """
     if not task_filter:
         return True  # An empty filter matches everything.
 

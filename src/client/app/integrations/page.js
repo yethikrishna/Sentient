@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useCallback, useMemo } from "react"
+import SiriSpheres from "@components/voice-visualization/SiriSpheres"
 import SparkleEffect from "@components/ui/SparkleEffect"
 import { BorderTrail } from "@components/ui/border-trail"
 import toast from "react-hot-toast"
@@ -631,6 +632,7 @@ const IntegrationsPage = () => {
 	const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false)
 	const [disconnectingIntegration, setDisconnectingIntegration] =
 		useState(null)
+	const [isOtherIntegrationsOpen, setOtherIntegrationsOpen] = useState(false)
 	const posthog = usePostHog()
 	const router = useRouter()
 
@@ -641,7 +643,9 @@ const IntegrationsPage = () => {
 		"gdocs",
 		"gslides",
 		"gsheets",
-		"gpeople"
+		"gmaps",
+		"gpeople",
+		"gshopping"
 	]
 
 	const fetchIntegrations = useCallback(async () => {
@@ -976,17 +980,37 @@ const IntegrationsPage = () => {
 		}
 	}, [fetchIntegrations, posthog])
 
-	const allIntegrations = useMemo(() => {
-		return [...userIntegrations, ...defaultTools]
-	}, [userIntegrations, defaultTools])
+	const CORE_INTEGRATION_NAMES = useMemo(
+		() => ["gmail", "gcalendar", "gdrive", "gpeople", "gdocs", "notion"],
+		[]
+	)
+
+	const { coreIntegrations, otherIntegrations } = useMemo(() => {
+		const all = [...userIntegrations, ...defaultTools]
+		const core = []
+		const other = []
+		all.forEach((integration) => {
+			if (CORE_INTEGRATION_NAMES.includes(integration.name)) {
+				core.push(integration)
+			} else {
+				other.push(integration)
+			}
+		})
+		core.sort(
+			(a, b) =>
+				CORE_INTEGRATION_NAMES.indexOf(a.name) -
+				CORE_INTEGRATION_NAMES.indexOf(b.name)
+		)
+		return { coreIntegrations: core, otherIntegrations: other }
+	}, [userIntegrations, defaultTools, CORE_INTEGRATION_NAMES])
 
 	const categories = useMemo(() => {
-		const allCats = allIntegrations.map((i) => i.category).filter(Boolean)
+		const allCats = otherIntegrations.map((i) => i.category).filter(Boolean)
 		return ["All", ...new Set(allCats)]
-	}, [allIntegrations])
+	}, [otherIntegrations])
 
 	const filteredIntegrations = useMemo(() => {
-		return allIntegrations.filter((integration) => {
+		return otherIntegrations.filter((integration) => {
 			const matchesCategory =
 				activeCategory === "All" ||
 				integration.category === activeCategory
@@ -1000,7 +1024,105 @@ const IntegrationsPage = () => {
 					.includes(searchQuery.toLowerCase())
 			return matchesCategory && matchesSearch
 		})
-	}, [allIntegrations, searchQuery, activeCategory])
+	}, [otherIntegrations, searchQuery, activeCategory])
+
+	const renderIntegrationDialogContent = useCallback(
+		(integration) => {
+			const Icon =
+				integrationColorIcons[integration.name] || IconPlaceholder
+			return (
+				<MorphingDialogContent className="pointer-events-auto relative flex h-auto w-full flex-col overflow-hidden border border-neutral-700 bg-neutral-900 sm:w-[600px] rounded-2xl">
+					<BorderTrail className="bg-brand-orange" />
+					<div className="p-4 sm:p-6 overflow-y-auto custom-scrollbar">
+						<div className="flex items-center gap-4 mb-4">
+							<div className="w-10 h-10 flex items-center justify-center rounded-lg bg-brand-gray p-1.5 text-brand-orange">
+								<Icon className="w-full h-full" />
+							</div>
+							<div>
+								<MorphingDialogTitle className="text-xl sm:text-2xl font-bold text-white">
+									{integration.display_name}
+								</MorphingDialogTitle>
+								<MorphingDialogSubtitle className="text-sm text-neutral-400">
+									{integration.connected
+										? "Connected"
+										: "Not Connected"}
+								</MorphingDialogSubtitle>
+							</div>
+						</div>
+						<MorphingDialogDescription>
+							<p className="text-sm sm:text-base text-neutral-300 mb-6">
+								{integration.description}
+							</p>
+							{["gmail", "gcalendar"].includes(
+								integration.name
+							) && (
+								<div className="my-4">
+									<button
+										onClick={() =>
+											setPrivacyModalService(
+												integration.name
+											)
+										}
+										className="w-full text-center text-sm text-neutral-400 hover:text-white hover:bg-neutral-700/50 py-2 rounded-lg transition-colors border border-neutral-700"
+									>
+										Manage Privacy Filters
+									</button>
+								</div>
+							)}
+							<div className="mt-6 pt-4 border-t border-neutral-800">
+								{processingIntegration === integration.name ? (
+									<div className="flex justify-center">
+										<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)]" />
+									</div>
+								) : integration.connected ? (
+									<button
+										onClick={(e) => {
+											e.stopPropagation()
+											setDisconnectingIntegration(
+												integration
+											)
+										}}
+										className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-[var(--color-accent-red)]/20 hover:bg-[var(--color-accent-red)]/40 text-[var(--color-accent-red)] text-sm font-medium transition-colors"
+									>
+										<IconPlugOff size={16} />
+										<span>Disconnect</span>
+									</button>
+								) : (
+									<button
+										onClick={(e) => {
+											e.stopPropagation()
+											if (
+												integration.auth_type ===
+												"composio"
+											) {
+												handleComposioConnect(
+													integration
+												)
+											} else {
+												handleConnect(integration)
+											}
+										}}
+										className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-brand-orange hover:bg-brand-orange/90 text-brand-black font-semibold text-sm transition-colors"
+									>
+										<IconSparkles size={16} />
+										<span>Connect</span>
+									</button>
+								)}
+							</div>
+						</MorphingDialogDescription>
+					</div>
+					<MorphingDialogClose className="text-white hover:bg-neutral-700 p-1 rounded-full" />
+				</MorphingDialogContent>
+			)
+		},
+		[
+			processingIntegration,
+			setPrivacyModalService,
+			setDisconnectingIntegration,
+			handleComposioConnect,
+			handleConnect
+		]
+	)
 
 	return (
 		<div className="flex-1 flex h-screen text-white overflow-x-hidden">
@@ -1108,24 +1230,146 @@ const IntegrationsPage = () => {
 				<div className="absolute -top-[250px] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-brand-orange/10 rounded-full blur-3xl -z-10" />
 				<header className="flex items-center justify-between p-4 sm:p-6 md:px-8 md:py-6 bg-transparent border-b border-[var(--color-primary-surface)] shrink-0">
 					<div>
-						<h1 className="text-3xl lg:text-4xl font-bold text-white">
+						<h1 className="text-3xl lg:text-4xl font-bold text-white flex items-center gap-3">
+							<IconPlugConnected />
 							Integrations
 						</h1>
 						<p className="text-neutral-400 mt-1">
-							Expand Sentient's capabilities by connecting your
-							favorite tools.
+							Connect your digital life to unlock Sentient's full
+							potential.
 						</p>
 					</div>
 				</header>
-				<main className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-10 pb-4 sm:pb-6 md:pb-10 custom-scrollbar">
-					<div className="w-full max-w-7xl mx-auto">
-						{loading ? (
-							<div className="flex justify-center items-center py-20">
-								<IconLoader className="w-12 h-12 animate-spin text-brand-orange" />
+				<main className="flex-1 flex flex-col items-center justify-center relative p-4">
+					{loading ? (
+						<IconLoader className="w-12 h-12 animate-spin text-brand-orange" />
+					) : (
+						<>
+							<div className="relative w-[clamp(300px,80vmin,600px)] h-[clamp(300px,80vmin,600px)] flex items-center justify-center">
+								<div className="absolute w-[45%] h-[45%]">
+									<SiriSpheres
+										status="connected"
+										audioLevel={0.05}
+									/>
+								</div>
+								<div className="w-full h-full animate-[spin_60s_linear_infinite]">
+									{coreIntegrations.map(
+										(integration, index) => {
+											const angle =
+												(index /
+													coreIntegrations.length) *
+												2 *
+												Math.PI
+											const x = 50 + 45 * Math.cos(angle)
+											const y = 50 + 45 * Math.sin(angle)
+											const Icon =
+												integrationColorIcons[
+													integration.name
+												] || IconPlaceholder
+
+											const isConnectable = [
+												"oauth",
+												"manual",
+												"composio"
+											].includes(integration.auth_type)
+
+											return (
+												<div
+													key={integration.name}
+													className="absolute -translate-x-1/2 -translate-y-1/2"
+													style={{
+														top: `${y}%`,
+														left: `${x}%`
+													}}
+												>
+													<div className="animate-[spin_60s_linear_infinite_reverse]">
+														<MorphingDialog
+															transition={{
+																type: "spring",
+																bounce: 0.05,
+																duration: 0.3
+															}}
+														>
+															<MorphingDialogTrigger className="group">
+																<div
+																	className={cn(
+																		"w-16 h-16 rounded-full bg-neutral-900/50 border-2 flex items-center justify-center transition-all duration-300 cursor-pointer",
+																		integration.connected
+																			? "border-green-500/50 hover:bg-green-500/20"
+																			: "border-neutral-700 hover:border-brand-orange"
+																	)}
+																>
+																	<Icon
+																		className={cn(
+																			"w-8 h-8 transition-colors",
+																			integration.connected
+																				? "text-green-400"
+																				: "text-neutral-400 group-hover:text-brand-orange"
+																		)}
+																	/>
+																</div>
+															</MorphingDialogTrigger>
+															<MorphingDialogContainer>
+																{renderIntegrationDialogContent(
+																	integration
+																)}
+															</MorphingDialogContainer>
+														</MorphingDialog>
+													</div>
+												</div>
+											)
+										}
+									)}
+								</div>
 							</div>
-						) : (
-							<>
-								<div className="pt-4 sm:pt-6 md:pt-10">
+							<button
+								onClick={() => setOtherIntegrationsOpen(true)}
+								className="mt-12 py-2 px-5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-sm font-medium"
+							>
+								Other Integrations
+							</button>
+						</>
+					)}
+				</main>
+				<footer className="p-4">
+					<div className="w-full max-w-lg mx-auto relative">
+						<input
+							type="text"
+							placeholder="Search integrations..."
+							className="w-full bg-neutral-900/50 border border-neutral-700 rounded-full pl-5 pr-12 py-3 text-white placeholder-neutral-500 focus:ring-2 focus:ring-brand-orange"
+							onFocus={() => setOtherIntegrationsOpen(true)}
+							value={searchQuery}
+							onChange={(e) => setSearchQuery(e.target.value)}
+						/>
+						<div className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center">
+							<img
+								src="/images/audi-logo.png"
+								alt="Sponsor"
+								className="h-4 opacity-50"
+							/>
+						</div>
+					</div>
+				</footer>
+			</div>
+			<AnimatePresence>
+				{isOtherIntegrationsOpen && (
+					<motion.div
+						initial={{ opacity: 0 }}
+						animate={{ opacity: 1 }}
+						exit={{ opacity: 0 }}
+						className="fixed inset-0 bg-black/70 backdrop-blur-md z-[60] flex flex-col p-4"
+						onClick={() => setOtherIntegrationsOpen(false)}
+					>
+						<motion.div
+							initial={{ scale: 0.95, y: 20 }}
+							animate={{ scale: 1, y: 0 }}
+							exit={{ scale: 0.95, y: -20 }}
+							transition={{ duration: 0.2, ease: "easeInOut" }}
+							onClick={(e) => e.stopPropagation()}
+							className="relative bg-neutral-900/90 backdrop-blur-xl rounded-2xl shadow-2xl w-full max-w-7xl mx-auto border border-neutral-700 h-full flex flex-col"
+						>
+							<header className="p-4 border-b border-neutral-800 flex-shrink-0 flex items-start justify-between gap-4">
+								<div className="flex-1">
 									<IntegrationHeader
 										searchQuery={searchQuery}
 										onSearchChange={setSearchQuery}
@@ -1133,222 +1377,121 @@ const IntegrationsPage = () => {
 										activeCategory={activeCategory}
 										onCategoryChange={setActiveCategory}
 									/>
-									<section>
-										<motion.div
-											className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-											variants={{
-												hidden: { opacity: 0 },
-												visible: {
-													opacity: 1,
-													transition: {
-														staggerChildren: 0.05
+								</div>
+								<button
+									onClick={() =>
+										setOtherIntegrationsOpen(false)
+									}
+									className="p-2 rounded-full hover:bg-neutral-700"
+								>
+									<IconX size={20} />
+								</button>
+							</header>
+							<main className="flex-1 overflow-y-auto custom-scrollbar p-6">
+								<motion.div
+									className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+									variants={{
+										hidden: { opacity: 0 },
+										visible: {
+											opacity: 1,
+											transition: {
+												staggerChildren: 0.05
+											}
+										}
+									}}
+									initial="hidden"
+									animate="visible"
+								>
+									<AnimatePresence>
+										{filteredIntegrations.map(
+											(integration) => {
+												const Icon =
+													integrationColorIcons[
+														integration.name
+													] || IconPlaceholder
+												const isConnectable = [
+													"oauth",
+													"manual",
+													"composio"
+												].includes(
+													integration.auth_type
+												)
+
+												const card = (
+													<IntegrationCard
+														integration={
+															integration
+														}
+														icon={Icon}
+													/>
+												)
+
+												const cardVariants = {
+													hidden: {
+														opacity: 0,
+														y: -20
+													},
+													visible: {
+														opacity: 1,
+														y: 0
 													}
 												}
-											}}
-											initial="hidden"
-											animate="visible"
-										>
-											<AnimatePresence>
-												{filteredIntegrations.map(
-													(integration) => {
-														const Icon =
-															integrationColorIcons[
+
+												if (isConnectable) {
+													return (
+														<motion.div
+															key={
 																integration.name
-															] || IconPlaceholder
-														const isConnectable = [
-															"oauth",
-															"manual",
-															"composio"
-														].includes(
-															integration.auth_type
-														)
-
-														const card = (
-															<IntegrationCard
-																integration={
-																	integration
-																}
-																icon={Icon}
-															/>
-														)
-
-														const cardVariants = {
-															hidden: {
-																opacity: 0,
-																y: -20
-															},
-															visible: {
-																opacity: 1,
-																y: 0
 															}
-														}
-
-														if (isConnectable) {
-															return (
-																<motion.div
-																	key={
-																		integration.name
-																	}
-																	variants={
-																		cardVariants
-																	}
-																	className="h-full"
-																>
-																	<MorphingDialog
-																		transition={{
-																			type: "spring",
-																			bounce: 0.05,
-																			duration: 0.3
-																		}}
-																	>
-																		<MorphingDialogTrigger className="group h-full w-full">
-																			{
-																				card
-																			}
-																		</MorphingDialogTrigger>
-																		<MorphingDialogContainer>
-																			<MorphingDialogContent className="pointer-events-auto relative flex h-auto w-full flex-col overflow-hidden border border-neutral-700 bg-neutral-900 sm:w-[600px] rounded-2xl">
-																				<BorderTrail className="bg-brand-orange" />
-																				<div className="p-4 sm:p-6 overflow-y-auto custom-scrollbar">
-																					<div className="flex items-center gap-4 mb-4">
-																						<div className="w-10 h-10 flex items-center justify-center rounded-lg bg-brand-gray p-1.5 text-brand-orange">
-																							<Icon className="w-full h-full" />
-																						</div>
-																						<div>
-																							<MorphingDialogTitle className="text-xl sm:text-2xl font-bold text-white">
-																								{
-																									integration.display_name
-																								}
-																							</MorphingDialogTitle>
-																							<MorphingDialogSubtitle className="text-sm text-neutral-400">
-																								{integration.connected
-																									? "Connected"
-																									: "Not Connected"}
-																							</MorphingDialogSubtitle>
-																						</div>
-																					</div>
-																					<MorphingDialogDescription>
-																						<p className="text-sm sm:text-base text-neutral-300 mb-6">
-																							{
-																								integration.description
-																							}
-																						</p>
-																						{[
-																							"gmail",
-																							"gcalendar"
-																						].includes(
-																							integration.name
-																						) && (
-																							<div className="my-4">
-																								<button
-																									onClick={() =>
-																										setPrivacyModalService(
-																											integration.name
-																										)
-																									}
-																									className="w-full text-center text-sm text-neutral-400 hover:text-white hover:bg-neutral-700/50 py-2 rounded-lg transition-colors border border-neutral-700"
-																								>
-																									Manage
-																									Privacy
-																									Filters
-																								</button>
-																							</div>
-																						)}
-																						<div className="mt-6 pt-4 border-t border-neutral-800">
-																							{processingIntegration ===
-																							integration.name ? (
-																								<div className="flex justify-center">
-																									<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)]" />
-																								</div>
-																							) : integration.connected ? (
-																								<button
-																									onClick={(
-																										e
-																									) => {
-																										e.stopPropagation()
-																										setDisconnectingIntegration(
-																											integration
-																										)
-																									}}
-																									className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-[var(--color-accent-red)]/20 hover:bg-[var(--color-accent-red)]/40 text-[var(--color-accent-red)] text-sm font-medium transition-colors"
-																								>
-																									<IconPlugOff
-																										size={
-																											16
-																										}
-																									/>
-																									<span>
-																										Disconnect
-																									</span>
-																								</button>
-																							) : (
-																								<button
-																									onClick={(
-																										e
-																									) => {
-																										e.stopPropagation()
-																										if (
-																											integration.auth_type ===
-																											"composio"
-																										) {
-																											handleComposioConnect(
-																												integration
-																											)
-																										} else {
-																											handleConnect(
-																												integration
-																											)
-																										}
-																									}}
-																									className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-brand-orange hover:bg-brand-orange/90 text-brand-black font-semibold text-sm transition-colors"
-																								>
-																									<IconSparkles
-																										size={
-																											16
-																										}
-																									/>
-																									<span>
-																										Connect
-																									</span>
-																								</button>
-																							)}
-																						</div>
-																					</MorphingDialogDescription>
-																				</div>
-																				<MorphingDialogClose className="text-white hover:bg-neutral-700 p-1 rounded-full" />
-																			</MorphingDialogContent>
-																		</MorphingDialogContainer>
-																	</MorphingDialog>
-																</motion.div>
-															)
-														} else {
-															return (
-																<motion.div
-																	key={
-																		integration.name
-																	}
-																	variants={
-																		cardVariants
-																	}
-																	className="h-full"
-																>
-																	<div className="h-full">
-																		{card}
-																	</div>
-																</motion.div>
-															)
-														}
-													}
-												)}
-											</AnimatePresence>
-										</motion.div>
-									</section>
-								</div>
-							</>
-						)}
-					</div>
-				</main>
-			</div>
+															variants={
+																cardVariants
+															}
+															className="h-full"
+														>
+															<MorphingDialog
+																transition={{
+																	type: "spring",
+																	bounce: 0.05,
+																	duration: 0.3
+																}}
+															>
+																<MorphingDialogTrigger className="group h-full w-full">
+																	{card}
+																</MorphingDialogTrigger>
+																<MorphingDialogContainer>
+																	{renderIntegrationDialogContent(
+																		integration
+																	)}
+																</MorphingDialogContainer>
+															</MorphingDialog>
+														</motion.div>
+													)
+												} else {
+													return (
+														<motion.div
+															key={
+																integration.name
+															}
+															variants={
+																cardVariants
+															}
+															className="h-full"
+														>
+															<div className="h-full">
+																{card}
+															</div>
+														</motion.div>
+													)
+												}
+											}
+										)}
+									</AnimatePresence>
+								</motion.div>
+							</main>
+						</motion.div>
+					</motion.div>
+				)}
+			</AnimatePresence>
 			<AnimatePresence>
 				{whatsAppToConnect && (
 					<WhatsAppConnectModal

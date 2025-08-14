@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 # Use the main server's LLM config
 OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL", "http://localhost:11434/v1/") # Keep for consistency in config
 OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "qwen3:4b")
-OPENAI_API_KEYS = [key for key in [os.getenv("OPENAI_API_KEY"), os.getenv("OPENAI_API_KEY_FALLBACK_1"), os.getenv("OPENAI_API_KEY_FALLBACK_2")] if key]
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ollama")
 
 def _get_base_llm_config() -> Dict[str, Any]:
     config = {

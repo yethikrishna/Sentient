@@ -28,11 +28,7 @@ else:
 OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL", "http://localhost:11434/v1/")
 OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "qwen3:4b")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ollama")
-OPENAI_API_KEYS = list(filter(None, [
-    os.getenv("OPENAI_API_KEY"),
-    os.getenv("OPENAI_API_KEY_FALLBACK_1"),
-    os.getenv("OPENAI_API_KEY_FALLBACK_2"),
-]))
+
 
 # Kafka Configuration
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092").split(',')

@@ -2,7 +2,7 @@ import logging
 import json
 from qwen_agent.agents import Assistant
 from typing import List, Any
-from main.config import OPENAI_API_KEYS, OPENAI_API_BASE_URL, OPENAI_MODEL_NAME
+from main.config import OPENAI_API_KEY, OPENAI_API_BASE_URL, OPENAI_MODEL_NAME
 from workers.planner import config
 from workers.planner import prompts
 from workers.planner.db import get_all_mcp_descriptions

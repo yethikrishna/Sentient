@@ -5,13 +5,10 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.backends import default_backend
 import motor.motor_asyncio
-from google.oauth2.credentials import Credentials
-from google.oauth2 import service_account
-from googleapiclient.discovery import build, Resource
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
 
-from typing import Optional
+from typing import Optional, Dict
 from dotenv import load_dotenv
 
 # Load .env file for 'dev-local' environment.
@@ -53,22 +50,20 @@ def get_user_id_from_context(ctx: Context) -> str:
         raise ToolError("Authentication failed: 'X-User-ID' header is missing.")
     return user_id
 
-async def get_google_creds(user_id: str) -> Credentials:
+async def get_composio_connection_id(user_id: str, toolkit: str) -> str:
+    """
+    Fetches the Composio connection ID for a given toolkit from the user's profile.
+    """
     user_doc = await users_collection.find_one({"user_id": user_id})
     if not user_doc or not user_doc.get("userData"):
         raise ToolError(f"User profile or userData not found for user_id: {user_id}.")
 
     user_data = user_doc["userData"]
-    gsheets_data = user_data.get("integrations", {}).get("gsheets")
-    if not gsheets_data or not gsheets_data.get("connected") or not gsheets_data.get("credentials"):
-        raise ToolError(f"Google Sheets integration not connected. Please use the default connect flow.")
-    
-    try:
-        decrypted_creds_str = aes_decrypt(gsheets_data["credentials"])
-        token_info = json.loads(decrypted_creds_str)
-        return Credentials.from_authorized_user_info(token_info)
-    except Exception as e:
-        raise ToolError(f"Failed to decrypt or parse default OAuth token for Google Sheets: {e}")
+    integration = user_data.get("integrations", {}).get(toolkit)
 
-def authenticate_gsheets(creds: Credentials) -> Resource:
-    return build("sheets", "v4", credentials=creds)
+    if integration and integration.get("connected"):
+        connection_id = integration.get("connection_id")
+        if connection_id:
+            return connection_id
+
+    raise ToolError(f"No active Composio connection found for {toolkit}. Please connect it in settings.")

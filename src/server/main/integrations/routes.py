@@ -11,13 +11,13 @@ from composio import Composio, types
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import JSONResponse
 
-from main.integrations.models import ManualConnectRequest, OAuthConnectRequest, DisconnectRequest, ComposioInitiateRequest, ComposioFinalizeRequest
+from main.integrations.models import (ManualConnectRequest, OAuthConnectRequest, DisconnectRequest,
+                                      ComposioInitiateRequest, ComposioFinalizeRequest)
 from main.dependencies import mongo_manager, auth_helper
 from main.auth.utils import aes_encrypt
 from main.config import (
-    INTEGRATIONS_CONFIG, 
+    INTEGRATIONS_CONFIG,
     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
-    TODOIST_CLIENT_ID, TODOIST_CLIENT_SECRET,
     DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET,
     TRELLO_CLIENT_ID, COMPOSIO_API_KEY,
     GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SLACK_CLIENT_ID,
@@ -29,14 +29,12 @@ logger = logging.getLogger(__name__)
 # Initialize Composio SDK
 composio = Composio(api_key=COMPOSIO_API_KEY)
 
-
 router = APIRouter(
     prefix="/integrations",
     tags=["Integrations Management"]
 )
 
-from mcp_hub.gcal.auth import get_google_creds, authenticate_gcal
-from mcp_hub.gcal.utils import _simplify_event
+from mcp_hub.gcal.auth import get_composio_connection_id
 
 @router.get("/sources", summary="Get all available integration sources and their status")
 async def get_integration_sources(user_id: str = Depends(auth_helper.get_current_user_id)):
@@ -55,12 +53,11 @@ async def get_integration_sources(user_id: str = Depends(auth_helper.get_current
             # The client needs the auth_config_id to initiate the connection
             source_info["auth_config_id"] = os.getenv(f"{name.upper()}_AUTH_CONFIG_ID")
 
-
         # Add public config needed by the client for OAuth flow
         if source_info["auth_type"] == "oauth":
-            # Define a list of Google services to avoid matching 'github' with 'g'
-            google_services = ["gmail", "gcalendar", "gdrive", "gdocs", "gslides", "gsheets", "gmaps", "gshopping", "gpeople"]
-            if name in google_services:
+            # List of Google services that still use the standard OAuth flow
+            google_oauth_services = ["gpeople"]
+            if name in google_oauth_services:
                  source_info["client_id"] = GOOGLE_CLIENT_ID
             elif name == 'github':
                  source_info["client_id"] = GITHUB_CLIENT_ID
@@ -72,13 +69,6 @@ async def get_integration_sources(user_id: str = Depends(auth_helper.get_current
                 source_info["client_id"] = TRELLO_CLIENT_ID
             elif name == 'discord':
                 source_info["client_id"] = DISCORD_CLIENT_ID
-            elif name == 'todoist':
-                source_info["client_id"] = TODOIST_CLIENT_ID
-            # For Composio, we need the auth_config_id
-            elif name == 'gmail':
-                source_info["auth_config_id"] = os.getenv("GMAIL_AUTH_CONFIG_ID")
-            elif name == 'gdrive':
-                source_info["auth_config_id"] = os.getenv("GDRIVE_AUTH_CONFIG_ID")
 
         all_sources.append(source_info)
 
@@ -119,37 +109,30 @@ async def get_gcalendar_events(
     end_date: str = Query(..., description="End date in ISO 8601 format"),
     user_id: str = Depends(auth_helper.get_current_user_id)
 ):
-    user_profile = await mongo_manager.get_user_profile(user_id)
-    user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
-
-    gcal_integration = user_integrations.get("gcalendar", {})
-    if not gcal_integration.get("connected"):
-        return JSONResponse(content={"events": []})
-
     try:
-        creds = await get_google_creds(user_id)
-        service = authenticate_gcal(creds)
+        connection_id = await get_composio_connection_id(user_id, "gcalendar")
 
-        def _fetch_events_sync():
-            events_result = service.events().list(
-                calendarId="primary",
-                timeMin=start_date,
-                timeMax=end_date,
-                maxResults=250,
-                singleEvents=True,
-                orderBy="startTime"
-            ).execute()
-            return events_result.get("items", [])
+        events_result = await asyncio.to_thread(
+            composio.tools.execute,
+            "GOOGLECALENDAR_EVENTS_LIST",
+            arguments={
+                "calendarId": "primary",
+                "timeMin": start_date,
+                "timeMax": end_date,
+                "singleEvents": True,
+                "orderBy": "startTime",
+                "maxResults": 250
+            },
+            connected_account_id=connection_id
+        )
 
-        events = await asyncio.to_thread(_fetch_events_sync)
+        if not events_result.get("successful"):
+            raise HTTPException(status_code=500, detail=f"Failed to fetch Google Calendar events: {events_result.get('error')}")
 
-        simplified_events = [_simplify_event(e) for e in events]
-
-        return JSONResponse(content={"events": simplified_events})
-
+        return JSONResponse(content={"events": events_result.get("data", {}).get("items", [])})
     except Exception as e:
         print(f"Error fetching GCal events for user {user_id}: {e}")
-        return JSONResponse(content={"events": []})
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/connect/oauth", summary="Finalize OAuth2 connection by exchanging code for token")
 async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str = Depends(auth_helper.get_current_user_id)):
@@ -212,14 +195,6 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
             "code": request.code,
             "redirect_uri": request.redirect_uri,
         }
-    elif service_name == 'todoist':
-        token_url = "https://todoist.com/oauth/access_token"
-        token_payload = {
-            "client_id": TODOIST_CLIENT_ID,
-            "client_secret": TODOIST_CLIENT_SECRET,
-            "code": request.code,
-            "redirect_uri": request.redirect_uri
-        }
     elif service_name == 'discord':
         token_url = "https://discord.com/api/oauth2/token"
         token_payload = {
@@ -266,10 +241,6 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
              if "access_token" not in token_data:
                 raise HTTPException(status_code=400, detail=f"Notion OAuth error: {token_data.get('error_description', 'No access token in response.')}")
              creds_to_save = token_data # Store the whole object (access_token, workspace_id, etc.)
-        elif service_name == 'todoist':
-            if "access_token" not in token_data:
-                raise HTTPException(status_code=400, detail=f"Todoist OAuth error: {token_data.get('error', 'No access token in response.')}")
-            creds_to_save = token_data
         elif service_name == 'discord':
             if "access_token" not in token_data:
                 raise HTTPException(status_code=400, detail=f"Discord OAuth error: {token_data.get('error_description', 'No access token.')}")

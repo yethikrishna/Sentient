@@ -195,16 +195,6 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("QUICKCHART_MCP_SERVER_URL", "http://localhost:9008/sse")
         }
     },
-    "chat_tools": { # Built-in, for chat agent
-        "display_name": "Chat Agent Tools",
-        "description": "Internal tools for the main conversational agent, such as handing off complex tasks to the planning system and checking task status.",
-        "auth_type": "builtin",
-        "icon": "IconMessage", # Frontend can map this
-        "mcp_server_config": {
-            "name": "chat_tools_server",
-            "url": os.getenv("CHAT_TOOLS_MCP_SERVER_URL", "http://localhost:9013/sse")
-        }
-    },
     "memory": {
         "display_name": "Memory",
         "description": "Manages the user's memory. Use 'search_memory' to find facts, and 'cud_memory' to add, update, or delete information. This is critical for personalization.",
@@ -233,16 +223,6 @@ INTEGRATIONS_CONFIG = {
         "mcp_server_config": {
             "name": "whatsapp_server",
             "url": os.getenv("WHATSAPP_MCP_SERVER_URL", "http://localhost:9024/sse")
-        }
-    },
-    "tasks": {
-        "display_name": "Internal Task Manager",
-        "description": "Manages asynchronous, background tasks. Use 'create_task_from_prompt' to create a new task from a natural language prompt. Use 'process_collection_in_parallel' to perform an action on each item in a list in parallel (e.g., summarize a list of articles).",
-        "auth_type": "builtin",
-        "icon": "IconChecklist",
-        "mcp_server_config": {
-            "name": "tasks_server",
-            "url": os.getenv("TASKS_MCP_SERVER_URL", "http://localhost:9018/sse/")
         }
     }
 }

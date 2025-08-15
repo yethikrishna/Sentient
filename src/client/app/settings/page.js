@@ -5,28 +5,21 @@ import {
 	// ICONS
 	IconLoader,
 	IconDeviceLaptop,
-	IconWorld,
 	IconUser,
 	IconClock,
 	IconHeart,
 	IconBriefcase,
-	IconMoodHappy,
-	IconListCheck,
-	IconMapPin,
 	IconX,
-	IconFlask,
 	IconPlus,
-	IconMessageChatbot,
-	IconBrandWhatsapp,
 	IconHelpCircle,
-	IconKeyboard
+	IconKeyboard,
+	IconFlask,
+	IconMapPin,
+	IconBrandWhatsapp
 } from "@tabler/icons-react"
-import { useState, useEffect, useCallback, Fragment } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Tooltip } from "react-tooltip"
-import { usePostHog } from "posthog-js/react"
 import { cn } from "@utils/cn"
-import { Switch } from "@headlessui/react"
-
 import InteractiveNetworkBackground from "@components/ui/InteractiveNetworkBackground"
 import CollapsibleSection from "@components/tasks/CollapsibleSection"
 import { sendNotificationToCurrentUser } from "@app/actions"
@@ -42,6 +35,27 @@ const HelpTooltip = ({ content }) => (
 		</button>
 	</div>
 )
+
+const handleTestPush = async () => {
+	const toastId = toast.loading("Sending test push notification...")
+	try {
+		const result = await sendNotificationToCurrentUser({
+			title: "Test Push Notification",
+			body: "This is a test push notification from Sentient.",
+			data: { url: "/tasks" } // Example data
+		})
+		if (result.success) {
+			toast.success(
+				result.message || "Push notification sent successfully!",
+				{ id: toastId }
+			)
+		} else {
+			toast.error(`Failed to send: ${result.error}`, { id: toastId })
+		}
+	} catch (error) {
+		toast.error(`Error: ${error.message}`, { id: toastId })
+	}
+}
 
 const questionSections = {
 	essentials: {
@@ -70,27 +84,6 @@ const handleTestInApp = async () => {
 		// The LayoutWrapper will show the toast. I'll just dismiss the loading one.
 		toast.dismiss(toastId)
 		toast("In-app notification sent. It should appear shortly.")
-	} catch (error) {
-		toast.error(`Error: ${error.message}`, { id: toastId })
-	}
-}
-
-const handleTestPush = async () => {
-	const toastId = toast.loading("Sending test push notification...")
-	try {
-		const result = await sendNotificationToCurrentUser({
-			title: "Test Push Notification",
-			body: "This is a test push notification from Sentient.",
-			data: { url: "/tasks" } // Example data
-		})
-		if (result.success) {
-			toast.success(
-				result.message || "Push notification sent successfully!",
-				{ id: toastId }
-			)
-		} else {
-			toast.error(`Failed to send: ${result.error}`, { id: toastId })
-		}
 	} catch (error) {
 		toast.error(`Error: ${error.message}`, { id: toastId })
 	}
@@ -752,94 +745,6 @@ const TestingTools = () => {
 	)
 }
 
-const ProactivitySettings = () => {
-	const [isEnabled, setIsEnabled] = useState(false)
-	const [isLoading, setIsLoading] = useState(true)
-	const posthog = usePostHog()
-
-	useEffect(() => {
-		const fetchStatus = async () => {
-			setIsLoading(true)
-			try {
-				const res = await fetch("/api/settings/proactivity")
-				if (!res.ok) throw new Error("Failed to fetch status")
-				const data = await res.json()
-				setIsEnabled(data.enabled)
-			} catch (error) {
-				toast.error("Could not load proactivity settings.")
-			} finally {
-				setIsLoading(false)
-			}
-		}
-		fetchStatus()
-	}, [])
-
-	const handleToggle = async (enabled) => {
-		setIsEnabled(enabled) // Optimistic update
-		const toastId = toast.loading(
-			enabled ? "Enabling proactivity..." : "Disabling proactivity..."
-		)
-
-		// --- ADD POSTHOG EVENT TRACKING ---
-		if (enabled) {
-			posthog?.capture("proactive_assistance_enabled")
-		}
-		// --- END POSTHOG EVENT TRACKING ---
-		try {
-			const response = await fetch("/api/settings/proactivity", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ enabled })
-			})
-			const data = await response.json()
-			if (!response.ok)
-				throw new Error(data.error || "Failed to update setting.")
-			toast.success(data.message, { id: toastId })
-		} catch (error) {
-			toast.error(`Error: ${error.message}`, { id: toastId })
-			setIsEnabled(!enabled) // Revert on error
-		}
-	}
-
-	return (
-		<Switch.Group as="div" className="flex items-center justify-between">
-			<span className="flex-grow flex flex-col">
-				<Switch.Label
-					as="span"
-					className="font-semibold text-lg text-white"
-					passive
-				>
-					Proactive Assistance
-				</Switch.Label>
-				<Switch.Description
-					as="span"
-					className="text-neutral-400 text-sm mt-1 max-w-md"
-				>
-					Allow Sentient to monitor connected apps (like Gmail and
-					Calendar) in the background to find opportunities and
-					suggest tasks for you.
-				</Switch.Description>
-			</span>
-			<Switch
-				checked={isEnabled}
-				onChange={handleToggle}
-				className={cn(
-					isEnabled ? "bg-green-600" : "bg-neutral-700",
-					"relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-orange focus:ring-offset-2 focus:ring-offset-neutral-900"
-				)}
-			>
-				<span
-					aria-hidden="true"
-					className={cn(
-						isEnabled ? "translate-x-5" : "translate-x-0",
-						"pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-					)}
-				/>
-			</Switch>
-		</Switch.Group>
-	)
-}
-
 const ProfileSettings = ({ initialData, onSave, isSaving }) => {
 	const [formData, setFormData] = useState(initialData || {})
 
@@ -1158,15 +1063,6 @@ export default function SettingsPage() {
 							onSave={handleSaveProfile}
 							isSaving={isSavingProfile}
 						/>
-						<section>
-							<h2 className="text-2xl font-bold mb-6 text-white flex items-center gap-3">
-								<IconFlask />
-								Experimental Features
-							</h2>
-							<div className="bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800">
-								<ProactivitySettings />
-							</div>
-						</section>
 						<WhatsAppSettings />
 						<ShortcutsSettings />
 						{process.env.NEXT_PUBLIC_ENVIRONMENT !== "prod" && (

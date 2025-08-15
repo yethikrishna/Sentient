@@ -17,31 +17,6 @@ class GCalendarPollingService:
         self.service_name = "gcalendar"
         logger.info("GCalendarPollingService Initialized.")
 
-    def _calculate_next_poll_interval(self, user_profile: dict) -> int:
-        """Calculates the polling interval based on user activity."""
-        # Import these here to avoid circular dependency issues at module load time
-        from workers.poller.gcalendar.config import (
-            ACTIVE_THRESHOLD_MINUTES_WORKER,
-            RECENTLY_ACTIVE_THRESHOLD_HOURS_WORKER,
-            PEAK_HOURS_START_WORKER,
-            PEAK_HOURS_END_WORKER
-        )
-        now = datetime.datetime.now(timezone.utc)
-        last_active_ts = user_profile.get("userData", {}).get("last_active_timestamp")
-
-        if last_active_ts:
-            minutes_since_active = (now - last_active_ts).total_seconds() / 60
-            if minutes_since_active <= ACTIVE_THRESHOLD_MINUTES_WORKER:
-                return POLL_CFG["ACTIVE_USER_SECONDS"]
-            if minutes_since_active <= RECENTLY_ACTIVE_THRESHOLD_HOURS_WORKER * 60:
-                return POLL_CFG["RECENTLY_ACTIVE_SECONDS"]
-
-        current_hour = now.hour
-        if PEAK_HOURS_START_WORKER <= current_hour < PEAK_HOURS_END_WORKER:
-            return POLL_CFG["PEAK_HOURS_SECONDS"]
-        else:
-            return POLL_CFG["OFF_PEAK_SECONDS"]
-
     async def _handle_poll_failure(self, user_id: str, polling_state: dict, error_message: str):
         """Handles logic for when a poll fails."""
         failures = polling_state.get("consecutive_failure_count", 0) + 1
@@ -113,24 +88,9 @@ class GCalendarPollingService:
                     continue
 
                 if not await self.db_manager.is_item_processed(user_id, self.service_name, event_id, mode):
-                    from workers.tasks import cud_memory_task, proactive_reasoning_pipeline, execute_triggered_task
+                    from workers.tasks import execute_triggered_task
 
-                    if mode == 'proactivity':
-                        # Construct a representative text string from the event data
-                        source_text = f"Event: {event.get('summary', '')}\nDescription: {event.get('description', '')}"
-                        # 1. Send to memory
-                        # cud_memory_task.delay(
-                        #     user_id=user_id,
-                        #     information=source_text,
-                        #     source=self.service_name
-                        # ) # NOT SENDING TO MEMORY FOR NOW
-                        # 2. Send to proactive reasoning
-                        proactive_reasoning_pipeline.delay(
-                            user_id=user_id,
-                            event_type=self.service_name,
-                            event_data=event
-                        )
-                    elif mode == 'triggers':
+                    if mode == 'triggers':
                         # 3. Check for and execute triggered tasks
                         execute_triggered_task.delay(
                             user_id=user_id, source=self.service_name,
@@ -163,10 +123,7 @@ class GCalendarPollingService:
                     updated_state["is_enabled"] = False
                     updated_state["next_scheduled_poll_time"] = datetime.datetime.now(timezone.utc) + datetime.timedelta(days=1)
             else:
-                if mode == 'triggers':
-                    next_interval = 60  # Always poll every 60 seconds for triggers
-                else: # proactivity
-                    next_interval = self._calculate_next_poll_interval(user_profile or {})
+                next_interval = 60  # Always poll every 60 seconds for triggers
                 updated_state["next_scheduled_poll_time"] = datetime.datetime.now(timezone.utc) + datetime.timedelta(seconds=next_interval)
             
             updated_state["is_currently_polling"] = False
@@ -180,16 +137,16 @@ class GCalendarPollingService:
 
         while True:
             try:
-                due_tasks_states = await self.db_manager.get_due_polling_tasks_for_service(self.service_name, 'proactivity')
+                due_tasks_states = await self.db_manager.get_due_polling_tasks_for_service(self.service_name, 'triggers')
                 
                 if due_tasks_states:
-                    logger.info(f"Scheduler: Found {len(due_tasks_states)} due GCalendar polling tasks.")
+                    logger.info(f"Scheduler: Found {len(due_tasks_states)} due GCalendar trigger polling tasks.")
                     for task_state in due_tasks_states:
                         user_id = task_state["user_id"]
-                        locked_task_state = await self.db_manager.set_polling_status_and_get(user_id, self.service_name, 'proactivity')
+                        locked_task_state = await self.db_manager.set_polling_status_and_get(user_id, self.service_name, 'triggers')
                         if locked_task_state:
                             logger.info(f"Scheduler: Acquired lock for {user_id} (GCal). Triggering poll cycle.")
-                            asyncio.create_task(self._run_single_user_poll_cycle(user_id, locked_task_state, 'proactivity'))
+                            asyncio.create_task(self._run_single_user_poll_cycle(user_id, locked_task_state, 'triggers'))
             except Exception as e:
                 logger.error(f"Error in GCalendar scheduler loop: {e}", exc_info=True)
             

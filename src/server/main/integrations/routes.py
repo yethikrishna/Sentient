@@ -257,24 +257,7 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
         if not success:
             raise HTTPException(status_code=500, detail="Failed to save integration credentials.")
         
-        if service_name == 'gmail' or service_name == 'gcalendar':
-            # Check user's proactivity preference before enabling polling for PROACTIVITY ONLY
-            user_profile = await mongo_manager.get_user_profile(user_id)
-            is_proactivity_enabled = user_profile.get("userData", {}).get("preferences", {}).get("proactivityEnabled", False)
-
-            # Create a state for the proactivity poller (depends on user setting)
-            await mongo_manager.update_polling_state(
-                user_id,
-                service_name,
-                "proactivity",
-                {
-                    "is_enabled": is_proactivity_enabled,
-                    "is_currently_polling": False,
-                    "next_scheduled_poll_time": datetime.datetime.now(datetime.timezone.utc), # Poll immediately
-                    "last_successful_poll_timestamp_unix": None,
-                }
-            )
-            # Create a state for the triggered workflow poller (ALWAYS enabled on connect)
+        if service_name in ['gmail', 'gcalendar']:
             await mongo_manager.update_polling_state(
                 user_id,
                 service_name,
@@ -306,10 +289,6 @@ async def disconnect_integration(request: DisconnectRequest, user_id: str = Depe
         deleted_tasks_count = await mongo_manager.delete_tasks_by_tool(user_id, service_name)
         logger.info(f"Deleted {deleted_tasks_count} tasks for user {user_id} associated with disconnected tool '{service_name}'.")
 
-        # Delete polling state for this source
-        deleted_polling_states_count = await mongo_manager.delete_polling_state_by_service(user_id, service_name)
-        logger.info(f"Deleted {deleted_polling_states_count} polling states for user {user_id} associated with disconnected source '{service_name}'.")
-
         # Unset the specific integration object from the user profile
         update_payload = {f"userData.integrations.{service_name}": ""}
         result = await mongo_manager.user_profiles_collection.update_one(
@@ -317,7 +296,7 @@ async def disconnect_integration(request: DisconnectRequest, user_id: str = Depe
             {"$unset": update_payload}
         )
 
-        if result.modified_count == 0 and deleted_tasks_count == 0 and deleted_polling_states_count == 0:
+        if result.modified_count == 0 and deleted_tasks_count == 0:
             # This can happen if the field didn't exist, which is not an error.
             return JSONResponse(content={"message": f"{service_name} was not connected or already disconnected."})
 

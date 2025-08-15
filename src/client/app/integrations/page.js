@@ -1167,7 +1167,7 @@ const IntegrationsPage = () => {
 					) : (
 						<>
 							<div className="relative w-[clamp(300px,80vmin,600px)] h-[clamp(300px,80vmin,600px)] flex items-center justify-center">
-								<div className="absolute w-[45%] h-[45%]">
+								<div className="absolute w-[60%] h-[60%] md:w-[70%] md:h-[70%]">
 									<SiriSpheres
 										status="connected"
 										audioLevel={0.05}
@@ -1245,31 +1245,42 @@ const IntegrationsPage = () => {
 							</div>
 							<button
 								onClick={() => setOtherIntegrationsOpen(true)}
-								className="mt-12 py-2 px-5 w-48 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-sm font-medium flex items-center justify-between gap-4"
+								className="mt-12 py-3 px-6 rounded-full bg-neutral-800 hover:bg-neutral-700 text-sm font-medium flex items-center justify-center gap-4 transition-all hover:gap-5 group"
 							>
-								<span className="flex items-center">
-									Other Integrations
+								<span className="whitespace-nowrap text-neutral-300 group-hover:text-white transition-colors">
+									Explore Other Integrations
 								</span>
-								<span className="flex items-center gap-2">
-									<IconBrandGithub className="w-6 h-6" />
-									<IconBrandSlack className="w-6 h-6" />
-								</span>
+								<div className="flex items-center -space-x-4">
+									{otherIntegrations
+										.slice(0, 3)
+										.map((integration, index) => {
+											const Icon =
+												integrationColorIcons[
+													integration.name
+												] || IconPlaceholder
+											return (
+												<div
+													key={integration.name}
+													className="w-8 h-8 rounded-full bg-neutral-700 border-2 border-neutral-800 flex items-center justify-center transition-transform group-hover:translate-x-1"
+													style={{
+														zIndex: 3 - index
+													}}
+												>
+													<Icon className="w-4 h-4 text-neutral-300" />
+												</div>
+											)
+										})}
+									<div className="w-8 h-8 rounded-full bg-neutral-700 border-2 border-neutral-800 flex items-center justify-center transition-transform group-hover:translate-x-1">
+										<IconPlus
+											size={14}
+											className="text-neutral-400"
+										/>
+									</div>
+								</div>
 							</button>
 						</>
 					)}
 				</main>
-				<footer className="p-4">
-					<div className="w-full max-w-lg mx-auto">
-						<input
-							type="text"
-							placeholder="Search integrations..."
-							className="w-full bg-neutral-900/50 border border-neutral-700 rounded-full pl-5 pr-12 py-3 text-white placeholder-neutral-500 focus:ring-2 focus:ring-brand-orange"
-							onFocus={() => setOtherIntegrationsOpen(true)}
-							value={searchQuery}
-							onChange={(e) => setSearchQuery(e.target.value)}
-						/>
-					</div>
-				</footer>
 			</div>
 			<AnimatePresence>
 				{isOtherIntegrationsOpen && (

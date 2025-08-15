@@ -60,6 +60,13 @@ async def _execute_tool(ctx: Context, action_name: str, **kwargs) -> Dict[str, A
     try:
         user_id = auth.get_user_id_from_context(ctx)
         connection_id = await auth.get_composio_connection_id(user_id, "gmail")
+
+        # NEW: Fetch user info including privacy filters
+        user_info = await auth.get_user_info(user_id)
+        privacy_filters = user_info.get("privacy_filters", {})
+        keyword_filters = privacy_filters.get("keywords", [])
+        email_filters = [email.lower() for email in privacy_filters.get("emails", [])]
+        label_filters = [label.lower() for label in privacy_filters.get("labels", [])]
         
         # Composio's execute method is synchronous, so we use asyncio.to_thread
         result = await asyncio.to_thread(
@@ -69,6 +76,39 @@ async def _execute_tool(ctx: Context, action_name: str, **kwargs) -> Dict[str, A
             connected_account_id=connection_id
         )
         
+        # NEW: Apply privacy filters if the action is fetching emails
+        if action_name == "GMAIL_FETCH_EMAILS":
+            if result.get("successful") and result.get("data"):
+                emails = result["data"]
+                filtered_emails = []
+                for email in emails:
+                    # The data from Composio is already simplified
+                    subject = email.get("subject", "").lower()
+                    snippet = email.get("snippet", "").lower()
+                    content_to_check = f"{subject} {snippet}"
+
+                    # Keyword check
+                    if any(word.lower() in content_to_check for word in keyword_filters):
+                        logger.info(f"Filtering email '{subject}' due to keyword match.")
+                        continue
+
+                    # Sender email check
+                    sender_email = email.get("sender_email", "").lower()
+                    if any(blocked_email in sender_email for blocked_email in email_filters):
+                        logger.info(f"Filtering email '{subject}' due to sender email match.")
+                        continue
+
+                    # Label check
+                    email_labels = [label.lower() for label in email.get("labels", [])]
+                    if any(blocked_label in email_labels for blocked_label in label_filters):
+                        logger.info(f"Filtering email '{subject}' due to label match.")
+                        continue
+
+                    filtered_emails.append(email)
+
+                result["data"] = filtered_emails
+                logger.info(f"Applied privacy filters. Kept {len(filtered_emails)} out of {len(emails)} emails.")
+
         return {"status": "success", "result": result}
     except Exception as e:
         logger.error(f"Tool execution failed for action '{action_name}': {e}", exc_info=True)

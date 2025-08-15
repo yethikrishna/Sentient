@@ -58,6 +58,12 @@ async def _execute_tool(ctx: Context, action_name: str, **kwargs) -> Dict[str, A
         user_id = auth.get_user_id_from_context(ctx)
         connection_id = await auth.get_composio_connection_id(user_id, "gcalendar")
 
+        # NEW: Fetch user info including privacy filters
+        user_info = await auth.get_user_info(user_id)
+        privacy_filters = user_info.get("privacy_filters", {})
+        keyword_filters = privacy_filters.get("keywords", [])
+        email_filters = [email.lower() for email in privacy_filters.get("emails", [])]
+
         # Composio's execute method is synchronous, so we use asyncio.to_thread
         # Filter out None values from kwargs before passing to Composio
         filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
@@ -68,6 +74,33 @@ async def _execute_tool(ctx: Context, action_name: str, **kwargs) -> Dict[str, A
             arguments=filtered_kwargs,
             connected_account_id=connection_id
         )
+
+        # NEW: Apply privacy filters if the action is fetching events
+        if action_name in ["GOOGLECALENDAR_EVENTS_LIST", "GOOGLECALENDAR_FIND_EVENT", "GOOGLECALENDAR_EVENTS_INSTANCES", "GOOGLECALENDAR_SYNC_EVENTS"]:
+            if result.get("successful") and result.get("data"):
+                events = result["data"].get("items", [])
+                filtered_events = []
+                for event in events:
+                    content_to_check = (event.get("summary", "") + " " + event.get("description", "")).lower()
+
+                    # Keyword check
+                    if any(word.lower() in content_to_check for word in keyword_filters):
+                        logger.info(f"Filtering event '{event.get('summary')}' due to keyword match.")
+                        continue
+
+                    # Attendee email check
+                    if email_filters:
+                        attendees = event.get("attendees", [])
+                        if attendees:
+                            attendee_emails = {attendee.get("email", "").lower() for attendee in attendees if attendee.get("email")}
+                            if any(blocked_email in attendee_emails for blocked_email in email_filters):
+                                logger.info(f"Filtering event '{event.get('summary')}' due to attendee email match.")
+                                continue
+
+                    filtered_events.append(event)
+
+                result["data"]["items"] = filtered_events
+                logger.info(f"Applied privacy filters. Kept {len(filtered_events)} out of {len(events)} events.")
 
         # FIX: Ensure the result from the SDK is JSON serializable before returning.
         # This converts Pydantic models, datetimes, etc., into a clean dictionary.

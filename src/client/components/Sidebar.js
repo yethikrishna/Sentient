@@ -1,6 +1,6 @@
 "use client"
 import React, { useState, useEffect, useRef } from "react"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import {
 	IconChecklist,
@@ -19,7 +19,10 @@ import {
 	IconAdjustments,
 	IconLogout,
 	IconX,
-	IconDownload
+	IconDownload,
+	IconBrandDiscord,
+	IconPlayerPlay,
+	IconSlideshow
 } from "@tabler/icons-react"
 import { cn } from "@utils/cn"
 import { motion, AnimatePresence } from "framer-motion"
@@ -59,6 +62,95 @@ const HelpVideoModal = ({ onClose }) => (
 	</motion.div>
 )
 
+const HelpMenuModal = ({ onClose, onShowVideo, onShowDemo }) => {
+	return (
+		<motion.div
+			initial={{ opacity: 0 }}
+			animate={{ opacity: 1 }}
+			exit={{ opacity: 0 }}
+			className="fixed inset-0 bg-black/70 backdrop-blur-md z-[100] flex items-center justify-center p-4"
+			onClick={onClose}
+		>
+			<motion.div
+				initial={{ scale: 0.95, y: 20 }}
+				animate={{ scale: 1, y: 0 }}
+				exit={{ scale: 0.95, y: -20 }}
+				transition={{ duration: 0.2, ease: "easeInOut" }}
+				onClick={(e) => e.stopPropagation()}
+				className="relative bg-neutral-900/90 backdrop-blur-xl p-6 rounded-2xl shadow-2xl w-full max-w-lg border border-neutral-700 flex flex-col"
+			>
+				<header className="flex justify-between items-center mb-6 flex-shrink-0">
+					<h2 className="text-lg font-semibold text-white">
+						Need Help?
+					</h2>
+					<button
+						onClick={onClose}
+						className="p-1.5 rounded-full hover:bg-neutral-700"
+					>
+						<IconX size={18} />
+					</button>
+				</header>
+				<main className="space-y-4">
+					<button
+						onClick={onShowDemo}
+						className="w-full text-left p-4 rounded-lg bg-neutral-800 hover:bg-neutral-700/80 transition-colors flex items-center gap-4"
+					>
+						<IconSlideshow
+							size={24}
+							className="text-brand-orange flex-shrink-0"
+						/>
+						<div>
+							<p className="font-semibold text-white">
+								Interactive Demo
+							</p>
+							<p className="text-sm text-neutral-400">
+								Get a hands-on tour of the main features.
+							</p>
+						</div>
+					</button>
+					<button
+						onClick={onShowVideo}
+						className="w-full text-left p-4 rounded-lg bg-neutral-800 hover:bg-neutral-700/80 transition-colors flex items-center gap-4"
+					>
+						<IconPlayerPlay
+							size={24}
+							className="text-brand-orange flex-shrink-0"
+						/>
+						<div>
+							<p className="font-semibold text-white">
+								Demo Video
+							</p>
+							<p className="text-sm text-neutral-400">
+								Watch a quick video walkthrough.
+							</p>
+						</div>
+					</button>
+					<a
+						href="https://discord.gg/YwXdEvjKGe"
+						target="_blank"
+						rel="noopener noreferrer"
+						className="w-full text-left p-4 rounded-lg bg-neutral-800 hover:bg-neutral-700/80 transition-colors flex items-center gap-4"
+					>
+						<IconBrandDiscord
+							size={24}
+							className="text-brand-orange flex-shrink-0"
+						/>
+						<div>
+							<p className="font-semibold text-white">
+								Join our Discord
+							</p>
+							<p className="text-sm text-neutral-400">
+								Ask questions, report bugs, or just hang out
+								with the community.
+							</p>
+						</div>
+					</a>
+				</main>
+			</motion.div>
+		</motion.div>
+	)
+}
+
 const SidebarContent = ({
 	isCollapsed,
 	onToggle,
@@ -72,8 +164,10 @@ const SidebarContent = ({
 }) => {
 	const pathname = usePathname()
 	const [userDetails, setUserDetails] = useState(null)
-	const [isHelpModalOpen, setHelpModalOpen] = useState(false)
+	const [isHelpMenuOpen, setHelpMenuOpen] = useState(false)
+	const [isVideoModalOpen, setVideoModalOpen] = useState(false)
 	const [isUserMenuOpen, setUserMenuOpen] = useState(false)
+	const router = useRouter()
 	const userMenuRef = useRef(null)
 
 	useClickOutside(userMenuRef, () => setUserMenuOpen(false))
@@ -83,6 +177,16 @@ const SidebarContent = ({
 			.then((res) => (res.ok ? res.json() : null))
 			.then((data) => setUserDetails(data))
 	}, [])
+
+	const handleShowDemo = () => {
+		setHelpMenuOpen(false)
+		router.push("/chat?show_demo=true")
+	}
+
+	const handleShowVideo = () => {
+		setHelpMenuOpen(false)
+		setVideoModalOpen(true)
+	}
 
 	const navLinks = [
 		{ title: "Chat", href: "/chat", icon: <IconMessage size={20} /> },
@@ -103,8 +207,17 @@ const SidebarContent = ({
 	return (
 		<div className="flex flex-col h-full w-full overflow-y-auto custom-scrollbar">
 			<AnimatePresence>
-				{isHelpModalOpen && (
-					<HelpVideoModal onClose={() => setHelpModalOpen(false)} />
+				{isVideoModalOpen && (
+					<HelpVideoModal onClose={() => setVideoModalOpen(false)} />
+				)}
+			</AnimatePresence>
+			<AnimatePresence>
+				{isHelpMenuOpen && (
+					<HelpMenuModal
+						onClose={() => setHelpMenuOpen(false)}
+						onShowDemo={handleShowDemo}
+						onShowVideo={handleShowVideo}
+					/>
 				)}
 			</AnimatePresence>
 			{/* Header */}
@@ -292,7 +405,7 @@ const SidebarContent = ({
 					</button>
 				)}
 				<button
-					onClick={() => setHelpModalOpen(true)}
+					onClick={() => setHelpMenuOpen(true)}
 					className={cn(
 						"w-full flex items-center gap-3 bg-neutral-800/40 border border-neutral-700/80 rounded-lg p-2 text-left text-sm hover:bg-neutral-800/80 transition-colors",
 						isCollapsed && "justify-center"
@@ -308,6 +421,22 @@ const SidebarContent = ({
 						</span>
 					)}
 				</button>
+				<a
+					href="https://discord.gg/YwXdEvjKGe"
+					target="_blank"
+					rel="noopener noreferrer"
+					className={cn(
+						"w-full flex items-center gap-3 bg-indigo-600/20 border border-indigo-500/50 text-indigo-300 rounded-lg p-2 text-left text-sm hover:bg-indigo-600/40 transition-colors",
+						isCollapsed && "justify-center"
+					)}
+				>
+					<IconBrandDiscord size={20} className="flex-shrink-0" />
+					{!isCollapsed && (
+						<span className="font-medium whitespace-nowrap">
+							Join Community
+						</span>
+					)}
+				</a>
 				<div
 					className={cn(
 						"flex items-center justify-between bg-neutral-800/40 border border-neutral-700/80 rounded-lg p-1.5",

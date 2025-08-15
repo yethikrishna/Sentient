@@ -7,6 +7,7 @@ from main.dependencies import mongo_manager
 from main.auth.utils import PermissionChecker, AuthHelper
 from main.notifications.whatsapp_client import check_phone_number_exists
 from main.plans import PRO_ONLY_FEATURES
+from .google_sheets_utils import update_contact_in_sheet
 from main.settings.models import WhatsAppMcpRequest, WhatsAppNotificationNumberRequest, ProfileUpdateRequest, ProactivitySettingsRequest
 
 logger = logging.getLogger(__name__)
@@ -110,6 +111,16 @@ async def set_whatsapp_notification_number(
             "userData.notificationPreferences.whatsapp.enabled": True,
         }
         await mongo_manager.update_user_profile(user_id, update_payload)
+
+        # --- NEW: Update Google Sheet ---
+        try:
+            user_profile = await mongo_manager.get_user_profile(user_id)
+            user_email = user_profile.get("userData", {}).get("personalInfo", {}).get("email")
+            if user_email:
+                await update_contact_in_sheet(user_email, whatsapp_number)
+        except Exception as e:
+            logger.error(f"Non-critical error: Failed to update Google Sheet for user {user_id} after setting WA number. Error: {e}")
+        # --- END NEW ---
         return JSONResponse(content={"message": "WhatsApp notification number updated successfully."})
 
     except ConnectionError as e:

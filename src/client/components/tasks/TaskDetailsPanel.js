@@ -275,7 +275,7 @@ const TaskDetailsPanel = ({
 											onClick={() =>
 												onDelete(task.task_id)
 											}
-											icon={<IconTrash size={16} />}
+											icon={<IconTrash size={16} />} // prettier-ignore
 											className="text-neutral-400 hover:bg-red-500/20 hover:text-red-400"
 										>
 											Delete

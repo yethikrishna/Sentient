@@ -12,7 +12,8 @@ export const GET = withAuth(async function GET(request, { authHeader }) {
 	try {
 		const response = await fetch(backendUrl.toString(), {
 			method: "GET",
-			headers: { "Content-Type": "application/json", ...authHeader }
+			headers: { "Content-Type": "application/json", ...authHeader },
+			cache: "no-store" // Prevent Next.js from caching this server-side fetch
 		})
 
 		const data = await response.json()

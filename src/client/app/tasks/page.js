@@ -530,6 +530,7 @@ Description: ${event.description || "No description."}`
 														fetch(
 															`/api/tasks/delete`,
 															{
+																// prettier-ignore
 																method: "POST",
 																body: JSON.stringify(
 																	{
@@ -570,22 +571,19 @@ Description: ${event.description || "No description."}`
 												handleAction(
 													() =>
 														fetch(
-															`/api/tasks/answer-clarifications`,
+															"/api/tasks/rerun",
 															{
 																method: "POST",
-																body: JSON.stringify(
-																	{
-																		taskId,
-																		answers
-																	}
-																),
 																headers: {
 																	"Content-Type":
 																		"application/json"
-																}
+																},
+																body: JSON.stringify(
+																	{ taskId }
+																)
 															}
 														),
-													"Answers submitted."
+													"Task re-run initiated."
 												)
 											}
 											onArchiveTask={(taskId) =>

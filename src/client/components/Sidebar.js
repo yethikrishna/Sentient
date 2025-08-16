@@ -34,8 +34,6 @@ const UserProfileSection = ({ isCollapsed, user }) => {
 	const { isPro, plan } = usePlan()
 	useClickOutside(userMenuRef, () => setUserMenuOpen(false))
 
-	// FIX: Removed the redundant and conflicting declaration of 'isPro'.
-	// The 'isPro' constant from the usePlan() hook is the correct one to use.
 	const planName = isPro ? "Pro" : "Basic"
 
 	const dashboardUrl = process.env.NEXT_PUBLIC_LANDING_PAGE_URL
@@ -74,8 +72,8 @@ const UserProfileSection = ({ isCollapsed, user }) => {
 							exit={{ opacity: 0, width: 0 }}
 							className="overflow-hidden whitespace-nowrap"
 						>
-							<p className="font-semibold text-sm text-white">
-								{user?.name || "User"}
+							<p className="font-semibold text-sm text-white truncate">
+								{user?.given_name || user?.name || "User"}
 							</p>
 							<span
 								className={cn(
@@ -233,12 +231,9 @@ const SidebarContent = ({
 	user
 }) => {
 	const pathname = usePathname()
-	const [userDetails, setUserDetails] = useState(null)
 	const [isHelpMenuOpen, setHelpMenuOpen] = useState(false)
 	const [isVideoModalOpen, setVideoModalOpen] = useState(false)
-	const [isUserMenuOpen, setUserMenuOpen] = useState(false)
 	const router = useRouter()
-	const userMenuRef = useRef(null)
 
 	// CHANGED: Use the environment variable for the namespace
 	const { isPro } = usePlan()
@@ -504,73 +499,7 @@ const SidebarContent = ({
 						</span>
 					)}
 				</a>
-				<div
-					className={cn(
-						"flex items-center justify-between bg-neutral-800/40 border border-neutral-700/80 rounded-lg p-1.5",
-						isCollapsed && "flex-col gap-2"
-					)}
-				>
-					<Link
-						href="/settings"
-						className={cn(
-							"flex items-center gap-2 p-1 rounded-md hover:bg-neutral-800/80 flex-grow",
-							isCollapsed ? "w-full justify-center" : ""
-						)}
-					>
-						{userDetails?.picture ? (
-							<img
-								src={userDetails.picture}
-								alt="User"
-								className="w-7 h-7 rounded-full flex-shrink-0"
-							/>
-						) : (
-							<div className="w-7 h-7 rounded-full bg-neutral-700 flex items-center justify-center flex-shrink-0">
-								<IconUser size={16} />
-							</div>
-						)}
-						{!isCollapsed && (
-							<span className="font-semibold text-sm text-white whitespace-nowrap">
-								{userDetails?.given_name || "User"}
-							</span>
-						)}
-					</Link>
-					{!isCollapsed && (
-						<div className="relative" ref={userMenuRef}>
-							<button
-								onClick={() => setUserMenuOpen(!isUserMenuOpen)}
-								className="p-2 rounded-md hover:bg-neutral-700 text-neutral-400 hover:text-white"
-							>
-								<IconDots size={16} />
-							</button>
-							<AnimatePresence>
-								{isUserMenuOpen && (
-									<motion.div
-										initial={{
-											opacity: 0,
-											y: 10,
-											scale: 0.95
-										}}
-										animate={{ opacity: 1, y: 0, scale: 1 }}
-										exit={{
-											opacity: 0,
-											y: 10,
-											scale: 0.95
-										}}
-										className="absolute bottom-full right-0 mb-2 w-40 bg-neutral-900/80 backdrop-blur-md border border-neutral-700 rounded-lg shadow-lg p-1 z-50"
-									>
-										<Link
-											href="/auth/logout"
-											className="w-full flex items-center gap-2 text-left px-3 py-2 text-sm rounded-md text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-colors"
-										>
-											<IconLogout size={16} />
-											<span>Logout</span>
-										</Link>
-									</motion.div>
-								)}
-							</AnimatePresence>
-						</div>
-					)}
-				</div>
+				<UserProfileSection isCollapsed={isCollapsed} user={user} />
 			</div>
 		</div>
 	)

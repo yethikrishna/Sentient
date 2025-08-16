@@ -9,7 +9,7 @@
     It launches each service in its own dedicated PowerShell terminal window with a clear title.
 
     The script handles:
-    - Starting databases like MongoDB (as admin) and Docker services (Waha, PGVector, Chroma).
+    - Starting databases like MongoDB (as admin) and Docker services (Waha, PGVector, Chroma, LiteLLM).
     - Launching the Redis message broker within the Windows Subsystem for Linux (WSL).
     - Dynamically discovering and starting all MCP (Modular Companion Protocol) servers.
     - Activating the Python virtual environment for all backend scripts.
@@ -104,12 +104,13 @@ try {
     Start-NewTerminal -WindowTitle "SERVICE - Redis" -Command $redisStartCommand
     Start-Sleep -Seconds 2
     
-    # Start Docker Containers (Waha, PGVector, Chroma)
-    Write-Host "🚀 Launching Docker services (Waha, PGVector, Chroma)..." -ForegroundColor Yellow
+    # Start Docker Containers (Waha, PGVector, Chroma, LiteLLM)
+    Write-Host "🚀 Launching Docker services (Waha, PGVector, Chroma, LiteLLM)..." -ForegroundColor Yellow
     $dockerServices = @(
         @{ Name = "WAHA"; File = "start_waha.yaml" },
         @{ Name = "PGVector"; File = "start_pgvector.yaml" },
-        @{ Name = "ChromaDB"; File = "start_chroma.yaml" }
+        @{ Name = "ChromaDB"; File = "start_chroma.yaml" },
+        @{ Name = "LiteLLM"; File = "start_litellm.yaml" }
     )
 
     foreach ($service in $dockerServices) {
@@ -128,6 +129,7 @@ try {
             Write-Warning "   - Docker compose file not found: '$($service.File)'. Skipping."
         }
     }
+    
     Write-Host "Waiting a few seconds for Docker containers to initialize..."
     Start-Sleep -Seconds 5
 

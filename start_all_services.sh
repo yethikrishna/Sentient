@@ -121,11 +121,12 @@ fi
 sleep 1
 
 # Start Docker Containers
-echo "🚀 Starting Docker services (Waha, PGVector, Chroma)..."
+echo "🚀 Starting Docker services (Waha, PGVector, Chroma, LiteLLM)..."
 DOCKER_SERVICES=(
     "WAHA:start_waha.yaml"
     "PGVector:start_pgvector.yaml"
     "ChromaDB:start_chroma.yaml"
+    "LiteLLM:start_litellm.yaml"
 )
 
 for service_info in "${DOCKER_SERVICES[@]}"; do

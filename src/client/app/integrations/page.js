@@ -931,6 +931,7 @@ const IntegrationsPage = () => {
 			})
 			toast.success(`Successfully connected to ${capitalized}!`)
 			setSparkleTrigger((c) => c + 1)
+			fetchIntegrations()
 			window.history.replaceState({}, document.title, "/integrations")
 		} else if (error && !composioStatus) {
 			// Avoid showing generic error on composio callback

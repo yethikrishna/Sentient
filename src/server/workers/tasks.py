@@ -19,7 +19,7 @@ from main.config import INTEGRATIONS_CONFIG # This is the new field
 from main.tasks.prompts import TASK_CREATION_PROMPT
 from mcp_hub.memory.utils import initialize_embedding_model, initialize_agents, cud_memory
 from mcp_hub.tasks.prompts import RESOURCE_MANAGER_SYSTEM_PROMPT
-from main.llm import run_agent as run_main_agent
+from main.llm import run_agent as run_main_agent, LLMProviderDownError
 from main.db import MongoManager
 from workers.celery_app import celery_app
 from workers.planner.llm import get_planner_agent # noqa: E501
@@ -206,10 +206,9 @@ async def async_orchestrate_swarm_task(task_id: str, user_id: str):
             if not goal:
                  raise ValueError("Swarm task is missing a goal to extract items from.")
 
-            messages = [{'role': 'user', 'content': goal}]
-
             extractor_response_str = ""
-            for chunk in run_main_agent_with_fallback(system_message=ITEM_EXTRACTOR_SYSTEM_PROMPT, function_list=[], messages=messages):
+            messages = [{'role': 'user', 'content': goal}]
+            for chunk in run_main_agent(system_message=ITEM_EXTRACTOR_SYSTEM_PROMPT, function_list=[], messages=messages):
                 if isinstance(chunk, list) and chunk:
                     last_message = chunk[-1]
                     if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
@@ -544,7 +543,7 @@ async def run_context_research(user_id: str, task_description: str, original_con
     messages = [{'role': 'user', 'content': user_prompt}]
 
     final_response_str = ""
-    for chunk in run_main_agent_with_fallback(system_message=system_prompt, function_list=tools_config, messages=messages):
+    for chunk in run_main_agent(system_message=system_prompt, function_list=tools_config, messages=messages):
         if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
             final_response_str = chunk[-1].get("content", "")
 

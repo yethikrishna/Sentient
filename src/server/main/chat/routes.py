@@ -74,6 +74,7 @@ async def chat_endpoint(
         try:
             async for event in generate_chat_llm_stream(
                 user_id,
+                clean_history_for_llm,
                 user_context,
                 db_manager=mongo_manager
             ):

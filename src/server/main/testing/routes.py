@@ -10,8 +10,8 @@ from main.dependencies import auth_helper
 from main.notifications.whatsapp_client import (check_phone_number_exists,
                                                  send_whatsapp_message)
 from main.notifications.utils import create_and_push_notification
-from workers.tasks import (cud_memory_task, proactive_reasoning_pipeline, run_due_tasks,
-                           schedule_proactivity_polling, schedule_trigger_polling)
+from workers.tasks import (cud_memory_task, run_due_tasks,
+                           schedule_trigger_polling)
 
 from .models import ContextInjectionRequest, WhatsAppTestRequest, TestNotificationRequest
 
@@ -30,43 +30,6 @@ def _check_allowed_environments(allowed_envs: List[str], detail_message: str):
             status_code=status.HTTP_403_FORBIDDEN,
             detail=detail_message
         )
-
-@router.post("/inject-context", summary="Manually inject a context event for processing")
-async def inject_context_event(
-    request: ContextInjectionRequest,
-    user_id: str = Depends(auth_helper.get_current_user_id)
-):
-    _check_allowed_environments(
-        ["dev-local", "selfhost"],
-        "This endpoint is only available in development or self-host environments."
-    )
-
-    service_name = request.service_name
-    event_data = request.event_data
-
-    if not service_name or not event_data:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="service_name and event_data are required.")
-
-    event_id = f"manual_injection_{uuid.uuid4()}"
-
-    try:
-        # 1. Send to memory
-        cud_memory_task.delay(
-            user_id=user_id,
-            information=json.dumps(event_data),
-            source=service_name
-        )
-        # 2. Send to proactive reasoning
-        proactive_reasoning_pipeline.delay(
-            user_id=user_id,
-            event_type=service_name,
-            event_data=event_data
-        )
-        logger.info(f"Manually injected event '{event_id}' for user '{user_id}' into the context extraction pipeline.")
-        return {"message": "Context event injected successfully.", "event_id": event_id}
-    except Exception as e:
-        logger.error(f"Failed to queue context injection task for user {user_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to queue task.")
 
 @router.post("/whatsapp", summary="Send a test WhatsApp notification")
 async def send_test_whatsapp(
@@ -137,17 +100,15 @@ async def trigger_poller(
         "This endpoint is only available in development or self-host environments."
     )
     try:
-        schedule_proactivity_polling.delay()
         schedule_trigger_polling.delay()
-        logger.info(f"Manually triggered proactive poller by user {user_id}")
-        return {"message": "Proactive and trigger pollers triggered successfully. Check Celery worker logs for execution."}
+        logger.info(f"Manually triggered trigger poller by user {user_id}")
+        return {"message": "Trigger poller triggered successfully. Check Celery worker logs for execution."}
     except Exception as e:
         logger.error(f"Failed to manually trigger poller: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to trigger poller task."
         )
-
 
 @router.post("/notification", summary="Send a test notification")
 async def send_test_notification(

@@ -262,7 +262,7 @@ const OnboardingPage = () => {
 				)
 			}
 			posthog?.capture("onboarding_completed")
-			router.push("/chat")
+			router.push("/chat?show_demo=true")
 		} catch (error) {
 			toast.error(`Error: ${error.message}`)
 			setStage("questions") // Go back to questions on error

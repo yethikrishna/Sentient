@@ -90,8 +90,14 @@ async def _get_stage1_response(messages: List[Dict[str, Any]], connected_tools_m
                 messages=formatted_messages,
             )
 
-        completion = await asyncio.to_thread(sync_api_call)
-        final_content_str = completion.choices[0].message.content
+                completion = await asyncio.to_thread(sync_api_call)
+
+                # FIX: Add a check to handle cases where the API returns a successful
+                # response but with an empty 'choices' list (e.g., due to content filtering).
+                if not completion.choices:
+                    raise Exception("LLM response was successful but contained no choices.")
+
+                final_content_str = completion.choices[0].message.content
 
         logger.info(f"Stage 1 LLM output for user {user_id}: {final_content_str}")
         cleaned_output = clean_llm_output(final_content_str)

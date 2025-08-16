@@ -116,7 +116,7 @@ INTEGRATIONS_CONFIG = {
     "gcalendar": {
         "display_name": "Google Calendar",
         "description": "Read and manage events on your Google Calendar. Enables the agent to list upcoming events, add new events, search for specific events, update event details, and delete events.",
-        "auth_type": "oauth",
+        "auth_type": "composio",
         "icon": "IconCalendarEvent",
         "category": "Productivity",
         "mcp_server_config": {
@@ -138,9 +138,7 @@ INTEGRATIONS_CONFIG = {
     "gdocs": {
         "display_name": "Google Docs",
         "description": "Create and manage documents in Google Docs. Allows the agent to generate new, multi-section documents with titles, headings, paragraphs, and bullet points.",
-        "auth_type": "oauth",
-        "plan": "pro",
-        "plan": "pro",
+        "auth_type": "composio",
         "icon": "IconFileText",
         "category": "Productivity",
         "mcp_server_config": {
@@ -151,9 +149,7 @@ INTEGRATIONS_CONFIG = {
     "gslides": {
         "display_name": "Google Slides",
         "description": "Create and manage presentations in Google Slides. The agent can build new slide decks with titles, content, images, and charts based on a structured outline you provide.",
-        "auth_type": "oauth",
-        "plan": "pro",
-        "plan": "pro",
+        "auth_type": "composio",
         "icon": "IconPresentation",
         "category": "Productivity",
         "mcp_server_config": {
@@ -164,9 +160,7 @@ INTEGRATIONS_CONFIG = {
     "gsheets": {
         "display_name": "Google Sheets",
         "description": "Create and manage spreadsheets in Google Sheets. The agent can help organize data by creating new spreadsheets with one or more sheets, including headers and rows.",
-        "auth_type": "oauth",
-        "plan": "pro",
-        "plan": "pro",
+        "auth_type": "composio",
         "icon": "IconTable",
         "category": "Productivity",
         "mcp_server_config": {
@@ -194,17 +188,6 @@ INTEGRATIONS_CONFIG = {
         "mcp_server_config": {
             "name": "gmaps_server",
             "url": os.getenv("GMAPS_MCP_SERVER_URL", "http://localhost:9016/sse")
-        }
-    },
-    "gshopping": {
-        "display_name": "Google Shopping",
-        "description": "Search for products online. The agent can find items to purchase by searching Google Shopping and returning a list of products with titles, links, and prices.",
-        "auth_type": "builtin",
-        "icon": "IconShoppingCart",
-        "category": "Utilities",
-        "mcp_server_config": {
-            "name": "gshopping_server",
-            "url": os.getenv("GSHOPPING_MCP_SERVER_URL", "http://localhost:9017/sse")
         }
     },
     "slack": {
@@ -327,19 +310,6 @@ INTEGRATIONS_CONFIG = {
             "url": os.getenv("WHATSAPP_MCP_SERVER_URL", "http://localhost:9024/sse")
         }
     },
-    "linkedin": {
-        "display_name": "LinkedIn",
-        "description": "Search for job listings on LinkedIn. Requires you to first upload a 'linkedin_cookies.json' file using the file upload button in the chat.",
-        "auth_type": "manual",
-        "plan": "pro",
-        "plan": "pro",
-        "icon": "IconBrandLinkedin",
-        "category": "Data & Search",
-        "mcp_server_config": {
-            "name": "linkedin_server",
-            "url": os.getenv("LINKEDIN_MCP_SERVER_URL", "http://localhost:9027/sse")
-        }
-    },
     "tasks": {
         "display_name": "Internal Task Manager",
         "description": "Manages asynchronous, background tasks. Use 'create_task_from_prompt' to create a new task from a natural language prompt.",
@@ -349,17 +319,6 @@ INTEGRATIONS_CONFIG = {
         "mcp_server_config": {
             "name": "tasks_server",
             "url": os.getenv("TASKS_MCP_SERVER_URL", "http://localhost:9018/sse/")
-        }
-    },
-    "todoist": {
-        "display_name": "Todoist",
-        "description": "Manage your tasks and projects in Todoist. The agent can list projects, get tasks, create new tasks, and mark tasks as complete.",
-        "auth_type": "oauth",
-        "icon": "IconBrandTodoist",
-        "category": "Productivity",
-        "mcp_server_config": {
-            "name": "todoist_server",
-            "url": os.getenv("TODOIST_MCP_SERVER_URL", "http://localhost:9021/sse")
         }
     },
     "discord": {

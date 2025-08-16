@@ -58,8 +58,6 @@ DAILY_USAGE_COLLECTION = "daily_usage"
 PROCESSED_ITEMS_COLLECTION = "processed_items_log" 
 TASK_COLLECTION = "tasks"
 MESSAGES_COLLECTION = "messages"
-USER_PROACTIVE_PREFERENCES_COLLECTION = "user_proactive_preferences"
-PROACTIVE_SUGGESTION_TEMPLATES_COLLECTION = "proactive_suggestion_templates"
 
 logger = logging.getLogger(__name__)
 
@@ -75,8 +73,6 @@ class MongoManager:
         self.processed_items_collection = self.db[PROCESSED_ITEMS_COLLECTION]
         self.task_collection = self.db[TASK_COLLECTION]
         self.messages_collection = self.db[MESSAGES_COLLECTION]
-        self.user_proactive_preferences_collection = self.db[USER_PROACTIVE_PREFERENCES_COLLECTION]
-        self.proactive_suggestion_templates_collection = self.db[PROACTIVE_SUGGESTION_TEMPLATES_COLLECTION]
         
         print(f"[{datetime.datetime.now()}] [MainServer_MongoManager] Initialized. Database: {MONGO_DB_NAME}")
 
@@ -123,12 +119,6 @@ class MongoManager:
                 IndexModel([("user_id", ASCENDING), ("timestamp", DESCENDING)], name="message_user_timestamp_idx"),
                 IndexModel([("content", "text")], name="message_content_text_idx"),
             ],
-            self.user_proactive_preferences_collection: [
-                IndexModel([("user_id", ASCENDING), ("suggestion_type", ASCENDING)], unique=True, name="user_suggestion_preference_unique_idx")
-            ],
-            self.proactive_suggestion_templates_collection: [
-                IndexModel([("type_name", ASCENDING)], unique=True, name="suggestion_type_name_unique_idx")
-            ],
         }
 
         for collection, indexes in collections_with_indexes.items():
@@ -137,18 +127,6 @@ class MongoManager:
                 print(f"[{datetime.datetime.now()}] [MainServer_DB_INIT] Indexes ensured for: {collection.name}")
             except Exception as e:
                 print(f"[{datetime.datetime.now()}] [MainServer_DB_ERROR] Index creation for {collection.name}: {e}")
-
-        # Pre-populate suggestion templates if the collection is empty
-        if await self.proactive_suggestion_templates_collection.count_documents({}) == 0:
-            print(f"[{datetime.datetime.now()}] [MainServer_DB_INIT] Pre-populating proactive suggestion templates...")
-            initial_templates = [
-                {"type_name": "draft_meeting_confirmation_email", "description": "Drafts an email to confirm a meeting, check availability, or ask for an agenda."},
-                {"type_name": "schedule_calendar_event", "description": "Creates a new event on the user's calendar based on details from a message."},
-                {"type_name": "create_follow_up_task", "description": "Creates a new task in the user's task list to follow up on a specific item or conversation."},
-                {"type_name": "summarize_document_or_thread", "description": "Summarizes a long document, email thread, or message chain for the user."},
-            ]
-            await self.proactive_suggestion_templates_collection.insert_many(initial_templates)
-            print(f"[{datetime.datetime.now()}] [MainServer_DB_INIT] Inserted {len(initial_templates)} templates.")
 
 
     # --- User Profile Methods ---
@@ -610,44 +588,3 @@ class MongoManager:
         if self.client:
             self.client.close()
             print(f"[{datetime.datetime.now()}] [MainServer_MongoManager] MongoDB connection closed.")
-
-    # --- Proactive Suggestion Template Methods ---
-    async def get_all_proactive_suggestion_templates(self) -> List[Dict]:
-        """Fetches all documents from the proactive_suggestion_templates collection."""
-        cursor = self.proactive_suggestion_templates_collection.find({}, {"_id": 0})
-        return await cursor.to_list(length=None)
-
-    # --- Proactive Learning Methods ---
-    async def update_proactive_preference_score(self, user_id: str, suggestion_type: str, increment_value: int):
-        """Finds or creates a user preference document and increments/decrements the score."""
-        now_utc = datetime.datetime.now(datetime.timezone.utc)
-        # FIX: Removed 'score' from $setOnInsert to prevent conflict with $inc on upsert.
-        # $inc will create the field with the specified value if it doesn't exist.
-        await self.user_proactive_preferences_collection.update_one(
-            {"user_id": user_id, "suggestion_type": suggestion_type},
-            {
-                "$inc": {"score": increment_value},
-                "$set": {"last_updated": now_utc}
-            },
-            upsert=True
-        )
-    
-    async def get_user_proactive_preferences(self, user_id: str) -> Dict[str, int]:
-        """
-        Fetches all proactive suggestion preferences for a user and returns them
-        as a dictionary of {suggestion_type: score}.
-        """
-        if not user_id:
-            return {}
-        
-        preferences = {}
-        cursor = self.user_proactive_preferences_collection.find(
-            {"user_id": user_id},
-            {"_id": 0, "suggestion_type": 1, "score": 1}
-        )
-        async for doc in cursor:
-            if "suggestion_type" in doc and "score" in doc:
-                preferences[doc["suggestion_type"]] = doc["score"]
-        
-        logger.info(f"Fetched {len(preferences)} proactive preferences for user {user_id}.")
-        return preferences

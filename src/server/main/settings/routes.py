@@ -6,9 +6,7 @@ from main.dependencies import auth_helper
 from main.dependencies import mongo_manager
 from main.auth.utils import PermissionChecker, AuthHelper
 from main.notifications.whatsapp_client import check_phone_number_exists
-from main.plans import PRO_ONLY_FEATURES
-from .google_sheets_utils import update_contact_in_sheet
-from main.settings.models import WhatsAppMcpRequest, WhatsAppNotificationNumberRequest, ProfileUpdateRequest, ProactivitySettingsRequest
+from main.settings.models import WhatsAppMcpRequest, WhatsAppNotificationNumberRequest, ProfileUpdateRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter(
@@ -168,51 +166,3 @@ async def update_profile_data(
     except Exception as e:
         logger.error(f"Error updating profile for user {user_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")
-@router.get("/proactivity", summary="Get proactivity settings")
-async def get_proactivity_settings(
-    user_id: str = Depends(PermissionChecker(required_permissions=["read:config"]))
-):
-    user_profile = await mongo_manager.get_user_profile(user_id)
-    if not user_profile:
-        return JSONResponse(content={"enabled": False})
-
-    is_enabled = user_profile.get("userData", {}).get("preferences", {}).get("proactivityEnabled", False)
-    return JSONResponse(content={"enabled": is_enabled})
-
-@router.post("/proactivity", summary="Update proactivity settings")
-async def update_proactivity_settings(
-    request: ProactivitySettingsRequest,
-    user_id_and_plan: Tuple[str, str] = Depends(auth_helper.get_current_user_id_and_plan)
-):
-    user_id, plan = user_id_and_plan
-    is_enabled = request.enabled
-
-    # --- Check Plan Limit ---
-    if "proactivity" in PRO_ONLY_FEATURES and plan == "free" and is_enabled:
-        raise HTTPException(
-            status_code=403,
-            detail="Autpilot Mode is a Pro feature. Please upgrade your plan to enable it."
-        )
-
-    update_payload = {"userData.preferences.proactivityEnabled": is_enabled}
-    profile_success = await mongo_manager.update_user_profile(user_id, update_payload)
-    if not profile_success:
-        raise HTTPException(status_code=500, detail="Failed to update user preference.")
-
-    supported_services = ["gmail", "gcalendar"]
-    polling_update_payload = {"is_enabled": is_enabled}
-
-    polling_result = await mongo_manager.polling_state_collection.update_many(
-        {
-            "user_id": user_id,
-            "service_name": {"$in": supported_services},
-            "poll_type": "proactivity"
-        },
-        {"$set": polling_update_payload}
-    )
-
-    logger.info(f"Updated proactivity for user {user_id} to {is_enabled}. Matched {polling_result.matched_count} polling states.")
-
-    message = "Proactivity enabled. I will now start monitoring your connected apps for helpful suggestions." if is_enabled else "Proactivity disabled."
-    return JSONResponse(content={"message": message})
-

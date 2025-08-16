@@ -23,8 +23,7 @@ from main.llm import run_agent as run_main_agent
 from main.db import MongoManager
 from workers.celery_app import celery_app
 from workers.planner.llm import get_planner_agent # noqa: E501
-from workers.planner.prompts import CONTEXT_RESEARCHER_SYSTEM_PROMPT, TOOL_SELECTOR_SYSTEM_PROMPT 
-from workers.proactive.main import run_proactive_pipeline_logic # noqa: E501
+from workers.planner.prompts import CONTEXT_RESEARCHER_SYSTEM_PROMPT, TOOL_SELECTOR_SYSTEM_PROMPT
 from workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions # noqa: E501
 from workers.executor.tasks import execute_task_plan, run_single_item_worker, aggregate_results_callback
 from main.vector_db import get_conversation_summaries_collection
@@ -33,7 +32,6 @@ from mcp_hub.tasks.prompts import ITEM_EXTRACTOR_SYSTEM_PROMPT
 from workers.utils.text_utils import clean_llm_output
 
 # Imports for poller logic
-from main.llm import LLMProviderDownError
 from workers.poller.gmail.service import GmailPollingService
 from workers.poller.gcalendar.service import GCalendarPollingService
 from workers.poller.gmail.db import PollerMongoManager as GmailPollerDB
@@ -119,14 +117,6 @@ def run_async(coro):
         asyncio.set_event_loop(loop)
     return loop.run_until_complete(coro)
 
-@celery_app.task(name="proactive_reasoning_pipeline")
-def proactive_reasoning_pipeline(user_id: str, event_type: str, event_data: Dict[str, Any]):
-    """
-    Celery task entry point for the new proactive reasoning pipeline.
-    """
-    logger.info(f"Celery worker received task 'proactive_reasoning_pipeline' for user_id: {user_id}, event_type: {event_type}")
-    run_async(run_proactive_pipeline_logic(user_id, event_type, event_data))
-
 @celery_app.task(name="cud_memory_task")
 def cud_memory_task(user_id: str, information: str, source: Optional[str] = None):
     """
@@ -176,46 +166,6 @@ def cud_memory_task(user_id: str, information: str, source: Optional[str] = None
     initialize_agents()
     # Pass the fetched username to the cud_memory function
     run_async(cud_memory(user_id, information, source, username))
-
-@celery_app.task(name="create_task_from_suggestion")
-def create_task_from_suggestion(user_id: str, suggestion_payload: Dict[str, Any], context: Optional[Dict[str, Any]] = None):
-    """
-    Takes an approved suggestion payload and creates a new task.
-    """
-    logger.info(f"Creating task from approved suggestion for user '{user_id}'. Type: {suggestion_payload.get('suggestion_type')}")
-    
-    action_details = suggestion_payload.get("action_details", {})
-    action_type = action_details.get("action_type")
-
-    # Define the task name from the suggestion description and the description from all available context.
-    name = suggestion_payload.get('suggestion_description', f"Proactive Task: {action_type}")
-    description_parts = [
-        f"Action Details: {json.dumps(action_details, indent=2)}",
-        f"Reasoning: {suggestion_payload.get('reasoning', 'N/A')}",
-        f"Full Context: {json.dumps(context, indent=2, default=str)}"
-    ]
-    description = "\n\n---\n\n".join(description_parts)
-
-    worker_mongo_manager = None
-    try:
-        worker_mongo_manager = MongoManager()
-        task_data = {
-            "name": name,
-            "description": description,
-            "original_context": {
-                "source": "proactive_suggestion",
-                "suggestion_type": suggestion_payload.get("suggestion_type"),
-                "trigger_event": context.get("trigger_event")
-            }
-        }
-        task_id = run_async(worker_mongo_manager.add_task(user_id, task_data))
-
-        # For proactive tasks, we have enough context to go straight to planning.
-        generate_plan_from_context.delay(task_id, user_id)
-        logger.info(f"Successfully created and dispatched new task '{task_id}' from suggestion for planning.")
-    finally:
-        if worker_mongo_manager:
-            run_async(worker_mongo_manager.close())
 
 @celery_app.task(name="orchestrate_swarm_task")
 def orchestrate_swarm_task(task_id: str, user_id: str):
@@ -538,7 +488,7 @@ def process_action_item(user_id: str, action_items: list, topics: list, source_e
     """Orchestrates the pre-planning phase for a new proactive task."""
     run_async(async_process_action_item(user_id, action_items, topics, source_event_id, original_context))
 
-async def run_context_research(user_id: str, task_description: str, topics: list, original_context: dict, db_manager: PlannerMongoManager) -> str:
+async def run_context_research(user_id: str, task_description: str, original_context: dict, db_manager: PlannerMongoManager) -> str:
     """
     Uses a unified agent to search memory and relevant tools to gather context for the planner.
     Returns a string of synthesized context.
@@ -617,7 +567,7 @@ async def async_process_action_item(user_id: str, action_items: list, topics: li
         # Per spec, create task with 'planning' status and immediately trigger planner.
         task = await db_manager.create_initial_task(user_id, task_description, full_description, action_items, topics, original_context, source_event_id)
         task_id = task["task_id"]
-        generate_plan_from_context.delay(task_id)
+        generate_plan_from_context.delay(task_id, user_id)
         logger.info(f"Task {task_id} created with status 'planning' and dispatched to planner worker.")
 
     except Exception as e:
@@ -674,7 +624,7 @@ async def async_generate_plan(task_id: str, user_id: str):
 
         # --- New Research Step ---
         logger.info(f"Task {task_id}: Starting context research phase.")
-        found_context = await run_context_research(user_id, task_description, task.get("topics", []), original_context, db_manager)
+        found_context = await run_context_research(user_id, task_description, original_context, db_manager)
 
         # Save the found context to the task's latest run for the planner and executor to use.
         # This assumes a 'run' object is created or updated here. For simplicity, we'll add it to the top-level task.
@@ -817,6 +767,14 @@ async def async_refine_task_details(task_id: str):
     finally:
         await db_manager.close()
 
+@celery_app.task(name="execute_triggered_task")
+def execute_triggered_task(user_id: str, source: str, event_type: str, event_data: Dict[str, Any]):
+    """
+    Checks for and executes any tasks triggered by a new event.
+    """
+    logger.info(f"Checking for triggered tasks for user '{user_id}' from source '{source}' event '{event_type}'.")
+    run_async(async_execute_triggered_task(user_id, source, event_type, event_data))
+
 def _event_matches_filter(event_data: Dict[str, Any], task_filter: Dict[str, Any], source: str) -> bool: # noqa
     """
     Checks if an event's data matches the conditions defined in a task's filter.
@@ -943,35 +901,13 @@ async def async_execute_triggered_task(user_id: str, source: str, event_type: st
     finally:
         await db_manager.close()
 
-@celery_app.task(name="execute_triggered_task")
-def execute_triggered_task(user_id: str, source: str, event_type: str, event_data: Dict[str, Any]):
-    """
-    Checks for and executes any tasks triggered by a new event.
-    """
-    logger.info(f"Checking for triggered tasks for user '{user_id}' from source '{source}' event '{event_type}'.")
-    run_async(async_execute_triggered_task(user_id, source, event_type, event_data))
-
 # --- Polling Tasks ---
-@celery_app.task(name="poll_gmail_for_proactivity")
-def poll_gmail_for_proactivity(user_id: str, polling_state: dict):
-    logger.info(f"Polling Gmail for proactivity for user {user_id}")
-    db_manager = GmailPollerDB()
-    service = GmailPollingService(db_manager)
-    run_async(service._run_single_user_poll_cycle(user_id, polling_state, mode='proactivity'))
-
 @celery_app.task(name="poll_gmail_for_triggers")
 def poll_gmail_for_triggers(user_id: str, polling_state: dict):
     logger.info(f"Polling Gmail for triggers for user {user_id}")
     db_manager = GmailPollerDB()
     service = GmailPollingService(db_manager)
     run_async(service._run_single_user_poll_cycle(user_id, polling_state, mode='triggers'))
-
-@celery_app.task(name="poll_gcalendar_for_proactivity")
-def poll_gcalendar_for_proactivity(user_id: str, polling_state: dict):
-    logger.info(f"Polling GCalendar for proactivity for user {user_id}")
-    db_manager = GCalPollerDB()
-    service = GCalendarPollingService(db_manager)
-    run_async(service._run_single_user_poll_cycle(user_id, polling_state, mode='proactivity'))
 
 @celery_app.task(name="poll_gcalendar_for_triggers")
 def poll_gcalendar_for_triggers(user_id: str, polling_state: dict):
@@ -981,12 +917,6 @@ def poll_gcalendar_for_triggers(user_id: str, polling_state: dict):
     run_async(service._run_single_user_poll_cycle(user_id, polling_state, mode='triggers'))
 
 # --- Scheduler Tasks ---
-@celery_app.task(name="schedule_proactivity_polling")
-def schedule_proactivity_polling():
-    """Celery Beat task for the less frequent proactivity polling."""
-    logger.info("Proactivity Polling Scheduler: Checking for due tasks...")
-    run_async(async_schedule_polling('proactivity'))
-
 @celery_app.task(name="schedule_trigger_polling")
 def schedule_trigger_polling():
     """Celery Beat task for the frequent triggered workflow polling."""
@@ -1014,15 +944,9 @@ async def async_schedule_polling(mode: str):
 
                 if locked_task_state:
                     if service_name == "gmail":
-                        if mode == 'proactivity':
-                            poll_gmail_for_proactivity.delay(user_id, locked_task_state)
-                        else: # triggers
-                            poll_gmail_for_triggers.delay(user_id, locked_task_state)
+                        poll_gmail_for_triggers.delay(user_id, locked_task_state)
                     elif service_name == "gcalendar":
-                        if mode == 'proactivity':
-                            poll_gcalendar_for_proactivity.delay(user_id, locked_task_state)
-                        else: # triggers
-                            poll_gcalendar_for_triggers.delay(user_id, locked_task_state)
+                        poll_gcalendar_for_triggers.delay(user_id, locked_task_state)
                     logger.info(f"Dispatched '{mode}' polling task for {user_id} - service: {service_name}")
     finally:
         await db_manager.close()

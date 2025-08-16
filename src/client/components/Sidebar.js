@@ -1,6 +1,6 @@
 "use client"
 import React, { useState, useEffect, useRef } from "react"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import {
 	IconChecklist,
@@ -19,6 +19,9 @@ import {
 	IconX,
 	IconDownload,
 	IconHeadphones
+	IconBrandDiscord,
+	IconPlayerPlay,
+	IconSlideshow
 } from "@tabler/icons-react"
 import { cn } from "@utils/cn"
 import { usePlan } from "@hooks/usePlan"
@@ -128,6 +131,95 @@ const UserProfileSection = ({ isCollapsed, user }) => {
 	)
 }
 
+const HelpMenuModal = ({ onClose, onShowVideo, onShowDemo }) => {
+	return (
+		<motion.div
+			initial={{ opacity: 0 }}
+			animate={{ opacity: 1 }}
+			exit={{ opacity: 0 }}
+			className="fixed inset-0 bg-black/70 backdrop-blur-md z-[100] flex items-center justify-center p-4"
+			onClick={onClose}
+		>
+			<motion.div
+				initial={{ scale: 0.95, y: 20 }}
+				animate={{ scale: 1, y: 0 }}
+				exit={{ scale: 0.95, y: -20 }}
+				transition={{ duration: 0.2, ease: "easeInOut" }}
+				onClick={(e) => e.stopPropagation()}
+				className="relative bg-neutral-900/90 backdrop-blur-xl p-6 rounded-2xl shadow-2xl w-full max-w-lg border border-neutral-700 flex flex-col"
+			>
+				<header className="flex justify-between items-center mb-6 flex-shrink-0">
+					<h2 className="text-lg font-semibold text-white">
+						Need Help?
+					</h2>
+					<button
+						onClick={onClose}
+						className="p-1.5 rounded-full hover:bg-neutral-700"
+					>
+						<IconX size={18} />
+					</button>
+				</header>
+				<main className="space-y-4">
+					<button
+						onClick={onShowDemo}
+						className="w-full text-left p-4 rounded-lg bg-neutral-800 hover:bg-neutral-700/80 transition-colors flex items-center gap-4"
+					>
+						<IconSlideshow
+							size={24}
+							className="text-brand-orange flex-shrink-0"
+						/>
+						<div>
+							<p className="font-semibold text-white">
+								Interactive Demo
+							</p>
+							<p className="text-sm text-neutral-400">
+								Get a hands-on tour of the main features.
+							</p>
+						</div>
+					</button>
+					<button
+						onClick={onShowVideo}
+						className="w-full text-left p-4 rounded-lg bg-neutral-800 hover:bg-neutral-700/80 transition-colors flex items-center gap-4"
+					>
+						<IconPlayerPlay
+							size={24}
+							className="text-brand-orange flex-shrink-0"
+						/>
+						<div>
+							<p className="font-semibold text-white">
+								Demo Video
+							</p>
+							<p className="text-sm text-neutral-400">
+								Watch a quick video walkthrough.
+							</p>
+						</div>
+					</button>
+					<a
+						href="https://discord.gg/YwXdEvjKGe"
+						target="_blank"
+						rel="noopener noreferrer"
+						className="w-full text-left p-4 rounded-lg bg-neutral-800 hover:bg-neutral-700/80 transition-colors flex items-center gap-4"
+					>
+						<IconBrandDiscord
+							size={24}
+							className="text-brand-orange flex-shrink-0"
+						/>
+						<div>
+							<p className="font-semibold text-white">
+								Join our Discord
+							</p>
+							<p className="text-sm text-neutral-400">
+								Ask questions, report bugs, or just hang out
+								with the community.
+							</p>
+						</div>
+					</a>
+				</main>
+			</motion.div>
+		</motion.div>
+	)
+}
+
 const SidebarContent = ({
 	isCollapsed,
 	onToggle,
@@ -141,13 +233,28 @@ const SidebarContent = ({
 	user
 }) => {
 	const pathname = usePathname()
-	const [isHelpModalOpen, setHelpModalOpen] = useState(false)
+	const [userDetails, setUserDetails] = useState(null)
+	const [isHelpMenuOpen, setHelpMenuOpen] = useState(false)
+	const [isVideoModalOpen, setVideoModalOpen] = useState(false)
+	const [isUserMenuOpen, setUserMenuOpen] = useState(false)
+	const router = useRouter()
+	const userMenuRef = useRef(null)
 
 	// CHANGED: Use the environment variable for the namespace
 	const { isPro } = usePlan()
 	const dashboardUrl = process.env.NEXT_PUBLIC_LANDING_PAGE_URL
 		? `${process.env.NEXT_PUBLIC_LANDING_PAGE_URL}/dashboard`
 		: "#"
+
+	const handleShowDemo = () => {
+		setHelpMenuOpen(false)
+		router.push("/chat?show_demo=true")
+	}
+
+	const handleShowVideo = () => {
+		setHelpMenuOpen(false)
+		setVideoModalOpen(true)
+	}
 
 	const navLinks = [
 		{ title: "Chat", href: "/chat", icon: <IconMessage size={20} /> },
@@ -168,21 +275,17 @@ const SidebarContent = ({
 	return (
 		<div className="flex flex-col h-full w-full overflow-y-auto custom-scrollbar">
 			<AnimatePresence>
-				{isHelpModalOpen && (
-					<div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-						<div className="bg-neutral-800 p-6 rounded-lg text-center">
-							<h3 className="text-lg font-bold mb-4">
-								Help Video
-							</h3>
-							<p>Video player would be here.</p>
-							<button
-								onClick={() => setHelpModalOpen(false)}
-								className="mt-4 px-4 py-2 bg-brand-orange text-black rounded"
-							>
-								Close
-							</button>
-						</div>
-					</div>
+				{isVideoModalOpen && (
+					<HelpVideoModal onClose={() => setVideoModalOpen(false)} />
+				)}
+			</AnimatePresence>
+			<AnimatePresence>
+				{isHelpMenuOpen && (
+					<HelpMenuModal
+						onClose={() => setHelpMenuOpen(false)}
+						onShowDemo={handleShowDemo}
+						onShowVideo={handleShowVideo}
+					/>
 				)}
 			</AnimatePresence>
 			<div
@@ -369,7 +472,7 @@ const SidebarContent = ({
 					</button>
 				)}
 				<button
-					onClick={() => setHelpModalOpen(true)}
+					onClick={() => setHelpMenuOpen(true)}
 					className={cn(
 						"w-full flex items-center gap-3 bg-neutral-800/40 border border-neutral-700/80 rounded-lg p-2 text-left text-sm hover:bg-neutral-800/80 transition-colors",
 						isCollapsed && "justify-center"
@@ -385,8 +488,89 @@ const SidebarContent = ({
 						</span>
 					)}
 				</button>
-
-				<UserProfileSection isCollapsed={isCollapsed} user={user} />
+				<a
+					href="https://discord.gg/YwXdEvjKGe"
+					target="_blank"
+					rel="noopener noreferrer"
+					className={cn(
+						"w-full flex items-center gap-3 bg-indigo-600/20 border border-indigo-500/50 text-indigo-300 rounded-lg p-2 text-left text-sm hover:bg-indigo-600/40 transition-colors",
+						isCollapsed && "justify-center"
+					)}
+				>
+					<IconBrandDiscord size={20} className="flex-shrink-0" />
+					{!isCollapsed && (
+						<span className="font-medium whitespace-nowrap">
+							Join Community
+						</span>
+					)}
+				</a>
+				<div
+					className={cn(
+						"flex items-center justify-between bg-neutral-800/40 border border-neutral-700/80 rounded-lg p-1.5",
+						isCollapsed && "flex-col gap-2"
+					)}
+				>
+					<Link
+						href="/settings"
+						className={cn(
+							"flex items-center gap-2 p-1 rounded-md hover:bg-neutral-800/80 flex-grow",
+							isCollapsed ? "w-full justify-center" : ""
+						)}
+					>
+						{userDetails?.picture ? (
+							<img
+								src={userDetails.picture}
+								alt="User"
+								className="w-7 h-7 rounded-full flex-shrink-0"
+							/>
+						) : (
+							<div className="w-7 h-7 rounded-full bg-neutral-700 flex items-center justify-center flex-shrink-0">
+								<IconUser size={16} />
+							</div>
+						)}
+						{!isCollapsed && (
+							<span className="font-semibold text-sm text-white whitespace-nowrap">
+								{userDetails?.given_name || "User"}
+							</span>
+						)}
+					</Link>
+					{!isCollapsed && (
+						<div className="relative" ref={userMenuRef}>
+							<button
+								onClick={() => setUserMenuOpen(!isUserMenuOpen)}
+								className="p-2 rounded-md hover:bg-neutral-700 text-neutral-400 hover:text-white"
+							>
+								<IconDots size={16} />
+							</button>
+							<AnimatePresence>
+								{isUserMenuOpen && (
+									<motion.div
+										initial={{
+											opacity: 0,
+											y: 10,
+											scale: 0.95
+										}}
+										animate={{ opacity: 1, y: 0, scale: 1 }}
+										exit={{
+											opacity: 0,
+											y: 10,
+											scale: 0.95
+										}}
+										className="absolute bottom-full right-0 mb-2 w-40 bg-neutral-900/80 backdrop-blur-md border border-neutral-700 rounded-lg shadow-lg p-1 z-50"
+									>
+										<Link
+											href="/auth/logout"
+											className="w-full flex items-center gap-2 text-left px-3 py-2 text-sm rounded-md text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-colors"
+										>
+											<IconLogout size={16} />
+											<span>Logout</span>
+										</Link>
+									</motion.div>
+								)}
+							</AnimatePresence>
+						</div>
+					)}
+				</div>
 			</div>
 		</div>
 	)

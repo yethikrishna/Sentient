@@ -1,19 +1,16 @@
 import os
 import json
 import base64
+from typing import Optional, Dict, Any
+from dotenv import load_dotenv
+
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.backends import default_backend
 import motor.motor_asyncio
-from google.oauth2.credentials import Credentials
-from google.oauth2 import service_account
-from googleapiclient.discovery import build, Resource
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
 from json_extractor import JsonExtractor
-
-from typing import Optional, Dict, Any
-from dotenv import load_dotenv
 
 # Load .env file for 'dev-local' environment.
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev-local')
@@ -68,13 +65,13 @@ def get_user_id_from_context(ctx: Context) -> str:
     return user_id
 
 async def get_user_info(user_id: str) -> Dict[str, Any]:
-    """Fetches the user's info like timezone, email, and privacy filters from their profile."""
+    """Fetches user info like email and privacy filters from their profile."""
     user_doc = await users_collection.find_one(
         {"user_id": user_id},
         {"userData.personalInfo": 1, "userData.privacyFilters": 1}
     )
     if not user_doc:
-        return {"timezone": "UTC", "email": None, "privacy_filters": {}}
+        return {"email": None, "privacy_filters": {}}
 
     user_data = user_doc.get("userData", {})
 
@@ -85,7 +82,6 @@ async def get_user_info(user_id: str) -> Dict[str, Any]:
 
     personal_info = user_data.get("personalInfo", {})
 
-    # Handle both old and new privacy filter formats
     all_filters = user_data.get("privacyFilters", {})
     gcal_filters = {}
     if isinstance(all_filters, dict):
@@ -94,33 +90,24 @@ async def get_user_info(user_id: str) -> Dict[str, Any]:
         gcal_filters = {"keywords": all_filters, "emails": []}
 
     return {
-        "timezone": personal_info.get("timezone", "UTC"),
         "email": personal_info.get("email"),
         "privacy_filters": gcal_filters
     }
 
-async def get_google_creds(user_id: str) -> Credentials:
-    """Fetches Google OAuth token from MongoDB for a given user_id."""
+async def get_composio_connection_id(user_id: str, toolkit: str) -> str:
+    """
+    Fetches the Composio connection ID for a given toolkit from the user's profile.
+    """
     user_doc = await users_collection.find_one({"user_id": user_id})
     if not user_doc or not user_doc.get("userData"):
         raise ToolError(f"User profile or userData not found for user_id: {user_id}.")
-    
+
     user_data = user_doc["userData"]
-    gcal_data = user_data.get("integrations", {}).get("gcalendar")
-    if not gcal_data or not gcal_data.get("connected") or not gcal_data.get("credentials"):
-        raise ToolError(f"Google Calendar integration not connected. Please use the default connect flow.")
+    integration = user_data.get("integrations", {}).get(toolkit)
+    
+    if integration and integration.get("connected"):
+        connection_id = integration.get("connection_id")
+        if connection_id:
+            return connection_id
 
-    try:
-        decrypted_creds_str = aes_decrypt(gcal_data["credentials"])
-        token_info = JsonExtractor.extract_valid_json(decrypted_creds_str)
-        if not token_info:
-            raise ToolError("Failed to parse decrypted credentials for Google Calendar.")
-        return Credentials.from_authorized_user_info(token_info)
-    except Exception as e:
-        raise ToolError(f"Failed to decrypt or parse default OAuth token for Google Calendar: {e}")
-
-def authenticate_gcal(creds: Credentials) -> Resource:
-    """
-    Authenticates and returns the Google Calendar API service using provided credentials.
-    """
-    return build("calendar", "v3", credentials=creds)
+    raise ToolError(f"No active Composio connection found for {toolkit}. Please connect it in settings.")

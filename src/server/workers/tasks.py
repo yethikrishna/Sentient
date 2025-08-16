@@ -122,6 +122,43 @@ def run_async(coro):
         loop.close()
         asyncio.set_event_loop(None)
 
+async def async_cud_memory_task(user_id: str, information: str, source: Optional[str] = None):
+    """The async logic for the CUD memory task."""
+    db_manager = MongoManager()
+    username = user_id  # Default fallback
+    try:
+        # --- Enforce Memory Limit ---
+        user_profile = await db_manager.get_user_profile(user_id)
+        plan = user_profile.get("userData", {}).get("plan", "free") if user_profile else "free"
+        limit = PLAN_LIMITS[plan].get("memories_total", 0)
+
+        if limit != float('inf'):
+            from mcp_hub.memory import db as memory_db
+            pool = await memory_db.get_db_pool()
+            async with pool.acquire() as conn:
+                current_count = await conn.fetchval("SELECT COUNT(*) FROM facts WHERE user_id = $1", user_id)
+            if current_count >= limit:
+                logger.warning(f"User {user_id} on '{plan}' plan reached memory limit of {limit}. CUD operation aborted.")
+                await notify_user(user_id, f"You've reached your memory limit of {limit} facts. Please upgrade to Pro for unlimited memories.")
+                return
+
+        # --- Fetch user's name before calling cud_memory ---
+        if user_profile:
+            # Use the name from personalInfo, which is set during onboarding and can be updated in settings.
+            username = user_profile.get("userData", {}).get("personalInfo", {}).get("name", user_id)
+
+    except Exception as e:
+        logger.error(f"Error during pre-CUD setup for user {user_id}: {e}", exc_info=True)
+        # We can still proceed with the CUD operation, just using the user_id as the name.
+    finally:
+        await db_manager.close()
+
+    # Initialize models required for the CUD operation
+    initialize_embedding_model()
+    initialize_agents()
+    # Pass the fetched username to the cud_memory function
+    await cud_memory(user_id, information, source, username)
+
 @celery_app.task(name="cud_memory_task")
 def cud_memory_task(user_id: str, information: str, source: Optional[str] = None):
     """
@@ -129,48 +166,9 @@ def cud_memory_task(user_id: str, information: str, source: Optional[str] = None
     This runs the core memory management logic asynchronously.
     """
     logger.info(f"Celery worker received cud_memory_task for user_id: {user_id}")
-    db_manager = MongoManager()
-    try:
-        # --- Enforce Memory Limit ---
-        user_profile = run_async(db_manager.get_user_profile(user_id))
-        plan = user_profile.get("userData", {}).get("plan", "free") if user_profile else "free"
-        limit = PLAN_LIMITS[plan].get("memories_total", 0)
-
-        if limit != float('inf'):
-            from mcp_hub.memory import db as memory_db
-            pool = run_async(memory_db.get_db_pool())
-            async def count_facts():
-                async with pool.acquire() as conn:
-                    return await conn.fetchval("SELECT COUNT(*) FROM facts WHERE user_id = $1", user_id)
-
-            current_count = run_async(count_facts())
-
-            if current_count >= limit:
-                logger.warning(f"User {user_id} on '{plan}' plan reached memory limit of {limit}. CUD operation aborted.")
-                # Optionally notify the user
-                run_async(notify_user(user_id, f"You've reached your memory limit of {limit} facts. Please upgrade to Pro for unlimited memories."))
-                return
-    except Exception as e:
-        logger.error(f"Error checking memory limit for user {user_id}: {e}", exc_info=True)
-    finally:
-        run_async(db_manager.close())
-
-    # --- NEW: Fetch user's name before calling cud_memory ---
-    username = user_id # Default fallback
-    try:
-        user_profile = run_async(db_manager.get_user_profile(user_id))
-        if user_profile:
-            username = user_profile.get("userData", {}).get("personalInfo", {}).get("name", user_id)
-    except Exception as e:
-        logger.error(f"Failed to fetch user profile for {user_id} in cud_memory_task: {e}")
-    finally:
-        run_async(db_manager.close())
-    # --- END NEW ---
-
-    initialize_embedding_model()
-    initialize_agents()
-    # Pass the fetched username to the cud_memory function
-    run_async(cud_memory(user_id, information, source, username))
+    # This single call to run_async wraps the entire asynchronous logic,
+    # ensuring the event loop and DB connections are managed correctly for the task's lifecycle.
+    run_async(async_cud_memory_task(user_id, information, source))
 
 @celery_app.task(name="orchestrate_swarm_task")
 def orchestrate_swarm_task(task_id: str, user_id: str):

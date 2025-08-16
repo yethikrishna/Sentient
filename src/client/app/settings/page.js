@@ -15,7 +15,8 @@ import {
 	IconKeyboard,
 	IconFlask,
 	IconMapPin,
-	IconBrandWhatsapp
+	IconBrandWhatsapp,
+	IconRefresh
 } from "@tabler/icons-react"
 import { useState, useEffect, useCallback } from "react"
 import { Tooltip } from "react-tooltip"
@@ -371,6 +372,7 @@ const TestingTools = () => {
 		'{\n  "subject": "Project Alpha Kick-off",\n  "body": "Hi team, let\'s schedule a meeting for next Tuesday to discuss the Project Alpha kick-off. John, please prepare the presentation."\n}'
 	)
 	const [isSubmitting, setIsSubmitting] = useState(false)
+	const [isReprocessing, setIsReprocessing] = useState(false)
 
 	const handleSubmit = async (e) => {
 		e.preventDefault()
@@ -418,6 +420,29 @@ const TestingTools = () => {
 			setEventData(
 				'{\n  "summary": "Finalize Q3 report",\n  "description": "Need to finalize the Q3 sales report with Sarah before the end of the week."\n}'
 			)
+		}
+	}
+
+	const handleReprocessOnboarding = async () => {
+		setIsReprocessing(true)
+		const toastId = toast.loading(
+			"Queueing onboarding data for memory reprocessing..."
+		)
+		try {
+			const response = await fetch("/api/testing/reprocess-onboarding", {
+				method: "POST"
+			})
+			const result = await response.json()
+			if (!response.ok) {
+				throw new Error(
+					result.detail || "Failed to trigger reprocessing."
+				)
+			}
+			toast.success(result.message, { id: toastId })
+		} catch (error) {
+			toast.error(`Error: ${error.message}`, { id: toastId })
+		} finally {
+			setIsReprocessing(false)
 		}
 	}
 	const [isTriggeringScheduler, setIsTriggeringScheduler] = useState(false)
@@ -596,6 +621,32 @@ const TestingTools = () => {
 						</button>
 					</div>
 				</form>
+			</div>
+			{/* Reprocess Onboarding Data */}
+			<div className="bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800 mt-6">
+				<h3 className="font-semibold text-lg text-white mb-2">
+					Reprocess Onboarding Data
+				</h3>
+				<p className="text-gray-400 text-sm mb-4">
+					Manually trigger the Celery worker to process your saved
+					onboarding answers and add them to your long-term memory.
+					This is useful for testing memory functions without
+					re-onboarding.
+				</p>
+				<div className="flex justify-end">
+					<button
+						onClick={handleReprocessOnboarding}
+						disabled={isReprocessing}
+						className="flex items-center py-2 px-4 rounded-md bg-purple-600 hover:bg-purple-500 text-white font-medium transition-colors disabled:opacity-50"
+					>
+						{isReprocessing ? (
+							<IconLoader className="w-5 h-5 animate-spin" />
+						) : (
+							<IconRefresh className="w-5 h-5" />
+						)}{" "}
+						Run Reprocessing
+					</button>
+				</div>
 			</div>
 			{/* WhatsApp Test Tools */}
 			<div className="bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800 mt-6">

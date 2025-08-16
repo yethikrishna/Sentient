@@ -42,11 +42,7 @@ function TasksPageContent() {
 	// Raw tasks from API
 	const [allTasks, setAllTasks] = useState([])
 	// Processed tasks for different views
-	const [oneTimeTasks, setOneTimeTasks] = useState([])
-	const [recurringTasks, setRecurringTasks] = useState([])
-	const [triggeredTasks, setTriggeredTasks] = useState([])
-	const [swarmTasks, setSwarmTasks] = useState([])
-	const [recurringInstances, setRecurringInstances] = useState([])
+
 	const [integrations, setIntegrations] = useState([])
 	const [allTools, setAllTools] = useState([])
 	const [isLoading, setIsLoading] = useState(true)
@@ -63,6 +59,79 @@ function TasksPageContent() {
 	const [currentCalendarDate, setCurrentCalendarDate] = useState(new Date()) // To track calendar view range
 	const [searchQuery, setSearchQuery] = useState("")
 	const [createTaskPrompt, setCreateTaskPrompt] = useState("")
+
+	// Processed tasks for different views are derived from allTasks
+	const {
+		oneTimeTasks,
+		recurringTasks,
+		triggeredTasks,
+		swarmTasks,
+		recurringInstances
+	} = useMemo(() => {
+		const oneTime = []
+		const recurring = []
+		const triggered = []
+		const swarm = []
+		const instances = []
+
+		allTasks.forEach((task) => {
+			if (task.task_type === "swarm") {
+				swarm.push(task)
+			} else if (task.schedule?.type === "recurring") {
+				recurring.push(task)
+				// Process past runs from `runs` array
+				if (task.runs && Array.isArray(task.runs)) {
+					task.runs.forEach((run) => {
+						const runDate = run.execution_start_time
+							? parseISO(run.execution_start_time)
+							: null
+						if (runDate) {
+							instances.push({
+								...task,
+								status: run.status, // Use the run's specific status
+								scheduled_date: runDate,
+								instance_id: `${task.task_id}-${run.run_id}`
+							})
+						}
+					})
+				}
+				// Add next upcoming run
+				const nextRunDate = calculateNextRun(
+					task.schedule,
+					task.created_at,
+					task.runs
+				)
+				if (nextRunDate) {
+					instances.push({
+						...task,
+						status: "pending", // An upcoming run is pending
+						scheduled_date: nextRunDate,
+						instance_id: `${task.task_id}-next`
+					})
+				}
+			} else if (task.schedule?.type === "triggered") {
+				triggered.push(task)
+			} else {
+				// One-time tasks
+				const scheduledDate = task.schedule?.run_at
+					? parseISO(task.schedule.run_at)
+					: parseISO(task.created_at)
+				oneTime.push({
+					...task,
+					scheduled_date: scheduledDate,
+					instance_id: task.task_id
+				})
+			}
+		})
+
+		return {
+			oneTimeTasks: oneTime,
+			recurringTasks: recurring,
+			triggeredTasks: triggered,
+			swarmTasks: swarm,
+			recurringInstances: instances
+		}
+	}, [allTasks])
 
 	useEffect(() => {
 		// On initial client-side load, determine the default panel state.
@@ -106,69 +175,6 @@ function TasksPageContent() {
 				? tasksData.tasks
 				: []
 			setAllTasks(rawTasks)
-
-			// --- Process tasks for different views ---
-			const oneTime = []
-			const recurring = []
-			const triggered = []
-			const swarm = []
-			const instances = []
-
-			rawTasks.forEach((task) => {
-				if (task.task_type === "swarm") {
-					swarm.push(task)
-				} else if (task.schedule?.type === "recurring") {
-					recurring.push(task)
-					// Process past runs from `runs` array
-					if (task.runs && Array.isArray(task.runs)) {
-						task.runs.forEach((run) => {
-							const runDate = run.execution_start_time
-								? parseISO(run.execution_start_time)
-								: null
-							if (runDate) {
-								instances.push({
-									...task,
-									status: run.status, // Use the run's specific status
-									scheduled_date: runDate,
-									instance_id: `${task.task_id}-${run.run_id}`
-								})
-							}
-						})
-					}
-					// Add next upcoming run
-					const nextRunDate = calculateNextRun(
-						task.schedule,
-						task.created_at,
-						task.runs
-					)
-					if (nextRunDate) {
-						instances.push({
-							...task,
-							status: "pending", // An upcoming run is pending
-							scheduled_date: nextRunDate,
-							instance_id: `${task.task_id}-next`
-						})
-					}
-				} else if (task.schedule?.type === "triggered") {
-					triggered.push(task)
-				} else {
-					// One-time tasks
-					const scheduledDate = task.schedule?.run_at
-						? parseISO(task.schedule.run_at)
-						: parseISO(task.created_at)
-					oneTime.push({
-						...task,
-						scheduled_date: scheduledDate,
-						instance_id: task.task_id
-					})
-				}
-			})
-
-			setOneTimeTasks(oneTime)
-			setRecurringTasks(recurring)
-			setTriggeredTasks(triggered)
-			setSwarmTasks(swarm)
-			setRecurringInstances(instances)
 
 			const integrationsRes = await fetch("/api/settings/integrations")
 			if (!integrationsRes.ok)
@@ -269,6 +275,11 @@ function TasksPageContent() {
 		},
 		[fetchTasks]
 	)
+
+	const handleAddTask = (newTask) => {
+		// Optimistically add the new task to the state
+		setAllTasks((prevTasks) => [...prevTasks, newTask])
+	}
 
 	const handleUpdateTask = async (updatedTask) => {
 		await handleAction(
@@ -472,7 +483,7 @@ Description: ${event.description || "No description."}`
 					</div>
 
 					<CreateTaskInput
-						onTaskAdded={fetchTasks}
+						onTaskAdded={handleAddTask}
 						prompt={createTaskPrompt}
 						setPrompt={setCreateTaskPrompt}
 					/>

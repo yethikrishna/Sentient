@@ -18,7 +18,7 @@ import {
 	IconLogout,
 	IconX,
 	IconDownload,
-	IconHeadphones
+	IconHeadphones,
 	IconBrandDiscord,
 	IconPlayerPlay,
 	IconSlideshow

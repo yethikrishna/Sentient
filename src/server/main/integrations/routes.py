@@ -8,7 +8,7 @@ import uuid
 import httpx
 import logging
 from composio import Composio, types
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from fastapi.responses import JSONResponse
 from typing import Tuple
 
@@ -24,6 +24,8 @@ from main.config import (
     GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SLACK_CLIENT_ID,
     SLACK_CLIENT_SECRET, NOTION_CLIENT_ID, NOTION_CLIENT_SECRET,
 )
+from workers.tasks import execute_triggered_task
+from workers.proactive.utils import event_pre_filter
 from main.plans import PRO_ONLY_INTEGRATIONS
 
 logger = logging.getLogger(__name__)
@@ -369,39 +371,48 @@ async def finalize_composio_connection(
     connected_account_id = request.connectedAccountId
 
     try:
-        timeout = 120  # Wait for up to 2 minutes
-        start_time = time.time()
-        connected_account = None
-
-        # Manually implement the polling logic to work around the SDK bug in wait_for_connection.
-        while time.time() - start_time < timeout:
-            # Use asyncio.to_thread to run the synchronous SDK call in a separate thread
-            # The .get() method is an alias for .retrieve() and fetches the account by its ID.
-            connected_account = await asyncio.to_thread(
-                composio.connected_accounts.get, connected_account_id
-            )
-
-            if connected_account and connected_account.status == "ACTIVE":
-                break  # Success!
-
-            if connected_account and connected_account.status == "FAILED":
-                raise HTTPException(status_code=400, detail="Connection failed during authentication with the provider.")
-
-            await asyncio.sleep(2)  # Wait for 2 seconds before polling again
-        else:
-            # This block runs if the while loop finishes without a `break`
-            raise TimeoutError("Connection verification timed out.")
+        logger.info(f"Waiting for Composio connection {connected_account_id} to become active...")
+        # Use the SDK's built-in wait function instead of manual polling for robustness.
+        connected_account = await asyncio.to_thread(
+            composio.connected_accounts.wait_for_connection,
+            id=connected_account_id,
+            timeout=120
+        )
 
         if not connected_account or connected_account.status != "ACTIVE":
             raise HTTPException(status_code=400, detail="Connection could not be verified or is not active.")
 
         logger.info(f"Finalized Composio connection for {service_name}: ID {connected_account_id}")
 
+        trigger_id = None
+        if service_name in ["gcalendar", "gmail"]:
+            slug_map = {
+                "gcalendar": "GOOGLECALENDAR_NEW_OR_UPDATED_EVENT",
+                "gmail": "GMAIL_NEW_EMAIL"
+            }
+            trigger_config = {"calendarId": "primary"} if service_name == "gcalendar" else {}
+            try:
+                logger.info(f"Setting up Composio trigger for {service_name} for user {user_id}")
+                trigger = await asyncio.to_thread(
+                    composio.triggers.create,
+                    slug=slug_map[service_name],
+                    user_id=user_id,
+                    trigger_config=trigger_config
+                )
+                trigger_id = trigger.id
+                logger.info(f"Successfully created Composio trigger {trigger_id} for {service_name} for user {user_id}")
+            except Exception as e:
+                logger.error(f"Failed to create Composio trigger for {service_name} for user {user_id}: {e}", exc_info=True)
+                # Do not fail the entire connection if trigger creation fails, just log it.
+
         update_payload = {
             f"userData.integrations.{service_name}.connection_id": connected_account.id,
             f"userData.integrations.{service_name}.connected": True,
             f"userData.integrations.{service_name}.auth_type": "composio"
         }
+        if trigger_id:
+            update_payload[f"userData.integrations.{service_name}.trigger_id"] = trigger_id
+
         await mongo_manager.update_user_profile(user_id, update_payload)
 
         return JSONResponse(content={"message": f"{service_name} connected successfully via Composio."})
@@ -410,3 +421,65 @@ async def finalize_composio_connection(
         if isinstance(e, TimeoutError) or "timed out" in str(e).lower():
             raise HTTPException(status_code=408, detail="Connection verification timed out. Please try again.")
         raise HTTPException(status_code=500, detail=str(e))
+@router.post("/composio/webhook", summary="Webhook receiver for Composio triggers", include_in_schema=False)
+async def composio_webhook(request: Request):
+    """
+    Receives event payloads from Composio triggers, filters them, and dispatches them
+    to the appropriate Celery worker for processing.
+    """
+    try:
+        payload = await request.json()
+        user_id = payload.get("userId")
+        trigger_slug = payload.get("triggerSlug")
+        event_data = payload.get("payload")
+
+        if not all([user_id, trigger_slug, event_data]):
+            raise HTTPException(status_code=400, detail="Missing required fields in webhook payload.")
+
+        service_name_map = {
+            "GOOGLECALENDAR_NEW_OR_UPDATED_EVENT": "gcalendar",
+            "GMAIL_NEW_EMAIL": "gmail"
+        }
+        event_type_map = {
+            "GOOGLECALENDAR_NEW_OR_UPDATED_EVENT": "new_event",
+            "GMAIL_NEW_EMAIL": "new_email"
+        }
+
+        service_name = service_name_map.get(trigger_slug)
+        event_type = event_type_map.get(trigger_slug)
+
+        if not service_name:
+            logger.warning(f"Received webhook for unhandled trigger slug: {trigger_slug}")
+            return JSONResponse(content={"status": "ignored", "reason": "unhandled trigger"})
+
+        logger.info(f"Received Composio trigger for user '{user_id}' - Service: '{service_name}', Event: '{event_type}'")
+
+        # --- Filtering Logic (similar to old poller) ---
+        user_profile = await mongo_manager.get_user_profile(user_id)
+        if not user_profile:
+            logger.error(f"Webhook received for non-existent user '{user_id}'. Ignoring.")
+            return JSONResponse(content={"status": "ignored", "reason": "user not found"})
+
+        user_email = user_profile.get("userData", {}).get("personalInfo", {}).get("email")
+
+        # 1. Apply user-defined privacy filters
+        # (This logic would be similar to the one in the old poller service.py)
+
+        # 2. Apply system-wide pre-filter
+        if not event_pre_filter(event_data, service_name, user_email):
+            logger.info(f"Event for user '{user_id}' was discarded by the pre-filter.")
+            return JSONResponse(content={"status": "ignored", "reason": "pre-filter discard"})
+
+        # 3. Dispatch to Celery worker
+        execute_triggered_task.delay(
+            user_id=user_id,
+            source=service_name,
+            event_type=event_type,
+            event_data=event_data
+        )
+        logger.info(f"Dispatched event to triggered task worker for user '{user_id}'.")
+        return JSONResponse(content={"status": "received"})
+    except Exception as e:
+        logger.error(f"Error processing Composio webhook: {e}", exc_info=True)
+        # Return a 200 to Composio to prevent retries on our internal errors.
+        return JSONResponse(content={"status": "error", "detail": str(e)}, status_code=200)

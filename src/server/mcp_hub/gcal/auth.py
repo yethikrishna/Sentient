@@ -108,6 +108,6 @@ async def get_composio_connection_id(user_id: str, toolkit: str) -> str:
     if integration and integration.get("connected"):
         connection_id = integration.get("connection_id")
         if connection_id:
-            return connection_id
+            return connection_id # type: ignore
 
     raise ToolError(f"No active Composio connection found for {toolkit}. Please connect it in settings.")

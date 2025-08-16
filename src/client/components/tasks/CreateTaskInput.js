@@ -29,7 +29,7 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 			return
 		}
 		payload = {
-			prompt: prompt,
+			prompt: prompt.trim(),
 			is_swarm: isSwarmMode
 		}
 
@@ -42,12 +42,45 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 			const data = await response.json()
 			if (!response.ok)
 				throw new Error(data.error || "Failed to add task")
+
+			// Create a temporary task object for optimistic UI
+			const tempTask = {
+				task_id: data.task_id,
+				name: prompt.trim(),
+				description: prompt.trim(),
+				status: "planning",
+				assignee: "ai",
+				priority: 1,
+				plan: [],
+				runs: [],
+				schedule: null,
+				enabled: true,
+				original_context: { source: "manual_creation" },
+				created_at: new Date().toISOString(),
+				updated_at: new Date().toISOString(),
+				chat_history: [],
+				next_execution_at: null,
+				last_execution_at: null,
+				task_type: isSwarmMode ? "swarm" : "single",
+				swarm_details: isSwarmMode
+					? {
+							goal: prompt,
+							items: [],
+							total_agents: 0,
+							completed_agents: 0,
+							progress_updates: [],
+							aggregated_results: []
+						}
+					: null
+			}
+
 			toast.success(
 				data.message ||
 					(isSwarmMode ? "Swarm task initiated!" : "Task added!")
 			)
 			setPrompt("")
-			onTaskAdded()
+			// Pass the temporary task object to the parent for optimistic update
+			onTaskAdded(tempTask)
 		} catch (error) {
 			toast.error(`Error: ${error.message}`)
 		} finally {

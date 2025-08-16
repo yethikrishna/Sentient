@@ -358,7 +358,8 @@ const TaskDetailsContent = ({
 	handleStepChange,
 	allTools,
 	integrations,
-	onSendChatMessage
+	onSendChatMessage,
+	onAnswerClarifications
 }) => {
 	if (!task) {
 		return null

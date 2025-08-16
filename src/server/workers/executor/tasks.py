@@ -210,6 +210,14 @@ async def async_execute_task_plan(task_id: str, user_id: str, run_id: str):
     if original_context_data.get("source") == "tasks_block":
         block_id = original_context_data.get("block_id")
 
+    # --- NEW: Inject trigger event data into the context for the executor ---
+    trigger_event_data_str = ""
+    if current_run.get("trigger_event_data"):
+        trigger_event_data_str = json.dumps(current_run["trigger_event_data"], indent=2, default=str)
+        trigger_event_prompt_section = f"**Triggering Event Data (Your primary context for this run):**\n---BEGIN TRIGGER DATA---\n{trigger_event_data_str}\n---END TRIGGER DATA---\n\n"
+    else:
+        trigger_event_prompt_section = ""
+
     logger.info(f"Executor started processing task {task_id} (block_id: {block_id}) for user {user_id}.")
     await update_task_run_status(db, task_id, run_id, "processing", user_id, block_id=block_id)
     await add_progress_update(db, task_id, run_id, user_id, {"type": "info", "content": "Executor has picked up the task and is starting execution."}, block_id=block_id)
@@ -264,6 +272,7 @@ async def async_execute_task_plan(task_id: str, user_id: str, run_id: str):
     full_plan_prompt = (
         f"You are Sentient, a resourceful and autonomous executor agent. Your goal is to complete the user's request by intelligently following the provided plan.\n\n" # noqa
         f"**User Context:**\n- **User's Name:** {user_name}\n- **User's Location:** {user_location}\n- **Current Date & Time:** {current_user_time}\n\n"
+        f"{trigger_event_prompt_section}"
         f"**Retrieved Context (from research agent):**\n{found_context_str}\n\n"
         f"Your task ID is '{task_id}' and the current run ID is '{run_id}'.\n\n"
         f"The original context that triggered this plan is:\n---BEGIN CONTEXT---\n{original_context_str}\n---END CONTEXT---\n\n"

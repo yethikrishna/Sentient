@@ -32,7 +32,8 @@ const TaskDetailsPanel = ({
 	onRerun,
 	onArchiveTask,
 	className,
-	onSendChatMessage
+	onSendChatMessage,
+	onAnswerClarifications
 }) => {
 	const [isEditing, setIsEditing] = useState(false)
 	const [editableTask, setEditableTask] = useState(task)
@@ -211,26 +212,19 @@ const TaskDetailsPanel = ({
 								handleStepChange={handleStepChange}
 								allTools={allTools}
 								integrations={integrations}
-								onSendChatMessage={onSendChatMessage}
 							/>
 						) : scheduleType === "recurring" ? (
 							<RecurringTaskDetails
 								task={task}
 								onAnswerClarifications={onAnswerClarifications}
 							/>
+						) : scheduleType === "triggered" ? (
+							<TriggeredTaskDetails task={task} />
 						) : (
 							<TaskDetailsContent
 								task={task}
-								isEditing={isEditing}
-								editableTask={editableTask}
-								handleFieldChange={handleFieldChange}
-								handleScheduleChange={handleScheduleChange}
-								handleAddStep={handleAddStep}
-								handleRemoveStep={handleRemoveStep}
-								handleStepChange={handleStepChange}
-								allTools={allTools}
-								integrations={integrations}
 								onSendChatMessage={onSendChatMessage}
+								onAnswerClarifications={onAnswerClarifications}
 							/>
 						)}
 					</main>

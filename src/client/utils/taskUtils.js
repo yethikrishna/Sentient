@@ -66,12 +66,13 @@ export function getDisplayName(task) {
  * @returns {Date|null} The next run date object or null.
  */
 export function calculateNextRun(schedule, createdAt, runs) {
-	// FIX: Check that schedule.time is a string before trying to split it.
-	// This handles cases where a recurring task is created without a specific time.
 	if (
 		!schedule ||
 		schedule.type !== "recurring" ||
-		typeof schedule.time !== "string"
+		// FIX: Check that schedule.time is a string before trying to split it.
+		// This handles cases where a recurring task is created without a specific time.
+		typeof schedule.time !== "string" ||
+		!schedule.time.includes(":")
 	) {
 		return null
 	}

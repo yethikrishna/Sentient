@@ -962,12 +962,16 @@ def calculate_next_run(schedule: Dict[str, Any], last_run: Optional[datetime.dat
         user_timezone_str = "UTC"
         user_tz = ZoneInfo("UTC")
 
+    time_str = schedule.get("time", "09:00")
+    if not isinstance(time_str, str) or ":" not in time_str:
+        logger.warning(f"Invalid or missing 'time' in recurring schedule: {schedule}. Defaulting to 09:00.")
+        time_str = "09:00"
+
     # The reference time for 'after' should be in the user's timezone to handle day boundaries correctly
     start_time_user_tz = (last_run or now_utc).astimezone(user_tz)
 
     try:
         frequency = schedule.get("frequency")
-        time_str = schedule.get("time", "09:00") # Default to 9 AM
         hour, minute = map(int, time_str.split(':'))
 
         # Create the start datetime in the user's timezone

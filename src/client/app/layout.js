@@ -13,7 +13,7 @@ import { PostHogProvider } from "@components/PostHogProvider"
  */
 export const metadata = {
 	title: "Sentient", // Title of the application, displayed in browser tab or window title
-	description: "Your autopilot for productivity" // Description of the application, used for SEO purposes
+	description: "Your personal AI that actually gets work done" // Description of the application, used for SEO purposes
 }
 
 /**

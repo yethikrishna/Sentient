@@ -276,6 +276,20 @@ function TasksPageContent() {
 		[fetchTasks]
 	)
 
+	const handleAnswerClarifications = async (taskId, answers) => {
+		await handleAction(
+			() =>
+				fetch("/api/tasks/answer-clarifications", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ taskId, answers })
+				}),
+			"Answers submitted successfully. The task will now resume."
+		)
+		// After submitting, close the panel to show the updated task list
+		handleCloseRightPanel()
+	}
+
 	const handleAddTask = (newTask) => {
 		// Optimistically add the new task to the state
 		setAllTasks((prevTasks) => [...prevTasks, newTask])
@@ -524,6 +538,9 @@ Description: ${event.description || "No description."}`
 											integrations={integrations}
 											onClose={handleCloseRightPanel}
 											onSave={handleUpdateTask}
+											onAnswerClarifications={
+												handleAnswerClarifications
+											}
 											onDelete={(taskId) =>
 												handleAction(
 													() =>

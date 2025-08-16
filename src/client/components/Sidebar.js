@@ -21,12 +21,112 @@ import {
 	IconHeadphones,
 	IconBrandDiscord,
 	IconPlayerPlay,
-	IconSlideshow
+	IconSlideshow,
+	IconSparkles,
+	IconCheck
 } from "@tabler/icons-react"
 import { cn } from "@utils/cn"
 import { usePlan } from "@hooks/usePlan"
 import { motion, AnimatePresence } from "framer-motion"
 import useClickOutside from "@hooks/useClickOutside"
+
+const proPlanFeatures = [
+	{ name: "Text Chat", limit: "100 messages per day" },
+	{ name: "Voice Chat", limit: "10 minutes per day" },
+	{ name: "One-Time Tasks", limit: "20 async tasks per day" },
+	{ name: "Recurring Tasks", limit: "10 active recurring workflows" },
+	{ name: "Triggered Tasks", limit: "10 triggered workflows" },
+	{
+		name: "Parallel Agents",
+		limit: "5 complex tasks per day with 50 sub agents"
+	},
+	{ name: "File Uploads", limit: "20 files per day" },
+	{ name: "Memories", limit: "Unlimited memories" },
+	{
+		name: "Other Integrations",
+		limit: "Notion, GitHub, Slack, Discord, Trello"
+	}
+]
+
+const UpgradeToProModal = ({ isOpen, onClose }) => {
+	if (!isOpen) return null
+
+	const handleUpgrade = () => {
+		const dashboardUrl = process.env.NEXT_PUBLIC_LANDING_PAGE_URL
+		if (dashboardUrl) {
+			window.open(`${dashboardUrl}/dashboard`, "_blank")
+		}
+		onClose()
+	}
+
+	return (
+		<AnimatePresence>
+			{isOpen && (
+				<motion.div
+					initial={{ opacity: 0 }}
+					animate={{ opacity: 1 }}
+					exit={{ opacity: 0 }}
+					className="fixed inset-0 bg-black/70 backdrop-blur-md z-[100] flex items-center justify-center p-4"
+					onClick={onClose}
+				>
+					<motion.div
+						initial={{ scale: 0.95, y: 20 }}
+						animate={{ scale: 1, y: 0 }}
+						exit={{ scale: 0.95, y: -20 }}
+						transition={{ duration: 0.2, ease: "easeInOut" }}
+						onClick={(e) => e.stopPropagation()}
+						className="relative bg-neutral-900/90 backdrop-blur-xl p-6 rounded-2xl shadow-2xl w-full max-w-md border border-neutral-700 flex flex-col"
+					>
+						<header className="text-center mb-6">
+							<h2 className="text-2xl font-bold text-white flex items-center justify-center gap-2">
+								<IconSparkles className="text-brand-orange" />
+								Upgrade to Pro
+							</h2>
+							<p className="text-neutral-400 mt-2">
+								For professionals who want to conquer their day.
+							</p>
+						</header>
+						<main className="space-y-3">
+							{proPlanFeatures.map((feature) => (
+								<div
+									key={feature.name}
+									className="flex items-start gap-3"
+								>
+									<IconCheck
+										size={20}
+										className="text-green-400 flex-shrink-0 mt-0.5"
+									/>
+									<div>
+										<p className="text-white font-medium">
+											{feature.name}
+										</p>
+										<p className="text-neutral-400 text-sm">
+											{feature.limit}
+										</p>
+									</div>
+								</div>
+							))}
+						</main>
+						<footer className="mt-8 flex flex-col gap-2">
+							<button
+								onClick={handleUpgrade}
+								className="w-full py-3 px-5 rounded-lg bg-brand-orange hover:bg-brand-orange/90 text-brand-black font-semibold transition-colors"
+							>
+								Upgrade to Pro - $9/month
+							</button>
+							<button
+								onClick={onClose}
+								className="w-full py-2 px-5 rounded-lg hover:bg-neutral-800 text-sm font-medium text-neutral-400"
+							>
+								Not now
+							</button>
+						</footer>
+					</motion.div>
+				</motion.div>
+			)}
+		</AnimatePresence>
+	)
+}
 
 const UserProfileSection = ({ isCollapsed, user }) => {
 	const [isUserMenuOpen, setUserMenuOpen] = useState(false)
@@ -233,6 +333,7 @@ const SidebarContent = ({
 	const pathname = usePathname()
 	const [isHelpMenuOpen, setHelpMenuOpen] = useState(false)
 	const [isVideoModalOpen, setVideoModalOpen] = useState(false)
+	const [isUpgradeModalOpen, setUpgradeModalOpen] = useState(false)
 	const router = useRouter()
 
 	// CHANGED: Use the environment variable for the namespace
@@ -269,6 +370,10 @@ const SidebarContent = ({
 
 	return (
 		<div className="flex flex-col h-full w-full overflow-y-auto custom-scrollbar">
+			<UpgradeToProModal
+				isOpen={isUpgradeModalOpen}
+				onClose={() => setUpgradeModalOpen(false)}
+			/>
 			<AnimatePresence>
 				{isVideoModalOpen && (
 					<HelpVideoModal onClose={() => setVideoModalOpen(false)} />
@@ -341,9 +446,8 @@ const SidebarContent = ({
 			</button>
 
 			{!isPro && (
-				<a
-					href={dashboardUrl}
-					rel="noopener noreferrer"
+				<button
+					onClick={() => setUpgradeModalOpen(true)}
 					className={cn(
 						"w-full bg-neutral-800/40 border border-neutral-700/80 rounded-lg p-2.5 text-left mb-2 hover:bg-neutral-800/80 transition-colors",
 						isCollapsed && "flex justify-center"
@@ -371,7 +475,7 @@ const SidebarContent = ({
 							)}
 						</AnimatePresence>
 					</div>
-				</a>
+				</button>
 			)}
 
 			<nav className="flex flex-col gap-1 flex-grow overflow-hidden">

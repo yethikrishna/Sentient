@@ -372,15 +372,30 @@ async def finalize_composio_connection(
 
     try:
         logger.info(f"Waiting for Composio connection {connected_account_id} to become active...")
-        # Use the SDK's built-in wait function instead of manual polling for robustness.
-        connected_account = await asyncio.to_thread(
-            composio.connected_accounts.wait_for_connection,
-            id=connected_account_id,
-            timeout=120
-        )
 
-        if not connected_account or connected_account.status != "ACTIVE":
-            raise HTTPException(status_code=400, detail="Connection could not be verified or is not active.")
+        
+        # USING A MANUAL POLLING LOOP since the SDK's internal wait_for_connection method is broken.
+        start_time = time.time()
+        timeout = 120  # seconds
+        connected_account = None
+
+        while time.time() - start_time < timeout:
+            # Use asyncio.to_thread to run the synchronous SDK call in a separate thread
+            # The .get() method is an alias for .retrieve() and fetches the account by its ID.
+            connected_account = await asyncio.to_thread(
+                composio.connected_accounts.get, connected_account_id
+            )
+
+            if connected_account and connected_account.status == "ACTIVE":
+                break  # Success!
+
+            if connected_account and connected_account.status == "FAILED":
+                raise HTTPException(status_code=400, detail="Connection failed during authentication with the provider.")
+
+            await asyncio.sleep(2)  # Wait for 2 seconds before polling again
+        else:
+            # This block runs if the while loop finishes without a `break`
+            raise TimeoutError("Connection verification timed out.")
 
         logger.info(f"Finalized Composio connection for {service_name}: ID {connected_account_id}")
 

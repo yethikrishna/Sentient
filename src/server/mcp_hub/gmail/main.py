@@ -1,13 +1,17 @@
 import os
 from typing import Dict, Any, List, Optional
+import datetime
 
+import datetime
 import re
 import asyncio
+import re
 
 from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
 from fastmcp.prompts.prompt import Message
 from fastmcp.utilities.logging import configure_logging, get_logger
+from fastmcp.exceptions import ToolError
 from composio import Composio
 from main.config import COMPOSIO_API_KEY
 
@@ -62,58 +66,92 @@ async def _execute_tool(ctx: Context, action_name: str, **kwargs) -> Dict[str, A
         connection_id = await auth.get_composio_connection_id(user_id, "gmail")
 
         # NEW: Fetch user info including privacy filters
-        user_info = await auth.get_user_info(user_id)
-        privacy_filters = user_info.get("privacy_filters", {})
-        keyword_filters = privacy_filters.get("keywords", [])
-        email_filters = [email.lower() for email in privacy_filters.get("emails", [])]
-        label_filters = [label.lower() for label in privacy_filters.get("labels", [])]
-        
         # Composio's execute method is synchronous, so we use asyncio.to_thread
         result = await asyncio.to_thread(
             composio.tools.execute,
             action_name,
-            arguments=kwargs, # Changed from params to arguments
+            arguments=kwargs,
             connected_account_id=connection_id
         )
-        
-        # NEW: Apply privacy filters if the action is fetching emails
-        if action_name == "GMAIL_FETCH_EMAILS":
-            if result.get("successful") and result.get("data"):
-                emails = result["data"]
-                filtered_emails = []
-                for email in emails:
-                    # The data from Composio is already simplified
-                    subject = email.get("subject", "").lower()
-                    snippet = email.get("snippet", "").lower()
-                    content_to_check = f"{subject} {snippet}"
 
-                    # Keyword check
-                    if any(word.lower() in content_to_check for word in keyword_filters):
-                        logger.info(f"Filtering email '{subject}' due to keyword match.")
-                        continue
+        if not result.get("successful"):
+            raise ToolError(f"Composio action '{action_name}' failed: {result.get('error', 'Unknown error')}")
 
-                    # Sender email check
-                    sender_email = email.get("sender_email", "").lower()
-                    if any(blocked_email in sender_email for blocked_email in email_filters):
-                        logger.info(f"Filtering email '{subject}' due to sender email match.")
-                        continue
+        data_payload = result.get("data")
 
-                    # Label check
-                    email_labels = [label.lower() for label in email.get("labels", [])]
-                    if any(blocked_label in email_labels for blocked_label in label_filters):
-                        logger.info(f"Filtering email '{subject}' due to label match.")
-                        continue
+        # Apply privacy filters and simplify if the action is fetching emails
+        if action_name == "GMAIL_FETCH_EMAILS" and isinstance(data_payload, list):
+            user_info = await auth.get_user_info(user_id)
+            privacy_filters = user_info.get("privacy_filters", {})
+            keyword_filters = privacy_filters.get("keywords", [])
+            email_filters = [email.lower() for email in privacy_filters.get("emails", [])]
+            label_filters = [label.lower() for label in privacy_filters.get("labels", [])]
+            logger.info(f"Applying privacy filters for user {user_id}: Keywords={len(keyword_filters)}, Emails={len(email_filters)}, Labels={len(label_filters)}")
 
-                    filtered_emails.append(email)
+            emails = data_payload
+            filtered_emails = []
+            for email in emails:
+                if not isinstance(email, dict):
+                    logger.warning(f"Skipping non-dictionary item in email list: {type(email)}")
+                    continue
 
-                result["data"] = filtered_emails
-                logger.info(f"Applied privacy filters. Kept {len(filtered_emails)} out of {len(emails)} emails.")
+                # Correctly extract fields for filtering based on the sample response
+                subject = email.get("subject", "")
+                body = email.get("messageText", "") # Use the full text body
+                content_to_check = f"{subject} {body}".lower()
 
-        return {"status": "success", "result": result}
+                if any(word.lower() in content_to_check for word in keyword_filters):
+                    logger.info(f"Filtering email '{subject}' due to keyword match.")
+                    continue
+                
+                sender_email = _extract_email_from_sender(email.get("sender", ""))
+                if any(blocked_email in sender_email for blocked_email in email_filters):
+                    logger.info(f"Filtering email '{subject}' due to sender email match.")
+                    continue
+
+                email_labels = [label.lower() for label in email.get("labelIds", [])]
+                if any(blocked_label in email_labels for blocked_label in label_filters):
+                    logger.info(f"Filtering email '{subject}' due to label match.")
+                    continue
+
+                filtered_emails.append(email)
+            
+            logger.info(f"Applied privacy filters. Kept {len(filtered_emails)} out of {len(emails)} emails.")
+
+            # Now, simplify the filtered emails to provide a clean, useful structure to the LLM
+            simplified_emails = [
+                {
+                    # Keys requested by the user
+                    "attachmentList": email.get('attachmentList', []),
+                    "labelIds": email.get('labelIds', []),
+                    "messageId": email.get('messageId'),
+                    "messageText": email.get('messageText', ''),
+                    "messageTimestamp": email.get('messageTimestamp'),
+                    # Also include a few other highly relevant fields for context
+                    "sender": email.get('sender'),
+                    "subject": email.get('subject', ''),
+                    "snippet": email.get('preview', {}).get('body', ''),
+                    "threadId": email.get('threadId'),
+                } for email in filtered_emails
+            ]
+            
+            # The final result for the agent should be a dictionary containing the list of simplified emails
+            return {"status": "success", "result": {"messages": simplified_emails}}
+
+        # For all other actions, just return the data payload
+        return {"status": "success", "result": data_payload}
     except Exception as e:
         logger.error(f"Tool execution failed for action '{action_name}': {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
+def _extract_email_from_sender(sender_string: str) -> str:
+    """Extracts email from 'Name <email@example.com>' format."""
+    if not isinstance(sender_string, str):
+        return ""
+    match = re.search(r'<(.+?)>', sender_string)
+    if match:
+        return match.group(1).lower()
+    return sender_string.lower()
 
 # --- Async Tool Definitions ---
 
@@ -131,16 +169,20 @@ async def replyToEmail(ctx: Context, message_id: str, body: str, reply_all: bool
     return {"status": "failure", "error": "Replying directly by message_id is not supported. Please find the thread_id and use that."}
 
 @mcp.tool()
-async def getLatestEmails(ctx: Context, max_results: int = 10) -> Dict[str, Any]:
-    """Retrieve the most recent email messages from your inbox, sorted by date received."""
-    logger.info(f"Executing tool: getLatestEmails with max_results={max_results}")
-    return await _execute_tool(ctx, "GMAIL_FETCH_EMAILS", query="in:inbox", max_results=max_results)
+async def getLatestEmails(ctx: Context, max_results: int = 10, inbox_type: str = "primary") -> Dict[str, Any]:
+    """Retrieve the most recent email messages from your inbox, sorted by date received. Can specify inbox_type: 'primary', 'social', 'promotions', 'updates', 'forums'."""
+    logger.info(f"Executing tool: getLatestEmails with max_results={max_results}, inbox_type='{inbox_type}'")
+    timestamp_48h_ago = int((datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=48)).timestamp())
+    query = f"in:inbox category:{inbox_type} after:{timestamp_48h_ago}"
+    return await _execute_tool(ctx, "GMAIL_FETCH_EMAILS", query=query, max_results=max_results)
 
 @mcp.tool()
-async def getUnreadEmails(ctx: Context, max_results: int = 10) -> Dict[str, Any]:
-    """Retrieve unread email messages from your inbox."""
-    logger.info(f"Executing tool: getUnreadEmails with max_results={max_results}")
-    return await _execute_tool(ctx, "GMAIL_FETCH_EMAILS", query="is:unread in:inbox", max_results=max_results)
+async def getUnreadEmails(ctx: Context, max_results: int = 10, inbox_type: str = "primary") -> Dict[str, Any]:
+    """Retrieve unread email messages from your inbox. Can specify inbox_type: 'primary', 'social', 'promotions', 'updates', 'forums'."""
+    logger.info(f"Executing tool: getUnreadEmails with max_results={max_results}, inbox_type='{inbox_type}'")
+    timestamp_48h_ago = int((datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=48)).timestamp())
+    query = f"is:unread in:inbox category:{inbox_type} after:{timestamp_48h_ago}"
+    return await _execute_tool(ctx, "GMAIL_FETCH_EMAILS", query=query, max_results=max_results)
 
 @mcp.tool()
 async def createLabel(ctx: Context, name: str) -> Dict[str, Any]:
@@ -197,28 +239,18 @@ async def searchInFolder(ctx: Context, folder_name: str, max_results: int = 10) 
     return await _execute_tool(ctx, "GMAIL_FETCH_EMAILS", query=f"in:{folder_name}", max_results=max_results)
 
 @mcp.tool()
-async def createFilter(ctx: Context, from_email: Optional[str] = None, to_email: Optional[str] = None, subject: Optional[str] = None, add_label_id: Optional[str] = None, remove_label_ids: Optional[List[str]] = None) -> Dict[str, Any]:
-    """Create a new Gmail filter that automatically applies actions to incoming messages."""
-    logger.info(f"Executing tool: createFilter")
-    return {"status": "failure", "error": "Creating filters is not currently supported via this interface."}
-
-@mcp.tool()
-async def deleteFilter(ctx: Context, filter_id: str) -> Dict[str, Any]:
-    """Delete a Gmail filter."""
-    logger.info(f"Executing tool: deleteFilter with filter_id='{filter_id}'")
-    return {"status": "failure", "error": "Deleting filters is not currently supported."}
-
-@mcp.tool()
 async def cancelScheduled(ctx: Context, message_id: str) -> Dict[str, Any]:
     """Cancel a scheduled email. This is done by moving the email to trash."""
     logger.info(f"Executing tool: cancelScheduled for message_id='{message_id}'")
     return await _execute_tool(ctx, "GMAIL_MOVE_TO_TRASH", message_id=message_id)
 
 @mcp.tool()
-async def catchup(ctx: Context) -> Dict[str, Any]:
-    """Get a quick compact summary of all unread emails from your primary inbox."""
-    logger.info("Executing tool: catchup")
-    return await _execute_tool(ctx, "GMAIL_FETCH_EMAILS", query="is:unread in:inbox", max_results=20)
+async def catchup(ctx: Context, inbox_type: str = "primary") -> Dict[str, Any]:
+    """Get a quick compact summary of all unread emails from your inbox. Can specify inbox_type: 'primary', 'social', 'promotions', 'updates', 'forums'."""
+    logger.info(f"Executing tool: catchup for inbox_type='{inbox_type}'")
+    timestamp_48h_ago = int((datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=48)).timestamp())
+    query = f"is:unread in:inbox category:{inbox_type} after:{timestamp_48h_ago}"
+    return await _execute_tool(ctx, "GMAIL_FETCH_EMAILS", query=query, max_results=20)
 
 @mcp.tool()
 async def readEmail(ctx: Context, message_id: str) -> Dict[str, Any]:
@@ -257,12 +289,6 @@ async def removeLabels(ctx: Context, message_id: str, label_ids: List[str]) -> D
     return await _execute_tool(ctx, "GMAIL_ADD_LABEL_TO_EMAIL", message_id=message_id, remove_label_ids=label_ids)
 
 @mcp.tool()
-async def updateDraft(ctx: Context, draft_id: str, to: Optional[str] = None, subject: Optional[str] = None, body: Optional[str] = None) -> Dict[str, Any]:
-    """Update an existing draft email with new content."""
-    logger.info(f"Executing tool: updateDraft for draft_id='{draft_id}'")
-    return {"status": "failure", "error": "Updating drafts is not currently supported."}
-
-@mcp.tool()
 async def deleteDraft(ctx: Context, draft_id: str) -> Dict[str, Any]:
     """Delete a saved draft email."""
     logger.info(f"Executing tool: deleteDraft with draft_id='{draft_id}'")
@@ -295,30 +321,6 @@ async def searchBySize(ctx: Context, size_mb: int, comparison: str = "larger", m
     """Search for large email messages above a specified size in MB."""
     logger.info(f"Executing tool: searchBySize with size_mb={size_mb}")
     return await _execute_tool(ctx, "GMAIL_FETCH_EMAILS", query=f"size:{size_mb}m", max_results=max_results)
-
-@mcp.tool()
-async def forwardEmail(ctx: Context, message_id: str, to: str) -> Dict[str, Any]:
-    """Forward an existing email message to new recipients."""
-    logger.info(f"Executing tool: forwardEmail for message_id='{message_id}' to='{to}'")
-    return {"status": "failure", "error": "Forwarding emails is not currently supported."}
-
-@mcp.tool()
-async def listFilters(ctx: Context) -> Dict[str, Any]:
-    """List all Gmail filters in the user's account."""
-    logger.info("Executing tool: listFilters")
-    return {"status": "failure", "error": "Listing filters is not currently supported."}
-
-@mcp.tool()
-async def scheduleEmail(ctx: Context, to: str, subject: str, body: str, send_at_iso: str) -> Dict[str, Any]:
-    """Create an email to be sent at a specified future time (ISO 8601 format)."""
-    logger.info(f"Executing tool: scheduleEmail to='{to}' at '{send_at_iso}'")
-    return {"status": "failure", "error": "Scheduling emails is not currently supported."}
-
-@mcp.tool()
-async def listScheduled(ctx: Context) -> Dict[str, Any]:
-    """List all scheduled emails. (Simulated)"""
-    logger.info("Executing tool: listScheduled")
-    return {"status": "failure", "error": "Listing scheduled emails is not currently supported."}
 
 # --- Server Execution ---
 if __name__ == "__main__":

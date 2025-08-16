@@ -1,8 +1,8 @@
 // src/client/app/layout.js
 import { Auth0Provider } from "@auth0/nextjs-auth0"
 import "@styles/globals.css" // Import global styles for the application
-import { Toaster } from "react-hot-toast" // Import Toaster component for displaying toast notifications
-import React from "react"
+import { Toaster } from "react-hot-toast"
+import React, { Suspense } from "react"
 import LayoutWrapper from "@components/LayoutWrapper"
 import { PostHogProvider } from "@components/PostHogProvider"
 
@@ -69,7 +69,9 @@ export default function RootLayout({ children }) {
 					<PostHogProvider>
 						<Toaster position="bottom-right" />
 						<div className="flex h-screen w-full text-white overflow-hidden">
-							<LayoutWrapper>{children}</LayoutWrapper>
+							<Suspense>
+								<LayoutWrapper>{children}</LayoutWrapper>
+							</Suspense>
 						</div>
 					</PostHogProvider>
 				</Auth0Provider>

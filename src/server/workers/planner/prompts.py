@@ -27,6 +27,7 @@ Your task is to choose the correct service for each step from the list above. Fo
 
 Your output MUST be a single, valid JSON object that follows this exact schema:
 {{
+  "name": "A short, clear, and concise task name (title) that summarizes the goal.",
   "description": "A concise, one-sentence summary of the overall goal of this plan.",
   "plan": [
     {{
@@ -41,6 +42,7 @@ Your output MUST be a single, valid JSON object that follows this exact schema:
 }}
 
 Final Instructions:
+- Create a concise `name` for the task.
 - Create a concise `description` summarizing the overall goal.
 - Break down the goal into logical steps, choosing the most appropriate tool for each.
 - If an action item is not actionable with the given tools (e.g., "Think about the marketing report"), do not create a plan for it.

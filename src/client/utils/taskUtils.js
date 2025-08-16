@@ -46,15 +46,6 @@ export function getDisplayName(task) {
 	if (task.name === "Proactively generated plan" && task.description) {
 		return task.description
 	}
-	// Fallback to the original prompt from the first run if description is also generic/missing
-	if (
-		task.name === "Proactively generated plan" &&
-		task.runs &&
-		task.runs.length > 0 &&
-		task.runs[0].prompt
-	) {
-		return task.runs[0].prompt
-	}
 	return task.name || "Untitled Task"
 }
 

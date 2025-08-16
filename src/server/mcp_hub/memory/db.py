@@ -57,6 +57,17 @@ async def get_db_pool() -> asyncpg.Pool:
         logger.debug(f"Returning existing PostgreSQL connection pool for event loop {id(loop)}.")
     return pool
 
+async def close_db_pool_for_loop(loop: asyncio.AbstractEventLoop):
+    """Closes the connection pool associated with a specific event loop and removes it from the global dict."""
+    global _pools
+    pool = _pools.pop(loop, None)
+    if pool:
+        if not pool.is_closing():
+            logger.info(f"Closing PostgreSQL pool for event loop {id(loop)}.")
+            await pool.close()
+        else:
+            logger.debug(f"Pool for event loop {id(loop)} was already closing.")
+
 async def close_db_pool():
     """Closes all PostgreSQL connection pools managed by this module."""
     global _pools

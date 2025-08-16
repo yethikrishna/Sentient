@@ -47,7 +47,7 @@ export function UseCaseCarousel() {
 				<CarouselContent>
 					{useCases.map((useCase, index) => (
 						<CarouselItem key={index} className="p-4">
-							<div className="flex flex-col items-center justify-center text-center gap-4 p-6 h-80 rounded-2xl bg-brand-gray/50 border border-brand-gray backdrop-blur-sm">
+							<div className="flex flex-col items-center justify-center text-center gap-4 p-6 h-80 rounded-2xl bg-neutral-800/60 border border-neutral-700/50 backdrop-blur-sm">
 								{useCase.icon}
 								<h3 className="text-2xl font-bold text-brand-white">
 									{useCase.title}

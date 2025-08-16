@@ -11,7 +11,7 @@ import {
 	IconSparkles,
 	IconHeart
 } from "@tabler/icons-react"
-import AnimatedBackground from "@components/onboarding/AnimatedBackground"
+import InteractiveNetworkBackground from "@components/ui/InteractiveNetworkBackground"
 import ProgressBar from "@components/onboarding/ProgressBar"
 import SparkleEffect from "@components/ui/SparkleEffect"
 import { GridBackground } from "@components/ui/GridBackground"
@@ -86,22 +86,68 @@ const questions = [
 		required: true,
 		options: [
 			{ value: "", label: "Select your timezone..." },
-			{ value: "America/New_York", label: "Eastern Time (US & Canada)" },
-			{ value: "America/Chicago", label: "Central Time (US & Canada)" },
-			{ value: "America/Denver", label: "Mountain Time (US & Canada)" },
+			{ value: "UTC", label: "(GMT+00:00) Coordinated Universal Time" },
+			{
+				value: "America/New_York",
+				label: "(GMT-04:00) Eastern Time (US & Canada)"
+			},
+			{
+				value: "America/Chicago",
+				label: "(GMT-05:00) Central Time (US & Canada)"
+			},
+			{
+				value: "America/Denver",
+				label: "(GMT-06:00) Mountain Time (US & Canada)"
+			},
 			{
 				value: "America/Los_Angeles",
-				label: "Pacific Time (US & Canada)"
+				label: "(GMT-07:00) Pacific Time (US & Canada)"
+			},
+			{ value: "America/Anchorage", label: "(GMT-08:00) Alaska" },
+			{ value: "America/Phoenix", label: "(GMT-07:00) Arizona" },
+			{ value: "Pacific/Honolulu", label: "(GMT-10:00) Hawaii" },
+			{ value: "America/Sao_Paulo", label: "(GMT-03:00) Brasilia" },
+			{
+				value: "America/Buenos_Aires",
+				label: "(GMT-03:00) Buenos Aires"
 			},
 			{
-				value: "America/St_Johns",
-				label: "Newfoundland (NDT)"
+				value: "Europe/London",
+				label: "(GMT+01:00) London, Dublin, Lisbon"
 			},
-			{ value: "Europe/London", label: "London, Dublin (GMT/BST)" },
-			{ value: "Europe/Berlin", label: "Berlin, Paris (CET)" },
-			{ value: "Asia/Kolkata", label: "India (IST)" },
-			{ value: "Asia/Singapore", label: "Singapore (SGT)" },
-			{ value: "UTC", label: "Coordinated Universal Time (UTC)" }
+			{
+				value: "Europe/Berlin",
+				label: "(GMT+02:00) Amsterdam, Berlin, Paris, Rome"
+			},
+			{
+				value: "Europe/Helsinki",
+				label: "(GMT+03:00) Helsinki, Kyiv, Riga, Sofia"
+			},
+			{
+				value: "Europe/Moscow",
+				label: "(GMT+03:00) Moscow, St. Petersburg"
+			},
+			{ value: "Africa/Cairo", label: "(GMT+02:00) Cairo" },
+			{ value: "Africa/Johannesburg", label: "(GMT+02:00) Johannesburg" },
+			{ value: "Asia/Dubai", label: "(GMT+04:00) Abu Dhabi, Muscat" },
+			{ value: "Asia/Kolkata", label: "(GMT+05:30) India Standard Time" },
+			{
+				value: "Asia/Shanghai",
+				label: "(GMT+08:00) Beijing, Hong Kong, Shanghai"
+			},
+			{ value: "Asia/Singapore", label: "(GMT+08:00) Singapore" },
+			{ value: "Asia/Tokyo", label: "(GMT+09:00) Tokyo, Seoul" },
+			{
+				value: "Australia/Sydney",
+				label: "(GMT+10:00) Sydney, Melbourne"
+			},
+			{ value: "Australia/Brisbane", label: "(GMT+10:00) Brisbane" },
+			{ value: "Australia/Adelaide", label: "(GMT+09:30) Adelaide" },
+			{ value: "Australia/Perth", label: "(GMT+08:00) Perth" },
+			{
+				value: "Pacific/Auckland",
+				label: "(GMT+12:00) Auckland, Wellington"
+			}
 		]
 	},
 	{
@@ -211,23 +257,73 @@ const OnboardingPage = () => {
 		if (navigator.geolocation) {
 			setLocationState({ loading: true, data: null, error: null })
 			navigator.geolocation.getCurrentPosition(
-				(position) => {
+				async (position) => {
 					const { latitude, longitude } = position.coords
-					const locationData = { latitude, longitude }
-					setLocationState({
-						loading: false,
-						data: locationData,
-						error: null
-					})
-					handleAnswer("location", locationData)
+					try {
+						const response = await fetch(
+							`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+						)
+						if (!response.ok) {
+							throw new Error("Failed to fetch location details.")
+						}
+						const data = await response.json()
+						const address = data.address
+						// Construct a readable location string
+						const locationString = [
+							address.city || address.town || address.village,
+							address.state,
+							address.country
+						]
+							.filter(Boolean) // Remove any null/undefined parts
+							.join(", ")
+
+						if (!locationString) {
+							throw new Error(
+								"Could not determine location name from coordinates."
+							)
+						}
+
+						// Update state with the text location
+						setLocationState({
+							loading: false,
+							data: locationString, // Store the string
+							error: null
+						})
+						handleAnswer("location", locationString) // Save the string
+					} catch (error) {
+						setLocationState({
+							loading: false,
+							data: null,
+							error: error.message
+						})
+						toast.error(
+							`Could not convert coordinates to location: ${error.message}`
+						)
+					}
 				},
 				(error) => {
+					let userMessage =
+						"An unknown error occurred while detecting your location."
+					switch (error.code) {
+						case error.PERMISSION_DENIED:
+							userMessage =
+								"Location permission denied. Please enable location access for this site in your browser settings and try again."
+							break
+						case error.POSITION_UNAVAILABLE:
+							userMessage =
+								"Location information is unavailable. This can happen if location services are turned off in your operating system (e.g., Windows or macOS). Please check your system settings and network connection."
+							break
+						case error.TIMEOUT:
+							userMessage =
+								"The request to get your location timed out. Please try again."
+							break
+					}
 					setLocationState({
 						loading: false,
 						data: null,
-						error: error.message
+						error: userMessage
 					})
-					toast.error(`Could not get location: ${error.message}`)
+					toast.error(userMessage)
 				}
 			)
 		}
@@ -281,9 +377,7 @@ const OnboardingPage = () => {
 
 		// Format answer for display
 		let displayAnswer = answer
-		if (currentQuestion.type === "location") {
-			displayAnswer = locationState.data ? "Shared my location" : answer
-		} else if (Array.isArray(answer)) {
+		if (Array.isArray(answer)) {
 			displayAnswer = answer.join(", ")
 		}
 
@@ -347,7 +441,7 @@ const OnboardingPage = () => {
 				if (!response.ok) throw new Error("Could not fetch user data.")
 				const result = await response.json()
 				if (result?.data?.onboardingComplete) {
-					router.push("/chat")
+					router.push("/chat?show_demo=true")
 				} else {
 					const firstQuestion = questions[0]?.question || ""
 					setConversation([
@@ -462,7 +556,7 @@ const OnboardingPage = () => {
 							variants={itemVariants}
 							className="text-lg md:text-xl text-neutral-300 max-w-xl mx-auto"
 						>
-							Your proactive AI, ready to get to know you.
+							I'm excited to get to know you.
 						</motion.p>
 						<motion.div
 							variants={itemVariants}
@@ -472,7 +566,7 @@ const OnboardingPage = () => {
 								onClick={() => {
 									setStage("questions")
 								}}
-								className="rounded-xl bg-brand-orange/80 px-8 py-3 text-lg font-semibold text-brand-white transition-colors hover:bg-opacity-80"
+								className="rounded-lg bg-brand-orange px-8 py-3 text-lg font-semibold text-brand-black transition-colors hover:bg-brand-orange/90"
 								whileHover={{ scale: 1.05 }}
 								whileTap={{ scale: 0.95 }}
 							>
@@ -663,7 +757,7 @@ const OnboardingPage = () => {
 					<div className="flex flex-col sm:flex-row gap-4 items-start">
 						<input
 							type="text"
-							placeholder="Or enter Locality, City, State..."
+							placeholder="Enter Locality, City, State..."
 							value={
 								typeof answers[currentQuestion.id] === "string"
 									? answers[currentQuestion.id]
@@ -697,10 +791,13 @@ const OnboardingPage = () => {
 	}
 
 	return (
-		<div className="grid md:grid-cols-20 min-h-screen w-full bg-brand-black text-brand-white overflow-hidden">
+		<div className="grid md:grid-cols-20 min-h-screen w-full text-brand-white overflow-hidden">
 			{/* Left Column: Onboarding Flow */}
 			<div className="relative flex flex-col items-center justify-center w-full p-4 sm:p-8 overflow-hidden md:col-span-13">
-				<AnimatedBackground />
+				<div className="absolute inset-0 z-[-1]">
+					<InteractiveNetworkBackground />
+				</div>
+				<div className="absolute -top-[250px] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-brand-orange/10 rounded-full blur-3xl -z-10" />
 				<div className="relative z-10 w-full h-full flex flex-col items-center justify-center">
 					<SparkleEffect trigger={sparkleTrigger} />
 					<AnimatePresence mode="wait">

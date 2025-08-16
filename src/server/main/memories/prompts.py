@@ -97,7 +97,7 @@ ONLY EXTRACT RELEVANT FACTS ABOUT THE USER. DO NOT INCLUDE ANY OTHER INFORMATION
 Key Instructions:
 1.  Deconstruct Compound Sentences into ATOMIC FACTS: Vigorously split sentences containing conjunctions like 'and', 'but', or 'while' into separate, self-contained facts. Each fact must stand on its own.
 2.  Isolate Each Idea: Ensure every item in the output list represents one distinct, meaningful idea. EACH ATOMIC FACT MUST BE A COMPLETE THOUGHT.
-3.  Handle Pronouns and Possessives: If the input contains "I", "me", or "my", correctly convert them to refer to the provided USERNAME. For example, "My sister" becomes "{{USERNAME}}'s sister".
+3.  Personalize Facts: If the input contains pronouns like "I", "me", or "my", or generic references like "the user", you MUST replace them with the provided USERNAME to create a personalized fact. For example, if USERNAME is 'Alex', "My sister" becomes "Alex's sister", and "The user's favorite color is blue" becomes "Alex's favorite color is blue".
 4.  Strict JSON Output: Your entire response MUST be a single, valid JSON ARRAY of strings that strictly adheres to the given schema. Do not add any commentary before or after the JSON.
 
 YOU MUST COMPUSLORILY IGNORE THE FOLLOWING:

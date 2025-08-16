@@ -110,12 +110,17 @@ async def _select_relevant_tools(query: str, available_tools_map: Dict[str, str]
 
 # Helper to run async code in Celery's sync context
 def run_async(coro):
+    # Always create a new loop for each task to ensure isolation and prevent conflicts.
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop.run_until_complete(coro)
+        return loop.run_until_complete(coro)
+    finally:
+        # Ensure the connection pool for this specific loop is closed.
+        from mcp_hub.memory.db import close_db_pool_for_loop
+        loop.run_until_complete(close_db_pool_for_loop(loop))
+        loop.close()
+        asyncio.set_event_loop(None)
 
 @celery_app.task(name="cud_memory_task")
 def cud_memory_task(user_id: str, information: str, source: Optional[str] = None):

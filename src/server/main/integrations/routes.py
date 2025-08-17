@@ -54,8 +54,12 @@ async def get_integration_sources(user_id: str = Depends(auth_helper.get_current
 
         # Add Composio-specific config for the client
         if source_info["auth_type"] == "composio":
-            # The client needs the auth_config_id to initiate the connection
-            source_info["auth_config_id"] = os.getenv(f"{name.upper()}_AUTH_CONFIG_ID")
+            # Use the explicitly defined environment variable name from the config
+            env_var_name = config.get("auth_config_env_var")
+            if env_var_name:
+                source_info["auth_config_id"] = os.getenv(env_var_name)
+            else:
+                source_info["auth_config_id"] = None
 
         # Add public config needed by the client for OAuth flow
         if source_info["auth_type"] == "oauth":

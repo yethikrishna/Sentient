@@ -32,7 +32,7 @@ const exampleWorkflows = [
 		title: "Daily Briefing",
 		description:
 			"Get a summary of your unread emails and today's calendar events.",
-		prompt: "Give me a daily briefing of my unread important emails and today's schedule.",
+		prompt: "Every morning at 8 AM, send me a summary of unread emails and my upcoming calendar events for the day on WhatsApp.",
 		tools: ["gmail", "gcalendar"]
 	},
 	{
@@ -45,28 +45,28 @@ const exampleWorkflows = [
 	{
 		title: "Schedule a Follow-up",
 		description: "Find a time and schedule a meeting with a contact.",
-		prompt: "Find a time to schedule a 30-minute follow-up call with jane.doe@example.com for next week.",
+		prompt: "Find a free slot on my Google Calendar for next week and schedule a follow-up call with jane.doe@example.com now.",
 		tools: ["gcalendar", "gpeople"]
 	},
 	{
 		title: "Weekly Lead Nurturing",
 		description:
 			"Draft personalized follow-up emails for new leads from Google Contacts.",
-		prompt: "Every Monday morning, find all contacts in my Google Contacts with the label 'Q3-Leads'. For each contact, check my Gmail to see if we've communicated in the last 10 days. If not, draft a friendly, personalized follow-up email asking if they have any questions about our last conversation and suggesting a brief call.",
+		prompt: "Every Monday morning, find all contacts in my Google Contacts with the label 'Q3-Leads'. For each contact, search my gmail to see if we have discussed anything before. If not, draft a friendly, personalized outreach email asking if they would be open to collaborating and suggest a brief call.",
 		tools: ["gpeople", "gmail"]
 	},
 	{
 		title: "Content Idea Generation",
 		description:
 			"Research trends and populate your Notion database with new content ideas.",
-		prompt: "Every Friday, find the top 5 news articles from the past week in the 'technology' category. Also, perform an internet search for 'latest trends in AI productivity tools'. Summarize the key findings and add them as new ideas to my 'Content Ideas' database in Notion.",
+		prompt: "Every Friday, find the top 5 news articles from the past week in the 'technology' category. Also, perform an internet search for 'latest trends in AI productivity tools'. Summarize the key findings and add them as new ideas to the 'Content Ideas for The Week' Page under the Getting Started page in Notion.",
 		tools: ["internet_search", "notion"]
 	},
 	{
 		title: "Automated Meeting Agenda",
 		description:
 			"Generate a meeting agenda by summarizing recent activity from GitHub and Slack.",
-		prompt: "An hour before our weekly 'Project Phoenix Sync' meeting, prepare the agenda. Summarize all new commits and closed issues in the 'Project-Phoenix' GitHub repo from the last 7 days. Check the '#project-phoenix' Slack channel for any messages containing 'blocker' or 'help'. Create a new Google Doc with this summary and a template for meeting notes.",
+		prompt: "We have a project sync meeting every Friday at 5PM. Every Friday at 4 PM, summarize all closed issues in the 'Project-Sentient' GitHub repo from the last 7 days. Check the Trello board for Project-Sentient and see what the remaining cards on the 'To-Do' board are. Create a new Google Doc with this summary and outline what we can discuss in the meeting. Share this document with the team on Slack. Add a Google Calendar event for the meeting with the agenda attached.",
 		tools: ["gcalendar", "github", "slack", "gdocs"]
 	}
 ]

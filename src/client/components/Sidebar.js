@@ -449,6 +449,11 @@ const SidebarContent = ({
 	const [isUpgradeModalOpen, setUpgradeModalOpen] = useState(false)
 	const router = useRouter()
 
+	const fadeInUp = {
+		hidden: { opacity: 0, y: 10 },
+		visible: { opacity: 1, y: 0, transition: { duration: 0.3 } }
+	}
+
 	// CHANGED: Use the environment variable for the namespace
 	const { isPro } = usePlan()
 
@@ -765,6 +770,26 @@ const SidebarContent = ({
 						</span>
 					)}
 				</a>
+				<AnimatePresence>
+					{!isCollapsed && (
+						<motion.div
+							variants={fadeInUp}
+							initial="hidden"
+							animate="visible"
+							exit={{ opacity: 0, y: 10 }}
+							className="relative z-20 w-full"
+						>
+							<div className="group relative cursor-default rounded-full border border-brand-orange/50 bg-brand-gray/30 px-4 py-1 text-sm font-mono uppercase tracking-wider text-brand-white/80 transition-colors duration-300 hover:border-brand-orange text-center">
+								<span className="transition-opacity duration-300 group-hover:opacity-0">
+									We are in Public Beta
+								</span>
+								<span className="absolute inset-0 flex items-center justify-center text-center opacity-0 transition-opacity duration-300 group-hover:opacity-100 px-2">
+									SORRY 4 BUGS
+								</span>
+							</div>
+						</motion.div>
+					)}
+				</AnimatePresence>
 				<UserProfileSection isCollapsed={isCollapsed} user={user} />
 			</div>
 		</div>

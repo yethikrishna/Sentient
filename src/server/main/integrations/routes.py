@@ -38,8 +38,6 @@ router = APIRouter(
     tags=["Integrations Management"]
 )
 
-from mcp_hub.gcal.auth import get_composio_connection_id
-
 @router.get("/sources", summary="Get all available integration sources and their status")
 async def get_integration_sources(user_id: str = Depends(auth_helper.get_current_user_id)):
     user_profile = await mongo_manager.get_user_profile(user_id)
@@ -119,38 +117,6 @@ async def connect_manual_integration(
 
         return JSONResponse(content={"message": f"{service_name} connected successfully."})
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/gcalendar/events", summary="Get Google Calendar events for a date range")
-async def get_gcalendar_events(
-    start_date: str = Query(..., description="Start date in ISO 8601 format"),
-    end_date: str = Query(..., description="End date in ISO 8601 format"),
-    user_id: str = Depends(auth_helper.get_current_user_id)
-):
-    try:
-        connection_id = await get_composio_connection_id(user_id, "gcalendar")
-
-        events_result = await asyncio.to_thread(
-            composio.tools.execute,
-            "GOOGLECALENDAR_EVENTS_LIST",
-            arguments={
-                "calendarId": "primary",
-                "timeMin": start_date,
-                "timeMax": end_date,
-                "singleEvents": True,
-                "orderBy": "startTime",
-                "maxResults": 250
-            },
-            connected_account_id=connection_id
-        )
-
-        if not events_result.get("successful"):
-            raise HTTPException(status_code=500, detail=f"Failed to fetch Google Calendar events: {events_result.get('error')}")
-
-        return JSONResponse(content={"events": events_result.get("data", {}).get("items", [])})
-    except Exception as e:
-        print(f"Error fetching GCal events for user {user_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/connect/oauth", summary="Finalize OAuth2 connection by exchanging code for token")

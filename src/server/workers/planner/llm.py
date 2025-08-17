@@ -14,14 +14,12 @@ def get_planner_agent(available_tools: dict, current_time_str: str, user_name: s
     
     # Format the MCP descriptions for the prompt
     # The keys are now the simple names (e.g., 'gmail')
-    tools_list_str = "\n".join([f"- {name}: {desc}" for name, desc in available_tools.items()])
-    
+        
     # Add current time to the prompt for better contextual planning
     system_prompt = prompts.SYSTEM_PROMPT.format(
         user_name=user_name,
         user_location=user_location,
         current_time=current_time_str,
-        available_tools=tools_list_str
     )
 
     # This function now returns the necessary components to run the agent with fallback

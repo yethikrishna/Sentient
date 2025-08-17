@@ -15,19 +15,18 @@ from main.analytics import capture_event
 from json_extractor import JsonExtractor
 from workers.utils.api_client import notify_user, push_task_list_update
 from main.plans import PLAN_LIMITS
-from main.config import INTEGRATIONS_CONFIG # This is the new field
+from main.config import INTEGRATIONS_CONFIG
 from main.tasks.prompts import TASK_CREATION_PROMPT
 from mcp_hub.memory.utils import initialize_embedding_model, initialize_agents, cud_memory
 from mcp_hub.tasks.prompts import RESOURCE_MANAGER_SYSTEM_PROMPT
 from main.llm import run_agent as run_main_agent, LLMProviderDownError
 from main.db import MongoManager
 from workers.celery_app import celery_app
-from workers.planner.llm import get_planner_agent # noqa: E501
+from workers.planner.llm import get_planner_agent
 from workers.planner.prompts import CONTEXT_RESEARCHER_SYSTEM_PROMPT, TOOL_SELECTOR_SYSTEM_PROMPT
-from workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions # noqa: E501
+from workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions
 from workers.executor.tasks import execute_task_plan, run_single_item_worker, aggregate_results_callback
 from main.vector_db import get_conversation_summaries_collection
-from main.chat.prompts import STAGE_1_SYSTEM_PROMPT
 from mcp_hub.tasks.prompts import ITEM_EXTRACTOR_SYSTEM_PROMPT
 from workers.utils.text_utils import clean_llm_output
 
@@ -76,15 +75,14 @@ async def _select_relevant_tools(query: str, available_tools_map: Dict[str, str]
     """
     if not available_tools_map:
         return []
-
     try:
-        prompt = f"The user is trying to perform the following task: \"{query}\""
+        prompt = f"User Query: \"{query}\""
 
-        messages = [{'role':'system', 'content': TOOL_SELECTOR_SYSTEM_PROMPT}, {'role': 'user', 'content': prompt}]
+        messages = [{'role': 'user', 'content': prompt}]
 
         def _run_selector_sync():
             final_content_str = ""
-            for chunk in run_main_agent(system_message=STAGE_1_SYSTEM_PROMPT, function_list=[], messages=messages):
+            for chunk in run_main_agent(system_message=TOOL_SELECTOR_SYSTEM_PROMPT, function_list=[], messages=messages):
                 if isinstance(chunk, list) and chunk:
                     last_message = chunk[-1]
                     if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
@@ -93,19 +91,17 @@ async def _select_relevant_tools(query: str, available_tools_map: Dict[str, str]
 
         final_content_str = await asyncio.to_thread(_run_selector_sync)
         cleaned_output = clean_llm_output(final_content_str)
-        parsed_output = JsonExtractor.extract_valid_json(cleaned_output)
-        selected_tools = []
-        if isinstance(parsed_output, dict) and "topic_changed" in parsed_output and "tools" in parsed_output:
-            selected_tools = parsed_output.get("tools", [])
+        selected_tools = JsonExtractor.extract_valid_json(cleaned_output)
 
-            # Separate into connected and disconnected
-            connected_tools_selected = [tool for tool in selected_tools if tool in available_tools_map]
-            
-            selected_tools = connected_tools_selected
-        
-        return selected_tools
+        if isinstance(selected_tools, list):
+            # Filter the LLM's selection to ensure they are valid and available tools
+            valid_selected_tools = [tool for tool in selected_tools if tool in available_tools_map]
+            logger.info(f"Unified Search Tool Selector identified relevant tools: {valid_selected_tools}")
+            return valid_selected_tools
+        return []
     except Exception as e:
         logger.error(f"Error during tool selection for context search: {e}", exc_info=True)
+        # Fallback to all connected tools on error
         return list(available_tools_map.keys())
 
 # Helper to run async code in Celery's sync context
@@ -371,7 +367,7 @@ async def async_refine_and_plan_ai_task(task_id: str, user_id: str):
             user_timezone = ZoneInfo("UTC")
         current_time_str = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
 
-        system_prompt = TASK_CREATION_PROMPT.format( # noqa
+        system_prompt = TASK_CREATION_PROMPT.format(
             user_name=user_name,
             user_timezone=user_timezone_str,
             current_time=current_time_str
@@ -443,7 +439,7 @@ async def async_process_change_request(task_id: str, user_id: str, user_message:
     db_manager = PlannerMongoManager()
     try:
         # 1. Fetch the task and its full history
-        task = await db_manager.get_task(task_id) # This is the new field
+        task = await db_manager.get_task(task_id)
         if not task:
             logger.error(f"Task Change Request: Task {task_id} not found.")
             return
@@ -458,7 +454,7 @@ async def async_process_change_request(task_id: str, user_id: str, user_message:
 
         # 3. Update task status and chat history in DB
         await db_manager.update_task_field(task_id, {
-            "chat_history": chat_history, # This is the new field
+            "chat_history": chat_history,
             "status": "planning" # Revert to planning to re-evaluate
         })
 
@@ -744,7 +740,7 @@ async def async_refine_task_details(task_id: str):
         user_timezone = ZoneInfo(user_timezone_str)
         current_time_str = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
 
-        system_prompt = TASK_CREATION_PROMPT.format( # noqa
+        system_prompt = TASK_CREATION_PROMPT.format(
             user_name=user_name,
             user_timezone=user_timezone_str,
             current_time=current_time_str
@@ -777,7 +773,7 @@ def execute_triggered_task(user_id: str, source: str, event_type: str, event_dat
     logger.info(f"Checking for triggered tasks for user '{user_id}' from source '{source}' event '{event_type}'.")
     run_async(async_execute_triggered_task(user_id, source, event_type, event_data))
 
-def _event_matches_filter(event_data: Dict[str, Any], task_filter: Dict[str, Any], source: str) -> bool: # noqa
+def _event_matches_filter(event_data: Dict[str, Any], task_filter: Dict[str, Any], source: str) -> bool:
     """
     Checks if an event's data matches the conditions defined in a task's filter.
     Supports complex, MongoDB-like query syntax including $or, $and, $not,

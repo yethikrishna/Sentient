@@ -18,4 +18,4 @@ model_list:
 
 litellm_settings:
   drop_params: true
-  fallbacks: [{"gemini-2.5-flash": ["gemini-2.5-flash-fallback","gemini-2.5-flash-lite"]}]
+  fallbacks: [{"gemini-2.5-flash": ["gemini-2.5-flash-lite","gemini-2.5-flash-fallback"]}]

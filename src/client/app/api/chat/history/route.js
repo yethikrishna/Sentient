@@ -20,14 +20,21 @@ export const GET = withAuth(async function GET(request, { authHeader }) {
 	try {
 		const response = await fetch(backendUrl.toString(), {
 			method: "GET",
-			headers: { "Content-Type": "application/json", ...authHeader }
+			headers: { "Content-Type": "application/json", ...authHeader },
+			// Prevent Next.js server-side caching of this fetch
+			cache: "no-store"
 		})
 
 		const data = await response.json()
 		if (!response.ok) {
 			throw new Error(data.detail || "Failed to fetch chat history")
 		}
-		return NextResponse.json(data)
+		// Add cache-control headers to prevent browser caching of history
+		return NextResponse.json(data, {
+			headers: {
+				"Cache-Control": "no-store, max-age=0"
+			}
+		})
 	} catch (error) {
 		console.error("API Error in /chat/history:", error)
 		return NextResponse.json({ error: error.message }, { status: 500 })

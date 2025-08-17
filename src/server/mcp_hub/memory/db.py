@@ -30,6 +30,7 @@ EMBEDDING_DIM = 768
 
 # Dictionary to store connection pools, keyed by the event loop they belong to.
 _pools: Dict[asyncio.AbstractEventLoop, asyncpg.Pool] = {}
+_db_setup_lock = asyncio.Lock()
 
 async def get_db_pool() -> asyncpg.Pool:
     """Initializes and returns a singleton PostgreSQL connection pool for the current event loop."""
@@ -40,22 +41,40 @@ async def get_db_pool() -> asyncpg.Pool:
     pool = _pools.get(loop)
     
     # If the pool doesn't exist for this loop, or it's closing, create a new one.
-    if pool is None or pool.is_closing():
-        if not all([POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB]):
-            raise ValueError("PostgreSQL connection details are not configured in the environment.")
+    async with _db_setup_lock:
+        if pool is None or pool.is_closing():
+            if not all([POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB]):
+                raise ValueError("PostgreSQL connection details are not configured in the environment.")
 
-        logger.info(f"Initializing PostgreSQL connection pool for db: {POSTGRES_DB} on event loop {id(loop)}.")
-        pool = await asyncpg.create_pool(
-            user=POSTGRES_USER,
-            password=POSTGRES_PASSWORD,
-            database=POSTGRES_DB,
-            host=POSTGRES_HOST,
-            port=POSTGRES_PORT,
-        )
-        _pools[loop] = pool # Store the new pool in the dictionary
-    else:
-        logger.debug(f"Returning existing PostgreSQL connection pool for event loop {id(loop)}.")
+            logger.info(f"Initializing PostgreSQL connection pool for db: {POSTGRES_DB} on event loop {id(loop)}.")
+            try:
+                pool = await asyncpg.create_pool(
+                    user=POSTGRES_USER,
+                    password=POSTGRES_PASSWORD,
+                    database=POSTGRES_DB,
+                    host=POSTGRES_HOST,
+                    port=POSTGRES_PORT,
+                )
+                await setup_database(pool)  # Run setup right after creating the pool
+                _pools[loop] = pool # Store the new pool in the dictionary
+                logger.info("PostgreSQL connection pool and schema initialized successfully.")
+            except Exception as e:
+                logger.error(f"Failed to create PostgreSQL connection pool: {e}", exc_info=True)
+                raise
+        else:
+            logger.debug(f"Returning existing PostgreSQL connection pool for event loop {id(loop)}.")
     return pool
+
+async def close_db_pool_for_loop(loop: asyncio.AbstractEventLoop):
+    """Closes the connection pool associated with a specific event loop and removes it from the global dict."""
+    global _pools
+    pool = _pools.pop(loop, None)
+    if pool:
+        if not pool.is_closing():
+            logger.info(f"Closing PostgreSQL pool for event loop {id(loop)}.")
+            await pool.close()
+        else:
+            logger.debug(f"Pool for event loop {id(loop)} was already closing.")
 
 async def close_db_pool():
     """Closes all PostgreSQL connection pools managed by this module."""
@@ -71,9 +90,8 @@ async def close_db_pool():
     else:
         logger.debug("No PostgreSQL connection pools to close.")
 
-async def setup_database():
+async def setup_database(pool: asyncpg.Pool):
     """Ensures all necessary tables, indexes, and static data are created in the database."""
-    pool = await get_db_pool()
     async with pool.acquire() as connection:
         logger.info("Acquired DB connection for database setup.")
         async with connection.transaction():

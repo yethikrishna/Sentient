@@ -35,13 +35,15 @@ import {
 	IconWorldSearch,
 	IconSearch,
 	IconSparkles,
-	IconBrandLinkedin,
 	IconAlertTriangle,
 	IconEye,
-	IconPlug
+	IconPlug,
+	IconArrowUpCircle,
+	IconCheck
 } from "@tabler/icons-react"
 import { cn } from "@utils/cn"
 import { usePostHog } from "posthog-js/react"
+import { usePlan } from "@hooks/usePlan"
 import InteractiveNetworkBackground from "@components/ui/InteractiveNetworkBackground"
 import { motion, AnimatePresence } from "framer-motion"
 import {
@@ -57,7 +59,6 @@ import {
 import { Tooltip } from "react-tooltip"
 import ModalDialog from "@components/ModalDialog"
 import { useRouter } from "next/navigation"
-import IconBrandTodoist from "@components/icons/IconBrandTodoist"
 
 const integrationColorIcons = {
 	gmail: IconMail,
@@ -69,7 +70,6 @@ const integrationColorIcons = {
 	gslides: IconPresentation,
 	gsheets: IconTable,
 	gmaps: IconMapPin,
-	gshopping: IconShoppingCart,
 	slack: IconBrandSlack,
 	notion: IconBrandNotion,
 	accuweather: IconCloud,
@@ -79,14 +79,112 @@ const integrationColorIcons = {
 	trello: IconBrandTrello,
 	github: IconBrandGithub,
 	news: IconNews,
-	todoist: IconBrandTodoist,
 	discord: IconBrandDiscord,
 	whatsapp: IconBrandWhatsapp,
-	file_management: IconFile,
-	linkedin: IconBrandLinkedin
+	file_management: IconFile
 }
 
 const IconPlaceholder = IconSettingsCog
+
+const PRO_ONLY_INTEGRATIONS = ["notion", "github", "slack", "discord", "trello"]
+
+const proPlanFeatures = [
+	{ name: "Text Chat", limit: "100 messages per day" },
+	{ name: "Voice Chat", limit: "10 minutes per day" },
+	{ name: "One-Time Tasks", limit: "20 async tasks per day" },
+	{ name: "Recurring Tasks", limit: "10 active recurring workflows" },
+	{ name: "Triggered Tasks", limit: "10 triggered workflows" },
+	{
+		name: "Parallel Agents",
+		limit: "5 complex tasks per day with 50 sub agents"
+	},
+	{ name: "File Uploads", limit: "20 files per day" },
+	{ name: "Memories", limit: "Unlimited memories" },
+	{
+		name: "Other Integrations",
+		limit: "Notion, GitHub, Slack, Discord, Trello"
+	}
+]
+
+const UpgradeToProModal = ({ isOpen, onClose }) => {
+	if (!isOpen) return null
+
+	const handleUpgrade = () => {
+		const dashboardUrl = process.env.NEXT_PUBLIC_LANDING_PAGE_URL
+		if (dashboardUrl) {
+			window.location.href = `${dashboardUrl}/dashboard`
+		}
+		onClose()
+	}
+
+	return (
+		<AnimatePresence>
+			{isOpen && (
+				<motion.div
+					initial={{ opacity: 0 }}
+					animate={{ opacity: 1 }}
+					exit={{ opacity: 0 }}
+					className="fixed inset-0 bg-black/70 backdrop-blur-md z-[100] flex items-center justify-center p-4"
+					onClick={onClose}
+				>
+					<motion.div
+						initial={{ scale: 0.95, y: 20 }}
+						animate={{ scale: 1, y: 0 }}
+						exit={{ scale: 0.95, y: -20 }}
+						transition={{ duration: 0.2, ease: "easeInOut" }}
+						onClick={(e) => e.stopPropagation()}
+						className="relative bg-neutral-900/90 backdrop-blur-xl p-6 rounded-2xl shadow-2xl w-full max-w-lg border border-neutral-700 flex flex-col"
+					>
+						<header className="text-center mb-4">
+							<h2 className="text-2xl font-bold text-white flex items-center justify-center gap-2">
+								<IconSparkles className="text-brand-orange" />
+								Upgrade to Pro
+							</h2>
+							<p className="text-neutral-400 mt-2">
+								Unlock powerful features to conquer your day.
+							</p>
+						</header>
+						<main className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 my-4">
+							{proPlanFeatures.map((feature) => (
+								<div
+									key={feature.name}
+									className="flex items-start gap-2.5"
+								>
+									<IconCheck
+										size={18}
+										className="text-green-400 flex-shrink-0 mt-0.5"
+									/>
+									<div>
+										<p className="text-white text-sm font-medium">
+											{feature.name}
+										</p>
+										<p className="text-neutral-400 text-xs">
+											{feature.limit}
+										</p>
+									</div>
+								</div>
+							))}
+						</main>
+						<footer className="mt-4 flex flex-col gap-2">
+							<button
+								onClick={handleUpgrade}
+								className="w-full py-2.5 px-5 rounded-lg bg-brand-orange hover:bg-brand-orange/90 text-brand-black font-semibold transition-colors"
+							>
+								Upgrade to Pro - $9/month
+							</button>
+							<button
+								onClick={onClose}
+								className="w-full py-2 px-5 rounded-lg hover:bg-neutral-800 text-sm font-medium text-neutral-400"
+							>
+								Not now
+							</button>
+						</footer>
+					</motion.div>
+				</motion.div>
+			)}
+		</AnimatePresence>
+	)
+}
 
 const MANUAL_INTEGRATION_CONFIGS = {} // Manual integrations removed for Slack and Notion
 
@@ -152,69 +250,6 @@ const WhatsAppConnectModal = ({ integration, onClose, onSuccess }) => {
 		<ModalDialog
 			title={`Connect to ${integration.display_name}`}
 			description="Connect a number for the agent to use as a tool."
-			onConfirm={handleSubmit}
-			onCancel={onClose}
-			confirmButtonText={isSubmitting ? "Connecting..." : "Connect"}
-			isConfirmDisabled={isSubmitting}
-			extraContent={modalContent}
-		/>
-	)
-}
-
-const LinkedInConnectModal = ({ integration, onClose, onSuccess }) => {
-	const [isSubmitting, setIsSubmitting] = useState(false)
-	const posthog = usePostHog()
-
-	if (!integration) return null
-
-	const handleSubmit = async () => {
-		setIsSubmitting(true)
-		try {
-			const response = await fetch(
-				"/api/settings/integrations/connect/manual",
-				{
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						service_name: "linkedin",
-						credentials: { setup_complete: true } // Dummy credentials
-					})
-				}
-			)
-			const data = await response.json()
-			if (!response.ok) {
-				throw new Error(
-					data.detail || "Failed to connect LinkedIn Agent"
-				)
-			}
-			posthog?.capture("integration_connected", {
-				integration_name: "linkedin",
-				auth_type: "manual"
-			})
-			toast.success("LinkedIn Agent connected successfully!")
-			onSuccess()
-			onClose()
-		} catch (error) {
-			toast.error(error.message)
-		} finally {
-			setIsSubmitting(false)
-		}
-	}
-
-	const modalContent = (
-		<div className="text-left space-y-4 my-4">
-			<p className="text-sm text-gray-400">
-				This will enable the LinkedIn job search tool for your account.
-				The system uses a shared, pre-configured session to perform
-				searches.
-			</p>
-		</div>
-	)
-
-	return (
-		<ModalDialog
-			title={`Connect to ${integration.display_name}`}
-			description="Enable the agent to search for jobs on LinkedIn."
 			onConfirm={handleSubmit}
 			onCancel={onClose}
 			confirmButtonText={isSubmitting ? "Connecting..." : "Connect"}
@@ -461,7 +496,7 @@ const InfoPanel = ({ onClose, title, children }) => (
 		initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
 		animate={{ opacity: 1, backdropFilter: "blur(12px)" }}
 		exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
-		className="fixed inset-0 bg-black/70 z-[60] flex p-4 md:p-6"
+		className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4 md:p-6"
 		onClick={onClose}
 	>
 		<motion.div
@@ -470,7 +505,7 @@ const InfoPanel = ({ onClose, title, children }) => (
 			exit={{ opacity: 0, y: 20 }}
 			transition={{ duration: 0.2, ease: "easeInOut" }}
 			onClick={(e) => e.stopPropagation()}
-			className="relative bg-neutral-900/80 backdrop-blur-2xl p-6 rounded-2xl shadow-2xl w-full h-full border border-neutral-700 flex flex-col"
+			className="relative bg-neutral-900 backdrop-blur-lg p-6 rounded-2xl shadow-lg w-full max-w-3xl max-h-[80vh] md:max-h-[700px] border border-neutral-700 flex flex-col"
 		>
 			<header className="flex justify-between items-center mb-6 flex-shrink-0">
 				<h2 className="text-lg font-semibold text-white flex items-center gap-2">
@@ -552,19 +587,30 @@ const IntegrationTag = ({ type }) => {
 	)
 }
 
-const IntegrationCard = ({ integration, icon: Icon }) => {
+const IntegrationCard = ({
+	integration,
+	icon: Icon,
+	isProFeature,
+	isProUser,
+	onUpgradeClick
+}) => {
 	const getTagType = (authType) => {
 		if (authType === "builtin") return "Native"
-		if (["oauth", "manual"].includes(authType)) return "3rd Party"
+		if (["oauth", "manual", "composio"].includes(authType))
+			return "3rd Party"
 		return null
 	}
 
 	const tagType = getTagType(integration.auth_type)
 
-	const isConnectable = ["oauth", "manual"].includes(integration.auth_type)
+	const isConnectable = ["oauth", "manual", "composio"].includes(
+		integration.auth_type
+	)
 
 	const isConnected =
 		integration.connected || integration.auth_type === "builtin"
+
+	const isDisabledForFree = isProFeature && !isProUser
 
 	return (
 		<div className="bg-neutral-900/50 p-4 sm:p-5 rounded-xl transition-all duration-300 border border-neutral-800/70 hover:border-brand-orange hover:-translate-y-1 flex flex-col text-left h-full">
@@ -590,7 +636,19 @@ const IntegrationCard = ({ integration, icon: Icon }) => {
 						</span>
 					</div>
 				</div>
-				{tagType && <IntegrationTag type={tagType} />}
+				<div className="flex flex-col items-end gap-1">
+					{tagType && <IntegrationTag type={tagType} />}
+					{isProFeature && (
+						<span
+							className={cn(
+								"px-2 py-0.5 rounded-full text-xs font-semibold",
+								"bg-yellow-500/20 text-yellow-300"
+							)}
+						>
+							Pro
+						</span>
+					)}
+				</div>
 			</div>
 
 			{/* Middle Section */}
@@ -603,9 +661,19 @@ const IntegrationCard = ({ integration, icon: Icon }) => {
 			{/* Bottom Section */}
 			{isConnectable && (
 				<div className="mt-4 pt-4 border-t border-neutral-800 flex justify-end">
-					<span className="text-sm font-medium text-neutral-400 group-hover:text-white transition-colors">
-						View Details →
-					</span>
+					{isDisabledForFree ? (
+						<button
+							onClick={onUpgradeClick}
+							className="text-sm font-medium text-brand-orange group-hover:text-yellow-300 transition-colors flex items-center gap-1.5"
+						>
+							<IconArrowUpCircle size={16} />
+							Upgrade to Unlock
+						</button>
+					) : (
+						<span className="text-sm font-medium text-neutral-400 group-hover:text-white transition-colors">
+							View Details →
+						</span>
+					)}
 				</div>
 			)}
 		</div>
@@ -618,18 +686,19 @@ const IntegrationsPage = () => {
 	const [loading, setLoading] = useState(true)
 	const [processingIntegration, setProcessingIntegration] = useState(null)
 	const [searchQuery, setSearchQuery] = useState("")
-	const [activeCategory, setActiveCategory] = useState("All")
+	const [activeCategory, setActiveCategory] = useState("Most Popular")
 	const [selectedIntegration, setSelectedIntegration] = useState(null)
 	const [activeManualIntegration, setActiveManualIntegration] = useState(null)
 	const [whatsAppToConnect, setWhatsAppToConnect] = useState(null)
-	const [linkedInToConnect, setLinkedInToConnect] = useState(null)
 	const [sparkleTrigger, setSparkleTrigger] = useState(0)
 	const [privacyModalService, setPrivacyModalService] = useState(null)
 	const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false)
 	const [disconnectingIntegration, setDisconnectingIntegration] =
 		useState(null)
+	const [isUpgradeModalOpen, setUpgradeModalOpen] = useState(false)
 	const posthog = usePostHog()
 	const router = useRouter()
+	const { isPro } = usePlan()
 
 	const googleServices = [
 		"gmail",
@@ -638,13 +707,16 @@ const IntegrationsPage = () => {
 		"gdocs",
 		"gslides",
 		"gsheets",
+		"gmaps",
 		"gpeople"
 	]
 
 	const fetchIntegrations = useCallback(async () => {
 		setLoading(true)
 		try {
-			const response = await fetch("/api/settings/integrations")
+			const response = await fetch("/api/settings/integrations", {
+				cache: "no-store"
+			})
 			const data = await response.json()
 			if (!response.ok)
 				throw new Error(data.error || "Failed to fetch integrations")
@@ -664,7 +736,9 @@ const IntegrationsPage = () => {
 			]
 			const connectable = integrationsWithIcons.filter(
 				(i) =>
-					(i.auth_type === "oauth" || i.auth_type === "manual") &&
+					(i.auth_type === "oauth" ||
+						i.auth_type === "manual" ||
+						i.auth_type === "composio") &&
 					!hiddenTools.includes(i.name)
 			)
 			const builtIn = integrationsWithIcons.filter(
@@ -680,14 +754,40 @@ const IntegrationsPage = () => {
 		}
 	}, [])
 
-	const handleConnect = (integration) => {
+	const handleUpgradeClick = () => {
+		setUpgradeModalOpen(true)
+	}
+
+	const handleConnect = async (integration) => {
+		const isProFeature = PRO_ONLY_INTEGRATIONS.includes(integration.name)
+		if (isProFeature && !isPro) {
+			handleUpgradeClick()
+			return
+		}
+
+		// If it's a pro feature, refresh the session cookie before redirecting
+		// to ensure the backend gets a fresh token with the correct roles.
+		if (isProFeature) {
+			const toastId = toast.loading("Preparing secure connection...")
+			try {
+				const res = await fetch("/api/auth/refresh-session")
+				if (!res.ok) throw new Error("Session refresh failed")
+				toast.dismiss(toastId)
+			} catch (e) {
+				toast.error("Could not prepare connection. Please try again.", {
+					id: toastId
+				})
+				return // Stop if refresh fails
+			}
+		}
+
 		if (integration.name === "whatsapp") {
 			setWhatsAppToConnect(integration)
 			return
 		}
 
-		if (integration.name === "linkedin") {
-			setLinkedInToConnect(integration)
+		if (integration.auth_type === "composio") {
+			handleComposioConnect(integration)
 			return
 		}
 
@@ -721,7 +821,6 @@ const IntegrationsPage = () => {
 				gsheets: "https://www.googleapis.com/auth/spreadsheets",
 				gmaps: "https://www.googleapis.com/auth/cloud-platform",
 				gpeople: "https://www.googleapis.com/auth/contacts",
-				gshopping: "https://www.googleapis.com/auth/content",
 				github: "repo user",
 				notion: "read_content write_content insert_content", // This is not a scope, it's just for user to know. Notion doesn't use scopes in the URL.
 				slack: "channels:history,channels:read,chat:write,users:read,reactions:write"
@@ -746,9 +845,6 @@ const IntegrationsPage = () => {
 				authUrl = `https://api.notion.com/v1/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
 					redirectUri
 				)}&response_type=code&owner=user&state=${serviceName}`
-			} else if (serviceName === "todoist") {
-				const scope = "data:read_write"
-				authUrl = `https://todoist.com/oauth/authorize?client_id=${clientId}&scope=${scope}&state=${serviceName}`
 			} else if (serviceName === "discord") {
 				// Scopes for Discord: identify (read user info), guilds (list servers), bot (add bot to servers), applications.commands (for slash commands)
 				const scope = "identify guilds bot applications.commands"
@@ -769,6 +865,38 @@ const IntegrationsPage = () => {
 			} else {
 				toast.error(`UI for ${integration.display_name} not found.`)
 			}
+		}
+	}
+
+	const handleComposioConnect = async (integration) => {
+		const { name: serviceName, auth_config_id: authConfigId } = integration
+		if (!authConfigId) {
+			toast.error(
+				`Auth Config ID for ${integration.display_name} is not configured.`
+			)
+			return
+		}
+		setProcessingIntegration(serviceName)
+		try {
+			// Store service name for callback handling
+			localStorage.setItem("composio_pending_service", serviceName)
+
+			const response = await fetch(
+				"/api/settings/integrations/connect/composio/initiate",
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ service_name: serviceName })
+				}
+			)
+			const data = await response.json()
+			if (!response.ok)
+				throw new Error(data.error || "Failed to start connection.")
+			window.location.href = data.redirect_url
+		} catch (error) {
+			toast.error(`Connection failed: ${error.message}`)
+			setProcessingIntegration(null)
+			localStorage.removeItem("composio_pending_service")
 		}
 	}
 
@@ -806,8 +934,62 @@ const IntegrationsPage = () => {
 
 	useEffect(() => {
 		fetchIntegrations()
+
+		// --- Handle Composio OAuth Callback ---
 		const urlParams = new URLSearchParams(window.location.search)
-		// Use `get` which returns the first value, which is fine here.
+		const composioStatus = urlParams.get("status")
+		const connectedAccountId = urlParams.get("connectedAccountId")
+		const pendingService = localStorage.getItem("composio_pending_service")
+
+		if (
+			composioStatus === "success" &&
+			connectedAccountId &&
+			pendingService
+		) {
+			const finalizeConnection = async () => {
+				const toastId = toast.loading(
+					`Finalizing ${pendingService} connection...`
+				)
+				localStorage.removeItem("composio_pending_service") // Clean up immediately
+				try {
+					const response = await fetch(
+						"/api/settings/integrations/connect/composio/finalize",
+						{
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({
+								service_name: pendingService,
+								connectedAccountId: connectedAccountId
+							})
+						}
+					)
+					const data = await response.json()
+					if (!response.ok) {
+						throw new Error(
+							data.error || "Failed to finalize connection."
+						)
+					}
+
+					toast.success(data.message, { id: toastId })
+					posthog?.capture("integration_connected", {
+						integration_name: pendingService,
+						auth_type: "composio"
+					})
+					fetchIntegrations() // Refresh the list
+				} catch (error) {
+					toast.error(`Error: ${error.message}`, { id: toastId })
+				} finally {
+					// Clean up URL
+					window.history.replaceState(
+						{},
+						document.title,
+						"/integrations"
+					)
+				}
+			}
+			finalizeConnection()
+		}
+
 		const success = urlParams.get("integration_success")
 		const error = urlParams.get("integration_error")
 
@@ -862,7 +1044,8 @@ const IntegrationsPage = () => {
 			}
 		}
 
-		if (success) {
+		if (success && !composioStatus) {
+			// Avoid double-toasting for Composio
 			const capitalized =
 				success.charAt(0).toUpperCase() + success.slice(1)
 			posthog?.capture("integration_connected", {
@@ -871,38 +1054,267 @@ const IntegrationsPage = () => {
 			})
 			toast.success(`Successfully connected to ${capitalized}!`)
 			setSparkleTrigger((c) => c + 1)
+			fetchIntegrations()
 			window.history.replaceState({}, document.title, "/integrations")
-		} else if (error) {
+		} else if (error && !composioStatus) {
+			// Avoid showing generic error on composio callback
 			toast.error(`Connection failed: ${error}`)
 			window.history.replaceState({}, document.title, "/integrations")
 		}
-	}, [fetchIntegrations, posthog])
+	}, [fetchIntegrations, posthog, router])
 
-	const allIntegrations = useMemo(() => {
-		return [...userIntegrations, ...defaultTools]
-	}, [userIntegrations, defaultTools])
+	const MOST_POPULAR_INTEGRATION_NAMES = useMemo(
+		() => ["gmail", "gcalendar", "gdrive", "gpeople", "gdocs", "notion"],
+		[]
+	)
+
+	const renderIntegrationGrid = (integrations) => (
+		<motion.div
+			className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+			variants={{
+				hidden: { opacity: 0 },
+				visible: {
+					opacity: 1,
+					transition: {
+						staggerChildren: 0.05
+					}
+				}
+			}}
+			initial="hidden"
+			animate="visible"
+		>
+			<AnimatePresence>
+				{integrations.map((integration) => {
+					const Icon =
+						integrationColorIcons[integration.name] ||
+						IconPlaceholder
+					const isConnectable = [
+						"oauth",
+						"manual",
+						"composio"
+					].includes(integration.auth_type)
+					const isProFeature = PRO_ONLY_INTEGRATIONS.includes(
+						integration.name
+					)
+					const isDisabledForFree = isProFeature && !isPro
+
+					const card = (
+						<IntegrationCard
+							integration={integration}
+							icon={Icon}
+							isProFeature={isProFeature}
+							isProUser={isPro}
+							onUpgradeClick={handleUpgradeClick}
+						/>
+					)
+
+					const cardVariants = {
+						hidden: {
+							opacity: 0,
+							y: -20
+						},
+						visible: {
+							opacity: 1,
+							y: 0
+						}
+					}
+
+					if (isConnectable && !isDisabledForFree) {
+						return (
+							<motion.div
+								key={integration.name}
+								variants={cardVariants}
+								className="h-full"
+							>
+								<MorphingDialog
+									transition={{
+										type: "spring",
+										bounce: 0.05,
+										duration: 0.3
+									}}
+								>
+									<MorphingDialogTrigger className="group h-full w-full">
+										{card}
+									</MorphingDialogTrigger>
+									<MorphingDialogContainer>
+										{renderIntegrationDialogContent(
+											integration
+										)}
+									</MorphingDialogContainer>
+								</MorphingDialog>
+							</motion.div>
+						)
+					} else {
+						return (
+							<motion.div
+								key={integration.name}
+								variants={cardVariants}
+								className="h-full"
+							>
+								<div
+									className={cn(
+										"h-full",
+										isDisabledForFree && "opacity-70"
+									)}
+								>
+									{card}
+								</div>
+							</motion.div>
+						)
+					}
+				})}
+			</AnimatePresence>
+		</motion.div>
+	)
+
+	const allIntegrations = useMemo(
+		() => [...userIntegrations, ...defaultTools],
+		[userIntegrations, defaultTools]
+	)
 
 	const categories = useMemo(() => {
 		const allCats = allIntegrations.map((i) => i.category).filter(Boolean)
-		return ["All", ...new Set(allCats)]
+		return ["Most Popular", ...[...new Set(allCats)].sort()]
 	}, [allIntegrations])
 
-	const filteredIntegrations = useMemo(() => {
-		return allIntegrations.filter((integration) => {
-			const matchesCategory =
-				activeCategory === "All" ||
-				integration.category === activeCategory
-			const matchesSearch =
-				searchQuery.trim() === "" ||
+	const displayedIntegrations = useMemo(() => {
+		// This filter function is used when a search query is active.
+		const searchFilter = (integration) => {
+			return (
 				integration.display_name
 					.toLowerCase()
 					.includes(searchQuery.toLowerCase()) ||
 				integration.description
 					.toLowerCase()
 					.includes(searchQuery.toLowerCase())
-			return matchesCategory && matchesSearch
-		})
-	}, [allIntegrations, searchQuery, activeCategory])
+			)
+		}
+
+		// If there's a search query, ignore category filters and search everything.
+		if (searchQuery.trim() !== "") {
+			return allIntegrations.filter(searchFilter)
+		}
+
+		// Otherwise, if the search is empty, apply the active category filter.
+		if (activeCategory === "Most Popular") {
+			const filteredList = allIntegrations.filter((integration) =>
+				MOST_POPULAR_INTEGRATION_NAMES.includes(integration.name)
+			)
+			filteredList.sort(
+				(a, b) =>
+					MOST_POPULAR_INTEGRATION_NAMES.indexOf(a.name) -
+					MOST_POPULAR_INTEGRATION_NAMES.indexOf(b.name)
+			)
+			return filteredList
+		} else {
+			return allIntegrations.filter(
+				(integration) => integration.category === activeCategory
+			)
+		}
+	}, [
+		activeCategory,
+		allIntegrations,
+		searchQuery,
+		MOST_POPULAR_INTEGRATION_NAMES
+	])
+
+	const renderIntegrationDialogContent = useCallback(
+		(integration) => {
+			const Icon =
+				integrationColorIcons[integration.name] || IconPlaceholder
+			return (
+				<MorphingDialogContent className="pointer-events-auto relative flex h-auto w-full flex-col overflow-hidden border border-neutral-700 bg-neutral-900 sm:w-[600px] rounded-2xl">
+					<BorderTrail className="bg-brand-orange" />
+					<div className="p-4 sm:p-6 overflow-y-auto custom-scrollbar">
+						<div className="flex items-center gap-4 mb-4">
+							<div className="w-10 h-10 flex items-center justify-center rounded-lg bg-brand-gray p-1.5 text-brand-orange">
+								<Icon className="w-full h-full" />
+							</div>
+							<div>
+								<MorphingDialogTitle className="text-xl sm:text-2xl font-bold text-white">
+									{integration.display_name}
+								</MorphingDialogTitle>
+								<MorphingDialogSubtitle className="text-sm text-neutral-400">
+									{integration.connected
+										? "Connected"
+										: "Not Connected"}
+								</MorphingDialogSubtitle>
+							</div>
+						</div>
+						<MorphingDialogDescription>
+							<p className="text-sm sm:text-base text-neutral-300 mb-6">
+								{integration.description}
+							</p>
+							{["gmail", "gcalendar"].includes(
+								integration.name
+							) && (
+								<div className="my-4">
+									<button
+										onClick={() =>
+											setPrivacyModalService(
+												integration.name
+											)
+										}
+										className="w-full text-center text-sm text-neutral-400 hover:text-white hover:bg-neutral-700/50 py-2 rounded-lg transition-colors border border-neutral-700"
+									>
+										Manage Privacy Filters
+									</button>
+								</div>
+							)}
+							<div className="mt-6 pt-4 border-t border-neutral-800">
+								{processingIntegration === integration.name ? (
+									<div className="flex justify-center">
+										<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)]" />
+									</div>
+								) : integration.connected ? (
+									<button
+										onClick={(e) => {
+											e.stopPropagation()
+											setDisconnectingIntegration(
+												integration
+											)
+										}}
+										className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-[var(--color-accent-red)]/20 hover:bg-[var(--color-accent-red)]/40 text-[var(--color-accent-red)] text-sm font-medium transition-colors"
+									>
+										<IconPlugOff size={16} />
+										<span>Disconnect</span>
+									</button>
+								) : (
+									<button
+										onClick={async (e) => {
+											e.stopPropagation()
+											if (
+												integration.auth_type ===
+												"composio"
+											) {
+												await handleComposioConnect(
+													integration
+												)
+											} else {
+												await handleConnect(integration)
+											}
+										}}
+										className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-brand-orange hover:bg-brand-orange/90 text-brand-black font-semibold text-sm transition-colors"
+									>
+										<IconSparkles size={16} />
+										<span>Connect</span>
+									</button>
+								)}
+							</div>
+						</MorphingDialogDescription>
+					</div>
+					<MorphingDialogClose className="text-white hover:bg-neutral-700 p-1 rounded-full" />
+				</MorphingDialogContent>
+			)
+		},
+		[
+			processingIntegration,
+			setPrivacyModalService,
+			setDisconnectingIntegration,
+			handleComposioConnect,
+			handleConnect
+		]
+	)
 
 	return (
 		<div className="flex-1 flex h-screen text-white overflow-x-hidden">
@@ -910,6 +1322,10 @@ const IntegrationsPage = () => {
 				id="page-help-tooltip"
 				place="right-start"
 				style={{ zIndex: 9999 }}
+			/>
+			<UpgradeToProModal
+				isOpen={isUpgradeModalOpen}
+				onClose={() => setUpgradeModalOpen(false)}
 			/>
 			<AnimatePresence>
 				{isInfoPanelOpen && (
@@ -954,7 +1370,7 @@ const IntegrationsPage = () => {
 								/>
 								<div>
 									<h3 className="font-semibold text-white">
-										Proactive Assistance
+										Autopilot Mode
 									</h3>
 									<p className="text-neutral-400 text-sm mt-1">
 										For some integrations like Gmail and
@@ -1010,235 +1426,33 @@ const IntegrationsPage = () => {
 				<div className="absolute -top-[250px] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-brand-orange/10 rounded-full blur-3xl -z-10" />
 				<header className="flex items-center justify-between p-4 sm:p-6 md:px-8 md:py-6 bg-transparent border-b border-[var(--color-primary-surface)] shrink-0">
 					<div>
-						<h1 className="text-3xl lg:text-4xl font-bold text-white">
+						<h1 className="text-3xl lg:text-4xl font-bold text-white flex items-center gap-3">
+							<IconPlugConnected />
 							Integrations
 						</h1>
 						<p className="text-neutral-400 mt-1">
-							Expand Sentient's capabilities by connecting your
-							favorite tools.
+							Connect your digital life to unlock Sentient's full
+							potential.
 						</p>
 					</div>
 				</header>
-				<main className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-10 pb-4 sm:pb-6 md:pb-10 custom-scrollbar">
-					<div className="w-full max-w-7xl mx-auto">
-						{loading ? (
-							<div className="flex justify-center items-center py-20">
-								<IconLoader className="w-12 h-12 animate-spin text-brand-orange" />
-							</div>
-						) : (
-							<>
-								<div className="pt-4 sm:pt-6 md:pt-10">
-									<IntegrationHeader
-										searchQuery={searchQuery}
-										onSearchChange={setSearchQuery}
-										categories={categories}
-										activeCategory={activeCategory}
-										onCategoryChange={setActiveCategory}
-									/>
-									<section>
-										<motion.div
-											className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-											variants={{
-												hidden: { opacity: 0 },
-												visible: {
-													opacity: 1,
-													transition: {
-														staggerChildren: 0.05
-													}
-												}
-											}}
-											initial="hidden"
-											animate="visible"
-										>
-											<AnimatePresence>
-												{filteredIntegrations.map(
-													(integration) => {
-														const Icon =
-															integrationColorIcons[
-																integration.name
-															] || IconPlaceholder
-														const isConnectable = [
-															"oauth",
-															"manual"
-														].includes(
-															integration.auth_type
-														)
-
-														const card = (
-															<IntegrationCard
-																integration={
-																	integration
-																}
-																icon={Icon}
-															/>
-														)
-
-														const cardVariants = {
-															hidden: {
-																opacity: 0,
-																y: -20
-															},
-															visible: {
-																opacity: 1,
-																y: 0
-															}
-														}
-
-														if (isConnectable) {
-															return (
-																<motion.div
-																	key={
-																		integration.name
-																	}
-																	variants={
-																		cardVariants
-																	}
-																	className="h-full"
-																>
-																	<MorphingDialog
-																		transition={{
-																			type: "spring",
-																			bounce: 0.05,
-																			duration: 0.3
-																		}}
-																	>
-																		<MorphingDialogTrigger className="group h-full w-full">
-																			{
-																				card
-																			}
-																		</MorphingDialogTrigger>
-																		<MorphingDialogContainer>
-																			<MorphingDialogContent className="pointer-events-auto relative flex h-auto w-full flex-col overflow-hidden border border-neutral-700 bg-neutral-900 sm:w-[600px] rounded-2xl">
-																				<BorderTrail className="bg-brand-orange" />
-																				<div className="p-4 sm:p-6 overflow-y-auto custom-scrollbar">
-																					<div className="flex items-center gap-4 mb-4">
-																						<div className="w-10 h-10 flex items-center justify-center rounded-lg bg-brand-gray p-1.5 text-brand-orange">
-																							<Icon className="w-full h-full" />
-																						</div>
-																						<div>
-																							<MorphingDialogTitle className="text-xl sm:text-2xl font-bold text-white">
-																								{
-																									integration.display_name
-																								}
-																							</MorphingDialogTitle>
-																							<MorphingDialogSubtitle className="text-sm text-neutral-400">
-																								{integration.connected
-																									? "Connected"
-																									: "Not Connected"}
-																							</MorphingDialogSubtitle>
-																						</div>
-																					</div>
-																					<MorphingDialogDescription>
-																						<p className="text-sm sm:text-base text-neutral-300 mb-6">
-																							{
-																								integration.description
-																							}
-																						</p>
-																						{[
-																							"gmail",
-																							"gcalendar"
-																						].includes(
-																							integration.name
-																						) && (
-																							<div className="my-4">
-																								<button
-																									onClick={() =>
-																										setPrivacyModalService(
-																											integration.name
-																										)
-																									}
-																									className="w-full text-center text-sm text-neutral-400 hover:text-white hover:bg-neutral-700/50 py-2 rounded-lg transition-colors border border-neutral-700"
-																								>
-																									Manage
-																									Privacy
-																									Filters
-																								</button>
-																							</div>
-																						)}
-																						<div className="mt-6 pt-4 border-t border-neutral-800">
-																							{processingIntegration ===
-																							integration.name ? (
-																								<div className="flex justify-center">
-																									<IconLoader className="w-6 h-6 animate-spin text-[var(--color-accent-blue)]" />
-																								</div>
-																							) : integration.connected ? (
-																								<button
-																									onClick={(
-																										e
-																									) => {
-																										e.stopPropagation()
-																										setDisconnectingIntegration(
-																											integration
-																										)
-																									}}
-																									className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-[var(--color-accent-red)]/20 hover:bg-[var(--color-accent-red)]/40 text-[var(--color-accent-red)] text-sm font-medium transition-colors"
-																								>
-																									<IconPlugOff
-																										size={
-																											16
-																										}
-																									/>
-																									<span>
-																										Disconnect
-																									</span>
-																								</button>
-																							) : (
-																								<button
-																									onClick={(
-																										e
-																									) => {
-																										e.stopPropagation()
-																										handleConnect(
-																											integration
-																										)
-																									}}
-																									className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-brand-orange hover:bg-brand-orange/90 text-brand-black font-semibold text-sm transition-colors"
-																								>
-																									<IconSparkles
-																										size={
-																											16
-																										}
-																									/>
-																									<span>
-																										Connect
-																									</span>
-																								</button>
-																							)}
-																						</div>
-																					</MorphingDialogDescription>
-																				</div>
-																				<MorphingDialogClose className="text-white hover:bg-neutral-700 p-1 rounded-full" />
-																			</MorphingDialogContent>
-																		</MorphingDialogContainer>
-																	</MorphingDialog>
-																</motion.div>
-															)
-														} else {
-															return (
-																<motion.div
-																	key={
-																		integration.name
-																	}
-																	variants={
-																		cardVariants
-																	}
-																	className="h-full"
-																>
-																	<div className="h-full">
-																		{card}
-																	</div>
-																</motion.div>
-															)
-														}
-													}
-												)}
-											</AnimatePresence>
-										</motion.div>
-									</section>
-								</div>
-							</>
-						)}
-					</div>
+				<main className="flex-1 overflow-y-auto p-4 sm:p-6 md:px-8 custom-scrollbar">
+					{loading ? (
+						<div className="flex justify-center items-center h-full">
+							<IconLoader className="w-12 h-12 animate-spin text-brand-orange" />
+						</div>
+					) : (
+						<div className="w-full max-w-7xl mx-auto">
+							<IntegrationHeader
+								searchQuery={searchQuery}
+								onSearchChange={setSearchQuery}
+								categories={categories}
+								activeCategory={activeCategory}
+								onCategoryChange={setActiveCategory}
+							/>
+							{renderIntegrationGrid(displayedIntegrations)}
+						</div>
+					)}
 				</main>
 			</div>
 			<AnimatePresence>
@@ -1246,15 +1460,6 @@ const IntegrationsPage = () => {
 					<WhatsAppConnectModal
 						integration={whatsAppToConnect}
 						onClose={() => setWhatsAppToConnect(null)}
-						onSuccess={fetchIntegrations}
-					/>
-				)}
-			</AnimatePresence>
-			<AnimatePresence>
-				{linkedInToConnect && (
-					<LinkedInConnectModal
-						integration={linkedInToConnect}
-						onClose={() => setLinkedInToConnect(null)}
 						onSuccess={fetchIntegrations}
 					/>
 				)}

@@ -86,8 +86,6 @@ class PlannerMongoManager:  # noqa: E501
         self.user_profiles_collection = self.db["user_profiles"]
         self.tasks_collection = self.db["tasks"]
         self.messages_collection = self.db["messages"]
-        self.proactive_suggestion_templates_collection = self.db["proactive_suggestion_templates"]
-        self.user_proactive_preferences_collection = self.db["user_proactive_preferences"]
         logger.info("PlannerMongoManager initialized.")
 
     async def create_initial_task(self, user_id: str, name: str, description: str, action_items: list, topics: list, original_context: dict, source_event_id: str) -> Dict:
@@ -112,7 +110,7 @@ class PlannerMongoManager:  # noqa: E501
             "chat_history": [],
         }
 
-        SENSITIVE_TASK_FIELDS = ["name", "description", "original_context"]
+        SENSITIVE_TASK_FIELDS = ["name", "description", "plan", "runs", "original_context", "chat_history", "error", "clarifying_questions", "result", "swarm_details"]
         _encrypt_doc(task_doc, SENSITIVE_TASK_FIELDS)
 
         await self.tasks_collection.insert_one(task_doc)
@@ -122,7 +120,7 @@ class PlannerMongoManager:  # noqa: E501
     async def update_task_field(self, task_id: str, fields: dict):
         """Updates specific fields of a task document."""
         if DB_ENCRYPTION_ENABLED:
-            SENSITIVE_TASK_FIELDS = ["name", "description", "plan", "runs", "original_context", "chat_history", "error", "found_context", "clarifying_questions", "result", "swarm_details"]
+            SENSITIVE_TASK_FIELDS = ["name", "description", "plan", "runs", "original_context", "chat_history", "error", "clarifying_questions", "result", "swarm_details"]
             encrypted_fields = {}
             for field, value in fields.items():
                 if field in SENSITIVE_TASK_FIELDS:
@@ -168,7 +166,7 @@ class PlannerMongoManager:  # noqa: E501
     async def get_task(self, task_id: str) -> Optional[Dict]:
         """Fetches a single task by its ID."""
         doc = await self.tasks_collection.find_one({"task_id": task_id})
-        SENSITIVE_TASK_FIELDS = ["name", "description", "plan", "runs", "original_context", "chat_history", "error", "found_context", "clarifying_questions", "result", "swarm_details"]
+        SENSITIVE_TASK_FIELDS = ["name", "description", "plan", "runs", "original_context", "chat_history", "error", "clarifying_questions", "result", "swarm_details"]
         _decrypt_doc(doc, SENSITIVE_TASK_FIELDS)
         return doc
 
@@ -220,31 +218,6 @@ class PlannerMongoManager:  # noqa: E501
             {"$set": updates}
         )
         return result.modified_count > 0
-
-    async def get_all_proactive_suggestion_templates(self) -> List[Dict]:
-        """Fetches all documents from the proactive_suggestion_templates collection."""
-        cursor = self.proactive_suggestion_templates_collection.find({}, {"_id": 0})
-        return await cursor.to_list(length=None)
-
-    async def get_user_proactive_preferences(self, user_id: str) -> Dict[str, int]:
-        """
-        Fetches all proactive suggestion preferences for a user and returns them
-        as a dictionary of {suggestion_type: score}.
-        """
-        if not user_id:
-            return {}
-        
-        preferences = {}
-        cursor = self.user_proactive_preferences_collection.find(
-            {"user_id": user_id},
-            {"_id": 0, "suggestion_type": 1, "score": 1}
-        )
-        async for doc in cursor:
-            if "suggestion_type" in doc and "score" in doc:
-                preferences[doc["suggestion_type"]] = doc["score"]
-        
-        logger.info(f"Fetched {len(preferences)} proactive preferences for user {user_id}.")
-        return preferences
 
     async def close(self):
         if self.client:

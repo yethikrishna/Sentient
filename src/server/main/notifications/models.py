@@ -9,4 +9,5 @@ class CreateNotificationRequest(BaseModel):
     payload: Optional[Dict[str, Any]] = None
 
 class DeleteNotificationRequest(BaseModel):
-    notification_id: str
+    notification_id: Optional[str] = None
+    delete_all: Optional[bool] = False

@@ -5,10 +5,11 @@ from typing import Dict, Any, Optional, List
 
 from dotenv import load_dotenv
 from fastmcp import FastMCP, Context
-from googleapiclient.errors import HttpError
+from composio import Composio
+from main.config import COMPOSIO_API_KEY
 from fastmcp.utilities.logging import configure_logging, get_logger
 
-from . import auth, prompts, utils
+from . import auth, prompts
 
 # --- Standardized Logging Setup ---
 configure_logging(level="INFO")
@@ -21,6 +22,8 @@ if ENVIRONMENT == 'dev-local':
     if os.path.exists(dotenv_path):
         load_dotenv(dotenv_path=dotenv_path)
 
+composio = Composio(api_key=COMPOSIO_API_KEY)
+
 mcp = FastMCP(
     name="GDocsServer",
     instructions="Provides tools to create, search, read, modify, and share Google Docs documents.",
@@ -31,122 +34,183 @@ def get_gdocs_system_prompt() -> str:
     """Provides the system prompt that instructs the main orchestrator agent on how to use the gdocs tools."""
     return prompts.MAIN_AGENT_SYSTEM_PROMPT
 
-async def _execute_tool(ctx: Context, func, service_types=['docs', 'drive'], **kwargs):
+async def _execute_tool(ctx: Context, action_name: str, **kwargs) -> Dict[str, Any]:
+    """Helper to handle auth and execution for all tools using Composio."""
     try:
         user_id = auth.get_user_id_from_context(ctx)
-        creds = await auth.get_google_creds(user_id)
-
-        services = {}
-        if 'docs' in service_types:
-            services['docs_service'] = auth.authenticate_gdocs(creds)
-        if 'drive' in service_types:
-            services['drive_service'] = auth.authenticate_gdrive(creds)
-
-        # Run the synchronous function in a separate thread
-        result = await asyncio.to_thread(func, **services, **kwargs)
+        connection_id = await auth.get_composio_connection_id(user_id, "gdocs")
+        
+        result = await asyncio.to_thread(
+            composio.tools.execute,
+            action_name,
+            arguments=kwargs,
+            connected_account_id=connection_id
+        )
+        
         return {"status": "success", "result": result}
-    except HttpError as e:
-        return {"status": "failure", "error": f"Google API Error: {e.content.decode()}"}
     except Exception as e:
-        logger.error(f"Tool execution failed for '{func.__name__}': {e}", exc_info=True)
+        logger.error(f"Tool execution failed for action '{action_name}': {e}", exc_info=True)
         return {"status": "failure", "error": str(e)}
 
 @mcp.tool()
-async def createDocument(ctx: Context, title: str) -> Dict[str, Any]:
-    """
-    Creates a new, empty Google Docs document with a specified title.
-    """
-    logger.info(f"Executing tool: createDocument with title='{title}'")
-    def _create(docs_service, title):
-        doc = docs_service.documents().create(body={"title": title}).execute()
-        return {"documentId": doc["documentId"], "title": doc["title"]}
-    return await _execute_tool(ctx, _create, service_types=['docs'], title=title)
+async def copy_document(ctx: Context, document_id: str, title: Optional[str] = None) -> Dict:
+    """Create a copy of an existing google document."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_COPY_DOCUMENT", document_id=document_id, title=title)
 
 @mcp.tool()
-async def listDocuments(ctx: Context, query: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Searches for Google Docs documents in the user's Drive. Can be filtered by a search `query` in the document's name or content.
-    """
-    logger.info(f"Executing tool: listDocuments with query='{query}'")
-    def _list(drive_service, query):
-        q = "mimeType='application/vnd.google-apps.document'"
-        if query:
-            q += f" and name contains '{query}'"
-        response = drive_service.files().list(q=q, pageSize=20, fields="files(id, name, webViewLink)").execute()
-        return [utils._simplify_document_list_entry(f) for f in response.get("files", [])]
-    return await _execute_tool(ctx, _list, service_types=['drive'], query=query)
+async def create_document_markdown(ctx: Context, markdown_text: str, title: str) -> Dict:
+    """Creates a new google docs document with markdown text."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_CREATE_DOCUMENT_MARKDOWN", markdown_text=markdown_text, title=title)
 
 @mcp.tool()
-async def getDocument(ctx: Context, document_id: str) -> Dict[str, Any]:
-    """
-    Retrieves the full content of a Google Docs document as plain text, given its `document_id`.
-    """
-    logger.info(f"Executing tool: getDocument with document_id='{document_id}'")
-    def _get(docs_service, document_id):
-        doc = docs_service.documents().get(documentId=document_id).execute()
-        return {"title": doc.get("title"), "content": utils._parse_document_content(doc)}
-    return await _execute_tool(ctx, _get, service_types=['docs'], document_id=document_id)
+async def create_document(ctx: Context, title: str, text: str = "") -> Dict:
+    """Creates a new google docs document."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_CREATE_DOCUMENT", title=title, text=text)
 
 @mcp.tool()
-async def deleteDocument(ctx: Context, document_id: str) -> Dict[str, Any]:
-    """
-    Permanently deletes a Google Docs document. Requires the `document_id`.
-    """
-    logger.info(f"Executing tool: deleteDocument with document_id='{document_id}'")
-    def _delete(drive_service, document_id):
-        drive_service.files().delete(fileId=document_id).execute()
-        return {"message": f"Document {document_id} deleted successfully."}
-    return await _execute_tool(ctx, _delete, service_types=['drive'], document_id=document_id)
+async def get_document_by_id(ctx: Context, id: str) -> Dict:
+    """Retrieves an existing google document by its id."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_GET_DOCUMENT_BY_ID", id=id)
 
 @mcp.tool()
-async def shareDocument(ctx: Context, document_id: str, email_address: str, role: str = "reader", share_type: str = "user") -> Dict[str, Any]:
-    """
-    Shares a Google Docs document with a specific user via their `email_address`. The `role` can be 'reader', 'commenter', or 'writer'.
-    """
-    logger.info(f"Executing tool: shareDocument for document_id='{document_id}' with email='{email_address}'")
-    def _share(drive_service, document_id, email_address, role, share_type):
-        permission = {'type': share_type, 'role': role, 'emailAddress': email_address}
-        drive_service.permissions().create(fileId=document_id, body=permission, sendNotificationEmail=True).execute()
-        return {"message": f"Document {document_id} shared with {email_address} as a {role}."}
-    return await _execute_tool(ctx, _share, service_types=['drive'], document_id=document_id, email_address=email_address, role=role, share_type=share_type)
+async def search_documents(ctx: Context, query: Optional[str] = None, created_after: Optional[str] = None, include_trashed: Optional[bool] = None, max_results: int = 10, modified_after: Optional[str] = None, order_by: str = "modifiedTime desc", shared_with_me: Optional[bool] = None, starred_only: Optional[bool] = None) -> Dict:
+    """Search for google documents using various filters."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_SEARCH_DOCUMENTS", query=query, created_after=created_after, include_trashed=include_trashed, max_results=max_results, modified_after=modified_after, order_by=order_by, shared_with_me=shared_with_me, starred_only=starred_only)
 
 @mcp.tool()
-async def appendText(ctx: Context, document_id: str, text: str) -> Dict[str, Any]:
-    """
-    Adds new text to the very end of a specified Google Docs document.
-    """
-    logger.info(f"Executing tool: appendText to document_id='{document_id}'")
-    def _append(docs_service, document_id, text):
-        doc = docs_service.documents().get(documentId=document_id, fields="body(content)").execute()
-        end_index = doc['body']['content'][-1]['endIndex'] - 1
-        requests = [{'insertText': {'location': {'index': end_index}, 'text': f"\n{text}"}}]
-        docs_service.documents().batchUpdate(documentId=document_id, body={'requests': requests}).execute()
-        return {"message": "Text appended successfully."}
-    return await _execute_tool(ctx, _append, service_types=['docs'], document_id=document_id, text=text)
+async def update_document_markdown(ctx: Context, document_id: str, new_markdown_text: str) -> Dict:
+    """Replaces the entire content of an existing google docs document with new markdown text."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN", document_id=document_id, new_markdown_text=new_markdown_text)
 
 @mcp.tool()
-async def insertText(ctx: Context, document_id: str, text: str, index: int) -> Dict[str, Any]:
-    """
-    Inserts text at a specific character `index` within a Google Docs document.
-    """
-    logger.info(f"Executing tool: insertText at index={index} in document_id='{document_id}'")
-    def _insert(docs_service, document_id, text, index):
-        requests = [{'insertText': {'location': {'index': index}, 'text': text}}]
-        docs_service.documents().batchUpdate(documentId=document_id, body={'requests': requests}).execute()
-        return {"message": "Text inserted successfully."}
-    return await _execute_tool(ctx, _insert, service_types=['docs'], document_id=document_id, text=text, index=index)
+async def update_existing_document(ctx: Context, document_id: str, editDocs: List[Dict]) -> Dict:
+    """Applies programmatic edits to a specified google doc."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_UPDATE_EXISTING_DOCUMENT", document_id=document_id, editDocs=editDocs)
 
 @mcp.tool()
-async def replaceText(ctx: Context, document_id: str, find_text: str, replace_text: str) -> Dict[str, Any]:
-    """
-    Finds and replaces all occurrences of a specific string (`find_text`) with a new string (`replace_text`) within a document.
-    """
-    logger.info(f"Executing tool: replaceText in document_id='{document_id}'")
-    def _replace(docs_service, document_id, find_text, replace_text):
-        requests = [{'replaceAllText': {'containsText': {'text': find_text, 'matchCase': False}, 'replaceText': replace_text}}]
-        response = docs_service.documents().batchUpdate(documentId=document_id, body={'requests': requests}).execute()
-        return {"message": f"Text replaced. Occurrences: {response['replies'][0]['replaceAllText']['occurrencesChanged']}"}
-    return await _execute_tool(ctx, _replace, service_types=['docs'], document_id=document_id, find_text=find_text, replace_text=replace_text)
+async def create_footer(ctx: Context, document_id: str, type: str, section_break_location: Optional[Dict] = None) -> Dict:
+    """Create a new footer in a google document."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_CREATE_FOOTER", document_id=document_id, type=type, section_break_location=section_break_location)
+
+@mcp.tool()
+async def create_footnote(ctx: Context, documentId: str, endOfSegmentLocation: Optional[Dict] = None, location: Optional[Dict] = None) -> Dict:
+    """Create a new footnote in a google document."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_CREATE_FOOTNOTE", documentId=documentId, endOfSegmentLocation=endOfSegmentLocation, location=location)
+
+@mcp.tool()
+async def create_header(ctx: Context, createHeader: Dict, documentId: str) -> Dict:
+    """Create a new header in a google document."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_CREATE_HEADER", createHeader=createHeader, documentId=documentId)
+
+@mcp.tool()
+async def create_named_range(ctx: Context, documentId: str, name: str, rangeEndIndex: int, rangeStartIndex: int, rangeSegmentId: Optional[str] = None) -> Dict:
+    """Create a new named range in a google document."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_CREATE_NAMED_RANGE", documentId=documentId, name=name, rangeEndIndex=rangeEndIndex, rangeStartIndex=rangeStartIndex, rangeSegmentId=rangeSegmentId)
+
+@mcp.tool()
+async def create_paragraph_bullets(ctx: Context, createParagraphBullets: Dict, document_id: str) -> Dict:
+    """Add bullets to paragraphs within a specified range in a google document."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_CREATE_PARAGRAPH_BULLETS", createParagraphBullets=createParagraphBullets, document_id=document_id)
+
+@mcp.tool()
+async def delete_content_range(ctx: Context, document_id: str, range: Dict) -> Dict:
+    """Delete a range of content from a google document."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_DELETE_CONTENT_RANGE", document_id=document_id, range=range)
+
+@mcp.tool()
+async def delete_footer(ctx: Context, document_id: str, footer_id: str, tab_id: Optional[str] = None) -> Dict:
+    """Delete a footer from a google document."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_DELETE_FOOTER", document_id=document_id, footer_id=footer_id, tab_id=tab_id)
+
+@mcp.tool()
+async def delete_header(ctx: Context, document_id: str, header_id: str, tab_id: Optional[str] = None) -> Dict:
+    """Deletes the header from the specified section."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_DELETE_HEADER", document_id=document_id, header_id=header_id, tab_id=tab_id)
+
+@mcp.tool()
+async def delete_named_range(ctx: Context, deleteNamedRange: Dict, document_id: str) -> Dict:
+    """Delete a named range from a google document."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_DELETE_NAMED_RANGE", deleteNamedRange=deleteNamedRange, document_id=document_id)
+
+@mcp.tool()
+async def delete_paragraph_bullets(ctx: Context, document_id: str, range: Dict, tab_id: Optional[str] = None) -> Dict:
+    """Remove bullets from paragraphs within a specified range."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_DELETE_PARAGRAPH_BULLETS", document_id=document_id, range=range, tab_id=tab_id)
+
+@mcp.tool()
+async def delete_table(ctx: Context, document_id: str, table_end_index: int, table_start_index: int, segment_id: Optional[str] = None, tab_id: Optional[str] = None) -> Dict:
+    """Delete an entire table from a google document."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_DELETE_TABLE", document_id=document_id, table_end_index=table_end_index, table_start_index=table_start_index, segment_id=segment_id, tab_id=tab_id)
+
+@mcp.tool()
+async def delete_table_column(ctx: Context, document_id: str, requests: List[Dict]) -> Dict:
+    """Delete a column from a table in a google document."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_DELETE_TABLE_COLUMN", document_id=document_id, requests=requests)
+
+@mcp.tool()
+async def delete_table_row(ctx: Context, documentId: str, tableCellLocation: Dict) -> Dict:
+    """Delete a row from a table in a google document."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_DELETE_TABLE_ROW", documentId=documentId, tableCellLocation=tableCellLocation)
+
+@mcp.tool()
+async def get_charts_from_spreadsheet(ctx: Context, spreadsheet_id: str) -> Dict:
+    """Retrieve a list of all charts from a specified google sheets spreadsheet."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_GET_CHARTS_FROM_SPREADSHEET", spreadsheet_id=spreadsheet_id)
+
+@mcp.tool()
+async def insert_inline_image(ctx: Context, documentId: str, location: Dict, uri: str, objectSize: Optional[Dict] = None) -> Dict:
+    """Insert an image from a given uri at a specified location."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_INSERT_INLINE_IMAGE", documentId=documentId, location=location, uri=uri, objectSize=objectSize)
+
+@mcp.tool()
+async def insert_page_break(ctx: Context, documentId: str, insertPageBreak: Dict) -> Dict:
+    """Insert a page break into a google document."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_INSERT_PAGE_BREAK", documentId=documentId, insertPageBreak=insertPageBreak)
+
+@mcp.tool()
+async def insert_table_action(ctx: Context, columns: int, documentId: str, rows: int, index: Optional[int] = None, insertAtEndOfSegment: Optional[bool] = None, segmentId: Optional[str] = None, tabId: Optional[str] = None) -> Dict:
+    """Insert a table into a google document."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_INSERT_TABLE_ACTION", columns=columns, documentId=documentId, rows=rows, index=index, insertAtEndOfSegment=insertAtEndOfSegment, segmentId=segmentId, tabId=tabId)
+
+@mcp.tool()
+async def insert_table_column(ctx: Context, document_id: str, requests: List[Dict]) -> Dict:
+    """Insert a new column into a table in a google document."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_INSERT_TABLE_COLUMN", document_id=document_id, requests=requests)
+
+@mcp.tool()
+async def insert_text_action(ctx: Context, document_id: str, insertion_index: int, text_to_insert: str) -> Dict:
+    """Insert a string of text at a specified location within a google document."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_INSERT_TEXT_ACTION", document_id=document_id, insertion_index=insertion_index, text_to_insert=text_to_insert)
+
+@mcp.tool()
+async def list_spreadsheet_charts_action(ctx: Context, spreadsheet_id: str, fields_mask: str = "sheets(properties(sheetId,title),charts(chartId,spec(title,altText)))") -> Dict:
+    """Retrieve a list of charts with their ids and metadata from a google sheets spreadsheet."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_LIST_SPREADSHEET_CHARTS_ACTION", spreadsheet_id=spreadsheet_id, fields_mask=fields_mask)
+
+@mcp.tool()
+async def replace_all_text(ctx: Context, document_id: str, find_text: str, match_case: bool, replace_text: str, search_by_regex: Optional[bool] = None, tab_ids: Optional[List[str]] = None) -> Dict:
+    """Replace all occurrences of a specified text string with another text string."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_REPLACE_ALL_TEXT", document_id=document_id, find_text=find_text, match_case=match_case, replace_text=replace_text, search_by_regex=search_by_regex, tab_ids=tab_ids)
+
+@mcp.tool()
+async def replace_image(ctx: Context, document_id: str, replace_image: Dict) -> Dict:
+    """Replace a specific image in a document with a new image from a uri."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_REPLACE_IMAGE", document_id=document_id, replace_image=replace_image)
+
+@mcp.tool()
+async def unmerge_table_cells(ctx: Context, document_id: str, tableRange: Dict) -> Dict:
+    """Unmerge previously merged cells in a table."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_UNMERGE_TABLE_CELLS", document_id=document_id, tableRange=tableRange)
+
+@mcp.tool()
+async def update_document_style(ctx: Context, document_id: str, document_style: Dict, fields: str, tab_id: Optional[str] = None) -> Dict:
+    """Update the overall document style."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_UPDATE_DOCUMENT_STYLE", document_id=document_id, document_style=document_style, fields=fields, tab_id=tab_id)
+
+@mcp.tool()
+async def update_table_row_style(ctx: Context, documentId: str, updateTableRowStyle: Dict) -> Dict:
+    """Update the style of a table row in a google document."""
+    return await _execute_tool(ctx, "GOOGLEDOCS_UPDATE_TABLE_ROW_STYLE", documentId=documentId, updateTableRowStyle=updateTableRowStyle)
 
 if __name__ == "__main__":
     host = os.getenv("MCP_SERVER_HOST", "127.0.0.1")

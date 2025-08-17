@@ -26,8 +26,8 @@ logger = get_logger(__name__)
 async def lifespan(app):
     logger.info("Memory MCP starting up...")
     # Initialize and setup PostgreSQL
-    await db.get_db_pool()
-    await db.setup_database()
+    pool = await db.get_db_pool()
+    await db.setup_database(pool)
     # Initialize embedding model and agents
     utils.initialize_embedding_model()
     utils.initialize_agents()

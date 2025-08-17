@@ -3,13 +3,15 @@ import uuid
 import json
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import asyncio
+from typing import Tuple
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from main.chat.models import ChatMessageInput, DeleteMessageRequest # noqa: E501
 from main.chat.utils import generate_chat_llm_stream, parse_assistant_response
-from main.auth.utils import PermissionChecker
-from main.dependencies import mongo_manager
+from main.auth.utils import PermissionChecker, AuthHelper
+from main.dependencies import mongo_manager, auth_helper
+from main.plans import PLAN_LIMITS
 
 router = APIRouter(
     prefix="/chat",
@@ -19,33 +21,43 @@ logger = logging.getLogger(__name__)
 @router.post("/message", summary="Process Chat Message (Overlay Chat)")
 async def chat_endpoint(
     request_body: ChatMessageInput, 
-    user_id: str = Depends(PermissionChecker(required_permissions=["read:chat", "write:chat"]))
+    user_id_and_plan: Tuple[str, str] = Depends(auth_helper.get_current_user_id_and_plan)
 ):
-    # 1. Extract and save only the new user message(s) from the request payload.
-    # The client sends its current state, so we find the last assistant message
-    # and treat everything after it as new user input.
-    last_assistant_index = -1
-    for i in range(len(request_body.messages) - 1, -1, -1):
-        if request_body.messages[i].get("role") == "assistant":
-            last_assistant_index = i
-            break
+    user_id, plan = user_id_and_plan
 
-    new_user_messages = request_body.messages[last_assistant_index + 1:]
-
-    if not any(msg.get("role") == "user" for msg in new_user_messages):
+    # 1. Check if there are any user messages
+    if not any(msg.get("role") == "user" for msg in request_body.messages):
         raise HTTPException(status_code=400, detail="No user message found in the request.")
 
-    for msg in new_user_messages:
-        if msg.get("role") == "user":
-            # The add_message function prevents duplicates based on message_id
-            await mongo_manager.add_message(user_id=user_id, role="user", content=msg.get("content", ""), message_id=msg.get("id"))
+    # --- Check Usage Limit ---
+    usage = await mongo_manager.get_or_create_daily_usage(user_id)
+    limit = PLAN_LIMITS[plan].get("text_messages_daily", 0)
+    current_count = usage.get("text_messages", 0)
 
-    # 2. Fetch the canonical, clean history from the database. This is the source of truth.
+    if current_count >= limit:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"You have reached your daily message limit of {limit}. Please upgrade or try again tomorrow."
+        )
+
+    # 2. Save all new user messages since the last assistant message
+    for msg in reversed(request_body.messages):
+        if msg.get("role") == "assistant":
+            break
+        if msg.get("role") == "user":
+            await mongo_manager.add_message(
+                user_id=user_id,
+                role="user",
+                content=msg.get("content", ""),
+                message_id=msg.get("id")
+            )
+            await mongo_manager.increment_daily_usage(user_id, "text_messages")
+
+    # 3. Fetch clean history from DB
     db_history = await mongo_manager.get_message_history(user_id, limit=30)
-    # The history from DB is newest-to-oldest, we need oldest-to-newest for the LLM.
     clean_history_for_llm = list(reversed(db_history))
 
-    # Fetch comprehensive user context
+    # 4. Fetch comprehensive user context
     user_profile = await mongo_manager.get_user_profile(user_id)
     user_data = user_profile.get("userData", {}) if user_profile else {}
     personal_info = user_data.get("personalInfo", {})
@@ -53,16 +65,16 @@ async def chat_endpoint(
     user_context = {
         "name": personal_info.get("name", "User"),
         "timezone": personal_info.get("timezone", "UTC"),
-        "location": personal_info.get("location"),
     }
 
     async def event_stream_generator():
         assistant_response_buffer = ""
         assistant_message_id = None
+
         try:
             async for event in generate_chat_llm_stream(
                 user_id,
-                clean_history_for_llm, # Use the clean history from the database
+                clean_history_for_llm,
                 user_context,
                 db_manager=mongo_manager
             ):
@@ -75,20 +87,17 @@ async def chat_endpoint(
 
                 yield json.dumps(event) + "\n"
         except asyncio.CancelledError:
-            print(f"[INFO] Client disconnected, stream cancelled for user {user_id}.")
+            logger.info(f"Client disconnected, stream cancelled for user {user_id}.")
         except Exception as e:
-            print(f"[ERROR] Error in chat stream for user {user_id}: {e}")
+            logger.error(f"Error in chat stream for user {user_id}: {e}")
             error_response = {
                 "type": "error",
                 "message": "Sorry, I encountered an error while processing your request."
             }
-            yield (json.dumps(error_response) + "\n").encode("utf-8")
+            yield json.dumps(error_response) + "\n"
         finally:
-            # Save the complete assistant response at the end of the stream
             if assistant_response_buffer.strip() and assistant_message_id:
-                # NEW: Parse the response before saving
                 parsed_response = parse_assistant_response(assistant_response_buffer.strip())
-
                 await mongo_manager.add_message(
                     user_id=user_id,
                     role="assistant",
@@ -105,8 +114,8 @@ async def chat_endpoint(
         media_type="application/x-ndjson",
         headers={
             "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",  # Disable Nginx buffering
-            "Transfer-Encoding": "chunked",  # Hint chunked encoding
+            "X-Accel-Buffering": "no",
+            "Transfer-Encoding": "chunked",
         }
     )
 @router.get("/history", summary="Get message history for a user")

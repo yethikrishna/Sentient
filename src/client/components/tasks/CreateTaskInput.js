@@ -6,7 +6,13 @@ import { BorderTrail } from "@components/ui/border-trail"
 import { TextLoop } from "@components/ui/TextLoop"
 import toast from "react-hot-toast"
 
-const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
+const CreateTaskInput = ({
+	onTaskAdded,
+	prompt,
+	setPrompt,
+	isPro,
+	onUpgradeClick
+}) => {
 	const [isSwarmMode, setIsSwarmMode] = useState(false)
 	const [isSaving, setIsSaving] = useState(false)
 	const textareaRef = useRef(null)
@@ -19,6 +25,14 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 		}
 	}, [prompt])
 
+	const handleToggleSwarmMode = () => {
+		if (!isPro) {
+			onUpgradeClick()
+			return
+		}
+		setIsSwarmMode(!isSwarmMode)
+	}
+
 	const handleAddTask = async () => {
 		setIsSaving(true)
 		let payload = {}
@@ -29,7 +43,7 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 			return
 		}
 		payload = {
-			prompt: prompt,
+			prompt: prompt.trim(),
 			is_swarm: isSwarmMode
 		}
 
@@ -39,17 +53,66 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify(payload)
 			})
+			if (!response.ok) {
+				const errorData = await response.json().catch(() => ({}))
+				const error = new Error(errorData.error || "Failed to add task")
+				error.status = response.status
+				throw error
+			}
 			const data = await response.json()
-			if (!response.ok)
-				throw new Error(data.error || "Failed to add task")
+
+			// Create a temporary task object for optimistic UI
+			const tempTask = {
+				task_id: data.task_id,
+				name: prompt.trim(),
+				description: prompt.trim(),
+				status: "planning",
+				assignee: "ai",
+				priority: 1,
+				plan: [],
+				runs: [],
+				schedule: null,
+				enabled: true,
+				original_context: { source: "manual_creation" },
+				created_at: new Date().toISOString(),
+				updated_at: new Date().toISOString(),
+				chat_history: [],
+				next_execution_at: null,
+				last_execution_at: null,
+				task_type: isSwarmMode ? "swarm" : "single",
+				swarm_details: isSwarmMode
+					? {
+							goal: prompt,
+							items: [],
+							total_agents: 0,
+							completed_agents: 0,
+							progress_updates: [],
+							aggregated_results: []
+						}
+					: null
+			}
+
 			toast.success(
 				data.message ||
 					(isSwarmMode ? "Swarm task initiated!" : "Task added!")
 			)
 			setPrompt("")
-			onTaskAdded()
+			// Pass the temporary task object to the parent for optimistic update
+			onTaskAdded(tempTask)
 		} catch (error) {
-			toast.error(`Error: ${error.message}`)
+			if (error.status === 429) {
+				toast.error(
+					error.message ||
+						"You've reached your daily task limit for the free plan."
+				)
+				// Here, onUpgradeClick is passed as a prop from tasks/page.js
+				// and it sets isUpgradeModalOpen to true.
+				if (!isPro) {
+					onUpgradeClick()
+				}
+			} else {
+				toast.error(`Error: ${error.message}`)
+			}
 		} finally {
 			setIsSaving(false)
 		}
@@ -107,7 +170,7 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 					)}
 					<div className={cn("flex items-center gap-2 z-10")}>
 						<button
-							onClick={() => setIsSwarmMode(!isSwarmMode)}
+							onClick={handleToggleSwarmMode}
 							className={cn(
 								"p-3 rounded-full h-full transition-colors",
 								isSwarmMode
@@ -116,9 +179,11 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 							)}
 							data-tooltip-id="tasks-tooltip"
 							data-tooltip-content={
-								isSwarmMode
-									? "Switch to Single Task Mode"
-									: "Switch to Swarm Mode"
+								isPro
+									? isSwarmMode
+										? "Switch to Single Task Mode"
+										: "Switch to Swarm Mode (Parallel Agents)"
+									: "Swarm Mode (Pro Feature)"
 							}
 						>
 							<IconUsersGroup size={18} />

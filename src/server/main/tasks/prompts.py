@@ -23,7 +23,7 @@ Instructions:
         - `frequency` can be "daily" or "weekly". YOU CANNOT use "monthly" or "yearly". DO NOT use "hourly", "every minute" or "every second" as a frequency - if the user mentions a short timeframe like this, use "daily" by default.
         - `time` MUST be in "HH:MM" 24-hour format. If no time is specified, default to `09:00`.
         - For "weekly" frequency, `days` MUST be a list of full day names (e.g., ["Monday", "Wednesday"]). If no day is specified, default to `["Monday"]`.
-    - Triggered Workflows: Triggered workflows are only supported for new new calendar events created and new emails arrived. If the user tells you to do something "on every new email", use the `triggered` type.
+    - Triggered Workflows: Triggered workflows are supported for new calendar events and new emails. If the user tells you to do something "on every new email", use the `triggered` type.
         - `source`: The service that triggers the workflow (e.g., "gmail", "gcalendar").
         - `event`: The specific event (e.g., "new_email", "new_event").
         - `filter`: A dictionary of conditions to match (e.g., `{{"from": "boss@example.com"}}`).

@@ -210,13 +210,20 @@ async def async_execute_task_plan(task_id: str, user_id: str, run_id: str):
     if original_context_data.get("source") == "tasks_block":
         block_id = original_context_data.get("block_id")
 
+    # --- NEW: Inject trigger event data into the context for the executor ---
+    trigger_event_data_str = ""
+    if current_run.get("trigger_event_data"):
+        trigger_event_data_str = json.dumps(current_run["trigger_event_data"], indent=2, default=str)
+        trigger_event_prompt_section = f"**Triggering Event Data (Your primary context for this run):**\n---BEGIN TRIGGER DATA---\n{trigger_event_data_str}\n---END TRIGGER DATA---\n\n"
+    else:
+        trigger_event_prompt_section = ""
+
     logger.info(f"Executor started processing task {task_id} (block_id: {block_id}) for user {user_id}.")
     await update_task_run_status(db, task_id, run_id, "processing", user_id, block_id=block_id)
     await add_progress_update(db, task_id, run_id, user_id, {"type": "info", "content": "Executor has picked up the task and is starting execution."}, block_id=block_id)
 
     user_profile = await db.user_profiles.find_one({"user_id": user_id})
     personal_info = user_profile.get("userData", {}).get("personalInfo", {}) if user_profile else {}
-    preferences = user_profile.get("userData", {}).get("preferences", {}) if user_profile else {}
     user_name = personal_info.get("name", "User")
     user_location_raw = personal_info.get("location", "Not specified")
     if isinstance(user_location_raw, dict):
@@ -258,59 +265,107 @@ async def async_execute_task_plan(task_id: str, user_id: str, run_id: str):
 
     plan_description = task.get("name", "Unnamed plan")
     original_context_str = json.dumps(original_context_data, indent=2, default=str) if original_context_data else "No original context provided."
-    found_context_str = task.get("found_context", "No additional context was found by the research agent.")
-    block_id_prompt = f"The block_id for this task is '{block_id}'. You MUST pass this ID to the 'update_progress' tool in the 'block_id' parameter." if block_id else "This task did not originate from a tasks block."
 
     full_plan_prompt = (
         f"You are Sentient, a resourceful and autonomous executor agent. Your goal is to complete the user's request by intelligently following the provided plan.\n\n" # noqa
         f"**User Context:**\n- **User's Name:** {user_name}\n- **User's Location:** {user_location}\n- **Current Date & Time:** {current_user_time}\n\n"
-        f"**Retrieved Context (from research agent):**\n{found_context_str}\n\n"
+        f"{trigger_event_prompt_section}"
         f"Your task ID is '{task_id}' and the current run ID is '{run_id}'.\n\n"
         f"The original context that triggered this plan is:\n---BEGIN CONTEXT---\n{original_context_str}\n---END CONTEXT---\n\n"
         f"**Primary Objective:** '{plan_description}'\n\n"
         f"**The Plan to Execute:**\n" + "\n".join([f"- Step {i+1}: Use the '{step['tool']}' tool to '{step['description']}'" for i, step in enumerate(task.get("plan", []))]) + "\n\n" # noqa
         "**EXECUTION STRATEGY:**\n" # noqa
         "1.  **Think Step-by-Step:** Before each action, you MUST explain your reasoning and what you are about to do. Your thought process MUST be wrapped in `<think>` tags.\n" # noqa
-        "2.  **Tool Calls:** When you call a tool, you MUST use the `<tool_code>` format. For example: `<tool_code name=\"gdrive_server-gdrive_search\">{{\"query\": \"Q3 Report\"}}</tool_code>`.\n" # noqa
-        "3.  **Execution Flow:** You MUST start by executing the first step of the plan. Do not summarize the plan or provide a final answer until you have executed all steps. Follow the plan sequentially.\n" # noqa
-        "4.  **Map Plan to Tools:** The plan provides a high-level tool name (e.g., 'gmail', 'gdrive'). You must map this to the specific functions available to you (e.g., `gmail_server-sendEmail`, `gdrive_server-gdrive_search`).\n" # noqa
-        "5.  **Be Resourceful & Fill Gaps:** The plan is a guideline. If a step is missing information (e.g., an email address for a manager, a document name), your first action for that step MUST be to use the `memory-search_memory` tool to find the missing information. Do not proceed with incomplete information.\n" # noqa
-        "6.  **Remember New Information:** If you discover a new, permanent fact about the user during your execution (e.g., you find their manager's email is 'boss@example.com'), you MUST use `memory-cud_memory` to save it.\n" # noqa
-        "7.  **Handle Failures:** If a tool fails, analyze the error, think about an alternative approach, and try again. Do not give up easily. Your thought process and the error will be logged automatically.\n" # noqa
-        "8.  **Provide a Final, Detailed Answer:** ONLY after all steps are successfully completed, you MUST provide a final, comprehensive answer to the user. This is not a tool call. Your final response MUST be wrapped in `<answer>` tags. For example: `<answer>I have successfully scheduled the meeting and sent an invitation to John Doe.</answer>`.\n" # noqa
-        "9.  **Contact Information:** To find contact details like phone numbers or emails, use the `gpeople` tool before attempting to send an email or make a call.\n" # noqa
+        "2.  **Execution Flow:** You MUST start by executing the first step of the plan. Do not summarize the plan or provide a final answer until you have executed all steps. Follow the plan sequentially. SEARCH FOR ANY RELEVANT CONTEXT THAT YOU NEED TO COMPLETE THE EXECUTION. \n" # noqa
+        "3.  **Map Plan to Tools:** The plan provides a high-level tool name (e.g., 'gmail', 'gdrive'). You must map this to the specific functions available to you (e.g., `gmail_server-sendEmail`, `gdrive_server-gdrive_search`).\n" # noqa
+        "4.  **Be Resourceful & Fill Gaps:** The plan is a guideline. If a step is missing information (e.g., an email address for a manager, a document name), your first action for that step MUST be to use the `memory-search_memory` tool to find the missing information. Do not proceed with incomplete information.\n" # noqa
+        "5.  **Remember New Information:** If you discover a new, permanent fact about the user during your execution (e.g., you find their manager's email is 'boss@example.com'), you MUST use `memory-cud_memory` to save it.\n" # noqa
+        "6.  **Handle Failures:** If a tool fails, analyze the error, think about an alternative approach, and try again. Do not give up easily. Your thought process and the error will be logged automatically.\n" # noqa
+        "7.  **Provide a Final, Detailed Answer:** ONLY after all steps are successfully completed, you MUST provide a final, comprehensive answer to the user. This is not a tool call. Your final response MUST be wrapped in `<answer>` tags. For example: `<answer>I have successfully scheduled the meeting and sent an invitation to John Doe.</answer>`.\n" # noqa
+        "8.  **Contact Information:** To find contact details like phone numbers or emails, use the `gpeople` tool before attempting to send an email or make a call.\n" # noqa
         "\nNow, begin your work. Think step-by-step and start executing the plan, beginning with Step 1."
     )
     
     try:
-        initial_messages = [{'role': 'user', 'content': "Begin executing the plan. Follow your instructions meticulously."}]
-        
         logger.info(f"Task {task_id}: Starting agent run.")
+        initial_messages = [{'role': 'user', 'content': "Begin executing the plan. Follow your instructions meticulously."}]
 
-        final_assistant_content = ""
-        final_history = []
+        last_history_len = len(initial_messages)
+        final_history = None
+
         for current_history in run_main_agent(
             system_message=full_plan_prompt,
             function_list=tools_config,
             messages=initial_messages
         ):
-            final_history = current_history
+            final_history = current_history # Keep track of the latest state
 
-        # After the loop, process the complete response
-        if final_history and final_history[-1].get("role") == "assistant":
-            final_assistant_content = final_history[-1].get("content", "")
+            if not isinstance(current_history, list):
+                continue
 
-        final_answer_content = ""
-        if final_assistant_content:
-            parsed_updates = parse_agent_string_to_updates(final_assistant_content)
-            for update in parsed_updates:
-                # Per user request, do not push thoughts to the log, but parse everything else.
-                if update.get("type") == "thought":
-                    continue
-                await add_progress_update(db, task_id, run_id, user_id, update, block_id)
-                if update.get("type") == "final_answer":
-                    final_answer_content = update.get("content")
+            # Process new messages for UI updates
+            new_messages = current_history[last_history_len:]
+            for msg in new_messages:
+                updates_to_push = []
+                if msg.get("role") == "assistant":
+                    if msg.get("content"):
+                        updates_to_push.extend(parse_agent_string_to_updates(msg["content"]))
+                    if msg.get("function_call"):
+                        fc = msg["function_call"]
+                        params_str = fc.get("arguments", "{}")
+                        params = JsonExtractor.extract_valid_json(params_str) or {"raw_parameters": params_str}
+                        updates_to_push.append({
+                            "type": "tool_call",
+                            "tool_name": fc.get("name"),
+                            "parameters": params
+                        })
+                elif msg.get("role") == "function":
+                    result_str = msg.get("content", "{}")
+                    result_content = JsonExtractor.extract_valid_json(result_str) or {"raw_result": result_str}
+                    is_error = isinstance(result_content, dict) and result_content.get("status") == "failure"
+                    updates_to_push.append({
+                        "type": "tool_result",
+                        "tool_name": msg.get("name"),
+                        "result": result_content.get("result", result_content.get("error", result_content)),
+                        "is_error": is_error
+                    })
+                
+                for update in updates_to_push:
+                    if update.get("type") != "thought":
+                        # Use asyncio.create_task to send updates without blocking the agent loop
+                        asyncio.create_task(add_progress_update(db, task_id, run_id, user_id, update, block_id))
 
+            last_history_len = len(current_history)
+
+        if not final_history:
+            raise Exception("Agent run produced no history, indicating an immediate failure.")
+
+        final_assistant_message = next((msg for msg in reversed(final_history) if msg.get("role") == "assistant"), None)
+        
+        has_final_answer = False
+        if final_assistant_message and final_assistant_message.get("content"):
+            parsed_updates = parse_agent_string_to_updates(final_assistant_message["content"])
+            if any(upd.get("type") == "final_answer" for upd in parsed_updates):
+                has_final_answer = True
+
+        if not has_final_answer:
+            error_message = "Agent finished execution without providing a final answer as required by its instructions. The task may be incomplete."
+            logger.error(f"Task {task_id}: {error_message}. Final history: {final_history}")
+            await add_progress_update(db, task_id, run_id, user_id, {"type": "error", "content": error_message}, block_id=block_id)
+            await update_task_run_status(db, task_id, run_id, "error", user_id, details={"error": error_message}, block_id=block_id)
+            
+            from workers.tasks import calculate_next_run
+            schedule_type = task.get('schedule', {}).get('type')
+            if schedule_type == 'recurring':
+                next_run_time, _ = calculate_next_run(task['schedule'], last_run=datetime.datetime.now(datetime.timezone.utc))
+                await db.tasks.update_one({"_id": task["_id"]}, {"$set": {"status": "active", "next_execution_at": next_run_time}})
+            elif schedule_type == 'triggered':
+                await db.tasks.update_one({"_id": task["_id"]}, {"$set": {"status": "active", "next_execution_at": None}})
+            else:
+                await db.tasks.update_one({"_id": task["_id"]}, {"$set": {"status": "error", "next_execution_at": None}})
+            return {"status": "error", "message": error_message}
+
+        # If we have a final answer, the execution was successful.
         logger.info(f"Task {task_id} execution phase completed. Dispatching to result generator.")
         await add_progress_update(db, task_id, run_id, user_id, {"type": "info", "content": "Execution finished. Generating final report..."}, block_id=block_id)
         await update_task_run_status(db, task_id, run_id, "completed", user_id, block_id=block_id)
@@ -318,6 +373,7 @@ async def async_execute_task_plan(task_id: str, user_id: str, run_id: str):
 
         # Call the new result generator task
         generate_task_result.delay(task_id, run_id, user_id)
+
         from workers.tasks import calculate_next_run
         schedule_type = task.get('schedule', {}).get('type')
         if schedule_type == 'recurring':

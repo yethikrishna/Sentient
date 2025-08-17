@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import {
 	IconSend,
 	IconLoader,
@@ -24,14 +25,13 @@ import {
 	IconTool,
 	IconInfoCircle,
 	IconSparkles,
+	IconCheck,
 	IconClockHour4,
 	IconMessageChatbot,
 	IconMapPin,
-	IconShoppingCart,
 	IconChartPie,
 	IconBrandTrello,
 	IconNews,
-	IconListCheck,
 	IconBrandDiscord,
 	IconBrandWhatsapp,
 	IconCalendarEvent
@@ -40,8 +40,7 @@ import {
 	IconBrandSlack,
 	IconBrandNotion,
 	IconBrandGithub,
-	IconBrandGoogleDrive,
-	IconBrandLinkedin
+	IconBrandGoogleDrive
 } from "@tabler/icons-react"
 import IconGoogleMail from "@components/icons/IconGoogleMail"
 import toast from "react-hot-toast"
@@ -52,11 +51,13 @@ import ChatBubble from "@components/ChatBubble"
 import { TextLoop } from "@components/ui/TextLoop"
 import InteractiveNetworkBackground from "@components/ui/InteractiveNetworkBackground"
 import { TextShimmer } from "@components/ui/text-shimmer"
+import Script from "next/script"
 import React from "react"
 import { usePostHog } from "posthog-js/react"
 import SiriSpheres from "@components/voice-visualization/SiriSpheres"
 import { WebRTCClient } from "@lib/webrtc-client"
 import useClickOutside from "@hooks/useClickOutside"
+import { usePlan } from "@hooks/usePlan"
 
 const toolIcons = {
 	gmail: IconGoogleMail,
@@ -68,17 +69,163 @@ const toolIcons = {
 	internet_search: IconWorldSearch,
 	memory: IconBrain,
 	gmaps: IconMapPin,
-	linkedin: IconBrandLinkedin,
-	gshopping: IconShoppingCart,
 	quickchart: IconChartPie,
 	google_search: IconWorldSearch,
 	trello: IconBrandTrello,
 	news: IconNews,
-	todoist: IconListCheck,
 	discord: IconBrandDiscord,
 	whatsapp: IconBrandWhatsapp,
 	gcalendar_alt: IconCalendarEvent,
 	default: IconTool
+}
+
+const proPlanFeatures = [
+	{ name: "Text Chat", limit: "100 messages per day" },
+	{ name: "Voice Chat", limit: "10 minutes per day" },
+	{ name: "One-Time Tasks", limit: "20 async tasks per day" },
+	{ name: "Recurring Tasks", limit: "10 active recurring workflows" },
+	{ name: "Triggered Tasks", limit: "10 triggered workflows" },
+	{
+		name: "Parallel Agents",
+		limit: "5 complex tasks per day with 50 sub agents"
+	},
+	{ name: "File Uploads", limit: "20 files per day" },
+	{ name: "Memories", limit: "Unlimited memories" },
+	{
+		name: "Other Integrations",
+		limit: "Notion, GitHub, Slack, Discord, Trello"
+	}
+]
+
+const UpgradeToProModal = ({ isOpen, onClose }) => {
+	if (!isOpen) return null
+
+	const handleUpgrade = () => {
+		const dashboardUrl = process.env.NEXT_PUBLIC_LANDING_PAGE_URL
+		if (dashboardUrl) {
+			window.location.href = `${dashboardUrl}/dashboard`
+		}
+		onClose()
+	}
+
+	return (
+		<AnimatePresence>
+			{isOpen && (
+				<motion.div
+					initial={{ opacity: 0 }}
+					animate={{ opacity: 1 }}
+					exit={{ opacity: 0 }}
+					className="fixed inset-0 bg-black/70 backdrop-blur-md z-[100] flex items-center justify-center p-4"
+					onClick={onClose}
+				>
+					<motion.div
+						initial={{ scale: 0.95, y: 20 }}
+						animate={{ scale: 1, y: 0 }}
+						exit={{ scale: 0.95, y: -20 }}
+						transition={{ duration: 0.2, ease: "easeInOut" }}
+						onClick={(e) => e.stopPropagation()}
+						className="relative bg-neutral-900/90 backdrop-blur-xl p-6 rounded-2xl shadow-2xl w-full max-w-lg border border-neutral-700 flex flex-col"
+					>
+						<header className="text-center mb-4">
+							<h2 className="text-2xl font-bold text-white flex items-center justify-center gap-2">
+								<IconSparkles className="text-brand-orange" />
+								Upgrade to Pro
+							</h2>
+							<p className="text-neutral-400 mt-2">
+								Unlock Voice Mode and other powerful features.
+							</p>
+						</header>
+						<main className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 my-4">
+							{proPlanFeatures.map((feature) => (
+								<div
+									key={feature.name}
+									className="flex items-start gap-2.5"
+								>
+									<IconCheck
+										size={18}
+										className="text-green-400 flex-shrink-0 mt-0.5"
+									/>
+									<div>
+										<p className="text-white text-sm font-medium">
+											{feature.name}
+										</p>
+										<p className="text-neutral-400 text-xs">
+											{feature.limit}
+										</p>
+									</div>
+								</div>
+							))}
+						</main>
+						<footer className="mt-4 flex flex-col gap-2">
+							<button
+								onClick={handleUpgrade}
+								className="w-full py-2.5 px-5 rounded-lg bg-brand-orange hover:bg-brand-orange/90 text-brand-black font-semibold transition-colors"
+							>
+								Upgrade to Pro - $9/month
+							</button>
+							<button
+								onClick={onClose}
+								className="w-full py-2 px-5 rounded-lg hover:bg-neutral-800 text-sm font-medium text-neutral-400"
+							>
+								Not now
+							</button>
+						</footer>
+					</motion.div>
+				</motion.div>
+			)}
+		</AnimatePresence>
+	)
+}
+
+const StorylaneDemoModal = ({ onClose }) => {
+	// The script adds a global Storylane object. The button's onClick will use it.
+	const embedHtml = `
+        <style>
+            .sl-heading-text { max-width:53%; }
+            @media (max-width: 1024px) { .sl-heading-text { max-width:90%; } }
+        </style>
+        <div class="sl-embed-container" style="position:relative;display:flex;align-items:center;justify-content:center;border: 1px solid rgba(63,95,172,0.35);box-shadow: 0px 0px 18px rgba(26, 19, 72, 0.15);border-radius:10px">
+            <div class="sl-preview-heading" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background-color:transparent;z-index:999999;font-family:Poppins, Arial, sans-serif;font-size:clamp(20px, 2.664vw, 28px);font-weight:500;line-height:normal;text-align:center;border-radius:10px;">
+                <button onclick="Storylane.Play({type: 'preview_embed',demo_type: 'image', width: 1920, height: 918, element: this, demo_url: 'https://app.storylane.io/demo/d6oo4tbg4fbb?embed=inline_overlay'})" class="sl-preview-cta" style="background-color:#9939EB;border:none;border-radius:8px;box-shadow:0px 0px 15px rgba(26, 19, 72, 0.45);color:#FFFFFF;display:inline-block;font-family:Poppins, Arial, sans-serif;font-size:clamp(16px, 1.599vw, 20px);font-weight:600;height:clamp(40px, 3.996vw, 50px);line-height:1.2;padding:0 clamp(15px, 1.776vw, 20px);text-overflow:ellipsis;transform:translateZ(0);transition:background 0.4s;white-space:nowrap;width:auto;z-index:999999;cursor:pointer">Take a Tour</button>
+            </div>
+            <div class="sl-embed" data-sl-demo-type="image" style="position:relative;padding-bottom:calc(47.81% + 25px);width:100%;height:0;transform:scale(1);overflow:hidden;">
+                <div class="sl-preview" style="width:100%;height:100%;z-index:99999;position:absolute;background:url('https://storylane-prod-uploads.s3.us-east-2.amazonaws.com/company/company_35e9ec7f-ae05-4316-ad70-1f931aaacad6/project/project_8f4dcfca-3161-478c-834d-28eb1993ad1b/page/fFud9OKzDoQ4hDFpQaYu7.jpg') no-repeat;background-size:100% 100%;border-radius:inherit;filter:blur(2px)"></div>
+                <iframe class="sl-demo" src="" name="sl-embed" allow="fullscreen" allowfullscreen style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;border:none;"></iframe>
+            </div>
+            <iframe class="sl-demo" src="" name="sl-embed" allow="fullscreen" allowfullscreen style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;border:none;"></iframe>
+        </div>
+    `
+
+	return (
+		<>
+			<Script async src="https://js.storylane.io/js/v2/storylane.js" />
+			<motion.div
+				initial={{ opacity: 0 }}
+				animate={{ opacity: 1 }}
+				exit={{ opacity: 0 }}
+				className="fixed inset-0 bg-black/70 backdrop-blur-md z-[60] flex items-center justify-center p-4"
+				onClick={onClose}
+			>
+				<motion.div
+					initial={{ scale: 0.95, y: 20 }}
+					animate={{ scale: 1, y: 0 }}
+					exit={{ scale: 0.95, y: -20 }}
+					transition={{ duration: 0.2, ease: "easeInOut" }}
+					onClick={(e) => e.stopPropagation()}
+					className="relative w-full max-w-4xl"
+				>
+					<div dangerouslySetInnerHTML={{ __html: embedHtml }} />
+					<button
+						onClick={onClose}
+						className="absolute -top-3 -right-3 z-[9999999] p-1.5 bg-neutral-800 text-white rounded-full hover:bg-neutral-700"
+						aria-label="Close demo"
+					>
+						<IconX size={18} />
+					</button>
+				</motion.div>
+			</motion.div>
+		</>
+	)
 }
 
 export default function ChatPage() {
@@ -108,12 +255,19 @@ export default function ChatPage() {
 	const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(false)
 	const toolsMenuRef = useRef(null)
 	const toolsButtonRef = useRef(null)
+	const [isDemoModalOpen, setDemoModalOpen] = useState(false)
+
+	const searchParams = useSearchParams()
+	const router = useRouter()
+	const { isPro } = usePlan()
 
 	// --- File Upload State ---
 	const [selectedFile, setSelectedFile] = useState(null)
 	const [isUploading, setIsUploading] = useState(false)
 	const [uploadedFilename, setUploadedFilename] = useState(null)
 
+	// --- Pro Feature Modal ---
+	const [isUpgradeModalOpen, setUpgradeModalOpen] = useState(false)
 	// --- Voice Mode State ---
 	const [isMuted, setIsMuted] = useState(false)
 	const [isVoiceMode, setIsVoiceMode] = useState(false)
@@ -189,6 +343,19 @@ export default function ChatPage() {
 			}
 		}
 	}, [fetchInitialMessages, fetchUserDetails])
+
+	useEffect(() => {
+		if (searchParams.get("show_demo") === "true") {
+			setDemoModalOpen(true)
+		}
+	}, [searchParams])
+
+	const handleCloseDemo = () => {
+		setDemoModalOpen(false)
+		// Clean up the URL to prevent the modal from reappearing on refresh
+		// Using replace to avoid adding to browser history
+		router.replace("/chat", { scroll: false })
+	}
 
 	const fetchIntegrations = useCallback(async () => {
 		try {
@@ -371,8 +538,10 @@ export default function ChatPage() {
 			})
 
 			if (!response.ok) {
-				const errorData = await response.json()
-				throw new Error(errorData.error || "File upload failed")
+				const errorData = await response.json().catch(() => ({}))
+				const error = new Error(errorData.error || "File upload failed")
+				error.status = response.status
+				throw error
 			}
 
 			const result = await response.json()
@@ -381,7 +550,18 @@ export default function ChatPage() {
 				id: toastId
 			})
 		} catch (error) {
-			toast.error(`Error: ${error.message}`, { id: toastId })
+			if (error.status === 429) {
+				toast.error(
+					error.message ||
+						"You've reached your daily file upload limit for the free plan.",
+					{ id: toastId }
+				)
+				if (!isPro) {
+					setUpgradeModalOpen(true)
+				}
+			} else {
+				toast.error(`Error: ${error.message}`, { id: toastId })
+			}
 			setSelectedFile(null)
 		} finally {
 			setIsUploading(false)
@@ -447,7 +627,14 @@ export default function ChatPage() {
 			})
 
 			if (!response.ok) {
-				throw new Error(`HTTP error! status: ${response.status}`)
+				const errorData = await response.json().catch(() => ({
+					detail: `Request failed with status ${response.status}`
+				}))
+				const error = new Error(
+					errorData.detail || "An unexpected error occurred."
+				)
+				error.status = response.status
+				throw error
 			}
 
 			const reader = response.body.getReader()
@@ -539,13 +726,21 @@ export default function ChatPage() {
 		} catch (error) {
 			if (error.name === "AbortError") {
 				toast.info("Message generation stopped.")
+			} else if (error.status === 429) {
+				toast.error(
+					error.message ||
+						"You've reached a usage limit for today on the free plan."
+				)
+				if (!isPro) {
+					setUpgradeModalOpen(true)
+				}
 			} else {
 				toast.error(`Error: ${error.message}`)
-				console.error("Fetch error:", error)
-				setDisplayedMessages((prev) =>
-					prev.filter((m) => m.id !== newUserMessage.id)
-				)
 			}
+			console.error("Fetch error:", error)
+			setDisplayedMessages((prev) =>
+				prev.filter((m) => m.id !== newUserMessage.id)
+			)
 		} finally {
 			setThinking(false)
 			setStatusText("")
@@ -599,10 +794,11 @@ export default function ChatPage() {
 	}
 
 	useEffect(() => {
-		if (chatEndRef.current) {
-			chatEndRef.current.scrollIntoView({ behavior: "smooth" })
+		if (chatEndRef.current && !isVoiceMode) {
+			// Use 'auto' for an instant scroll, which feels better when switching modes.
+			chatEndRef.current.scrollIntoView({ behavior: "auto" })
 		}
-	}, [displayedMessages, thinking])
+	}, [displayedMessages, thinking, isVoiceMode])
 
 	const getGreeting = () => {
 		const hour = new Date().getHours()
@@ -748,8 +944,16 @@ export default function ChatPage() {
 					}
 				}
 			)
-			if (!rtcTokenResponse.ok)
-				throw new Error("Could not initiate voice session.")
+			if (!rtcTokenResponse.ok) {
+				const errorData = await rtcTokenResponse
+					.json()
+					.catch(() => ({}))
+				const error = new Error(
+					errorData.detail || "Could not initiate voice session."
+				)
+				error.status = rtcTokenResponse.status
+				throw error
+			}
 			const { rtc_token, ice_servers } = await rtcTokenResponse.json()
 
 			// Step 3: Create and connect WebRTCClient directly
@@ -792,9 +996,19 @@ export default function ChatPage() {
 				rtc_token
 			)
 		} catch (error) {
-			toast.error(
-				`Failed to connect: ${error.message || "Unknown error"}`
-			)
+			if (error.status === 429) {
+				toast.error(
+					error.message ||
+						"You've used all your voice minutes for today on the free plan."
+				)
+				if (!isPro) {
+					setUpgradeModalOpen(true)
+				}
+			} else {
+				toast.error(
+					`Failed to connect: ${error.message || "Unknown error"}`
+				)
+			}
 			handleStatusChange("disconnected")
 		}
 	}
@@ -868,12 +1082,22 @@ export default function ChatPage() {
 
 		webrtcClientRef.current?.disconnect()
 
-		// --- ADD POSTHOG EVENT TRACKING ---
+		// --- ADD POSTHOG EVENT TRACKING & USAGE UPDATE ---
 		if (voiceModeStartTimeRef.current) {
 			const duration_seconds = Math.round(
 				(Date.now() - voiceModeStartTimeRef.current) / 1000
 			)
 			posthog?.capture("voice_mode_used", { duration_seconds })
+
+			// Send usage update to the server
+			fetch("/api/voice/update-usage", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ duration_seconds })
+			}).catch((err) =>
+				console.error("Failed to update voice usage:", err)
+			)
+
 			voiceModeStartTimeRef.current = null // Reset after tracking
 		}
 		// --- END POSTHOG EVENT TRACKING ---
@@ -895,6 +1119,11 @@ export default function ChatPage() {
 	}
 
 	const toggleVoiceMode = async () => {
+		if (!isPro) {
+			setUpgradeModalOpen(true)
+			return
+		}
+
 		if (isVoiceMode) {
 			handleStopVoice()
 			setIsVoiceMode(false)
@@ -912,11 +1141,10 @@ export default function ChatPage() {
 	}
 
 	useEffect(() => {
-		// This cleanup now only runs when the ChatPage component unmounts
+		// This cleanup now only runs when the ChatPage component unmounts.
+		// The handleStopVoice function is now the primary way to disconnect.
 		return () => {
-			if (webrtcClientRef.current) {
-				webrtcClientRef.current.disconnect()
-			}
+			webrtcClientRef.current?.disconnect()
 		}
 	}, [])
 
@@ -1064,7 +1292,11 @@ export default function ChatPage() {
 						onClick={toggleVoiceMode}
 						className="p-2.5 rounded-full text-white bg-neutral-700 hover:bg-neutral-600 transition-colors"
 						data-tooltip-id="home-tooltip"
-						data-tooltip-content="Switch to Voice Mode"
+						data-tooltip-content={
+							isPro
+								? "Switch to Voice Mode"
+								: "Voice Mode (Pro Feature)"
+						}
 					>
 						<IconWaveSine size={18} />
 					</button>
@@ -1324,6 +1556,15 @@ export default function ChatPage() {
 				src="/audio/connected.mp3"
 				preload="auto"
 			></audio>
+			<UpgradeToProModal
+				isOpen={isUpgradeModalOpen}
+				onClose={() => setUpgradeModalOpen(false)}
+			></UpgradeToProModal>
+			<AnimatePresence>
+				{isDemoModalOpen && (
+					<StorylaneDemoModal onClose={handleCloseDemo} />
+				)}
+			</AnimatePresence>
 			{renderWelcomeModal()}
 			<audio ref={remoteAudioRef} autoPlay playsInline />
 			{displayedMessages.length > 0 &&

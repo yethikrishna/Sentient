@@ -18,11 +18,16 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 
 		const data = await response.json()
 		if (!response.ok) {
-			throw new Error(data.error || "Failed to add task")
+			// Propagate the error and status code from the backend directly
+			return NextResponse.json(
+				{ error: data.detail || "Failed to add task" },
+				{ status: response.status }
+			)
 		}
 		return NextResponse.json(data)
 	} catch (error) {
 		console.error("API Error in /tasks/add:", error)
+		// This catch is for network errors or if JSON parsing fails
 		return NextResponse.json({ error: error.message }, { status: 500 })
 	}
 })

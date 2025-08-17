@@ -23,8 +23,108 @@ import { motion, AnimatePresence } from "framer-motion"
 import { formatDistanceToNow, parseISO } from "date-fns"
 import { cn } from "@utils/cn"
 import dynamic from "next/dynamic"
+import { usePlan } from "@hooks/usePlan"
 import InteractiveNetworkBackground from "@components/ui/InteractiveNetworkBackground"
 import ModalDialog from "@components/ModalDialog"
+
+const proPlanFeatures = [
+	{ name: "Text Chat", limit: "100 messages per day" },
+	{ name: "Voice Chat", limit: "10 minutes per day" },
+	{ name: "One-Time Tasks", limit: "20 async tasks per day" },
+	{ name: "Recurring Tasks", limit: "10 active recurring workflows" },
+	{ name: "Triggered Tasks", limit: "10 triggered workflows" },
+	{
+		name: "Parallel Agents",
+		limit: "5 complex tasks per day with 50 sub agents"
+	},
+	{ name: "File Uploads", limit: "20 files per day" },
+	{ name: "Memories", limit: "Unlimited memories" },
+	{
+		name: "Other Integrations",
+		limit: "Notion, GitHub, Slack, Discord, Trello"
+	}
+]
+
+const UpgradeToProModal = ({ isOpen, onClose }) => {
+	if (!isOpen) return null
+
+	const handleUpgrade = () => {
+		const dashboardUrl = process.env.NEXT_PUBLIC_LANDING_PAGE_URL
+		if (dashboardUrl) {
+			window.location.href = `${dashboardUrl}/dashboard`
+		}
+		onClose()
+	}
+
+	return (
+		<AnimatePresence>
+			{isOpen && (
+				<motion.div
+					initial={{ opacity: 0 }}
+					animate={{ opacity: 1 }}
+					exit={{ opacity: 0 }}
+					className="fixed inset-0 bg-black/70 backdrop-blur-md z-[100] flex items-center justify-center p-4"
+					onClick={onClose}
+				>
+					<motion.div
+						initial={{ scale: 0.95, y: 20 }}
+						animate={{ scale: 1, y: 0 }}
+						exit={{ scale: 0.95, y: -20 }}
+						transition={{ duration: 0.2, ease: "easeInOut" }}
+						onClick={(e) => e.stopPropagation()}
+						className="relative bg-neutral-900/90 backdrop-blur-xl p-6 rounded-2xl shadow-2xl w-full max-w-lg border border-neutral-700 flex flex-col"
+					>
+						<header className="text-center mb-4">
+							<h2 className="text-2xl font-bold text-white flex items-center justify-center gap-2">
+								<IconSparkles className="text-brand-orange" />
+								Upgrade to Pro
+							</h2>
+							<p className="text-neutral-400 mt-2">
+								Unlock unlimited memories and other powerful
+								features.
+							</p>
+						</header>
+						<main className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 my-4">
+							{proPlanFeatures.map((feature) => (
+								<div
+									key={feature.name}
+									className="flex items-start gap-2.5"
+								>
+									<IconCheck
+										size={18}
+										className="text-green-400 flex-shrink-0 mt-0.5"
+									/>
+									<div>
+										<p className="text-white text-sm font-medium">
+											{feature.name}
+										</p>
+										<p className="text-neutral-400 text-xs">
+											{feature.limit}
+										</p>
+									</div>
+								</div>
+							))}
+						</main>
+						<footer className="mt-4 flex flex-col gap-2">
+							<button
+								onClick={handleUpgrade}
+								className="w-full py-2.5 px-5 rounded-lg bg-brand-orange hover:bg-brand-orange/90 text-brand-black font-semibold transition-colors"
+							>
+								Upgrade to Pro - $9/month
+							</button>
+							<button
+								onClick={onClose}
+								className="w-full py-2 px-5 rounded-lg hover:bg-neutral-800 text-sm font-medium text-neutral-400"
+							>
+								Not now
+							</button>
+						</footer>
+					</motion.div>
+				</motion.div>
+			)}
+		</AnimatePresence>
+	)
+}
 
 const InfoPanel = ({ onClose, title, children }) => (
 	<motion.div
@@ -463,6 +563,8 @@ export default function MemoriesPage() {
 	const [selectedMemory, setSelectedMemory] = useState(null)
 	const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false)
 	const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+	const [isUpgradeModalOpen, setUpgradeModalOpen] = useState(false)
+	const { isPro } = usePlan()
 	const [userDetails, setUserDetails] = useState(null)
 
 	const topics = useMemo(() => {
@@ -484,12 +586,16 @@ export default function MemoriesPage() {
 		setIsLoading(true)
 		try {
 			if (view === "list") {
-				const response = await fetch("/api/memories")
+				const response = await fetch("/api/memories", {
+					cache: "no-store"
+				})
 				if (!response.ok) throw new Error("Failed to fetch memories.")
 				const data = await response.json()
 				setMemories(data.memories || [])
 			} else {
-				const response = await fetch("/api/memories/graph")
+				const response = await fetch("/api/memories/graph", {
+					cache: "no-store"
+				})
 				if (!response.ok)
 					throw new Error("Failed to fetch memory graph data.")
 				const data = await response.json()
@@ -532,14 +638,30 @@ export default function MemoriesPage() {
 				body: JSON.stringify({ content, source: "manual_entry" })
 			})
 			if (!res.ok) {
-				const errorData = await res.json()
-				throw new Error(errorData.error || "Failed to add memory")
+				const errorData = await res.json().catch(() => ({}))
+				const error = new Error(
+					errorData.error || "Failed to add memory"
+				)
+				error.status = res.status
+				throw error
 			}
 			toast.success("Memory added successfully!", { id: toastId })
 			setIsCreateModalOpen(false)
 			await fetchData() // Refresh data
 		} catch (error) {
-			toast.error(error.message, { id: toastId })
+			if (error.status === 429) {
+				toast.error(
+					error.message ||
+						"You've reached your memory limit for the free plan.",
+					{ id: toastId }
+				)
+				if (!isPro) {
+					setUpgradeModalOpen(true)
+					setIsCreateModalOpen(false) // Close the create modal
+				}
+			} else {
+				toast.error(error.message, { id: toastId })
+			}
 		}
 	}
 
@@ -610,6 +732,10 @@ export default function MemoriesPage() {
 
 	return (
 		<div className="flex-1 flex h-screen text-white overflow-hidden">
+			<UpgradeToProModal
+				isOpen={isUpgradeModalOpen}
+				onClose={() => setUpgradeModalOpen(false)}
+			/>
 			<AnimatePresence>
 				{isInfoPanelOpen && (
 					<InfoPanel

@@ -1,8 +1,8 @@
 // src/client/app/layout.js
 import { Auth0Provider } from "@auth0/nextjs-auth0"
 import "@styles/globals.css" // Import global styles for the application
-import { Toaster } from "react-hot-toast" // Import Toaster component for displaying toast notifications
-import React from "react"
+import { Toaster } from "react-hot-toast"
+import React, { Suspense } from "react"
 import LayoutWrapper from "@components/LayoutWrapper"
 import { PostHogProvider } from "@components/PostHogProvider"
 
@@ -13,7 +13,7 @@ import { PostHogProvider } from "@components/PostHogProvider"
  */
 export const metadata = {
 	title: "Sentient", // Title of the application, displayed in browser tab or window title
-	description: "Your autopilot for productivity" // Description of the application, used for SEO purposes
+	description: "Your personal AI that actually gets work done" // Description of the application, used for SEO purposes
 }
 
 /**
@@ -64,12 +64,14 @@ export default function RootLayout({ children }) {
 				/>
 				<meta name="theme-color" content="#F1A21D" />
 			</head>
-			<body className="font-sans">
+			<body className="font-sans" suppressHydrationWarning>
 				<Auth0Provider>
 					<PostHogProvider>
 						<Toaster position="bottom-right" />
 						<div className="flex h-screen w-full text-white overflow-hidden">
-							<LayoutWrapper>{children}</LayoutWrapper>
+							<Suspense>
+								<LayoutWrapper>{children}</LayoutWrapper>
+							</Suspense>
 						</div>
 					</PostHogProvider>
 				</Auth0Provider>

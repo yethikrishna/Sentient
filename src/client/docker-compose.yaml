@@ -4,9 +4,6 @@ services:
     sentient-client:
         build:
             context: .
-            # FIX: Pass build-time environment variables from the .env file.
-            # This is crucial for NEXT_PUBLIC_ variables to be baked into the
-            # client-side JavaScript bundle during the `next build` process.
             args:
                 - NEXT_PUBLIC_APP_SERVER_URL=${NEXT_PUBLIC_APP_SERVER_URL}
                 - NEXT_PUBLIC_ENVIRONMENT=${NEXT_PUBLIC_ENVIRONMENT}
@@ -22,6 +19,8 @@ services:
                 - MONGO_DB_NAME=${MONGO_DB_NAME}
                 - NEXT_PUBLIC_POSTHOG_KEY=${NEXT_PUBLIC_POSTHOG_KEY}
                 - NEXT_PUBLIC_POSTHOG_HOST=${NEXT_PUBLIC_POSTHOG_HOST}
+                - NEXT_PUBLIC_AUTH0_NAMESPACE=${NEXT_PUBLIC_AUTH0_NAMESPACE}
+                - NEXT_PUBLIC_LANDING_PAGE_URL=${NEXT_PUBLIC_LANDING_PAGE_URL}
                 - NEXT_PUBLIC_VAPID_PUBLIC_KEY=${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
                 - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
                 - VAPID_ADMIN_EMAIL=${VAPID_ADMIN_EMAIL}
@@ -29,7 +28,5 @@ services:
         restart: unless-stopped
         ports:
             - "3000:3000"
-        # This loads the SAME .env file into the RUNNING container
-        # for server-side code to use at runtime.
         env_file:
             - .env

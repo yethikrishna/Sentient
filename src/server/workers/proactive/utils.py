@@ -22,10 +22,11 @@ def event_pre_filter(event_data: Dict[str, Any], event_type: str, user_email: Op
     """
     if event_type == "gmail":
         headers = {h['name'].lower(): h['value'] for h in event_data.get('payload', {}).get('headers', [])}
-        subject = event_data.get("subject", "").lower()
-        snippet = event_data.get("snippet", "").lower()
-        body = event_data.get("body", "").lower()
-        content_to_check = f"{subject} {snippet}"
+        subject = event_data.get("subject", "")
+        # Use the correct keys from the Composio payload
+        snippet = event_data.get("preview", {}).get("body", "")
+        body = event_data.get("message_text", "")
+        content_to_check = f"{subject} {snippet}".lower()
 
         # Filter 1: Auto-replies (e.g., out-of-office)
         if headers.get("auto-submitted") == "auto-replied":
@@ -67,9 +68,11 @@ def event_pre_filter(event_data: Dict[str, Any], event_type: str, user_email: Op
             return False
 
         # Filter 2: Events created by the user themselves
-        if event_data.get("organizer", {}).get("self"):
-            logger.info(f"GCal pre-filter: Discarding event created by the user. Summary: {summary}")
-            return False
+        # Composio payload provides organizer_email. Compare it with the user's email.
+        organizer_email = event_data.get("organizer_email", "").lower()
+        if user_email and organizer_email == user_email.lower():
+             logger.info(f"GCal pre-filter: Discarding event created by the user. Summary: {summary}")
+             return False
 
         # Filter 3: Events the user has already declined
         if user_email:

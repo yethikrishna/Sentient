@@ -14,25 +14,21 @@ from celery import group, chord
 from main.analytics import capture_event
 from json_extractor import JsonExtractor
 from workers.utils.api_client import notify_user, push_task_list_update
-from main.config import INTEGRATIONS_CONFIG # This is the new field
+from main.plans import PLAN_LIMITS
+from main.config import INTEGRATIONS_CONFIG
 from main.tasks.prompts import TASK_CREATION_PROMPT
 from mcp_hub.memory.utils import initialize_embedding_model, initialize_agents, cud_memory
-from mcp_hub.tasks.prompts import RESOURCE_MANAGER_SYSTEM_PROMPT
-from main.llm import run_agent as run_main_agent
+from main.llm import run_agent as run_main_agent, LLMProviderDownError
 from main.db import MongoManager
 from workers.celery_app import celery_app
-from workers.planner.llm import get_planner_agent # noqa: E501
-from workers.planner.prompts import CONTEXT_RESEARCHER_SYSTEM_PROMPT, TOOL_SELECTOR_SYSTEM_PROMPT 
-from workers.proactive.main import run_proactive_pipeline_logic # noqa: E501
-from workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions # noqa: E501
+from workers.planner.llm import get_planner_agent
+from workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions
 from workers.executor.tasks import execute_task_plan, run_single_item_worker, aggregate_results_callback
 from main.vector_db import get_conversation_summaries_collection
-from main.chat.prompts import STAGE_1_SYSTEM_PROMPT
-from mcp_hub.tasks.prompts import ITEM_EXTRACTOR_SYSTEM_PROMPT
+from mcp_hub.tasks.prompts import ITEM_EXTRACTOR_SYSTEM_PROMPT, RESOURCE_MANAGER_SYSTEM_PROMPT
 from workers.utils.text_utils import clean_llm_output
 
 # Imports for poller logic
-from main.llm import LLMProviderDownError
 from workers.poller.gmail.service import GmailPollingService
 from workers.poller.gcalendar.service import GCalendarPollingService
 from workers.poller.gmail.db import PollerMongoManager as GmailPollerDB
@@ -71,60 +67,56 @@ def _get_tool_lists(user_integrations: Dict) -> Tuple[Dict, Dict]:
                 disconnected_tools[tool_name] = config.get("description", "")
     return connected_tools, disconnected_tools
 
-async def _select_relevant_tools(query: str, available_tools_map: Dict[str, str]) -> List[str]:
-    """
-    Uses a lightweight LLM call to select relevant tools for a given query.
-    """
-    if not available_tools_map:
-        return []
-
-    try:
-        prompt = f"The user is trying to perform the following task: \"{query}\""
-
-        messages = [{'role':'system', 'content': TOOL_SELECTOR_SYSTEM_PROMPT}, {'role': 'user', 'content': prompt}]
-
-        def _run_selector_sync():
-            final_content_str = ""
-            for chunk in run_main_agent(system_message=STAGE_1_SYSTEM_PROMPT, function_list=[], messages=messages):
-                if isinstance(chunk, list) and chunk:
-                    last_message = chunk[-1]
-                    if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
-                        final_content_str = last_message["content"]
-            return final_content_str
-
-        final_content_str = await asyncio.to_thread(_run_selector_sync)
-        cleaned_output = clean_llm_output(final_content_str)
-        parsed_output = JsonExtractor.extract_valid_json(cleaned_output)
-        selected_tools = []
-        if isinstance(parsed_output, dict) and "topic_changed" in parsed_output and "tools" in parsed_output:
-            selected_tools = parsed_output.get("tools", [])
-
-            # Separate into connected and disconnected
-            connected_tools_selected = [tool for tool in selected_tools if tool in available_tools_map]
-            
-            selected_tools = connected_tools_selected
-        
-        return selected_tools
-    except Exception as e:
-        logger.error(f"Error during tool selection for context search: {e}", exc_info=True)
-        return list(available_tools_map.keys())
-
 # Helper to run async code in Celery's sync context
 def run_async(coro):
+    # Always create a new loop for each task to ensure isolation and prevent conflicts.
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop.run_until_complete(coro)
+        return loop.run_until_complete(coro)
+    finally:
+        # Ensure the connection pool for this specific loop is closed.
+        from mcp_hub.memory.db import close_db_pool_for_loop
+        loop.run_until_complete(close_db_pool_for_loop(loop))
+        loop.close()
+        asyncio.set_event_loop(None)
 
-@celery_app.task(name="proactive_reasoning_pipeline")
-def proactive_reasoning_pipeline(user_id: str, event_type: str, event_data: Dict[str, Any]):
-    """
-    Celery task entry point for the new proactive reasoning pipeline.
-    """
-    logger.info(f"Celery worker received task 'proactive_reasoning_pipeline' for user_id: {user_id}, event_type: {event_type}")
-    run_async(run_proactive_pipeline_logic(user_id, event_type, event_data))
+async def async_cud_memory_task(user_id: str, information: str, source: Optional[str] = None):
+    """The async logic for the CUD memory task."""
+    db_manager = MongoManager()
+    username = user_id  # Default fallback
+    try:
+        # --- Enforce Memory Limit ---
+        user_profile = await db_manager.get_user_profile(user_id)
+        plan = user_profile.get("userData", {}).get("plan", "free") if user_profile else "free"
+        limit = PLAN_LIMITS[plan].get("memories_total", 0)
+
+        if limit != float('inf'):
+            from mcp_hub.memory import db as memory_db
+            pool = await memory_db.get_db_pool()
+            async with pool.acquire() as conn:
+                current_count = await conn.fetchval("SELECT COUNT(*) FROM facts WHERE user_id = $1", user_id)
+            if current_count >= limit:
+                logger.warning(f"User {user_id} on '{plan}' plan reached memory limit of {limit}. CUD operation aborted.")
+                await notify_user(user_id, f"You've reached your memory limit of {limit} facts. Please upgrade to Pro for unlimited memories.")
+                return
+
+        # --- Fetch user's name before calling cud_memory ---
+        if user_profile:
+            # Use the name from personalInfo, which is set during onboarding and can be updated in settings.
+            username = user_profile.get("userData", {}).get("personalInfo", {}).get("name", user_id)
+
+    except Exception as e:
+        logger.error(f"Error during pre-CUD setup for user {user_id}: {e}", exc_info=True)
+        # We can still proceed with the CUD operation, just using the user_id as the name.
+    finally:
+        await db_manager.close()
+
+    # Initialize models required for the CUD operation
+    initialize_embedding_model()
+    initialize_agents()
+    # Pass the fetched username to the cud_memory function
+    await cud_memory(user_id, information, source, username)
 
 @celery_app.task(name="cud_memory_task")
 def cud_memory_task(user_id: str, information: str, source: Optional[str] = None):
@@ -133,64 +125,9 @@ def cud_memory_task(user_id: str, information: str, source: Optional[str] = None
     This runs the core memory management logic asynchronously.
     """
     logger.info(f"Celery worker received cud_memory_task for user_id: {user_id}")
-
-    # --- NEW: Fetch user's name before calling cud_memory ---
-    db_manager = MongoManager()
-    username = user_id # Default fallback
-    try:
-        user_profile = run_async(db_manager.get_user_profile(user_id))
-        if user_profile:
-            username = user_profile.get("userData", {}).get("personalInfo", {}).get("name", user_id)
-    except Exception as e:
-        logger.error(f"Failed to fetch user profile for {user_id} in cud_memory_task: {e}")
-    finally:
-        run_async(db_manager.close())
-    # --- END NEW ---
-
-    initialize_embedding_model()
-    initialize_agents()
-    # Pass the fetched username to the cud_memory function
-    run_async(cud_memory(user_id, information, source, username))
-
-@celery_app.task(name="create_task_from_suggestion")
-def create_task_from_suggestion(user_id: str, suggestion_payload: Dict[str, Any], context: Optional[Dict[str, Any]] = None):
-    """
-    Takes an approved suggestion payload and creates a new task.
-    """
-    logger.info(f"Creating task from approved suggestion for user '{user_id}'. Type: {suggestion_payload.get('suggestion_type')}")
-    
-    action_details = suggestion_payload.get("action_details", {})
-    action_type = action_details.get("action_type")
-
-    # Define the task name from the suggestion description and the description from all available context.
-    name = suggestion_payload.get('suggestion_description', f"Proactive Task: {action_type}")
-    description_parts = [
-        f"Action Details: {json.dumps(action_details, indent=2)}",
-        f"Reasoning: {suggestion_payload.get('reasoning', 'N/A')}",
-        f"Full Context: {json.dumps(context, indent=2, default=str)}"
-    ]
-    description = "\n\n---\n\n".join(description_parts)
-
-    worker_mongo_manager = None
-    try:
-        worker_mongo_manager = MongoManager()
-        task_data = {
-            "name": name,
-            "description": description,
-            "original_context": {
-                "source": "proactive_suggestion",
-                "suggestion_type": suggestion_payload.get("suggestion_type"),
-                "trigger_event": context.get("trigger_event")
-            }
-        }
-        task_id = run_async(worker_mongo_manager.add_task(user_id, task_data))
-
-        # For proactive tasks, we have enough context to go straight to planning.
-        generate_plan_from_context.delay(task_id, user_id)
-        logger.info(f"Successfully created and dispatched new task '{task_id}' from suggestion for planning.")
-    finally:
-        if worker_mongo_manager:
-            run_async(worker_mongo_manager.close())
+    # This single call to run_async wraps the entire asynchronous logic,
+    # ensuring the event loop and DB connections are managed correctly for the task's lifecycle.
+    run_async(async_cud_memory_task(user_id, information, source))
 
 @celery_app.task(name="orchestrate_swarm_task")
 def orchestrate_swarm_task(task_id: str, user_id: str):
@@ -215,6 +152,11 @@ async def async_orchestrate_swarm_task(task_id: str, user_id: str):
             logger.error(f"Orchestrator: Task {task_id} not found or is not a swarm task.")
             return
 
+        # --- Get user plan to check limits ---
+        user_profile = await db_manager.get_user_profile(user_id)
+        plan = user_profile.get("userData", {}).get("plan", "free") if user_profile else "free"
+        sub_agent_limit = PLAN_LIMITS[plan].get("swarm_sub_agents_max", 10)
+
         swarm_details = task.get("swarm_details", {})
         goal = swarm_details.get("goal")
         items = swarm_details.get("items")
@@ -226,10 +168,9 @@ async def async_orchestrate_swarm_task(task_id: str, user_id: str):
             if not goal:
                  raise ValueError("Swarm task is missing a goal to extract items from.")
 
-            messages = [{'role': 'user', 'content': goal}]
-
             extractor_response_str = ""
-            for chunk in run_main_agent_with_fallback(system_message=ITEM_EXTRACTOR_SYSTEM_PROMPT, function_list=[], messages=messages):
+            messages = [{'role': 'user', 'content': goal}]
+            for chunk in run_main_agent(system_message=ITEM_EXTRACTOR_SYSTEM_PROMPT, function_list=[], messages=messages):
                 if isinstance(chunk, list) and chunk:
                     last_message = chunk[-1]
                     if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
@@ -303,6 +244,10 @@ async def async_orchestrate_swarm_task(task_id: str, user_id: str):
             worker_prompt = config.get("worker_prompt")
             required_tools = config.get("required_tools", [])
             
+            # --- Enforce sub-agent limit ---
+            if total_agents > sub_agent_limit:
+                raise Exception(f"Swarm plan exceeds the sub-agent limit for your plan ({total_agents} > {sub_agent_limit}). Please reduce the number of items or upgrade your plan.")
+
             if not all([isinstance(item_indices, list), worker_prompt, isinstance(required_tools, list)]):
                 logger.warning(f"Skipping invalid worker configuration: {config}")
                 continue
@@ -385,7 +330,7 @@ async def async_refine_and_plan_ai_task(task_id: str, user_id: str):
             user_timezone = ZoneInfo("UTC")
         current_time_str = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
 
-        system_prompt = TASK_CREATION_PROMPT.format( # noqa
+        system_prompt = TASK_CREATION_PROMPT.format(
             user_name=user_name,
             user_timezone=user_timezone_str,
             current_time=current_time_str
@@ -457,7 +402,7 @@ async def async_process_change_request(task_id: str, user_id: str, user_message:
     db_manager = PlannerMongoManager()
     try:
         # 1. Fetch the task and its full history
-        task = await db_manager.get_task(task_id) # This is the new field
+        task = await db_manager.get_task(task_id)
         if not task:
             logger.error(f"Task Change Request: Task {task_id} not found.")
             return
@@ -472,7 +417,7 @@ async def async_process_change_request(task_id: str, user_id: str, user_message:
 
         # 3. Update task status and chat history in DB
         await db_manager.update_task_field(task_id, {
-            "chat_history": chat_history, # This is the new field
+            "chat_history": chat_history,
             "status": "planning" # Revert to planning to re-evaluate
         })
 
@@ -504,73 +449,6 @@ def process_action_item(user_id: str, action_items: list, topics: list, source_e
     """Orchestrates the pre-planning phase for a new proactive task."""
     run_async(async_process_action_item(user_id, action_items, topics, source_event_id, original_context))
 
-async def run_context_research(user_id: str, task_description: str, topics: list, original_context: dict, db_manager: PlannerMongoManager) -> str:
-    """
-    Uses a unified agent to search memory and relevant tools to gather context for the planner.
-    Returns a string of synthesized context.
-    """
-    user_profile = await db_manager.user_profiles_collection.find_one({"user_id": user_id})
-    if not user_profile:
-        logger.error(f"User profile not found for {user_id}. Cannot run research.")
-        return "Could not find user profile to begin research."
-
-    user_integrations = user_profile.get("userData", {}).get("integrations", {})
-
-    # 1. Get all available (connected + built-in) tools for the user
-    connected_tools, _ = _get_tool_lists(user_integrations)
-
-    # 2. Select tools relevant to the task description
-    relevant_tool_names = await _select_relevant_tools(task_description, connected_tools)
-
-    # 3. Always include memory for context verification
-    final_tool_names = set(relevant_tool_names)
-    final_tool_names.add("memory")
-
-    logger.info("Selected tools for context verification: " + ", ".join(final_tool_names))
-
-    # 4. Build the MCP server config and prompt info for the agent
-    mcp_servers_for_agent = {}
-    available_tools_for_prompt = {}
-
-    for tool_name in final_tool_names:
-        config = INTEGRATIONS_CONFIG.get(tool_name)
-        if not config: continue
-
-        available_tools_for_prompt[tool_name] = config.get("description", "")
-        
-        mcp_config = config.get("mcp_server_config")
-        if mcp_config and mcp_config.get("url"):
-             mcp_servers_for_agent[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
-
-    if not mcp_servers_for_agent:
-        logger.warning(f"No MCP servers could be configured for context search for user {user_id}. Cannot verify context.")
-        return "No tools were available to conduct research."
-
-    logger.info(f"Context Verifier for user {user_id} will use tools: {list(mcp_servers_for_agent.keys())}")
-    
-    original_context_str = json.dumps(original_context, indent=2, default=str)
-
-    system_prompt = CONTEXT_RESEARCHER_SYSTEM_PROMPT.format(
-        original_context=original_context_str,
-    )
-    
-    tools_config = [{"mcpServers": mcp_servers_for_agent}]
-
-    user_prompt = f"User's task request: '{task_description}'. Please research and provide context."
-    messages = [{'role': 'user', 'content': user_prompt}]
-
-    final_response_str = ""
-    for chunk in run_main_agent_with_fallback(system_message=system_prompt, function_list=tools_config, messages=messages):
-        if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
-            final_response_str = chunk[-1].get("content", "")
-
-    response_data = JsonExtractor.extract_valid_json(clean_llm_output(final_response_str))
-    if response_data and isinstance(response_data.get("content"), str):
-        return response_data["content"]
-    else:
-        logger.error(f"Research agent returned invalid data: {response_data}. Cannot provide context.")
-        return "The research agent failed to return valid context."
-
 async def async_process_action_item(user_id: str, action_items: list, topics: list, source_event_id: str, original_context: dict):
     """Async logic for the proactive task orchestrator."""
     db_manager = PlannerMongoManager()
@@ -583,7 +461,7 @@ async def async_process_action_item(user_id: str, action_items: list, topics: li
         # Per spec, create task with 'planning' status and immediately trigger planner.
         task = await db_manager.create_initial_task(user_id, task_description, full_description, action_items, topics, original_context, source_event_id)
         task_id = task["task_id"]
-        generate_plan_from_context.delay(task_id)
+        generate_plan_from_context.delay(task_id, user_id)
         logger.info(f"Task {task_id} created with status 'planning' and dispatched to planner worker.")
 
     except Exception as e:
@@ -636,19 +514,6 @@ async def async_generate_plan(task_id: str, user_id: str):
             original_context["previous_plan"] = task.get("plan")
             original_context["previous_result"] = task.get("result")
 
-        task_description = task.get("description", "")
-
-        # --- New Research Step ---
-        logger.info(f"Task {task_id}: Starting context research phase.")
-        found_context = await run_context_research(user_id, task_description, task.get("topics", []), original_context, db_manager)
-
-        # Save the found context to the task's latest run for the planner and executor to use.
-        # This assumes a 'run' object is created or updated here. For simplicity, we'll add it to the top-level task.
-        await db_manager.update_task_field(task_id, {"found_context": found_context})
-
-        # --- Proceed with planning ---
-        logger.info(f"Task {task_id}: Context research complete. Generating plan.")
-
         user_profile = await db_manager.user_profiles_collection.find_one(
             {"user_id": user_id},
             {"userData.personalInfo": 1} # Projection to get only necessary data
@@ -688,7 +553,7 @@ async def async_generate_plan(task_id: str, user_id: str):
 
         available_tools = get_all_mcp_descriptions()
 
-        agent_config = get_planner_agent(available_tools, current_user_time, user_name, user_location, found_context)
+        agent_config = get_planner_agent(available_tools, current_user_time, user_name, user_location)
 
         user_prompt_content = "Please create a plan for the following action items:\n- " + "\n- ".join(action_items)
         messages = [{'role': 'user', 'content': user_prompt_content}]
@@ -758,7 +623,7 @@ async def async_refine_task_details(task_id: str):
         user_timezone = ZoneInfo(user_timezone_str)
         current_time_str = datetime.datetime.now(user_timezone).strftime('%Y-%m-%d %H:%M:%S %Z')
 
-        system_prompt = TASK_CREATION_PROMPT.format( # noqa
+        system_prompt = TASK_CREATION_PROMPT.format(
             user_name=user_name,
             user_timezone=user_timezone_str,
             current_time=current_time_str
@@ -783,7 +648,15 @@ async def async_refine_task_details(task_id: str):
     finally:
         await db_manager.close()
 
-def _event_matches_filter(event_data: Dict[str, Any], task_filter: Dict[str, Any], source: str) -> bool: # noqa
+@celery_app.task(name="execute_triggered_task")
+def execute_triggered_task(user_id: str, source: str, event_type: str, event_data: Dict[str, Any]):
+    """
+    Checks for and executes any tasks triggered by a new event.
+    """
+    logger.info(f"Checking for triggered tasks for user '{user_id}' from source '{source}' event '{event_type}'.")
+    run_async(async_execute_triggered_task(user_id, source, event_type, event_data))
+
+def _event_matches_filter(event_data: Dict[str, Any], task_filter: Dict[str, Any], source: str) -> bool:
     """
     Checks if an event's data matches the conditions defined in a task's filter.
     Supports complex, MongoDB-like query syntax including $or, $and, $not,
@@ -817,11 +690,16 @@ def _event_matches_filter(event_data: Dict[str, Any], task_filter: Dict[str, Any
 
         # If no logical operators, it's an implicit AND of field conditions
         for field, query in condition.items():
-            event_value = data.get(field)
+            event_value = None
+            # Special remapping for gmail 'from' filter to match Composio's 'sender' field
+            if field == 'from' and source == 'gmail':
+                event_value = data.get('sender')
+            else:
+                event_value = data.get(field)
 
             # Special handling for 'from' field
             if field == 'from' and source == 'gmail' and isinstance(event_value, str):
-                event_value = _extract_email(event_value)
+                event_value = _extract_email(event_value) # This will now work correctly
 
             if isinstance(query, dict): # Field has operators like {$contains: ...}
                 for op, op_val in query.items():
@@ -909,35 +787,13 @@ async def async_execute_triggered_task(user_id: str, source: str, event_type: st
     finally:
         await db_manager.close()
 
-@celery_app.task(name="execute_triggered_task")
-def execute_triggered_task(user_id: str, source: str, event_type: str, event_data: Dict[str, Any]):
-    """
-    Checks for and executes any tasks triggered by a new event.
-    """
-    logger.info(f"Checking for triggered tasks for user '{user_id}' from source '{source}' event '{event_type}'.")
-    run_async(async_execute_triggered_task(user_id, source, event_type, event_data))
-
 # --- Polling Tasks ---
-@celery_app.task(name="poll_gmail_for_proactivity")
-def poll_gmail_for_proactivity(user_id: str, polling_state: dict):
-    logger.info(f"Polling Gmail for proactivity for user {user_id}")
-    db_manager = GmailPollerDB()
-    service = GmailPollingService(db_manager)
-    run_async(service._run_single_user_poll_cycle(user_id, polling_state, mode='proactivity'))
-
 @celery_app.task(name="poll_gmail_for_triggers")
 def poll_gmail_for_triggers(user_id: str, polling_state: dict):
     logger.info(f"Polling Gmail for triggers for user {user_id}")
     db_manager = GmailPollerDB()
     service = GmailPollingService(db_manager)
     run_async(service._run_single_user_poll_cycle(user_id, polling_state, mode='triggers'))
-
-@celery_app.task(name="poll_gcalendar_for_proactivity")
-def poll_gcalendar_for_proactivity(user_id: str, polling_state: dict):
-    logger.info(f"Polling GCalendar for proactivity for user {user_id}")
-    db_manager = GCalPollerDB()
-    service = GCalendarPollingService(db_manager)
-    run_async(service._run_single_user_poll_cycle(user_id, polling_state, mode='proactivity'))
 
 @celery_app.task(name="poll_gcalendar_for_triggers")
 def poll_gcalendar_for_triggers(user_id: str, polling_state: dict):
@@ -947,12 +803,6 @@ def poll_gcalendar_for_triggers(user_id: str, polling_state: dict):
     run_async(service._run_single_user_poll_cycle(user_id, polling_state, mode='triggers'))
 
 # --- Scheduler Tasks ---
-@celery_app.task(name="schedule_proactivity_polling")
-def schedule_proactivity_polling():
-    """Celery Beat task for the less frequent proactivity polling."""
-    logger.info("Proactivity Polling Scheduler: Checking for due tasks...")
-    run_async(async_schedule_polling('proactivity'))
-
 @celery_app.task(name="schedule_trigger_polling")
 def schedule_trigger_polling():
     """Celery Beat task for the frequent triggered workflow polling."""
@@ -980,15 +830,9 @@ async def async_schedule_polling(mode: str):
 
                 if locked_task_state:
                     if service_name == "gmail":
-                        if mode == 'proactivity':
-                            poll_gmail_for_proactivity.delay(user_id, locked_task_state)
-                        else: # triggers
-                            poll_gmail_for_triggers.delay(user_id, locked_task_state)
+                        poll_gmail_for_triggers.delay(user_id, locked_task_state)
                     elif service_name == "gcalendar":
-                        if mode == 'proactivity':
-                            poll_gcalendar_for_proactivity.delay(user_id, locked_task_state)
-                        else: # triggers
-                            poll_gcalendar_for_triggers.delay(user_id, locked_task_state)
+                        poll_gcalendar_for_triggers.delay(user_id, locked_task_state)
                     logger.info(f"Dispatched '{mode}' polling task for {user_id} - service: {service_name}")
     finally:
         await db_manager.close()
@@ -1005,12 +849,16 @@ def calculate_next_run(schedule: Dict[str, Any], last_run: Optional[datetime.dat
         user_timezone_str = "UTC"
         user_tz = ZoneInfo("UTC")
 
+    time_str = schedule.get("time", "09:00")
+    if not isinstance(time_str, str) or ":" not in time_str:
+        logger.warning(f"Invalid or missing 'time' in recurring schedule: {schedule}. Defaulting to 09:00.")
+        time_str = "09:00"
+
     # The reference time for 'after' should be in the user's timezone to handle day boundaries correctly
     start_time_user_tz = (last_run or now_utc).astimezone(user_tz)
 
     try:
         frequency = schedule.get("frequency")
-        time_str = schedule.get("time", "09:00") # Default to 9 AM
         hour, minute = map(int, time_str.split(':'))
 
         # Create the start datetime in the user's timezone

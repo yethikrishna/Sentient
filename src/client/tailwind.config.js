@@ -27,6 +27,11 @@ module.exports = {
 				"brand-orange": "#F1A21D",
 				"brand-white": "#DFDEDC",
 				"brand-red": "#D63447",
+				"brand-black": "#000000",
+				"brand-gray": "#26262B",
+				"brand-orange": "#F1A21D",
+				"brand-white": "#DFDEDC",
+				"brand-red": "#D63447",
 				"brand-yellow": "#FFC947",
 				"brand-green": "#28A745",
 				"sentient-blue": "#4a9eff",
@@ -36,6 +41,11 @@ module.exports = {
 				meteor: {
 					"0%": { transform: "translateY(-20%) translateX(-50%)" },
 					"100%": { transform: "translateY(300%) translateX(-50%)" }
+				},
+				"spin-reverse": {
+					to: {
+						transform: "rotate(-360deg)"
+					}
 				},
 				shimmer: {
 					from: {

@@ -224,7 +224,6 @@ async def async_execute_task_plan(task_id: str, user_id: str, run_id: str):
 
     user_profile = await db.user_profiles.find_one({"user_id": user_id})
     personal_info = user_profile.get("userData", {}).get("personalInfo", {}) if user_profile else {}
-    preferences = user_profile.get("userData", {}).get("preferences", {}) if user_profile else {}
     user_name = personal_info.get("name", "User")
     user_location_raw = personal_info.get("location", "Not specified")
     if isinstance(user_location_raw, dict):
@@ -266,7 +265,6 @@ async def async_execute_task_plan(task_id: str, user_id: str, run_id: str):
 
     plan_description = task.get("name", "Unnamed plan")
     original_context_str = json.dumps(original_context_data, indent=2, default=str) if original_context_data else "No original context provided."
-    block_id_prompt = f"The block_id for this task is '{block_id}'. You MUST pass this ID to the 'update_progress' tool in the 'block_id' parameter." if block_id else "This task did not originate from a tasks block."
 
     full_plan_prompt = (
         f"You are Sentient, a resourceful and autonomous executor agent. Your goal is to complete the user's request by intelligently following the provided plan.\n\n" # noqa
@@ -278,14 +276,13 @@ async def async_execute_task_plan(task_id: str, user_id: str, run_id: str):
         f"**The Plan to Execute:**\n" + "\n".join([f"- Step {i+1}: Use the '{step['tool']}' tool to '{step['description']}'" for i, step in enumerate(task.get("plan", []))]) + "\n\n" # noqa
         "**EXECUTION STRATEGY:**\n" # noqa
         "1.  **Think Step-by-Step:** Before each action, you MUST explain your reasoning and what you are about to do. Your thought process MUST be wrapped in `<think>` tags.\n" # noqa
-        "2.  **Tool Calls:** When you call a tool, you MUST use the `<tool_code>` format. For example: `<tool_code name=\"gdrive_server-gdrive_search\">{{\"query\": \"Q3 Report\"}}</tool_code>`.\n" # noqa
-        "3.  **Execution Flow:** You MUST start by executing the first step of the plan. Do not summarize the plan or provide a final answer until you have executed all steps. Follow the plan sequentially.\n" # noqa
-        "4.  **Map Plan to Tools:** The plan provides a high-level tool name (e.g., 'gmail', 'gdrive'). You must map this to the specific functions available to you (e.g., `gmail_server-sendEmail`, `gdrive_server-gdrive_search`).\n" # noqa
-        "5.  **Be Resourceful & Fill Gaps:** The plan is a guideline. If a step is missing information (e.g., an email address for a manager, a document name), your first action for that step MUST be to use the `memory-search_memory` tool to find the missing information. Do not proceed with incomplete information.\n" # noqa
-        "6.  **Remember New Information:** If you discover a new, permanent fact about the user during your execution (e.g., you find their manager's email is 'boss@example.com'), you MUST use `memory-cud_memory` to save it.\n" # noqa
-        "7.  **Handle Failures:** If a tool fails, analyze the error, think about an alternative approach, and try again. Do not give up easily. Your thought process and the error will be logged automatically.\n" # noqa
-        "8.  **Provide a Final, Detailed Answer:** ONLY after all steps are successfully completed, you MUST provide a final, comprehensive answer to the user. This is not a tool call. Your final response MUST be wrapped in `<answer>` tags. For example: `<answer>I have successfully scheduled the meeting and sent an invitation to John Doe.</answer>`.\n" # noqa
-        "9.  **Contact Information:** To find contact details like phone numbers or emails, use the `gpeople` tool before attempting to send an email or make a call.\n" # noqa
+        "2.  **Execution Flow:** You MUST start by executing the first step of the plan. Do not summarize the plan or provide a final answer until you have executed all steps. Follow the plan sequentially. SEARCH FOR ANY RELEVANT CONTEXT THAT YOU NEED TO COMPLETE THE EXECUTION. \n" # noqa
+        "3.  **Map Plan to Tools:** The plan provides a high-level tool name (e.g., 'gmail', 'gdrive'). You must map this to the specific functions available to you (e.g., `gmail_server-sendEmail`, `gdrive_server-gdrive_search`).\n" # noqa
+        "4.  **Be Resourceful & Fill Gaps:** The plan is a guideline. If a step is missing information (e.g., an email address for a manager, a document name), your first action for that step MUST be to use the `memory-search_memory` tool to find the missing information. Do not proceed with incomplete information.\n" # noqa
+        "5.  **Remember New Information:** If you discover a new, permanent fact about the user during your execution (e.g., you find their manager's email is 'boss@example.com'), you MUST use `memory-cud_memory` to save it.\n" # noqa
+        "6.  **Handle Failures:** If a tool fails, analyze the error, think about an alternative approach, and try again. Do not give up easily. Your thought process and the error will be logged automatically.\n" # noqa
+        "7.  **Provide a Final, Detailed Answer:** ONLY after all steps are successfully completed, you MUST provide a final, comprehensive answer to the user. This is not a tool call. Your final response MUST be wrapped in `<answer>` tags. For example: `<answer>I have successfully scheduled the meeting and sent an invitation to John Doe.</answer>`.\n" # noqa
+        "8.  **Contact Information:** To find contact details like phone numbers or emails, use the `gpeople` tool before attempting to send an email or make a call.\n" # noqa
         "\nNow, begin your work. Think step-by-step and start executing the plan, beginning with Step 1."
     )
     
@@ -293,21 +290,20 @@ async def async_execute_task_plan(task_id: str, user_id: str, run_id: str):
         logger.info(f"Task {task_id}: Starting agent run.")
         initial_messages = [{'role': 'user', 'content': "Begin executing the plan. Follow your instructions meticulously."}]
 
-        # Step 1: Fully exhaust the generator to let the agent run to completion.
-        # This prevents async UI updates from interfering with the agent's internal loop.
-        agent_generator = run_main_agent(
+        last_history_len = len(initial_messages)
+        final_history = None
+
+        for current_history in run_main_agent(
             system_message=full_plan_prompt,
             function_list=tools_config,
             messages=initial_messages
-        )
-        all_history_steps = list(agent_generator)
+        ):
+            final_history = current_history # Keep track of the latest state
 
-        if not all_history_steps:
-            raise Exception("Agent run produced no history, indicating an immediate failure.")
+            if not isinstance(current_history, list):
+                continue
 
-        # Step 2: After completion, process all history steps to send UI updates.
-        last_history_len = len(initial_messages)
-        for current_history in all_history_steps:
+            # Process new messages for UI updates
             new_messages = current_history[last_history_len:]
             for msg in new_messages:
                 updates_to_push = []
@@ -336,11 +332,14 @@ async def async_execute_task_plan(task_id: str, user_id: str, run_id: str):
                 
                 for update in updates_to_push:
                     if update.get("type") != "thought":
+                        # Use asyncio.create_task to send updates without blocking the agent loop
                         asyncio.create_task(add_progress_update(db, task_id, run_id, user_id, update, block_id))
+
             last_history_len = len(current_history)
 
-        # Step 3: Check the final state for a valid answer.
-        final_history = all_history_steps[-1]
+        if not final_history:
+            raise Exception("Agent run produced no history, indicating an immediate failure.")
+
         final_assistant_message = next((msg for msg in reversed(final_history) if msg.get("role") == "assistant"), None)
         
         has_final_answer = False

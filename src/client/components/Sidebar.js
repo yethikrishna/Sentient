@@ -608,7 +608,7 @@ const SidebarContent = ({
 				</button>
 			)}
 
-			<nav className="flex flex-col gap-1 flex-grow overflow-hidden">
+			<nav className="flex flex-col gap-1 flex-grow overflow-y-auto min-h-[200px] custom-scrollbar">
 				{navLinks.map((link) => {
 					const isActive = pathname.startsWith(link.href)
 					return (
@@ -635,162 +635,164 @@ const SidebarContent = ({
 				})}
 				<hr className="border-neutral-800 my-2" />
 			</nav>
-			<button
-				onClick={onNotificationsOpen}
-				className={cn(
-					"flex items-center gap-3 rounded-md p-2 transition-colors duration-200 text-sm relative",
-					"text-neutral-400 hover:text-white hover:bg-neutral-800/50",
-					isCollapsed && "justify-center"
-				)}
-			>
-				<IconBell size={20} />
-				{!isCollapsed && (
-					<span className="font-medium">Notifications</span>
-				)}
-				{unreadCount > 0 && (
-					<div className="absolute top-1.5 right-1.5 h-2 w-2 bg-red-500 rounded-full" />
-				)}
-			</button>
+			<div className="flex-shrink-0 space-y-2 max-h-[calc(100vh-300px)] overflow-y-auto custom-scrollbar">
+				<button
+					onClick={onNotificationsOpen}
+					className={cn(
+						"flex items-center gap-3 rounded-md p-2 transition-colors duration-200 text-sm relative",
+						"text-neutral-400 hover:text-white hover:bg-neutral-800/50",
+						isCollapsed && "justify-center"
+					)}
+				>
+					<IconBell size={20} />
+					{!isCollapsed && (
+						<span className="font-medium">Notifications</span>
+					)}
+					{unreadCount > 0 && (
+						<div className="absolute top-1.5 right-1.5 h-2 w-2 bg-red-500 rounded-full" />
+					)}
+				</button>
 
-			<div className="flex flex-col gap-2">
-				{installPrompt && (
-					<button
-						onClick={handleInstallClick}
-						className={cn(
-							"w-full flex items-center gap-3 bg-green-600/20 border border-green-500/50 text-green-300 rounded-lg p-2 text-left text-sm hover:bg-green-600/40 transition-colors",
-							isCollapsed && "justify-center"
-						)}
-					>
-						<IconDownload size={20} className="flex-shrink-0" />
-						{!isCollapsed && (
-							<span className="font-medium whitespace-nowrap">
-								Install App
-							</span>
-						)}
-					</button>
-				)}
+				<div className="flex flex-col gap-2 mt-2">
+					{installPrompt && (
+						<button
+							onClick={handleInstallClick}
+							className={cn(
+								"w-full flex items-center gap-3 bg-green-600/20 border border-green-500/50 text-green-300 rounded-lg p-2 text-left text-sm hover:bg-green-600/40 transition-colors",
+								isCollapsed && "justify-center"
+							)}
+						>
+							<IconDownload size={20} className="flex-shrink-0" />
+							{!isCollapsed && (
+								<span className="font-medium whitespace-nowrap">
+									Install App
+								</span>
+							)}
+						</button>
+					)}
 
-				{isMobile ? (
-					<button
-						onClick={onMobileClose}
-						className="flex items-center gap-3 rounded-md p-2 transition-colors duration-200 text-sm text-neutral-400 hover:text-white hover:bg-neutral-800/50"
-					>
-						<IconLayoutSidebarLeftCollapse size={20} />
-						<span className="font-medium whitespace-nowrap">
-							Collapse
-						</span>
-					</button>
-				) : (
-					<button
-						onClick={onToggle}
-						className={cn(
-							"flex items-center gap-3 rounded-md p-2 transition-colors duration-200 text-sm",
-							"text-neutral-400 hover:text-white hover:bg-neutral-800/50",
-							isCollapsed && "justify-center"
-						)}
-					>
-						{isCollapsed ? (
-							<IconLayoutSidebarLeftExpand size={20} />
-						) : (
+					{isMobile ? (
+						<button
+							onClick={onMobileClose}
+							className="flex items-center gap-3 rounded-md p-2 transition-colors duration-200 text-sm text-neutral-400 hover:text-white hover:bg-neutral-800/50"
+						>
 							<IconLayoutSidebarLeftCollapse size={20} />
-						)}
-						{!isCollapsed && (
 							<span className="font-medium whitespace-nowrap">
 								Collapse
 							</span>
+						</button>
+					) : (
+						<button
+							onClick={onToggle}
+							className={cn(
+								"flex items-center gap-3 rounded-md p-2 transition-colors duration-200 text-sm",
+								"text-neutral-400 hover:text-white hover:bg-neutral-800/50",
+								isCollapsed && "justify-center"
+							)}
+						>
+							{isCollapsed ? (
+								<IconLayoutSidebarLeftExpand size={20} />
+							) : (
+								<IconLayoutSidebarLeftCollapse size={20} />
+							)}
+							{!isCollapsed && (
+								<span className="font-medium whitespace-nowrap">
+									Collapse
+								</span>
+							)}
+						</button>
+					)}
+					<button
+						onClick={() => setComingSoonModalOpen(true)}
+						className={cn(
+							"w-full flex items-center gap-3 bg-neutral-800/40 border border-neutral-700/80 rounded-lg p-2 text-left text-sm hover:bg-neutral-800/80 transition-colors",
+							isCollapsed && "justify-center"
+						)}
+					>
+						<IconCode
+							size={20}
+							className="text-neutral-400 flex-shrink-0"
+						/>
+						{!isCollapsed && (
+							<span className="font-medium text-neutral-300 whitespace-nowrap">
+								Coming Soon
+							</span>
 						)}
 					</button>
-				)}
-				<button
-					onClick={() => setComingSoonModalOpen(true)}
-					className={cn(
-						"w-full flex items-center gap-3 bg-neutral-800/40 border border-neutral-700/80 rounded-lg p-2 text-left text-sm hover:bg-neutral-800/80 transition-colors",
-						isCollapsed && "justify-center"
-					)}
-				>
-					<IconCode
-						size={20}
-						className="text-neutral-400 flex-shrink-0"
-					/>
-					{!isCollapsed && (
-						<span className="font-medium text-neutral-300 whitespace-nowrap">
-							Coming Soon
-						</span>
-					)}
-				</button>
-				<button
-					onClick={() => setHelpMenuOpen(true)}
-					className={cn(
-						"w-full flex items-center gap-3 bg-neutral-800/40 border border-neutral-700/80 rounded-lg p-2 text-left text-sm hover:bg-neutral-800/80 transition-colors",
-						isCollapsed && "justify-center"
-					)}
-				>
-					<IconHeadphones
-						size={20}
-						className="text-neutral-400 flex-shrink-0"
-					/>
-					{!isCollapsed && (
-						<span className="font-medium text-neutral-300 whitespace-nowrap">
-							Need help?
-						</span>
-					)}
-				</button>
-				<a
-					href="https://forms.gle/7F4H3Pvy7fSdeeYm7"
-					target="_blank"
-					rel="noopener noreferrer"
-					className={cn(
-						"w-full flex items-center gap-3 bg-neutral-800/40 border border-neutral-700/80 rounded-lg p-2 text-left text-sm hover:bg-neutral-800/80 transition-colors",
-						isCollapsed && "justify-center"
-					)}
-				>
-					<IconBug
-						size={20}
-						className="text-neutral-400 flex-shrink-0"
-					/>
-					{!isCollapsed && (
-						<span className="font-medium text-neutral-300 whitespace-nowrap">
-							Report a Bug
-						</span>
-					)}
-				</a>
-				<a
-					href="https://discord.gg/YwXdEvjKGe"
-					target="_blank"
-					rel="noopener noreferrer"
-					className={cn(
-						"w-full flex items-center gap-3 bg-indigo-600/20 border border-indigo-500/50 text-indigo-300 rounded-lg p-2 text-left text-sm hover:bg-indigo-600/40 transition-colors",
-						isCollapsed && "justify-center"
-					)}
-				>
-					<IconBrandDiscord size={20} className="flex-shrink-0" />
-					{!isCollapsed && (
-						<span className="font-medium whitespace-nowrap">
-							Join Community
-						</span>
-					)}
-				</a>
-				<AnimatePresence>
-					{!isCollapsed && (
-						<motion.div
-							variants={fadeInUp}
-							initial="hidden"
-							animate="visible"
-							exit={{ opacity: 0, y: 10 }}
-							className="relative z-20 w-full"
-						>
-							<div className="group relative cursor-default rounded-full border border-brand-orange/50 bg-brand-gray/30 px-4 py-1 text-sm font-mono uppercase tracking-wider text-brand-white/80 transition-colors duration-300 hover:border-brand-orange text-center">
-								<span className="transition-opacity duration-300 group-hover:opacity-0">
-									We are in Public Beta
-								</span>
-								<span className="absolute inset-0 flex items-center justify-center text-center opacity-0 transition-opacity duration-300 group-hover:opacity-100 px-2">
-									SORRY 4 BUGS
-								</span>
-							</div>
-						</motion.div>
-					)}
-				</AnimatePresence>
-				<UserProfileSection isCollapsed={isCollapsed} user={user} />
+					<button
+						onClick={() => setHelpMenuOpen(true)}
+						className={cn(
+							"w-full flex items-center gap-3 bg-neutral-800/40 border border-neutral-700/80 rounded-lg p-2 text-left text-sm hover:bg-neutral-800/80 transition-colors",
+							isCollapsed && "justify-center"
+						)}
+					>
+						<IconHeadphones
+							size={20}
+							className="text-neutral-400 flex-shrink-0"
+						/>
+						{!isCollapsed && (
+							<span className="font-medium text-neutral-300 whitespace-nowrap">
+								Need help?
+							</span>
+						)}
+					</button>
+					<a
+						href="https://forms.gle/7F4H3Pvy7fSdeeYm7"
+						target="_blank"
+						rel="noopener noreferrer"
+						className={cn(
+							"w-full flex items-center gap-3 bg-neutral-800/40 border border-neutral-700/80 rounded-lg p-2 text-left text-sm hover:bg-neutral-800/80 transition-colors",
+							isCollapsed && "justify-center"
+						)}
+					>
+						<IconBug
+							size={20}
+							className="text-neutral-400 flex-shrink-0"
+						/>
+						{!isCollapsed && (
+							<span className="font-medium text-neutral-300 whitespace-nowrap">
+								Report a Bug
+							</span>
+						)}
+					</a>
+					<a
+						href="https://discord.gg/YwXdEvjKGe"
+						target="_blank"
+						rel="noopener noreferrer"
+						className={cn(
+							"w-full flex items-center gap-3 bg-indigo-600/20 border border-indigo-500/50 text-indigo-300 rounded-lg p-2 text-left text-sm hover:bg-indigo-600/40 transition-colors",
+							isCollapsed && "justify-center"
+						)}
+					>
+						<IconBrandDiscord size={20} className="flex-shrink-0" />
+						{!isCollapsed && (
+							<span className="font-medium whitespace-nowrap">
+								Join Community
+							</span>
+						)}
+					</a>
+					<AnimatePresence>
+						{!isCollapsed && (
+							<motion.div
+								variants={fadeInUp}
+								initial="hidden"
+								animate="visible"
+								exit={{ opacity: 0, y: 10 }}
+								className="relative z-20 w-full"
+							>
+								<div className="group relative cursor-default rounded-full border border-brand-orange/50 bg-brand-gray/30 px-4 py-1 text-sm font-mono uppercase tracking-wider text-brand-white/80 transition-colors duration-300 hover:border-brand-orange text-center">
+									<span className="transition-opacity duration-300 group-hover:opacity-0">
+										We are in Public Beta
+									</span>
+									<span className="absolute inset-0 flex items-center justify-center text-center opacity-0 transition-opacity duration-300 group-hover:opacity-100 px-2">
+										SORRY 4 BUGS
+									</span>
+								</div>
+							</motion.div>
+						)}
+					</AnimatePresence>
+					<UserProfileSection isCollapsed={isCollapsed} user={user} />
+				</div>
 			</div>
 		</div>
 	)

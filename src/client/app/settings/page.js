@@ -25,18 +25,6 @@ import InteractiveNetworkBackground from "@components/ui/InteractiveNetworkBackg
 import CollapsibleSection from "@components/tasks/CollapsibleSection"
 import { sendNotificationToCurrentUser } from "@app/actions"
 
-const HelpTooltip = ({ content }) => (
-	<div className="fixed bottom-6 left-6 z-40">
-		<button
-			data-tooltip-id="page-help-tooltip"
-			data-tooltip-content={content}
-			className="p-1.5 rounded-full text-neutral-500 hover:text-white hover:bg-neutral-800/50 pulse-glow-animation"
-		>
-			<IconHelpCircle size={22} />
-		</button>
-	</div>
-)
-
 const handleTestPush = async () => {
 	const toastId = toast.loading("Sending test push notification...")
 	try {
@@ -1107,7 +1095,7 @@ export default function SettingsPage() {
 				</header>
 
 				<main className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-10 pb-4 sm:pb-6 md:pb-10 custom-scrollbar">
-					<HelpTooltip content="Customize your experience here." />
+					<tip content="Customize your experience here." />
 					<div className="w-full max-w-4xl mx-auto space-y-12 pt-8">
 						<ProfileSettings
 							initialData={profileData?.onboardingAnswers}

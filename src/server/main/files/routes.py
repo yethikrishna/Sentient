@@ -74,16 +74,17 @@ async def download_file(
     Provides a secure way to download a file from the user's temporary directory.
     """
     try:
-        # This is the directory we will check against for security.
+        # This is the directory for the specific user.
         user_specific_dir = get_user_temp_dir(user_id)
 
-        # The 'filepath' from the URL already contains the user's directory.
-        # We join it with the BASE temp directory, not the user-specific one.
-        full_path = os.path.normpath(os.path.join(FILE_MANAGEMENT_TEMP_DIR, filepath))
-        print(f"Safe filepath: {full_path}")
+        # Sanitize the filename received from the URL to prevent path traversal.
+        sanitized_filename = sanitize_filename(filepath)
+
+        # Construct the full, absolute path to the requested file.
+        full_path = os.path.join(user_specific_dir, sanitized_filename)
 
         # Security Check: Ensure the final, resolved path is inside the user's designated directory.
-        # This prevents path traversal attacks (e.g., filepath = "../other_user/secret.txt").
+        # This is a redundant but important check against any os.path.join trickery.
         if not os.path.abspath(full_path).startswith(os.path.abspath(user_specific_dir)):
             raise HTTPException(status_code=403, detail="Forbidden: Access denied.")
 
@@ -91,8 +92,7 @@ async def download_file(
             raise HTTPException(status_code=404, detail="File not found.")
 
         # Use FileResponse to stream the file back to the client.
-        # The filename for the download is the base name of the path.
-        return FileResponse(path=full_path, filename=os.path.basename(filepath), media_type='application/octet-stream')
+        return FileResponse(path=full_path, filename=sanitized_filename, media_type='application/octet-stream')
 
     except HTTPException as he:
         raise he

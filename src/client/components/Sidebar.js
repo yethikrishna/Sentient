@@ -3,7 +3,6 @@ import React, { useState, useEffect, useRef } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import {
-	IconChecklist,
 	IconPlugConnected,
 	IconUser,
 	IconMessage,
@@ -23,7 +22,12 @@ import {
 	IconPlayerPlay,
 	IconSlideshow,
 	IconSparkles,
-	IconCheck
+	IconCheck,
+	IconCode,
+	IconMail,
+	IconCalendarEvent,
+	IconChecklist,
+	IconBrandWhatsapp
 } from "@tabler/icons-react"
 import { cn } from "@utils/cn"
 import { usePlan } from "@hooks/usePlan"
@@ -53,9 +57,7 @@ const UpgradeToProModal = ({ isOpen, onClose }) => {
 
 	const handleUpgrade = () => {
 		const dashboardUrl = process.env.NEXT_PUBLIC_LANDING_PAGE_URL
-		if (dashboardUrl) {
-			window.open(`${dashboardUrl}/dashboard`, "_blank")
-		}
+		if (dashboardUrl) window.location.href = `${dashboardUrl}/dashboard`
 		onClose()
 	}
 
@@ -73,20 +75,20 @@ const UpgradeToProModal = ({ isOpen, onClose }) => {
 						initial={{ scale: 0.95, y: 20 }}
 						animate={{ scale: 1, y: 0 }}
 						exit={{ scale: 0.95, y: -20 }}
-						transition={{ duration: 0.2, ease: "easeInOut" }}
+						transition={{ duration: 0.2, ease: "easeOut" }}
 						onClick={(e) => e.stopPropagation()}
-						className="relative bg-neutral-900/90 backdrop-blur-xl p-6 rounded-2xl shadow-2xl w-full max-w-md border border-neutral-700 flex flex-col"
+						className="relative bg-neutral-900/90 backdrop-blur-xl p-6 rounded-2xl shadow-2xl w-full max-w-lg border border-neutral-700 flex flex-col"
 					>
-						<header className="text-center mb-6">
+						<header className="text-center mb-4">
 							<h2 className="text-2xl font-bold text-white flex items-center justify-center gap-2">
 								<IconSparkles className="text-brand-orange" />
 								Upgrade to Pro
 							</h2>
 							<p className="text-neutral-400 mt-2">
-								For professionals who want to conquer their day.
+								Unlock powerful features to conquer your day.
 							</p>
 						</header>
-						<main className="space-y-3">
+						<main className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 my-4">
 							{proPlanFeatures.map((feature) => (
 								<div
 									key={feature.name}
@@ -97,17 +99,17 @@ const UpgradeToProModal = ({ isOpen, onClose }) => {
 										className="text-green-400 flex-shrink-0 mt-0.5"
 									/>
 									<div>
-										<p className="text-white font-medium">
+										<p className="text-white text-sm font-medium">
 											{feature.name}
 										</p>
-										<p className="text-neutral-400 text-sm">
+										<p className="text-neutral-400 text-xs">
 											{feature.limit}
 										</p>
 									</div>
 								</div>
 							))}
 						</main>
-						<footer className="mt-8 flex flex-col gap-2">
+						<footer className="mt-4 flex flex-col gap-2">
 							<button
 								onClick={handleUpgrade}
 								className="w-full py-3 px-5 rounded-lg bg-brand-orange hover:bg-brand-orange/90 text-brand-black font-semibold transition-colors"
@@ -119,6 +121,110 @@ const UpgradeToProModal = ({ isOpen, onClose }) => {
 								className="w-full py-2 px-5 rounded-lg hover:bg-neutral-800 text-sm font-medium text-neutral-400"
 							>
 								Not now
+							</button>
+						</footer>
+					</motion.div>
+				</motion.div>
+			)}
+		</AnimatePresence>
+	)
+}
+
+const comingSoonFeatures = [
+	{
+		name: "Autopilot Mode",
+		icon: <IconSparkles />,
+		description:
+			"Let Sentient proactively manage your digital life by monitoring your inbox and calendar to suggest and automate tasks before you even ask."
+	},
+	{
+		name: "Multilingual Voice",
+		icon: <IconHeadphones />,
+		description:
+			"Converse with Sentient in multiple languages. Our advanced voice model will understand and respond to you in your preferred language."
+	},
+	{
+		name: "Native Inbox Mirroring",
+		icon: <IconMail />,
+		description:
+			"A dedicated, unified inbox within Sentient that mirrors your emails, allowing for faster, AI-powered email management without leaving the app."
+	},
+	{
+		name: "Native Calendar Mirroring",
+		icon: <IconCalendarEvent />,
+		description:
+			"View and manage all your calendars directly within Sentient. Let the AI schedule, reschedule, and find free slots for you seamlessly."
+	},
+	{
+		name: "Inbuilt To-Do Lists",
+		icon: <IconChecklist />,
+		description:
+			"A smart to-do list integrated with your AI assistant. Add tasks with natural language, and Sentient will prioritize and execute them for you."
+	},
+	{
+		name: "WhatsApp Automation",
+		icon: <IconBrandWhatsapp />,
+		description:
+			"Allow Sentient to manage your WhatsApp. It can read, reply to, and handle messages based on your instructions, turning conversations into actions."
+	}
+]
+
+const ComingSoonModal = ({ isOpen, onClose }) => {
+	if (!isOpen) return null
+
+	return (
+		<AnimatePresence>
+			{isOpen && (
+				<motion.div
+					initial={{ opacity: 0 }}
+					animate={{ opacity: 1 }}
+					exit={{ opacity: 0 }}
+					className="fixed inset-0 bg-black/70 backdrop-blur-md z-[100] flex items-center justify-center p-4"
+					onClick={onClose}
+				>
+					<motion.div
+						initial={{ scale: 0.95, y: 20 }}
+						animate={{ scale: 1, y: 0 }}
+						exit={{ scale: 0.95, y: -20 }}
+						transition={{ duration: 0.2, ease: "easeInOut" }}
+						onClick={(e) => e.stopPropagation()}
+						className="relative bg-neutral-900/90 backdrop-blur-xl p-6 rounded-2xl shadow-2xl w-full max-w-2xl border border-neutral-700 flex flex-col max-h-[80vh]"
+					>
+						<header className="text-center mb-6 flex-shrink-0">
+							<h2 className="text-2xl font-bold text-white flex items-center justify-center gap-2">
+								<IconCode className="text-brand-orange" />
+								Coming Soon
+							</h2>
+							<p className="text-neutral-400 mt-2">
+								Here's a sneak peek at what we're building next.
+							</p>
+						</header>
+						<main className="space-y-4 overflow-y-auto custom-scrollbar pr-2 flex-1">
+							{comingSoonFeatures.map((feature) => (
+								<div
+									key={feature.name}
+									className="flex items-start gap-4 p-4 bg-neutral-800/50 rounded-lg"
+								>
+									<div className="text-brand-orange flex-shrink-0 mt-1">
+										{feature.icon}
+									</div>
+									<div>
+										<p className="font-semibold text-white">
+											{feature.name}
+										</p>
+										<p className="text-sm text-neutral-400">
+											{feature.description}
+										</p>
+									</div>
+								</div>
+							))}
+						</main>
+						<footer className="mt-6 pt-4 border-t border-neutral-800 flex justify-end">
+							<button
+								onClick={onClose}
+								className="py-2 px-5 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-sm font-medium"
+							>
+								Close
 							</button>
 						</footer>
 					</motion.div>
@@ -333,14 +439,12 @@ const SidebarContent = ({
 	const pathname = usePathname()
 	const [isHelpMenuOpen, setHelpMenuOpen] = useState(false)
 	const [isVideoModalOpen, setVideoModalOpen] = useState(false)
+	const [isComingSoonModalOpen, setComingSoonModalOpen] = useState(false)
 	const [isUpgradeModalOpen, setUpgradeModalOpen] = useState(false)
 	const router = useRouter()
 
 	// CHANGED: Use the environment variable for the namespace
 	const { isPro } = usePlan()
-	const dashboardUrl = process.env.NEXT_PUBLIC_LANDING_PAGE_URL
-		? `${process.env.NEXT_PUBLIC_LANDING_PAGE_URL}/dashboard`
-		: "#"
 
 	const handleShowDemo = () => {
 		setHelpMenuOpen(false)
@@ -374,9 +478,24 @@ const SidebarContent = ({
 				isOpen={isUpgradeModalOpen}
 				onClose={() => setUpgradeModalOpen(false)}
 			/>
+			<ComingSoonModal
+				isOpen={isComingSoonModalOpen}
+				onClose={() => setComingSoonModalOpen(false)}
+			/>
 			<AnimatePresence>
 				{isVideoModalOpen && (
-					<HelpVideoModal onClose={() => setVideoModalOpen(false)} />
+					// Assuming HelpVideoModal exists and is imported
+					// <HelpVideoModal onClose={() => setVideoModalOpen(false)} />
+					<div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+						<div className="bg-neutral-900/90 p-6 rounded-2xl">
+							<p className="text-white">
+								Help Video Modal Placeholder
+							</p>
+							<button onClick={() => setVideoModalOpen(false)}>
+								Close
+							</button>
+						</div>
+					</div>
 				)}
 			</AnimatePresence>
 			<AnimatePresence>
@@ -539,6 +658,7 @@ const SidebarContent = ({
 						)}
 					</button>
 				)}
+
 				{isMobile ? (
 					<button
 						onClick={onMobileClose}
@@ -570,6 +690,23 @@ const SidebarContent = ({
 						)}
 					</button>
 				)}
+				<button
+					onClick={() => setComingSoonModalOpen(true)}
+					className={cn(
+						"w-full flex items-center gap-3 bg-neutral-800/40 border border-neutral-700/80 rounded-lg p-2 text-left text-sm hover:bg-neutral-800/80 transition-colors",
+						isCollapsed && "justify-center"
+					)}
+				>
+					<IconCode
+						size={20}
+						className="text-neutral-400 flex-shrink-0"
+					/>
+					{!isCollapsed && (
+						<span className="font-medium text-neutral-300 whitespace-nowrap">
+							Coming Soon
+						</span>
+					)}
+				</button>
 				<button
 					onClick={() => setHelpMenuOpen(true)}
 					className={cn(

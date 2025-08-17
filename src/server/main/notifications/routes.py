@@ -38,7 +38,17 @@ async def delete_notification(
     request: DeleteNotificationRequest,
     user_id: str = Depends(PermissionChecker(required_permissions=["write:notifications"]))
 ):
-    success = await mongo_manager.delete_notification(user_id, request.notification_id)
-    if not success:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found or user does not have permission.")
-    return JSONResponse(content={"message": "Notification deleted successfully."})
+    if request.delete_all:
+        await mongo_manager.delete_all_notifications(user_id)
+        return JSONResponse(content={"message": "All notifications deleted successfully."})
+
+    if request.notification_id:
+        success = await mongo_manager.delete_notification(user_id, request.notification_id)
+        if not success:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found or user does not have permission.")
+        return JSONResponse(content={"message": "Notification deleted successfully."})
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Either 'notification_id' or 'delete_all' must be provided."
+    )

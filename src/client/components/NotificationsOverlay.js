@@ -9,7 +9,7 @@ import {
 	IconBell,
 	IconAlertCircle,
 	IconX,
-	IconArrowRight,
+	IconArrowRight
 } from "@tabler/icons-react"
 import { formatDistanceToNow, parseISO } from "date-fns"
 import ReactMarkdown from "react-markdown"
@@ -19,7 +19,7 @@ const NotificationItem = ({
 	notification,
 	onDelete,
 	onGeneralClick,
-	userTimezone,
+	userTimezone
 }) => {
 	let formattedTimestamp = "..." // Default placeholder
 
@@ -208,18 +208,25 @@ const NotificationsOverlay = ({ onClose, notifRefreshKey }) => {
 		)
 			return
 		const originalNotifications = [...notifications]
-		setNotifications([])
-
-		const deletionPromises = originalNotifications.map((n) =>
-			handleDelete(null, n.id)
-		)
+		setNotifications([]) // Optimistic update
 
 		try {
-			await Promise.all(deletionPromises)
-			toast.success("All notifications dismissed.")
+			const response = await fetch("/api/notifications/delete", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ delete_all: true }) // New API call
+			})
+
+			if (!response.ok) {
+				const errorData = await response.json()
+				throw new Error(
+					errorData.error || "Failed to dismiss all notifications"
+				)
+			}
+			toast.success("All notifications dismissed.") // Single toast
 		} catch (err) {
-			toast.error(`Could not dismiss all notifications: ${err.message}`)
-			setNotifications(originalNotifications)
+			toast.error(`Error: ${err.message}`)
+			setNotifications(originalNotifications) // Revert on error
 		}
 	}
 

@@ -1,11 +1,11 @@
 PLAN_LIMITS = {
     "free": {
         "text_messages_daily": 25,
-        "voice_chat_daily_seconds": 0,
+        "voice_chat_daily_seconds": 0, # Pro feature
         "one_time_tasks_daily": 5, # async tasks
         "recurring_tasks_active": 2, # recurring workflows
         "triggered_tasks_active": 1, # triggered workflows
-        "swarm_tasks_daily": 0,
+        "swarm_tasks_daily": 0, # Pro feature
         "swarm_sub_agents_max": 0,
         "file_uploads_daily": 3, # New
         "memories_total": 100, # New

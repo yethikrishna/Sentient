@@ -25,6 +25,7 @@ import {
 	IconTool,
 	IconInfoCircle,
 	IconSparkles,
+	IconCheck,
 	IconClockHour4,
 	IconMessageChatbot,
 	IconMapPin,
@@ -56,6 +57,7 @@ import { usePostHog } from "posthog-js/react"
 import SiriSpheres from "@components/voice-visualization/SiriSpheres"
 import { WebRTCClient } from "@lib/webrtc-client"
 import useClickOutside from "@hooks/useClickOutside"
+import { usePlan } from "@hooks/usePlan"
 
 const toolIcons = {
 	gmail: IconGoogleMail,
@@ -75,6 +77,104 @@ const toolIcons = {
 	whatsapp: IconBrandWhatsapp,
 	gcalendar_alt: IconCalendarEvent,
 	default: IconTool
+}
+
+const proPlanFeatures = [
+	{ name: "Text Chat", limit: "100 messages per day" },
+	{ name: "Voice Chat", limit: "10 minutes per day" },
+	{ name: "One-Time Tasks", limit: "20 async tasks per day" },
+	{ name: "Recurring Tasks", limit: "10 active recurring workflows" },
+	{ name: "Triggered Tasks", limit: "10 triggered workflows" },
+	{
+		name: "Parallel Agents",
+		limit: "5 complex tasks per day with 50 sub agents"
+	},
+	{ name: "File Uploads", limit: "20 files per day" },
+	{ name: "Memories", limit: "Unlimited memories" },
+	{
+		name: "Other Integrations",
+		limit: "Notion, GitHub, Slack, Discord, Trello"
+	}
+]
+
+const UpgradeToProModal = ({ isOpen, onClose }) => {
+	if (!isOpen) return null
+
+	const handleUpgrade = () => {
+		const dashboardUrl = process.env.NEXT_PUBLIC_LANDING_PAGE_URL
+		if (dashboardUrl) {
+			window.open(`${dashboardUrl}/dashboard`, "_blank")
+		}
+		onClose()
+	}
+
+	return (
+		<AnimatePresence>
+			{isOpen && (
+				<motion.div
+					initial={{ opacity: 0 }}
+					animate={{ opacity: 1 }}
+					exit={{ opacity: 0 }}
+					className="fixed inset-0 bg-black/70 backdrop-blur-md z-[100] flex items-center justify-center p-4"
+					onClick={onClose}
+				>
+					<motion.div
+						initial={{ scale: 0.95, y: 20 }}
+						animate={{ scale: 1, y: 0 }}
+						exit={{ scale: 0.95, y: -20 }}
+						transition={{ duration: 0.2, ease: "easeInOut" }}
+						onClick={(e) => e.stopPropagation()}
+						className="relative bg-neutral-900/90 backdrop-blur-xl p-6 rounded-2xl shadow-2xl w-full max-w-lg border border-neutral-700 flex flex-col"
+					>
+						<header className="text-center mb-4">
+							<h2 className="text-2xl font-bold text-white flex items-center justify-center gap-2">
+								<IconSparkles className="text-brand-orange" />
+								Upgrade to Pro
+							</h2>
+							<p className="text-neutral-400 mt-2">
+								Unlock Voice Mode and other powerful features.
+							</p>
+						</header>
+						<main className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 my-4">
+							{proPlanFeatures.map((feature) => (
+								<div
+									key={feature.name}
+									className="flex items-start gap-2.5"
+								>
+									<IconCheck
+										size={18}
+										className="text-green-400 flex-shrink-0 mt-0.5"
+									/>
+									<div>
+										<p className="text-white text-sm font-medium">
+											{feature.name}
+										</p>
+										<p className="text-neutral-400 text-xs">
+											{feature.limit}
+										</p>
+									</div>
+								</div>
+							))}
+						</main>
+						<footer className="mt-4 flex flex-col gap-2">
+							<button
+								onClick={handleUpgrade}
+								className="w-full py-2.5 px-5 rounded-lg bg-brand-orange hover:bg-brand-orange/90 text-brand-black font-semibold transition-colors"
+							>
+								Upgrade to Pro - $9/month
+							</button>
+							<button
+								onClick={onClose}
+								className="w-full py-2 px-5 rounded-lg hover:bg-neutral-800 text-sm font-medium text-neutral-400"
+							>
+								Not now
+							</button>
+						</footer>
+					</motion.div>
+				</motion.div>
+			)}
+		</AnimatePresence>
+	)
 }
 
 const StorylaneDemoModal = ({ onClose }) => {
@@ -159,12 +259,15 @@ export default function ChatPage() {
 
 	const searchParams = useSearchParams()
 	const router = useRouter()
+	const { isPro } = usePlan()
 
 	// --- File Upload State ---
 	const [selectedFile, setSelectedFile] = useState(null)
 	const [isUploading, setIsUploading] = useState(false)
 	const [uploadedFilename, setUploadedFilename] = useState(null)
 
+	// --- Pro Feature Modal ---
+	const [isUpgradeModalOpen, setUpgradeModalOpen] = useState(false)
 	// --- Voice Mode State ---
 	const [isMuted, setIsMuted] = useState(false)
 	const [isVoiceMode, setIsVoiceMode] = useState(false)
@@ -663,10 +766,11 @@ export default function ChatPage() {
 	}
 
 	useEffect(() => {
-		if (chatEndRef.current) {
-			chatEndRef.current.scrollIntoView({ behavior: "smooth" })
+		if (chatEndRef.current && !isVoiceMode) {
+			// Use 'auto' for an instant scroll, which feels better when switching modes.
+			chatEndRef.current.scrollIntoView({ behavior: "auto" })
 		}
-	}, [displayedMessages, thinking])
+	}, [displayedMessages, thinking, isVoiceMode])
 
 	const getGreeting = () => {
 		const hour = new Date().getHours()
@@ -969,6 +1073,11 @@ export default function ChatPage() {
 	}
 
 	const toggleVoiceMode = async () => {
+		if (!isPro) {
+			setUpgradeModalOpen(true)
+			return
+		}
+
 		if (isVoiceMode) {
 			handleStopVoice()
 			setIsVoiceMode(false)
@@ -986,11 +1095,10 @@ export default function ChatPage() {
 	}
 
 	useEffect(() => {
-		// This cleanup now only runs when the ChatPage component unmounts
+		// This cleanup now only runs when the ChatPage component unmounts.
+		// The handleStopVoice function is now the primary way to disconnect.
 		return () => {
-			if (webrtcClientRef.current) {
-				webrtcClientRef.current.disconnect()
-			}
+			webrtcClientRef.current?.disconnect()
 		}
 	}, [])
 
@@ -1138,7 +1246,11 @@ export default function ChatPage() {
 						onClick={toggleVoiceMode}
 						className="p-2.5 rounded-full text-white bg-neutral-700 hover:bg-neutral-600 transition-colors"
 						data-tooltip-id="home-tooltip"
-						data-tooltip-content="Switch to Voice Mode"
+						data-tooltip-content={
+							isPro
+								? "Switch to Voice Mode"
+								: "Voice Mode (Pro Feature)"
+						}
 					>
 						<IconWaveSine size={18} />
 					</button>
@@ -1398,6 +1510,10 @@ export default function ChatPage() {
 				src="/audio/connected.mp3"
 				preload="auto"
 			></audio>
+			<UpgradeToProModal
+				isOpen={isUpgradeModalOpen}
+				onClose={() => setUpgradeModalOpen(false)}
+			></UpgradeToProModal>
 			<AnimatePresence>
 				{isDemoModalOpen && (
 					<StorylaneDemoModal onClose={handleCloseDemo} />

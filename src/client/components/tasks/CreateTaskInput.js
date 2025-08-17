@@ -6,7 +6,13 @@ import { BorderTrail } from "@components/ui/border-trail"
 import { TextLoop } from "@components/ui/TextLoop"
 import toast from "react-hot-toast"
 
-const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
+const CreateTaskInput = ({
+	onTaskAdded,
+	prompt,
+	setPrompt,
+	isPro,
+	onUpgradeClick
+}) => {
 	const [isSwarmMode, setIsSwarmMode] = useState(false)
 	const [isSaving, setIsSaving] = useState(false)
 	const textareaRef = useRef(null)
@@ -18,6 +24,14 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 			textarea.style.height = `${Math.min(textarea.scrollHeight, 150)}px`
 		}
 	}, [prompt])
+
+	const handleToggleSwarmMode = () => {
+		if (!isPro) {
+			onUpgradeClick()
+			return
+		}
+		setIsSwarmMode(!isSwarmMode)
+	}
 
 	const handleAddTask = async () => {
 		setIsSaving(true)
@@ -140,7 +154,7 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 					)}
 					<div className={cn("flex items-center gap-2 z-10")}>
 						<button
-							onClick={() => setIsSwarmMode(!isSwarmMode)}
+							onClick={handleToggleSwarmMode}
 							className={cn(
 								"p-3 rounded-full h-full transition-colors",
 								isSwarmMode
@@ -149,9 +163,11 @@ const CreateTaskInput = ({ onTaskAdded, prompt, setPrompt }) => {
 							)}
 							data-tooltip-id="tasks-tooltip"
 							data-tooltip-content={
-								isSwarmMode
-									? "Switch to Single Task Mode"
-									: "Switch to Swarm Mode"
+								isPro
+									? isSwarmMode
+										? "Switch to Single Task Mode"
+										: "Switch to Swarm Mode (Parallel Agents)"
+									: "Swarm Mode (Pro Feature)"
 							}
 						>
 							<IconUsersGroup size={18} />

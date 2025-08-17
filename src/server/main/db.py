@@ -280,6 +280,17 @@ class MongoManager:
         )
         return result.modified_count > 0
 
+    async def delete_all_notifications(self, user_id: str):
+        """Deletes all notifications for a user by emptying the notifications array."""
+        if not user_id:
+            return
+        # This operation is idempotent. If the user has no notification document,
+        # it does nothing, which is the desired outcome.
+        await self.notifications_collection.update_one(
+            {"user_id": user_id},
+            {"$set": {"notifications": []}}
+        )
+
     async def find_and_action_suggestion_notification(self, user_id: str, notification_id: str) -> Optional[Dict]:
         """
         Atomically finds a proactive_suggestion notification, marks it as actioned, and returns it.

@@ -357,6 +357,15 @@ const OnboardingPage = () => {
 					result.message || "Failed to save onboarding data"
 				)
 			}
+			// Identify the user in PostHog as soon as we have their name
+			posthog?.identify(
+				(await (await fetch("/api/user/profile")).json()).sub, // Fetch user ID from session
+				{ name: mainOnboardingData["user-name"] }
+			)
+			posthog?.capture("user_signed_up", {
+				signup_method: "auth0", // or derive from user profile if available
+				referral_source: "direct" // Placeholder, can be populated from URL params
+			})
 			posthog?.capture("onboarding_completed")
 			router.push("/chat?show_demo=true")
 		} catch (error) {

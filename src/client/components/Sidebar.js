@@ -33,6 +33,7 @@ import {
 import { cn } from "@utils/cn"
 import { usePlan } from "@hooks/usePlan"
 import { motion, AnimatePresence } from "framer-motion"
+import { usePostHog } from "posthog-js/react"
 import useClickOutside from "@hooks/useClickOutside"
 
 const proPlanFeatures = [
@@ -239,6 +240,7 @@ const UserProfileSection = ({ isCollapsed, user }) => {
 	const [isUserMenuOpen, setUserMenuOpen] = useState(false)
 	const userMenuRef = useRef(null)
 	const { isPro, plan } = usePlan()
+	const posthog = usePostHog()
 	useClickOutside(userMenuRef, () => setUserMenuOpen(false))
 
 	const planName = isPro ? "Pro" : "Basic"
@@ -322,6 +324,9 @@ const UserProfileSection = ({ isCollapsed, user }) => {
 								</a>
 								<a
 									href="/auth/logout"
+									onClick={() => {
+										posthog?.reset()
+									}}
 									className="w-full flex items-center gap-2 text-left px-3 py-2 text-sm rounded-md text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-colors"
 								>
 									<IconLogout size={16} />

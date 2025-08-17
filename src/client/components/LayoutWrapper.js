@@ -19,6 +19,7 @@ import { useGlobalShortcuts } from "@hooks/useGlobalShortcuts"
 import { cn } from "@utils/cn"
 import toast from "react-hot-toast"
 import { useUser } from "@auth0/nextjs-auth0"
+import { usePostHog } from "posthog-js/react"
 
 // ... (keep the rest of your imports and context creation)
 export const PlanContext = createContext({
@@ -56,6 +57,7 @@ export default function LayoutWrapper({ children }) {
 	const pathname = usePathname()
 	const router = useRouter()
 	const searchParams = useSearchParams() // Hook to read URL query parameters
+	const posthog = usePostHog()
 
 	const { user, error: authError, isLoading: isAuthLoading } = useUser()
 
@@ -65,9 +67,24 @@ export default function LayoutWrapper({ children }) {
 	const showNav = !["/", "/onboarding"].includes(pathname)
 
 	useEffect(() => {
+		if (user && posthog) {
+			posthog.identify(user.sub, {
+				name: user.name,
+				email: user.email
+			})
+		}
+	}, [user, posthog])
+
+	useEffect(() => {
 		const paymentStatus = searchParams.get("payment_status")
 		const needsRefresh = searchParams.get("refresh_session")
 
+		if (paymentStatus === "success" && posthog) {
+			posthog.capture("plan_upgraded", {
+				plan_name: "pro"
+				// MRR and billing_cycle are not available on the client
+			})
+		}
 		// Check for either trigger
 		if (paymentStatus === "success" || needsRefresh === "true") {
 			// CRITICAL FIX: Clean the URL synchronously *before* doing anything else.

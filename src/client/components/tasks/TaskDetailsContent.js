@@ -394,11 +394,6 @@ const TaskDetailsContent = ({
 		<div className="space-y-6">
 			{/* --- SWARM DETAILS (if applicable) --- */}
 			{displayTask.task_type === "swarm" && (
-				<SwarmDetailsSection swarmDetails={displayTask.swarm_details} />
-			)}
-
-			{/* --- Researched Context (if planning) --- */}
-			{displayTask.status === "planning" && displayTask.found_context && (
 				<div>
 					<label className="text-sm font-medium text-neutral-400 block mb-2">
 						Researched Context
@@ -464,20 +459,6 @@ const TaskDetailsContent = ({
 					</div>
 				</div>
 			</div>
-
-			{/* --- Researched Context (if planning) --- */}
-			{displayTask.status === "planning" && displayTask.found_context && (
-				<div>
-					<label className="text-sm font-medium text-neutral-400 block mb-2">
-						Researched Context
-					</label>
-					<div className="bg-neutral-800/50 p-3 rounded-lg text-sm text-neutral-300 whitespace-pre-wrap border border-neutral-700/50">
-						<ReactMarkdown className="prose prose-sm prose-invert">
-							{displayTask.found_context}
-						</ReactMarkdown>
-					</div>
-				</div>
-			)}
 
 			{/* --- DESCRIPTION --- */}
 			<div>

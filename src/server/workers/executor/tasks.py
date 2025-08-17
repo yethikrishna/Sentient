@@ -266,14 +266,12 @@ async def async_execute_task_plan(task_id: str, user_id: str, run_id: str):
 
     plan_description = task.get("name", "Unnamed plan")
     original_context_str = json.dumps(original_context_data, indent=2, default=str) if original_context_data else "No original context provided."
-    found_context_str = task.get("found_context", "No additional context was found by the research agent.")
     block_id_prompt = f"The block_id for this task is '{block_id}'. You MUST pass this ID to the 'update_progress' tool in the 'block_id' parameter." if block_id else "This task did not originate from a tasks block."
 
     full_plan_prompt = (
         f"You are Sentient, a resourceful and autonomous executor agent. Your goal is to complete the user's request by intelligently following the provided plan.\n\n" # noqa
         f"**User Context:**\n- **User's Name:** {user_name}\n- **User's Location:** {user_location}\n- **Current Date & Time:** {current_user_time}\n\n"
         f"{trigger_event_prompt_section}"
-        f"**Retrieved Context (from research agent):**\n{found_context_str}\n\n"
         f"Your task ID is '{task_id}' and the current run ID is '{run_id}'.\n\n"
         f"The original context that triggered this plan is:\n---BEGIN CONTEXT---\n{original_context_str}\n---END CONTEXT---\n\n"
         f"**Primary Objective:** '{plan_description}'\n\n"
@@ -292,34 +290,83 @@ async def async_execute_task_plan(task_id: str, user_id: str, run_id: str):
     )
     
     try:
-        initial_messages = [{'role': 'user', 'content': "Begin executing the plan. Follow your instructions meticulously."}]
-        
         logger.info(f"Task {task_id}: Starting agent run.")
+        initial_messages = [{'role': 'user', 'content': "Begin executing the plan. Follow your instructions meticulously."}]
 
-        final_assistant_content = ""
-        final_history = []
-        for current_history in run_main_agent(
+        # Step 1: Fully exhaust the generator to let the agent run to completion.
+        # This prevents async UI updates from interfering with the agent's internal loop.
+        agent_generator = run_main_agent(
             system_message=full_plan_prompt,
             function_list=tools_config,
             messages=initial_messages
-        ):
-            final_history = current_history
+        )
+        all_history_steps = list(agent_generator)
 
-        # After the loop, process the complete response
-        if final_history and final_history[-1].get("role") == "assistant":
-            final_assistant_content = final_history[-1].get("content", "")
+        if not all_history_steps:
+            raise Exception("Agent run produced no history, indicating an immediate failure.")
 
-        final_answer_content = ""
-        if final_assistant_content:
-            parsed_updates = parse_agent_string_to_updates(final_assistant_content)
-            for update in parsed_updates:
-                # Per user request, do not push thoughts to the log, but parse everything else.
-                if update.get("type") == "thought":
-                    continue
-                await add_progress_update(db, task_id, run_id, user_id, update, block_id)
-                if update.get("type") == "final_answer":
-                    final_answer_content = update.get("content")
+        # Step 2: After completion, process all history steps to send UI updates.
+        last_history_len = len(initial_messages)
+        for current_history in all_history_steps:
+            new_messages = current_history[last_history_len:]
+            for msg in new_messages:
+                updates_to_push = []
+                if msg.get("role") == "assistant":
+                    if msg.get("content"):
+                        updates_to_push.extend(parse_agent_string_to_updates(msg["content"]))
+                    if msg.get("function_call"):
+                        fc = msg["function_call"]
+                        params_str = fc.get("arguments", "{}")
+                        params = JsonExtractor.extract_valid_json(params_str) or {"raw_parameters": params_str}
+                        updates_to_push.append({
+                            "type": "tool_call",
+                            "tool_name": fc.get("name"),
+                            "parameters": params
+                        })
+                elif msg.get("role") == "function":
+                    result_str = msg.get("content", "{}")
+                    result_content = JsonExtractor.extract_valid_json(result_str) or {"raw_result": result_str}
+                    is_error = isinstance(result_content, dict) and result_content.get("status") == "failure"
+                    updates_to_push.append({
+                        "type": "tool_result",
+                        "tool_name": msg.get("name"),
+                        "result": result_content.get("result", result_content.get("error", result_content)),
+                        "is_error": is_error
+                    })
+                
+                for update in updates_to_push:
+                    if update.get("type") != "thought":
+                        asyncio.create_task(add_progress_update(db, task_id, run_id, user_id, update, block_id))
+            last_history_len = len(current_history)
 
+        # Step 3: Check the final state for a valid answer.
+        final_history = all_history_steps[-1]
+        final_assistant_message = next((msg for msg in reversed(final_history) if msg.get("role") == "assistant"), None)
+        
+        has_final_answer = False
+        if final_assistant_message and final_assistant_message.get("content"):
+            parsed_updates = parse_agent_string_to_updates(final_assistant_message["content"])
+            if any(upd.get("type") == "final_answer" for upd in parsed_updates):
+                has_final_answer = True
+
+        if not has_final_answer:
+            error_message = "Agent finished execution without providing a final answer as required by its instructions. The task may be incomplete."
+            logger.error(f"Task {task_id}: {error_message}. Final history: {final_history}")
+            await add_progress_update(db, task_id, run_id, user_id, {"type": "error", "content": error_message}, block_id=block_id)
+            await update_task_run_status(db, task_id, run_id, "error", user_id, details={"error": error_message}, block_id=block_id)
+            
+            from workers.tasks import calculate_next_run
+            schedule_type = task.get('schedule', {}).get('type')
+            if schedule_type == 'recurring':
+                next_run_time, _ = calculate_next_run(task['schedule'], last_run=datetime.datetime.now(datetime.timezone.utc))
+                await db.tasks.update_one({"_id": task["_id"]}, {"$set": {"status": "active", "next_execution_at": next_run_time}})
+            elif schedule_type == 'triggered':
+                await db.tasks.update_one({"_id": task["_id"]}, {"$set": {"status": "active", "next_execution_at": None}})
+            else:
+                await db.tasks.update_one({"_id": task["_id"]}, {"$set": {"status": "error", "next_execution_at": None}})
+            return {"status": "error", "message": error_message}
+
+        # If we have a final answer, the execution was successful.
         logger.info(f"Task {task_id} execution phase completed. Dispatching to result generator.")
         await add_progress_update(db, task_id, run_id, user_id, {"type": "info", "content": "Execution finished. Generating final report..."}, block_id=block_id)
         await update_task_run_status(db, task_id, run_id, "completed", user_id, block_id=block_id)
@@ -327,6 +374,7 @@ async def async_execute_task_plan(task_id: str, user_id: str, run_id: str):
 
         # Call the new result generator task
         generate_task_result.delay(task_id, run_id, user_id)
+
         from workers.tasks import calculate_next_run
         schedule_type = task.get('schedule', {}).get('type')
         if schedule_type == 'recurring':

@@ -27,7 +27,8 @@ import {
 	IconMail,
 	IconCalendarEvent,
 	IconChecklist,
-	IconBrandWhatsapp
+	IconBrandWhatsapp,
+	IconBug
 } from "@tabler/icons-react"
 import { cn } from "@utils/cn"
 import { usePlan } from "@hooks/usePlan"
@@ -724,6 +725,25 @@ const SidebarContent = ({
 						</span>
 					)}
 				</button>
+				<a
+					href="https://forms.gle/7F4H3Pvy7fSdeeYm7"
+					target="_blank"
+					rel="noopener noreferrer"
+					className={cn(
+						"w-full flex items-center gap-3 bg-neutral-800/40 border border-neutral-700/80 rounded-lg p-2 text-left text-sm hover:bg-neutral-800/80 transition-colors",
+						isCollapsed && "justify-center"
+					)}
+				>
+					<IconBug
+						size={20}
+						className="text-neutral-400 flex-shrink-0"
+					/>
+					{!isCollapsed && (
+						<span className="font-medium text-neutral-300 whitespace-nowrap">
+							Report a Bug
+						</span>
+					)}
+				</a>
 				<a
 					href="https://discord.gg/YwXdEvjKGe"
 					target="_blank"

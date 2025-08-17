@@ -39,7 +39,10 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 
 		const data = await response.json()
 		if (!response.ok) {
-			throw new Error(data.detail || "Failed to create memory")
+			return NextResponse.json(
+				{ error: data.detail || "Failed to create memory" },
+				{ status: response.status }
+			)
 		}
 		return NextResponse.json(data, { status: response.status })
 	} catch (error) {

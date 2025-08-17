@@ -53,9 +53,13 @@ const CreateTaskInput = ({
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify(payload)
 			})
+			if (!response.ok) {
+				const errorData = await response.json().catch(() => ({}))
+				const error = new Error(errorData.error || "Failed to add task")
+				error.status = response.status
+				throw error
+			}
 			const data = await response.json()
-			if (!response.ok)
-				throw new Error(data.error || "Failed to add task")
 
 			// Create a temporary task object for optimistic UI
 			const tempTask = {
@@ -96,7 +100,19 @@ const CreateTaskInput = ({
 			// Pass the temporary task object to the parent for optimistic update
 			onTaskAdded(tempTask)
 		} catch (error) {
-			toast.error(`Error: ${error.message}`)
+			if (error.status === 429) {
+				toast.error(
+					error.message ||
+						"You've reached your daily task limit for the free plan."
+				)
+				// Here, onUpgradeClick is passed as a prop from tasks/page.js
+				// and it sets isUpgradeModalOpen to true.
+				if (!isPro) {
+					onUpgradeClick()
+				}
+			} else {
+				toast.error(`Error: ${error.message}`)
+			}
 		} finally {
 			setIsSaving(false)
 		}

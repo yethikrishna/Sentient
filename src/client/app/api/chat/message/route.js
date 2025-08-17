@@ -36,20 +36,20 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 		})
 
 		if (!backendResponse.ok) {
-			const errorText = await backendResponse.text()
-			let errorMessage
+			const errorText = await backendResponse
+				.text()
+				.catch(() => "Unknown backend error")
+			let errorJson = {}
 			try {
-				const errorJson = JSON.parse(errorText)
-				errorMessage =
-					errorJson.detail ||
-					errorJson.message ||
-					"Backend chat endpoint failed"
+				errorJson = JSON.parse(errorText)
 			} catch (e) {
-				errorMessage =
-					errorText ||
-					`Backend chat endpoint failed with status ${backendResponse.status}`
+				// Not a JSON error, use the raw text
 			}
-			throw new Error(errorMessage)
+			// Return the error from the backend with its original status code
+			return NextResponse.json(
+				{ detail: errorJson.detail || errorText },
+				{ status: backendResponse.status }
+			)
 		}
 
 		// Return the streaming response directly to the client
@@ -67,7 +67,7 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 	} catch (error) {
 		console.error("API Error in /chat/message:", error)
 		return NextResponse.json(
-			{ message: "Internal Server Error", error: error.message },
+			{ detail: "Internal Server Error", error: error.message },
 			{ status: 500 }
 		)
 	}

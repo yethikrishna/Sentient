@@ -538,8 +538,10 @@ export default function ChatPage() {
 			})
 
 			if (!response.ok) {
-				const errorData = await response.json()
-				throw new Error(errorData.error || "File upload failed")
+				const errorData = await response.json().catch(() => ({}))
+				const error = new Error(errorData.error || "File upload failed")
+				error.status = response.status
+				throw error
 			}
 
 			const result = await response.json()
@@ -548,7 +550,18 @@ export default function ChatPage() {
 				id: toastId
 			})
 		} catch (error) {
-			toast.error(`Error: ${error.message}`, { id: toastId })
+			if (error.status === 429) {
+				toast.error(
+					error.message ||
+						"You've reached your daily file upload limit for the free plan.",
+					{ id: toastId }
+				)
+				if (!isPro) {
+					setUpgradeModalOpen(true)
+				}
+			} else {
+				toast.error(`Error: ${error.message}`, { id: toastId })
+			}
 			setSelectedFile(null)
 		} finally {
 			setIsUploading(false)
@@ -614,7 +627,14 @@ export default function ChatPage() {
 			})
 
 			if (!response.ok) {
-				throw new Error(`HTTP error! status: ${response.status}`)
+				const errorData = await response.json().catch(() => ({
+					detail: `Request failed with status ${response.status}`
+				}))
+				const error = new Error(
+					errorData.detail || "An unexpected error occurred."
+				)
+				error.status = response.status
+				throw error
 			}
 
 			const reader = response.body.getReader()
@@ -706,13 +726,21 @@ export default function ChatPage() {
 		} catch (error) {
 			if (error.name === "AbortError") {
 				toast.info("Message generation stopped.")
+			} else if (error.status === 429) {
+				toast.error(
+					error.message ||
+						"You've reached a usage limit for today on the free plan."
+				)
+				if (!isPro) {
+					setUpgradeModalOpen(true)
+				}
 			} else {
 				toast.error(`Error: ${error.message}`)
-				console.error("Fetch error:", error)
-				setDisplayedMessages((prev) =>
-					prev.filter((m) => m.id !== newUserMessage.id)
-				)
 			}
+			console.error("Fetch error:", error)
+			setDisplayedMessages((prev) =>
+				prev.filter((m) => m.id !== newUserMessage.id)
+			)
 		} finally {
 			setThinking(false)
 			setStatusText("")
@@ -916,8 +944,16 @@ export default function ChatPage() {
 					}
 				}
 			)
-			if (!rtcTokenResponse.ok)
-				throw new Error("Could not initiate voice session.")
+			if (!rtcTokenResponse.ok) {
+				const errorData = await rtcTokenResponse
+					.json()
+					.catch(() => ({}))
+				const error = new Error(
+					errorData.detail || "Could not initiate voice session."
+				)
+				error.status = rtcTokenResponse.status
+				throw error
+			}
 			const { rtc_token, ice_servers } = await rtcTokenResponse.json()
 
 			// Step 3: Create and connect WebRTCClient directly
@@ -960,9 +996,19 @@ export default function ChatPage() {
 				rtc_token
 			)
 		} catch (error) {
-			toast.error(
-				`Failed to connect: ${error.message || "Unknown error"}`
-			)
+			if (error.status === 429) {
+				toast.error(
+					error.message ||
+						"You've used all your voice minutes for today on the free plan."
+				)
+				if (!isPro) {
+					setUpgradeModalOpen(true)
+				}
+			} else {
+				toast.error(
+					`Failed to connect: ${error.message || "Unknown error"}`
+				)
+			}
 			handleStatusChange("disconnected")
 		}
 	}

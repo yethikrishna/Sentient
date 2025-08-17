@@ -107,6 +107,7 @@ INTEGRATIONS_CONFIG = {
         "description": "Connect to search and read files in your Google Drive. Powered by Composio to ensure security without extensive permissions.",
         "auth_type": "composio",
         "icon": "IconBrandGoogleDrive",
+        "auth_config_env_var": "GDRIVE_AUTH_CONFIG_ID",
         "category": "Productivity",
         "mcp_server_config": {
             "name": "gdrive_server",
@@ -118,6 +119,7 @@ INTEGRATIONS_CONFIG = {
         "description": "Read and manage events on your Google Calendar. Enables the agent to list upcoming events, add new events, search for specific events, update event details, and delete events.",
         "auth_type": "composio",
         "icon": "IconCalendarEvent",
+        "auth_config_env_var": "GCALENDAR_AUTH_CONFIG_ID",
         "category": "Productivity",
         "mcp_server_config": {
             "name": "gcal_server",
@@ -129,6 +131,7 @@ INTEGRATIONS_CONFIG = {
         "description": "Connect to read, send, and manage emails. Powered by Composio to ensure security without extensive permissions.",
         "auth_type": "composio",
         "icon": "IconMail",
+        "auth_config_env_var": "GMAIL_AUTH_CONFIG_ID",
         "category": "Communication",
         "mcp_server_config": {
             "name": "gmail_server",
@@ -140,6 +143,7 @@ INTEGRATIONS_CONFIG = {
         "description": "Create and manage documents in Google Docs. Allows the agent to generate new, multi-section documents with titles, headings, paragraphs, and bullet points.",
         "auth_type": "composio",
         "icon": "IconFileText",
+        "auth_config_env_var": "GDOCS_AUTH_CONFIG_ID",
         "category": "Productivity",
         "mcp_server_config": {
             "name": "gdocs_server",
@@ -162,6 +166,7 @@ INTEGRATIONS_CONFIG = {
         "description": "Create and manage spreadsheets in Google Sheets. The agent can help organize data by creating new spreadsheets with one or more sheets, including headers and rows.",
         "auth_type": "composio",
         "icon": "IconTable",
+        "auth_config_env_var": "GSHEETS_AUTH_CONFIG_ID",
         "category": "Productivity",
         "mcp_server_config": {
             "name": "gsheets_server",

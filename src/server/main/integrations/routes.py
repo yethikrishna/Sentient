@@ -38,8 +38,6 @@ router = APIRouter(
     tags=["Integrations Management"]
 )
 
-from mcp_hub.gcal.auth import get_composio_connection_id
-
 @router.get("/sources", summary="Get all available integration sources and their status")
 async def get_integration_sources(user_id: str = Depends(auth_helper.get_current_user_id)):
     user_profile = await mongo_manager.get_user_profile(user_id)
@@ -54,8 +52,12 @@ async def get_integration_sources(user_id: str = Depends(auth_helper.get_current
 
         # Add Composio-specific config for the client
         if source_info["auth_type"] == "composio":
-            # The client needs the auth_config_id to initiate the connection
-            source_info["auth_config_id"] = os.getenv(f"{name.upper()}_AUTH_CONFIG_ID")
+            # Use the explicitly defined environment variable name from the config
+            env_var_name = config.get("auth_config_env_var")
+            if env_var_name:
+                source_info["auth_config_id"] = os.getenv(env_var_name)
+            else:
+                source_info["auth_config_id"] = None
 
         # Add public config needed by the client for OAuth flow
         if source_info["auth_type"] == "oauth":
@@ -115,38 +117,6 @@ async def connect_manual_integration(
 
         return JSONResponse(content={"message": f"{service_name} connected successfully."})
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/gcalendar/events", summary="Get Google Calendar events for a date range")
-async def get_gcalendar_events(
-    start_date: str = Query(..., description="Start date in ISO 8601 format"),
-    end_date: str = Query(..., description="End date in ISO 8601 format"),
-    user_id: str = Depends(auth_helper.get_current_user_id)
-):
-    try:
-        connection_id = await get_composio_connection_id(user_id, "gcalendar")
-
-        events_result = await asyncio.to_thread(
-            composio.tools.execute,
-            "GOOGLECALENDAR_EVENTS_LIST",
-            arguments={
-                "calendarId": "primary",
-                "timeMin": start_date,
-                "timeMax": end_date,
-                "singleEvents": True,
-                "orderBy": "startTime",
-                "maxResults": 250
-            },
-            connected_account_id=connection_id
-        )
-
-        if not events_result.get("successful"):
-            raise HTTPException(status_code=500, detail=f"Failed to fetch Google Calendar events: {events_result.get('error')}")
-
-        return JSONResponse(content={"events": events_result.get("data", {}).get("items", [])})
-    except Exception as e:
-        print(f"Error fetching GCal events for user {user_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/connect/oauth", summary="Finalize OAuth2 connection by exchanging code for token")
@@ -436,6 +406,7 @@ async def finalize_composio_connection(
         if isinstance(e, TimeoutError) or "timed out" in str(e).lower():
             raise HTTPException(status_code=408, detail="Connection verification timed out. Please try again.")
         raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/composio/webhook", summary="Webhook receiver for Composio triggers", include_in_schema=False)
 async def composio_webhook(request: Request):
     """
@@ -452,12 +423,12 @@ async def composio_webhook(request: Request):
             raise HTTPException(status_code=400, detail="Missing required fields in webhook payload.")
 
         service_name_map = {
-            "GOOGLECALENDAR_NEW_OR_UPDATED_EVENT": "gcalendar",
-            "GMAIL_NEW_EMAIL": "gmail"
+            "GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_SYNC_TRIGGER": "gcalendar",
+            "GMAIL_NEW_GMAIL_MESSAGE": "gmail"
         }
         event_type_map = {
-            "GOOGLECALENDAR_NEW_OR_UPDATED_EVENT": "new_event",
-            "GMAIL_NEW_EMAIL": "new_email"
+            "GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_SYNC_TRIGGER": "new_event",
+            "GMAIL_NEW_GMAIL_MESSAGE": "new_email"
         }
 
         service_name = service_name_map.get(trigger_slug)

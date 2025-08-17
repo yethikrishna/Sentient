@@ -21,7 +21,6 @@ import {
 	IconDots
 } from "@tabler/icons-react"
 import { cn } from "@utils/cn"
-import GCalEventCard from "./GCalEventCard"
 import TaskCardCalendar from "./TaskCardCalendar"
 
 const cellVariants = {
@@ -91,18 +90,12 @@ const CalendarDayCell = ({
 				className="space-y-1 flex-1 cursor-pointer"
 				onClick={() => onShowMoreClick(day)}
 			>
-				{firstItem &&
-					(firstItem.type === "gcal" ? (
-						<GCalEventCard
-							event={firstItem}
-							onSelectTask={onSelectTask}
-						/>
-					) : (
-						<TaskCardCalendar
-							task={firstItem}
-							onSelectTask={onSelectTask}
-						/>
-					))}
+				{firstItem && (
+					<TaskCardCalendar
+						task={firstItem}
+						onSelectTask={onSelectTask}
+					/>
+				)}
 				{items.length > 0 && (
 					<div className="w-1 h-1 bg-brand-yellow rounded-full mx-auto mt-1"></div>
 				)}
@@ -118,7 +111,6 @@ const CalendarDayCell = ({
 
 const CalendarView = ({
 	tasks,
-	gcalEvents,
 	onSelectTask,
 	onDayClick,
 	onShowMoreClick,
@@ -197,15 +189,11 @@ const CalendarView = ({
 						(task) =>
 						isSameDay(task.scheduled_date, day) // prettier-ignore
 					)
-					const eventsForDay = (gcalEvents || []).filter((event) =>
-						isSameDay(event.scheduled_date, day)
-					)
-					const allItemsForDay = [...tasksForDay, ...eventsForDay]
 					return (
 						<CalendarDayCell
 							key={day.toString()}
 							day={day}
-							items={allItemsForDay}
+							items={tasksForDay}
 							isCurrentMonth={isSameMonth(day, currentMonth)}
 							onSelectTask={onSelectTask}
 							onDayClick={handleDayClickInternal}

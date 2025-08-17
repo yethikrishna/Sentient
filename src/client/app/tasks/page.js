@@ -8,19 +8,10 @@ import React, {
 	useMemo
 } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import {
-	format,
-	isSameDay,
-	parseISO,
-	startOfMonth,
-	endOfMonth,
-	startOfWeek,
-	endOfWeek
-} from "date-fns"
+import { format, isSameDay, parseISO } from "date-fns"
 import { IconLoader, IconX, IconSparkles, IconCheck } from "@tabler/icons-react"
 import { AnimatePresence, motion } from "framer-motion"
 import toast from "react-hot-toast"
-import { cn } from "@utils/cn"
 import { Tooltip } from "react-tooltip"
 import { calculateNextRun } from "@utils/taskUtils"
 
@@ -28,7 +19,6 @@ import TaskDetailsPanel from "@components/tasks/TaskDetailsPanel"
 import TaskViewSwitcher from "@components/tasks/TaskViewSwitcher"
 import ListView from "@components/tasks/ListView"
 import CalendarView from "@components/tasks/CalendarView"
-import GCalEventDetailsPanel from "@components/tasks/GCalEventCardDetailsPanel"
 import WelcomePanel from "@components/tasks/WelcomePanel"
 import CreateTaskInput from "@components/tasks/CreateTaskInput"
 import InteractiveNetworkBackground from "@components/ui/InteractiveNetworkBackground"
@@ -153,9 +143,7 @@ function TasksPageContent() {
 		type: "initial",
 		data: null
 	}) // { type: 'initial' | 'hidden' | 'welcome' | 'task' | 'day', data: any }
-	const [gcalEvents, setGcalEvents] = useState([])
-	const [isGcalConnected, setIsGcalConnected] = useState(false)
-	const [currentCalendarDate, setCurrentCalendarDate] = useState(new Date()) // To track calendar view range
+	const [currentCalendarDate, setCurrentCalendarDate] = useState(new Date())
 	const [searchQuery, setSearchQuery] = useState("")
 	const [createTaskPrompt, setCreateTaskPrompt] = useState("")
 	const [isUpgradeModalOpen, setUpgradeModalOpen] = useState(false)
@@ -295,51 +283,6 @@ function TasksPageContent() {
 	}, [])
 
 	useEffect(() => {
-		const gcal = integrations.find((i) => i.name === "gcalendar")
-		setIsGcalConnected(gcal?.connected || false)
-	}, [integrations])
-
-	// New useEffect for fetching GCal events
-	const fetchGcalEvents = useCallback(
-		async (date) => {
-			if (!isGcalConnected || view !== "calendar") return
-
-			// Calculate the visible date range for the calendar view
-			const monthStart = startOfMonth(date)
-			const monthEnd = endOfMonth(date)
-			const startDate = startOfWeek(monthStart)
-			const endDate = endOfWeek(monthEnd)
-
-			try {
-				const res = await fetch(
-					`/api/integrations/gcalendar/events?start_date=${startDate.toISOString()}&end_date=${endDate.toISOString()}`
-				)
-				if (!res.ok)
-					throw new Error("Failed to fetch Google Calendar events")
-				const data = await res.json()
-
-				// Add a type and parse dates
-				const formattedEvents = (data.events || []).map((event) => ({
-					...event,
-					type: "gcal",
-					scheduled_date: parseISO(event.start), // Use 'start' from GCal event
-					end_date: parseISO(event.end),
-					instance_id: `gcal-${event.id}` // Unique ID for React key
-				}))
-				setGcalEvents(formattedEvents)
-			} catch (error) {
-				toast.error(error.message)
-				setGcalEvents([]) // Clear on error
-			}
-		},
-		[isGcalConnected, view]
-	)
-
-	useEffect(() => {
-		fetchGcalEvents(currentCalendarDate)
-	}, [currentCalendarDate, fetchGcalEvents])
-
-	useEffect(() => {
 		fetchTasks()
 	}, [fetchTasks])
 
@@ -412,24 +355,16 @@ function TasksPageContent() {
 	}
 
 	const handleSelectItem = (item) => {
-		if (item.type === "gcal") {
-			setRightPanelContent({ type: "gcal", data: item })
-		} else {
-			setRightPanelContent({ type: "task", data: item })
-		}
+		setRightPanelContent({ type: "task", data: item })
 	}
 
 	const handleShowMoreClick = (date) => {
 		const tasksForDay = filteredCalendarTasks.filter(
 			(task) => isSameDay(task.scheduled_date, date) // prettier-ignore
 		)
-		const eventsForDay = gcalEvents.filter((event) =>
-			isSameDay(event.scheduled_date, date)
-		)
-		const allItemsForDay = [...tasksForDay, ...eventsForDay]
 		setRightPanelContent({
 			type: "day",
-			data: { date, tasks: allItemsForDay }
+			data: { date, tasks: tasksForDay }
 		})
 	}
 
@@ -585,7 +520,6 @@ Description: ${event.description || "No description."}`
 									) : (
 										<CalendarView
 											tasks={filteredCalendarTasks} // prettier-ignore
-											gcalEvents={gcalEvents}
 											onSelectTask={handleSelectItem}
 											onDayClick={handleDayClick}
 											onShowMoreClick={
@@ -756,23 +690,6 @@ Description: ${event.description || "No description."}`
 														),
 													"Message sent."
 												)
-											}
-										/>
-									</motion.div>
-								) : rightPanelContent.type === "gcal" &&
-								  rightPanelContent.data ? (
-									<motion.div
-										key={`gcal-${rightPanelContent.data.id}`}
-										initial={{ opacity: 0 }}
-										animate={{ opacity: 1 }}
-										exit={{ opacity: 0 }}
-										className="h-full"
-									>
-										<GCalEventDetailsPanel
-											event={rightPanelContent.data}
-											onClose={handleCloseRightPanel}
-											onCreateTask={
-												handleCreateTaskFromEvent
 											}
 										/>
 									</motion.div>

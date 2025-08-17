@@ -18,16 +18,14 @@ from main.plans import PLAN_LIMITS
 from main.config import INTEGRATIONS_CONFIG
 from main.tasks.prompts import TASK_CREATION_PROMPT
 from mcp_hub.memory.utils import initialize_embedding_model, initialize_agents, cud_memory
-from mcp_hub.tasks.prompts import RESOURCE_MANAGER_SYSTEM_PROMPT
 from main.llm import run_agent as run_main_agent, LLMProviderDownError
 from main.db import MongoManager
 from workers.celery_app import celery_app
 from workers.planner.llm import get_planner_agent
-from workers.planner.prompts import CONTEXT_RESEARCHER_SYSTEM_PROMPT, TOOL_SELECTOR_SYSTEM_PROMPT
 from workers.planner.db import PlannerMongoManager, get_all_mcp_descriptions
 from workers.executor.tasks import execute_task_plan, run_single_item_worker, aggregate_results_callback
 from main.vector_db import get_conversation_summaries_collection
-from mcp_hub.tasks.prompts import ITEM_EXTRACTOR_SYSTEM_PROMPT
+from mcp_hub.tasks.prompts import ITEM_EXTRACTOR_SYSTEM_PROMPT, RESOURCE_MANAGER_SYSTEM_PROMPT
 from workers.utils.text_utils import clean_llm_output
 
 # Imports for poller logic
@@ -68,41 +66,6 @@ def _get_tool_lists(user_integrations: Dict) -> Tuple[Dict, Dict]:
             else:
                 disconnected_tools[tool_name] = config.get("description", "")
     return connected_tools, disconnected_tools
-
-async def _select_relevant_tools(query: str, available_tools_map: Dict[str, str]) -> List[str]:
-    """
-    Uses a lightweight LLM call to select relevant tools for a given query.
-    """
-    if not available_tools_map:
-        return []
-    try:
-        prompt = f"User Query: \"{query}\""
-
-        messages = [{'role': 'user', 'content': prompt}]
-
-        def _run_selector_sync():
-            final_content_str = ""
-            for chunk in run_main_agent(system_message=TOOL_SELECTOR_SYSTEM_PROMPT, function_list=[], messages=messages):
-                if isinstance(chunk, list) and chunk:
-                    last_message = chunk[-1]
-                    if last_message.get("role") == "assistant" and isinstance(last_message.get("content"), str):
-                        final_content_str = last_message["content"]
-            return final_content_str
-
-        final_content_str = await asyncio.to_thread(_run_selector_sync)
-        cleaned_output = clean_llm_output(final_content_str)
-        selected_tools = JsonExtractor.extract_valid_json(cleaned_output)
-
-        if isinstance(selected_tools, list):
-            # Filter the LLM's selection to ensure they are valid and available tools
-            valid_selected_tools = [tool for tool in selected_tools if tool in available_tools_map]
-            logger.info(f"Unified Search Tool Selector identified relevant tools: {valid_selected_tools}")
-            return valid_selected_tools
-        return []
-    except Exception as e:
-        logger.error(f"Error during tool selection for context search: {e}", exc_info=True)
-        # Fallback to all connected tools on error
-        return list(available_tools_map.keys())
 
 # Helper to run async code in Celery's sync context
 def run_async(coro):
@@ -486,73 +449,6 @@ def process_action_item(user_id: str, action_items: list, topics: list, source_e
     """Orchestrates the pre-planning phase for a new proactive task."""
     run_async(async_process_action_item(user_id, action_items, topics, source_event_id, original_context))
 
-async def run_context_research(user_id: str, task_description: str, original_context: dict, db_manager: PlannerMongoManager) -> str:
-    """
-    Uses a unified agent to search memory and relevant tools to gather context for the planner.
-    Returns a string of synthesized context.
-    """
-    user_profile = await db_manager.user_profiles_collection.find_one({"user_id": user_id})
-    if not user_profile:
-        logger.error(f"User profile not found for {user_id}. Cannot run research.")
-        return "Could not find user profile to begin research."
-
-    user_integrations = user_profile.get("userData", {}).get("integrations", {})
-
-    # 1. Get all available (connected + built-in) tools for the user
-    connected_tools, _ = _get_tool_lists(user_integrations)
-
-    # 2. Select tools relevant to the task description
-    relevant_tool_names = await _select_relevant_tools(task_description, connected_tools)
-
-    # 3. Always include memory for context verification
-    final_tool_names = set(relevant_tool_names)
-    final_tool_names.add("memory")
-
-    logger.info("Selected tools for context verification: " + ", ".join(final_tool_names))
-
-    # 4. Build the MCP server config and prompt info for the agent
-    mcp_servers_for_agent = {}
-    available_tools_for_prompt = {}
-
-    for tool_name in final_tool_names:
-        config = INTEGRATIONS_CONFIG.get(tool_name)
-        if not config: continue
-
-        available_tools_for_prompt[tool_name] = config.get("description", "")
-        
-        mcp_config = config.get("mcp_server_config")
-        if mcp_config and mcp_config.get("url"):
-             mcp_servers_for_agent[mcp_config["name"]] = {"url": mcp_config["url"], "headers": {"X-User-ID": user_id}}
-
-    if not mcp_servers_for_agent:
-        logger.warning(f"No MCP servers could be configured for context search for user {user_id}. Cannot verify context.")
-        return "No tools were available to conduct research."
-
-    logger.info(f"Context Verifier for user {user_id} will use tools: {list(mcp_servers_for_agent.keys())}")
-    
-    original_context_str = json.dumps(original_context, indent=2, default=str)
-
-    system_prompt = CONTEXT_RESEARCHER_SYSTEM_PROMPT.format(
-        original_context=original_context_str,
-    )
-    
-    tools_config = [{"mcpServers": mcp_servers_for_agent}]
-
-    user_prompt = f"User's task request: '{task_description}'. Please research and provide context."
-    messages = [{'role': 'user', 'content': user_prompt}]
-
-    final_response_str = ""
-    for chunk in run_main_agent(system_message=system_prompt, function_list=tools_config, messages=messages):
-        if isinstance(chunk, list) and chunk and chunk[-1].get("role") == "assistant":
-            final_response_str = chunk[-1].get("content", "")
-
-    response_data = JsonExtractor.extract_valid_json(clean_llm_output(final_response_str))
-    if response_data and isinstance(response_data.get("content"), str):
-        return response_data["content"]
-    else:
-        logger.error(f"Research agent returned invalid data: {response_data}. Cannot provide context.")
-        return "The research agent failed to return valid context."
-
 async def async_process_action_item(user_id: str, action_items: list, topics: list, source_event_id: str, original_context: dict):
     """Async logic for the proactive task orchestrator."""
     db_manager = PlannerMongoManager()
@@ -618,19 +514,6 @@ async def async_generate_plan(task_id: str, user_id: str):
             original_context["previous_plan"] = task.get("plan")
             original_context["previous_result"] = task.get("result")
 
-        task_description = task.get("description", "")
-
-        # --- New Research Step ---
-        logger.info(f"Task {task_id}: Starting context research phase.")
-        found_context = await run_context_research(user_id, task_description, original_context, db_manager)
-
-        # Save the found context to the task's latest run for the planner and executor to use.
-        # This assumes a 'run' object is created or updated here. For simplicity, we'll add it to the top-level task.
-        await db_manager.update_task_field(task_id, {"found_context": found_context})
-
-        # --- Proceed with planning ---
-        logger.info(f"Task {task_id}: Context research complete. Generating plan.")
-
         user_profile = await db_manager.user_profiles_collection.find_one(
             {"user_id": user_id},
             {"userData.personalInfo": 1} # Projection to get only necessary data
@@ -670,7 +553,7 @@ async def async_generate_plan(task_id: str, user_id: str):
 
         available_tools = get_all_mcp_descriptions()
 
-        agent_config = get_planner_agent(available_tools, current_user_time, user_name, user_location, found_context)
+        agent_config = get_planner_agent(available_tools, current_user_time, user_name, user_location)
 
         user_prompt_content = "Please create a plan for the following action items:\n- " + "\n- ".join(action_items)
         messages = [{'role': 'user', 'content': user_prompt_content}]
@@ -807,11 +690,16 @@ def _event_matches_filter(event_data: Dict[str, Any], task_filter: Dict[str, Any
 
         # If no logical operators, it's an implicit AND of field conditions
         for field, query in condition.items():
-            event_value = data.get(field)
+            event_value = None
+            # Special remapping for gmail 'from' filter to match Composio's 'sender' field
+            if field == 'from' and source == 'gmail':
+                event_value = data.get('sender')
+            else:
+                event_value = data.get(field)
 
             # Special handling for 'from' field
             if field == 'from' and source == 'gmail' and isinstance(event_value, str):
-                event_value = _extract_email(event_value)
+                event_value = _extract_email(event_value) # This will now work correctly
 
             if isinstance(query, dict): # Field has operators like {$contains: ...}
                 for op, op_val in query.items():

@@ -59,7 +59,7 @@ const UpgradeToProModal = ({ isOpen, onClose }) => {
 	const handleUpgrade = () => {
 		const dashboardUrl = process.env.NEXT_PUBLIC_LANDING_PAGE_URL
 		if (dashboardUrl) {
-			window.open(`${dashboardUrl}/dashboard`, "_blank")
+			window.location.href = `${dashboardUrl}/dashboard`
 		}
 		onClose()
 	}

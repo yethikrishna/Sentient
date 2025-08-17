@@ -484,12 +484,16 @@ export default function MemoriesPage() {
 		setIsLoading(true)
 		try {
 			if (view === "list") {
-				const response = await fetch("/api/memories")
+				const response = await fetch("/api/memories", {
+					cache: "no-store"
+				})
 				if (!response.ok) throw new Error("Failed to fetch memories.")
 				const data = await response.json()
 				setMemories(data.memories || [])
 			} else {
-				const response = await fetch("/api/memories/graph")
+				const response = await fetch("/api/memories/graph", {
+					cache: "no-store"
+				})
 				if (!response.ok)
 					throw new Error("Failed to fetch memory graph data.")
 				const data = await response.json()

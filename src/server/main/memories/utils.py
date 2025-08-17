@@ -135,11 +135,14 @@ async def update_memory(user_id: str, memory_id: int, new_content: str) -> str:
             raise ValueError("Failed to analyze updated memory content.")
 
         new_embedding = _get_normalized_embedding(new_content, task_type="RETRIEVAL_DOCUMENT")
+        # Also re-evaluate the expiration based on the new content analysis
+        expires_at = parse_duration(analysis.get("duration")) if analysis.get("memory_type") == "short-term" else None
         
         async with conn.transaction():
             await conn.execute(
-                "UPDATE facts SET content = $1, embedding = $2, updated_at = NOW() WHERE id = $3",
-                new_content, new_embedding, memory_id
+                # Update content, embedding, timestamp, and expiration
+                "UPDATE facts SET content = $1, embedding = $2, updated_at = NOW(), expires_at = $4 WHERE id = $3",
+                new_content, new_embedding, memory_id, expires_at
             )
             await conn.execute("DELETE FROM fact_topics WHERE fact_id = $1", memory_id)
             topic_names = analysis.get("topics", ["Miscellaneous"])

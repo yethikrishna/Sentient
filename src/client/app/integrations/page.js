@@ -112,7 +112,7 @@ const UpgradeToProModal = ({ isOpen, onClose }) => {
 	const handleUpgrade = () => {
 		const dashboardUrl = process.env.NEXT_PUBLIC_LANDING_PAGE_URL
 		if (dashboardUrl) {
-			window.open(`${dashboardUrl}/dashboard`, "_blank")
+			window.location.href = `${dashboardUrl}/dashboard`
 		}
 		onClose()
 	}
@@ -714,7 +714,9 @@ const IntegrationsPage = () => {
 	const fetchIntegrations = useCallback(async () => {
 		setLoading(true)
 		try {
-			const response = await fetch("/api/settings/integrations")
+			const response = await fetch("/api/settings/integrations", {
+				cache: "no-store"
+			})
 			const data = await response.json()
 			if (!response.ok)
 				throw new Error(data.error || "Failed to fetch integrations")
@@ -756,7 +758,29 @@ const IntegrationsPage = () => {
 		setUpgradeModalOpen(true)
 	}
 
-	const handleConnect = (integration) => {
+	const handleConnect = async (integration) => {
+		const isProFeature = PRO_ONLY_INTEGRATIONS.includes(integration.name)
+		if (isProFeature && !isPro) {
+			handleUpgradeClick()
+			return
+		}
+
+		// If it's a pro feature, refresh the session cookie before redirecting
+		// to ensure the backend gets a fresh token with the correct roles.
+		if (isProFeature) {
+			const toastId = toast.loading("Preparing secure connection...")
+			try {
+				const res = await fetch("/api/auth/refresh-session")
+				if (!res.ok) throw new Error("Session refresh failed")
+				toast.dismiss(toastId)
+			} catch (e) {
+				toast.error("Could not prepare connection. Please try again.", {
+					id: toastId
+				})
+				return // Stop if refresh fails
+			}
+		}
+
 		if (integration.name === "whatsapp") {
 			setWhatsAppToConnect(integration)
 			return
@@ -1257,17 +1281,17 @@ const IntegrationsPage = () => {
 									</button>
 								) : (
 									<button
-										onClick={(e) => {
+										onClick={async (e) => {
 											e.stopPropagation()
 											if (
 												integration.auth_type ===
 												"composio"
 											) {
-												handleComposioConnect(
+												await handleComposioConnect(
 													integration
 												)
 											} else {
-												handleConnect(integration)
+												await handleConnect(integration)
 											}
 										}}
 										className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md bg-brand-orange hover:bg-brand-orange/90 text-brand-black font-semibold text-sm transition-colors"

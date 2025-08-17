@@ -406,6 +406,7 @@ async def finalize_composio_connection(
         if isinstance(e, TimeoutError) or "timed out" in str(e).lower():
             raise HTTPException(status_code=408, detail="Connection verification timed out. Please try again.")
         raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/composio/webhook", summary="Webhook receiver for Composio triggers", include_in_schema=False)
 async def composio_webhook(request: Request):
     """
@@ -422,12 +423,12 @@ async def composio_webhook(request: Request):
             raise HTTPException(status_code=400, detail="Missing required fields in webhook payload.")
 
         service_name_map = {
-            "GOOGLECALENDAR_NEW_OR_UPDATED_EVENT": "gcalendar",
-            "GMAIL_NEW_EMAIL": "gmail"
+            "GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_SYNC_TRIGGER": "gcalendar",
+            "GMAIL_NEW_GMAIL_MESSAGE": "gmail"
         }
         event_type_map = {
-            "GOOGLECALENDAR_NEW_OR_UPDATED_EVENT": "new_event",
-            "GMAIL_NEW_EMAIL": "new_email"
+            "GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_SYNC_TRIGGER": "new_event",
+            "GMAIL_NEW_GMAIL_MESSAGE": "new_email"
         }
 
         service_name = service_name_map.get(trigger_slug)

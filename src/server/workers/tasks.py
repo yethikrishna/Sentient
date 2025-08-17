@@ -690,11 +690,16 @@ def _event_matches_filter(event_data: Dict[str, Any], task_filter: Dict[str, Any
 
         # If no logical operators, it's an implicit AND of field conditions
         for field, query in condition.items():
-            event_value = data.get(field)
+            event_value = None
+            # Special remapping for gmail 'from' filter to match Composio's 'sender' field
+            if field == 'from' and source == 'gmail':
+                event_value = data.get('sender')
+            else:
+                event_value = data.get(field)
 
             # Special handling for 'from' field
             if field == 'from' and source == 'gmail' and isinstance(event_value, str):
-                event_value = _extract_email(event_value)
+                event_value = _extract_email(event_value) # This will now work correctly
 
             if isinstance(query, dict): # Field has operators like {$contains: ...}
                 for op, op_val in query.items():

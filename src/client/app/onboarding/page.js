@@ -9,7 +9,8 @@ import {
 	IconLoader,
 	IconCheck,
 	IconSparkles,
-	IconHeart
+	IconHeart,
+	IconBrandWhatsapp
 } from "@tabler/icons-react"
 import InteractiveNetworkBackground from "@components/ui/InteractiveNetworkBackground"
 import ProgressBar from "@components/onboarding/ProgressBar"
@@ -172,6 +173,15 @@ const questions = [
 		required: true,
 		placeholder: "e.g., I enjoy hiking, learning guitar, and soccer.",
 		icon: <IconHeart />
+	},
+	{
+		id: "whatsapp_notifications_number",
+		question:
+			"If you'd like to receive them, please enter your number with the country code. Otherwise, just press Enter to skip.",
+		type: "text-input",
+		required: false,
+		placeholder: "+14155552671",
+		icon: <IconBrandWhatsapp />
 	}
 ]
 
@@ -181,7 +191,8 @@ const sentientComments = [
 	"Perfect. Now, to help with local info like weather and places...",
 	"This helps me understand your professional goals and context.",
 	"And when you're not working? Tell me about your hobbies.",
-	"Awesome! That's everything I need for now. Let's get you set up."
+	"One last thing. I can send you important updates on WhatsApp. We are in the process of getting an official number for Sentient. Until then, notifications will be sent via our co-founder Sarthak's number (+91827507823).",
+	"Awesome! That's all I need. Let's get you set up."
 ]
 
 // --- Main Component ---
@@ -344,6 +355,38 @@ const OnboardingPage = () => {
 	const handleSubmit = async () => {
 		setStage("submitting")
 		const mainOnboardingData = { ...answers }
+
+		// Save WhatsApp number if provided
+		const whatsappNumber = mainOnboardingData.whatsapp_notifications_number
+		if (whatsappNumber && whatsappNumber.trim() !== "") {
+			try {
+				const whatsappResponse = await fetch(
+					"/api/settings/whatsapp-notifications",
+					{
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({
+							whatsapp_notifications_number: whatsappNumber
+						})
+					}
+				)
+				if (!whatsappResponse.ok) {
+					// Don't block onboarding for this, just show a toast.
+					toast.error(
+						"Could not save WhatsApp number, but onboarding will continue."
+					)
+					console.error(
+						"Failed to save WhatsApp number during onboarding."
+					)
+				}
+			} catch (error) {
+				toast.error("An error occurred while saving WhatsApp number.")
+				console.error(
+					"Error saving WhatsApp number during onboarding:",
+					error
+				)
+			}
+		}
 
 		try {
 			const response = await fetch("/api/onboarding", {

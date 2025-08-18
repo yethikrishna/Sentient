@@ -382,7 +382,7 @@ async def cud_memory(user_id: str, information: str, source: Optional[str] = Non
     logger.info(f"cud_memory processing complete. Result: {final_message}")
     return final_message if final_message else "No facts were processed."
 
-async def build_initial_memory(user_id: str, documents: List[Dict[str, str]]) -> str:
+async def build_initial_memory(user_id: str, documents: List[Dict[str, str]], username: Optional[str] = None) -> str:
     """Builds memory from documents, clearing existing memory first."""
     logger.info(f"Executing build_initial_memory for user_id='{user_id}' with {len(documents)} documents.")
     pool = await db.get_db_pool()
@@ -394,12 +394,14 @@ async def build_initial_memory(user_id: str, documents: List[Dict[str, str]]) ->
             await conn.execute("DELETE FROM facts WHERE user_id = $1", user_id)
     
     total_facts_added = 0
+    # Use the provided username for prompts, falling back to the user_id if not available.
+    name_for_prompt = username if username else user_id
+
     for doc in documents:
         text, source = doc.get("text", ""), doc.get("source", "unknown")
         if not text: continue
         
-        logger.info(f"Extracting facts from document with source: '{source}'.")
-        prompt = fact_extraction_user_prompt_template.format(username=user_id, paragraph=text)
+        prompt = fact_extraction_user_prompt_template.format(username=name_for_prompt, paragraph=text)
         facts_raw = llm.run_agent_with_prompt(agents["fact_extraction"], prompt)
         cleaned_output = clean_llm_output(facts_raw)
         facts = []
@@ -418,7 +420,7 @@ async def build_initial_memory(user_id: str, documents: List[Dict[str, str]]) ->
                 
                 logger.debug(f"Analyzing and adding extracted fact: '{fact_content}'")
                 # Use the streamlined CUD path with a direct ADD intent
-                await cud_memory(user_id, fact_content, source=source)
+                await cud_memory(user_id, fact_content, source=source, username=name_for_prompt)
                 total_facts_added += 1
     
     logger.info(f"Finished building initial memory. Added {total_facts_added} total facts.")

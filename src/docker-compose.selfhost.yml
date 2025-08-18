@@ -1,4 +1,3 @@
-# docker-compose.yml for self-hosting Sentient
 # This file should be placed in the `src` directory.
 
 services:
@@ -28,8 +27,7 @@ services:
             - "3000:3000"
         env_file:
             - ./client/.env.selfhost # Load runtime env vars
-        depends_on:
-            - server
+        depends_on: [server]
         networks:
             - sentient_network
 
@@ -46,10 +44,7 @@ services:
             - "5000:80" # Expose Nginx proxy
         env_file:
             - ./server/.env.selfhost # Load runtime env vars
-        depends_on:
-            - mongodb
-            - redis
-            - postgres
+        depends_on: [mongodb, redis, postgres, waha, litellm]
         networks:
             - sentient_network
         # Add DNS servers to ensure the container can resolve external domains
@@ -105,6 +100,35 @@ services:
         networks:
             - sentient_network
 
+    # WAHA (WhatsApp HTTP API) Service
+    waha:
+        image: devlikeapro/waha:noweb
+        container_name: sentient-waha-selfhost
+        restart: unless-stopped
+        volumes:
+            - waha-sessions:/app/.sessions
+        networks:
+            - sentient_network
+        env_file:
+            - ./.env # Uses vars from the root .env file
+        ports:
+            - "8001:3000" # Expose WAHA on host port 8001
+
+    # LiteLLM Proxy for Gemini Models
+    litellm:
+        image: ghcr.io/berriai/litellm:main-latest
+        container_name: sentient-litellm-selfhost
+        restart: unless-stopped
+        volumes:
+            - ./server/litellm-config.yaml:/app/config.yaml:ro
+        command: ["--config", "/app/config.yaml", "--port", "4000"]
+        env_file:
+            - ./.env # Inherits GEMINI_API_KEY from the root .env
+        ports:
+            - "4000:4000" # Expose LiteLLM proxy on host port 4000
+        networks:
+            - sentient_network
+
 networks:
     sentient_network:
         driver: bridge
@@ -114,4 +138,4 @@ volumes:
     redis_data:
     chroma_data:
     postgres_data:
-
+    waha-sessions:

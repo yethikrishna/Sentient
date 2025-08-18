@@ -47,8 +47,8 @@ from main.misc.routes import router as misc_router
 from main.tasks.routes import router as agents_router
 from main.settings.routes import router as settings_router
 from main.testing.routes import router as testing_router
-from main.proactivity.routes import router as proactivity_router
 from main.search.routes import router as search_router
+from main.memories.db import close_db_pool as close_memories_pg_pool
 from main.memories.routes import router as memories_router
 from main.files.routes import router as files_router
 # FIX: Import both router and stream from voice.routes
@@ -139,6 +139,7 @@ async def lifespan(app_instance: FastAPI):
     print(f"[{datetime.datetime.now(timezone.utc).isoformat()}] [LIFESPAN] App shutdown sequence initiated...")    
     if mongo_manager and mongo_manager.client:
         mongo_manager.client.close()
+    await close_memories_pg_pool()
     print(f"[{datetime.datetime.now(timezone.utc).isoformat()}] [LIFESPAN] App shutdown complete.")
 
 app = FastAPI(title="Sentient Main Server", version="2.2.0", docs_url="/docs", redoc_url="/redoc", lifespan=lifespan)
@@ -162,7 +163,6 @@ app.include_router(misc_router)
 app.include_router(agents_router)
 app.include_router(settings_router)
 app.include_router(testing_router)
-app.include_router(proactivity_router)
 app.include_router(search_router)
 app.include_router(memories_router)
 app.include_router(voice_router)

@@ -16,10 +16,19 @@ export const GET = withAuth(async function GET(request, { authHeader }) {
 			headers: { "Content-Type": "application/json", ...authHeader }
 		})
 
-		const data = await response.json()
 		if (!response.ok) {
-			throw new Error(data.error || "Failed to fetch tasks")
+			const errorText = await response.text()
+			let detail = "Failed to fetch tasks"
+			try {
+				const errorJson = JSON.parse(errorText)
+				detail = errorJson.detail || errorJson.error || errorText
+			} catch (e) {}
+			return NextResponse.json(
+				{ error: detail },
+				{ status: response.status }
+			)
 		}
+		const data = await response.json()
 		return NextResponse.json(data)
 	} catch (error) {
 		console.error("API Error in /tasks:", error)

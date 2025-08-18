@@ -7,3 +7,5 @@ class ContextInjectionRequest(BaseModel):
 
 class WhatsAppTestRequest(BaseModel):
     phone_number: str
+class TestNotificationRequest(BaseModel):
+    type: str

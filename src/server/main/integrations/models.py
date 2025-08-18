@@ -1,5 +1,5 @@
 # src/server/main/integrations/models.py
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import Dict, Any, Optional
 
 class ManualConnectRequest(BaseModel):
@@ -22,3 +22,10 @@ class OAuth1FinishRequest(BaseModel):
     service_name: str
     oauth_token: str
     oauth_verifier: str
+
+class ComposioInitiateRequest(BaseModel):
+    service_name: str
+
+class ComposioFinalizeRequest(BaseModel):
+    service_name: str
+    connectedAccountId: str

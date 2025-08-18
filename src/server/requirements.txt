@@ -22,6 +22,7 @@ pgvector
 
 # --- AI & Machine Learning ---
 qwen-agent
+composio
 google-genai
 elevenlabs
 deepgram-sdk
@@ -30,7 +31,6 @@ torch
 fastrtc[vad, stt, tts]
 numpy
 crawl4ai
-playwright
 
 # --- Background Task Queue ---
 celery
@@ -39,6 +39,7 @@ python-dateutil # For rrule in scheduler
 # --- Google API Clients ---
 google-api-python-client
 google-auth-oauthlib
+google-auth-httplib2
 
 # --- Other 3rd Party API Clients ---
 PyGithub

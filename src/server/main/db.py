@@ -54,11 +54,10 @@ def _decrypt_docs(docs: List[Dict], fields: List[str]):
 USER_PROFILES_COLLECTION = "user_profiles" 
 NOTIFICATIONS_COLLECTION = "notifications" 
 POLLING_STATE_COLLECTION = "polling_state_store" 
+DAILY_USAGE_COLLECTION = "daily_usage"
 PROCESSED_ITEMS_COLLECTION = "processed_items_log" 
 TASK_COLLECTION = "tasks"
 MESSAGES_COLLECTION = "messages"
-USER_PROACTIVE_PREFERENCES_COLLECTION = "user_proactive_preferences"
-PROACTIVE_SUGGESTION_TEMPLATES_COLLECTION = "proactive_suggestion_templates"
 
 logger = logging.getLogger(__name__)
 
@@ -70,11 +69,10 @@ class MongoManager:
         self.user_profiles_collection = self.db[USER_PROFILES_COLLECTION]
         self.notifications_collection = self.db[NOTIFICATIONS_COLLECTION]
         self.polling_state_collection = self.db[POLLING_STATE_COLLECTION]
+        self.daily_usage_collection = self.db[DAILY_USAGE_COLLECTION]
         self.processed_items_collection = self.db[PROCESSED_ITEMS_COLLECTION]
         self.task_collection = self.db[TASK_COLLECTION]
         self.messages_collection = self.db[MESSAGES_COLLECTION]
-        self.user_proactive_preferences_collection = self.db[USER_PROACTIVE_PREFERENCES_COLLECTION]
-        self.proactive_suggestion_templates_collection = self.db[PROACTIVE_SUGGESTION_TEMPLATES_COLLECTION]
         
         print(f"[{datetime.datetime.now()}] [MainServer_MongoManager] Initialized. Database: {MONGO_DB_NAME}")
 
@@ -101,6 +99,10 @@ class MongoManager:
                 ], name="polling_due_tasks_idx"),
                 IndexModel([("is_currently_polling", ASCENDING), ("last_attempted_poll_timestamp", ASCENDING)], name="polling_stale_locks_idx")
             ],
+            self.daily_usage_collection: [
+                IndexModel([("user_id", ASCENDING), ("date", DESCENDING)], unique=True, name="usage_user_date_unique_idx"),
+                IndexModel([("date", DESCENDING)], name="usage_date_idx", expireAfterSeconds=2 * 24 * 60 * 60) # Expire docs after 2 days
+            ],
             self.processed_items_collection: [ 
                 IndexModel([("user_id", ASCENDING), ("service_name", ASCENDING), ("item_id", ASCENDING)], unique=True, name="processed_item_unique_idx_main"),
                 IndexModel([("processing_timestamp", DESCENDING)], name="processed_timestamp_idx_main", expireAfterSeconds=2592000) # 30 days
@@ -117,12 +119,6 @@ class MongoManager:
                 IndexModel([("user_id", ASCENDING), ("timestamp", DESCENDING)], name="message_user_timestamp_idx"),
                 IndexModel([("content", "text")], name="message_content_text_idx"),
             ],
-            self.user_proactive_preferences_collection: [
-                IndexModel([("user_id", ASCENDING), ("suggestion_type", ASCENDING)], unique=True, name="user_suggestion_preference_unique_idx")
-            ],
-            self.proactive_suggestion_templates_collection: [
-                IndexModel([("type_name", ASCENDING)], unique=True, name="suggestion_type_name_unique_idx")
-            ],
         }
 
         for collection, indexes in collections_with_indexes.items():
@@ -131,18 +127,6 @@ class MongoManager:
                 print(f"[{datetime.datetime.now()}] [MainServer_DB_INIT] Indexes ensured for: {collection.name}")
             except Exception as e:
                 print(f"[{datetime.datetime.now()}] [MainServer_DB_ERROR] Index creation for {collection.name}: {e}")
-
-        # Pre-populate suggestion templates if the collection is empty
-        if await self.proactive_suggestion_templates_collection.count_documents({}) == 0:
-            print(f"[{datetime.datetime.now()}] [MainServer_DB_INIT] Pre-populating proactive suggestion templates...")
-            initial_templates = [
-                {"type_name": "draft_meeting_confirmation_email", "description": "Drafts an email to confirm a meeting, check availability, or ask for an agenda."},
-                {"type_name": "schedule_calendar_event", "description": "Creates a new event on the user's calendar based on details from a message."},
-                {"type_name": "create_follow_up_task", "description": "Creates a new task in the user's task list to follow up on a specific item or conversation."},
-                {"type_name": "summarize_document_or_thread", "description": "Summarizes a long document, email thread, or message chain for the user."},
-            ]
-            await self.proactive_suggestion_templates_collection.insert_many(initial_templates)
-            print(f"[{datetime.datetime.now()}] [MainServer_DB_INIT] Inserted {len(initial_templates)} templates.")
 
 
     # --- User Profile Methods ---
@@ -219,6 +203,25 @@ class MongoManager:
         )
         return result.matched_count > 0 or result.upserted_id is not None
 
+    # --- Usage Tracking Methods ---
+    async def get_or_create_daily_usage(self, user_id: str) -> Dict[str, Any]:
+        today_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+        usage_doc = await self.daily_usage_collection.find_one_and_update(
+            {"user_id": user_id, "date": today_str},
+            {"$setOnInsert": {"user_id": user_id, "date": today_str}},
+            upsert=True,
+            return_document=ReturnDocument.AFTER
+        )
+        return usage_doc
+
+    async def increment_daily_usage(self, user_id: str, feature: str, amount: int = 1):
+        today_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+        await self.daily_usage_collection.update_one(
+            {"user_id": user_id, "date": today_str},
+            {"$inc": {feature: amount}},
+            upsert=True
+        )
+
     # --- Notification Methods ---
     async def get_notifications(self, user_id: str) -> List[Dict]:
         if not user_id: return []
@@ -276,6 +279,17 @@ class MongoManager:
             {"$pull": {"notifications": {"id": notification_id}}}
         )
         return result.modified_count > 0
+
+    async def delete_all_notifications(self, user_id: str):
+        """Deletes all notifications for a user by emptying the notifications array."""
+        if not user_id:
+            return
+        # This operation is idempotent. If the user has no notification document,
+        # it does nothing, which is the desired outcome.
+        await self.notifications_collection.update_one(
+            {"user_id": user_id},
+            {"$set": {"notifications": []}}
+        )
 
     async def find_and_action_suggestion_notification(self, user_id: str, notification_id: str) -> Optional[Dict]:
         """
@@ -372,8 +386,7 @@ class MongoManager:
             "task_type": task_data.get("task_type", "single"),
             "swarm_details": task_data.get("swarm_details") # Will be None for single tasks
         }
-
-        SENSITIVE_TASK_FIELDS = ["name", "description", "plan", "runs", "original_context", "chat_history", "error", "found_context", "clarifying_questions", "result", "swarm_details"]
+        SENSITIVE_TASK_FIELDS = ["name", "description", "plan", "runs", "original_context", "chat_history", "error", "clarifying_questions", "result", "swarm_details"]
         _encrypt_doc(task_doc, SENSITIVE_TASK_FIELDS)
 
         await self.task_collection.insert_one(task_doc)
@@ -383,7 +396,7 @@ class MongoManager:
     async def get_task(self, task_id: str, user_id: str) -> Optional[Dict]:
         """Fetches a single task by its ID, ensuring it belongs to the user."""
         doc = await self.task_collection.find_one({"task_id": task_id, "user_id": user_id})
-        SENSITIVE_TASK_FIELDS = ["name", "description", "plan", "runs", "original_context", "chat_history", "error", "found_context", "clarifying_questions", "result", "swarm_details"]
+        SENSITIVE_TASK_FIELDS = ["name", "description", "plan", "runs", "original_context", "chat_history", "error", "clarifying_questions", "result", "swarm_details"]
         _decrypt_doc(doc, SENSITIVE_TASK_FIELDS)
         return doc
 
@@ -391,14 +404,14 @@ class MongoManager:
         """Fetches all tasks for a given user."""
         cursor = self.task_collection.find({"user_id": user_id}).sort("created_at", -1)
         docs = await cursor.to_list(length=None)
-        SENSITIVE_TASK_FIELDS = ["name", "description", "plan", "runs", "original_context", "chat_history", "error", "found_context", "clarifying_questions", "result", "swarm_details"]
+        SENSITIVE_TASK_FIELDS = ["name", "description", "plan", "runs", "original_context", "chat_history", "error", "clarifying_questions", "result", "swarm_details"]
         _decrypt_docs(docs, SENSITIVE_TASK_FIELDS)
         return docs
 
     async def update_task(self, task_id: str, updates: Dict) -> bool:
         """Updates an existing task document."""
         updates["updated_at"] = datetime.datetime.now(datetime.timezone.utc)
-        SENSITIVE_TASK_FIELDS = ["name", "description", "plan", "runs", "original_context", "chat_history", "error", "found_context", "clarifying_questions", "result", "swarm_details"]
+        SENSITIVE_TASK_FIELDS = ["name", "description", "plan", "runs", "original_context", "chat_history", "error", "clarifying_questions", "result", "swarm_details"]
         _encrypt_doc(updates, SENSITIVE_TASK_FIELDS)
         result = await self.task_collection.update_one(
             {"task_id": task_id},
@@ -585,44 +598,3 @@ class MongoManager:
         if self.client:
             self.client.close()
             print(f"[{datetime.datetime.now()}] [MainServer_MongoManager] MongoDB connection closed.")
-
-    # --- Proactive Suggestion Template Methods ---
-    async def get_all_proactive_suggestion_templates(self) -> List[Dict]:
-        """Fetches all documents from the proactive_suggestion_templates collection."""
-        cursor = self.proactive_suggestion_templates_collection.find({}, {"_id": 0})
-        return await cursor.to_list(length=None)
-
-    # --- Proactive Learning Methods ---
-    async def update_proactive_preference_score(self, user_id: str, suggestion_type: str, increment_value: int):
-        """Finds or creates a user preference document and increments/decrements the score."""
-        now_utc = datetime.datetime.now(datetime.timezone.utc)
-        # FIX: Removed 'score' from $setOnInsert to prevent conflict with $inc on upsert.
-        # $inc will create the field with the specified value if it doesn't exist.
-        await self.user_proactive_preferences_collection.update_one(
-            {"user_id": user_id, "suggestion_type": suggestion_type},
-            {
-                "$inc": {"score": increment_value},
-                "$set": {"last_updated": now_utc}
-            },
-            upsert=True
-        )
-    
-    async def get_user_proactive_preferences(self, user_id: str) -> Dict[str, int]:
-        """
-        Fetches all proactive suggestion preferences for a user and returns them
-        as a dictionary of {suggestion_type: score}.
-        """
-        if not user_id:
-            return {}
-        
-        preferences = {}
-        cursor = self.user_proactive_preferences_collection.find(
-            {"user_id": user_id},
-            {"_id": 0, "suggestion_type": 1, "score": 1}
-        )
-        async for doc in cursor:
-            if "suggestion_type" in doc and "score" in doc:
-                preferences[doc["suggestion_type"]] = doc["score"]
-        
-        logger.info(f"Fetched {len(preferences)} proactive preferences for user {user_id}.")
-        return preferences

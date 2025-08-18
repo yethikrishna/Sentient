@@ -26,9 +26,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright browsers and dependencies in its own layer
-RUN playwright install --with-deps
-
 # --- Build Arguments ---
 # These arguments are passed from docker-compose.yaml or the `docker build` command.
 ARG OPENAI_API_KEY

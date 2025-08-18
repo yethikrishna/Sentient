@@ -9,94 +9,17 @@ import {
 	IconBell,
 	IconAlertCircle,
 	IconX,
-	IconArrowRight,
-	IconCheck,
-	IconThumbDown,
-	IconChevronDown,
-	IconChevronUp,
-	IconLink
+	IconArrowRight
 } from "@tabler/icons-react"
 import { formatDistanceToNow, parseISO } from "date-fns"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 
-const SuggestionDetails = ({ payload }) => {
-	if (!payload) return null
-
-	const { reasoning, gathered_context } = payload
-	const triggerEvent = gathered_context?.trigger_event
-	const searchResults = gathered_context?.universal_search_results
-
-	return (
-		<div className="mt-3 pt-3 border-t border-neutral-700/50 text-xs space-y-4">
-			{reasoning && (
-				<div>
-					<h5 className="font-semibold text-neutral-300 mb-1">
-						Why was this suggested?
-					</h5>
-					<div className="text-neutral-400 italic">
-						<ReactMarkdown remarkPlugins={[remarkGfm]}>
-							{`"${reasoning}"`}
-						</ReactMarkdown>
-					</div>
-				</div>
-			)}
-			{triggerEvent && (
-				<div>
-					<h5 className="font-semibold text-neutral-300 mb-1">
-						Source Event ({triggerEvent.event_type})
-					</h5>
-					{triggerEvent.event_data && triggerEvent.event_data.url ? (
-						<div className="mt-1">
-							{(triggerEvent.event_data.summary ||
-								triggerEvent.event_data.subject) && (
-								<p className="text-neutral-300 truncate">
-									{triggerEvent.event_data.summary ||
-										triggerEvent.event_data.subject}
-								</p>
-							)}
-							<a
-								href={triggerEvent.event_data.url}
-								target="_blank"
-								rel="noopener noreferrer"
-								className="text-blue-400 hover:underline text-xs flex items-center gap-1 mt-1"
-							>
-								<IconLink size={12} />
-								View Original{" "}
-								{triggerEvent.event_type === "gcalendar"
-									? "Event"
-									: "Email"}
-							</a>
-						</div>
-					) : (
-						<pre className="bg-black/30 p-2 rounded-md text-neutral-400 whitespace-pre-wrap font-mono text-[11px] max-h-40 overflow-auto custom-scrollbar">
-							{JSON.stringify(triggerEvent.event_data, null, 2)}
-						</pre>
-					)}
-				</div>
-			)}
-			{searchResults && Object.keys(searchResults).length > 0 && (
-				<div>
-					<h5 className="font-semibold text-neutral-300 mb-1">
-						Related Context Found
-					</h5>
-					<pre className="bg-black/30 p-2 rounded-md text-neutral-400 whitespace-pre-wrap font-mono text-[11px] max-h-40 overflow-auto custom-scrollbar">
-						{JSON.stringify(searchResults, null, 2)}
-					</pre>
-				</div>
-			)}
-		</div>
-	)
-}
-
 const NotificationItem = ({
 	notification,
 	onDelete,
-	onAction,
 	onGeneralClick,
-	userTimezone,
-	isExpanded,
-	onToggleExpand
+	userTimezone
 }) => {
 	let formattedTimestamp = "..." // Default placeholder
 
@@ -118,19 +41,12 @@ const NotificationItem = ({
 		formattedTimestamp = "Recently" // Fallback for invalid date
 	}
 
-	const isSuggestion = notification.type === "proactive_suggestion"
-
 	const handleClick = () => {
-		if (isSuggestion) {
-			onToggleExpand()
-		} else {
-			onGeneralClick(notification)
-		}
+		onGeneralClick(notification)
 	}
 
 	return (
 		<motion.div
-			layout
 			initial={{ opacity: 0, y: 10 }}
 			animate={{ opacity: 1, y: 0 }}
 			exit={{ opacity: 0, scale: 0.95 }}
@@ -163,65 +79,20 @@ const NotificationItem = ({
 					>
 						<IconX size={14} />
 					</button>
-					{isSuggestion &&
-						(isExpanded ? (
-							<IconChevronUp size={16} />
-						) : (
-							<IconChevronDown size={16} />
-						))}
-					{notification.task_id && !isSuggestion && (
+					{notification.task_id && (
 						<IconArrowRight className="w-5 h-5 text-neutral-500 transition-transform group-hover:translate-x-0.5" />
 					)}
 				</div>
 			</div>
-
-			{isSuggestion && (
-				<div className="mt-3 pt-3 border-t border-neutral-700/50 flex justify-end gap-2">
-					<button
-						onClick={(e) => {
-							e.stopPropagation()
-							onAction(notification.id, "dismissed")
-						}}
-						className="flex items-center gap-1.5 text-xs font-semibold text-neutral-300 bg-neutral-700/80 hover:bg-neutral-700 px-3 py-1.5 rounded-md"
-					>
-						<IconThumbDown size={14} /> Dismiss
-					</button>
-					<button
-						onClick={(e) => {
-							e.stopPropagation()
-							onAction(notification.id, "approved")
-						}}
-						className="flex items-center gap-1.5 text-xs font-semibold text-white bg-green-600/80 hover:bg-green-600 px-3 py-1.5 rounded-md"
-					>
-						<IconCheck size={14} /> Approve
-					</button>
-				</div>
-			)}
-			<AnimatePresence>
-				{isExpanded && isSuggestion && (
-					<motion.div
-						initial={{ height: 0, opacity: 0 }}
-						animate={{ height: "auto", opacity: 1 }}
-						exit={{ height: 0, opacity: 0 }}
-						transition={{ duration: 0.2, ease: "easeInOut" }}
-						className="overflow-hidden"
-					>
-						<SuggestionDetails
-							payload={notification.suggestion_payload}
-						/>
-					</motion.div>
-				)}
-			</AnimatePresence>
 		</motion.div>
 	)
 }
 
-const NotificationsOverlay = ({ onClose }) => {
+const NotificationsOverlay = ({ onClose, notifRefreshKey }) => {
 	const [notifications, setNotifications] = useState([])
 	const [isLoading, setIsLoading] = useState(true)
 	const [error, setError] = useState(null)
 	const [userTimezone, setUserTimezone] = useState(null)
-	const [expandedId, setExpandedId] = useState(null)
 	const router = useRouter()
 
 	const fetchNotifications = useCallback(async () => {
@@ -271,7 +142,7 @@ const NotificationsOverlay = ({ onClose }) => {
 	useEffect(() => {
 		fetchNotifications()
 		fetchUserTimezone()
-	}, [fetchNotifications, fetchUserTimezone])
+	}, [fetchNotifications, fetchUserTimezone, notifRefreshKey])
 
 	const handleDelete = async (e, notificationId) => {
 		if (e && e.stopPropagation) e.stopPropagation()
@@ -337,25 +208,26 @@ const NotificationsOverlay = ({ onClose }) => {
 		)
 			return
 		const originalNotifications = [...notifications]
-		setNotifications([])
-
-		const deletionPromises = originalNotifications.map((n) =>
-			handleDelete(null, n.id)
-		)
+		setNotifications([]) // Optimistic update
 
 		try {
-			await Promise.all(deletionPromises)
-			toast.success("All notifications dismissed.")
-		} catch (err) {
-			toast.error(`Could not dismiss all notifications: ${err.message}`)
-			setNotifications(originalNotifications)
-		}
-	}
+			const response = await fetch("/api/notifications/delete", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ delete_all: true }) // New API call
+			})
 
-	const handleToggleExpand = (notificationId) => {
-		setExpandedId((prevId) =>
-			prevId === notificationId ? null : notificationId
-		)
+			if (!response.ok) {
+				const errorData = await response.json()
+				throw new Error(
+					errorData.error || "Failed to dismiss all notifications"
+				)
+			}
+			toast.success("All notifications dismissed.") // Single toast
+		} catch (err) {
+			toast.error(`Error: ${err.message}`)
+			setNotifications(originalNotifications) // Revert on error
+		}
 	}
 
 	const overlayVariants = {
@@ -431,10 +303,6 @@ const NotificationsOverlay = ({ onClose }) => {
 									onAction={handleSuggestionAction}
 									onGeneralClick={(n) =>
 										handleNotificationClick(null, n)
-									}
-									isExpanded={expandedId === notif.id}
-									onToggleExpand={() =>
-										handleToggleExpand(notif.id)
 									}
 								/>
 							))}

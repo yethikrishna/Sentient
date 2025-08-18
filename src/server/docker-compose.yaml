@@ -1,7 +1,6 @@
 # src/server/docker-compose.yaml
-# This docker-compose file is intended for a production-like deployment on a single VM.
-# It orchestrates the main application server along with all its required backend services
-# (Redis, WAHA for WhatsApp, PostgreSQL for Memory, and ChromaDB for vector storage).
+# This docker-compose file is for deploying the application server on a dedicated Server VM.
+# It should connect to databases running on a separate Database VM.
 
 services:
     # 1. The Main Sentient Application (FastAPI, Nginx, Celery, MCPs)
@@ -22,30 +21,12 @@ services:
             # This is the primary public-facing port for your entire application.
             - "5000:80"
         depends_on:
-            - postgres
-            - chroma
-            - redis
             - waha
+            - litellm
         networks:
             - sentient_network
 
-    # 2. Redis for Celery Broker & Backend
-    redis:
-        image: redis:7-alpine
-        container_name: redis-db
-        restart: unless-stopped
-        # Use the password from the .env file, ensuring it's quoted
-        command: redis-server --requirepass "${REDIS_PASSWORD}"
-        volumes:
-            # Use a named volume for persistent Redis data
-            - redis-data:/data
-        networks:
-            - sentient_network
-        env_file:
-            - ./.env
-        # No ports are exposed to the host. Communication is internal and secure.
-
-    # 3. WAHA (WhatsApp HTTP API) Service
+    # 2. WAHA (WhatsApp HTTP API) Service
     waha:
         image: devlikeapro/waha:noweb
         container_name: waha-notifier
@@ -59,36 +40,19 @@ services:
             - ./.env
         ports:
             - "8000:3000"
-        # No ports are exposed to the host. The sentient-app communicates with it internally.
 
-    # 4. PostgreSQL for Memory MCP
-    postgres:
-        image: pgvector/pgvector:pg16
-        container_name: sentient-postgres-prod
+    # 3. LiteLLM Proxy for Gemini Models
+    litellm:
+        image: ghcr.io/berriai/litellm:main-latest  # Use the latest stable image
+        container_name: litellm-proxy
         restart: unless-stopped
-        environment:
-            # These variables should be defined in your .env file
-            POSTGRES_USER: ${POSTGRES_USER}
-            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-            POSTGRES_DB: ${POSTGRES_DB}
-        volumes:
-            - postgres-data:/var/lib/postgresql/data
-        ports:
-            - "5432:5432" # Maps your local port 5432 to the container's port 5432
         networks:
-            - sentient_network
-
-    # 5. ChromaDB for Vector Storage
-    chroma:
-        image: chromadb/chroma
-        container_name: sentient-chroma-prod
-        restart: unless-stopped
-        ports:
-            - "8002:8000" # Expose Chroma's port for debugging if needed
+        - sentient_network  # Join the shared network for internal access
         volumes:
-            - chroma-data:/chroma/.chroma/index
-        networks:
-            - sentient_network
+        - ./litellm-config.yaml:/app/config.yaml:ro  # Mount your config (create in src\server if needed)
+        command: ["--config", "/app/config.yaml", "--port", "4000"]  # Run with config; optional: add "--detailed_debug"
+        env_file:
+        - ./.env  # Loads GEMINI_API_KEY and others
 
 # Defines the shared network for all services
 networks:
@@ -97,7 +61,4 @@ networks:
 
 # Defines the named volumes for data persistence
 volumes:
-    redis-data:
     waha-sessions:
-    postgres-data:
-    chroma-data:

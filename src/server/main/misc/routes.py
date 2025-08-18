@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 import logging
 
 from main.models import OnboardingRequest
-from main.auth.utils import PermissionChecker, AuthHelper, aes_encrypt, aes_decrypt
+from main.auth.utils import PermissionChecker, AuthHelper
 from main.config import AUTH0_AUDIENCE
 from main.dependencies import mongo_manager, auth_helper, websocket_manager as main_websocket_manager
 from pydantic import BaseModel
@@ -159,6 +159,9 @@ async def get_user_data_endpoint(payload: dict = Depends(auth_helper.get_decoded
     if user_email_from_token and (not profile_doc or stored_email != user_email_from_token):
         logger.info(f"Updating stored email for user {user_id}.")
         await mongo_manager.update_user_profile(user_id, {"userData.personalInfo.email": user_email_from_token})
+        # Add user's plan to their profile for easier access by workers
+        await mongo_manager.update_user_profile(user_id, {"userData.plan": payload.get("plan", "free")})
+
         # Re-fetch the profile after update if it was missing before
         if not profile_doc:
             profile_doc = await mongo_manager.get_user_profile(user_id)
@@ -166,7 +169,10 @@ async def get_user_data_endpoint(payload: dict = Depends(auth_helper.get_decoded
     if profile_doc and "userData" in profile_doc:
         return JSONResponse(content={"data": profile_doc["userData"], "status": 200})
     print(f"[{datetime.datetime.now()}] [GET_USER_DATA] No profile/userData for {user_id}. Creating basic entry.")
-    await mongo_manager.update_user_profile(user_id, {"userData": {}}) 
+    await mongo_manager.update_user_profile(user_id, {
+        "userData.plan": payload.get("plan", "free"),
+        "userData.personalInfo.email": user_email_from_token
+    })
     return JSONResponse(content={"data": {}, "status": 200})
 
 @router.websocket("/ws/notifications")

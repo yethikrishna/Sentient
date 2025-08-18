@@ -8,19 +8,10 @@ import React, {
 	useMemo
 } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import {
-	format,
-	isSameDay,
-	parseISO,
-	startOfMonth,
-	endOfMonth,
-	startOfWeek,
-	endOfWeek
-} from "date-fns"
-import { IconLoader, IconX } from "@tabler/icons-react"
+import { format, isSameDay, parseISO } from "date-fns"
+import { IconLoader, IconX, IconSparkles, IconCheck } from "@tabler/icons-react"
 import { AnimatePresence, motion } from "framer-motion"
 import toast from "react-hot-toast"
-import { cn } from "@utils/cn"
 import { Tooltip } from "react-tooltip"
 import { calculateNextRun } from "@utils/taskUtils"
 
@@ -28,12 +19,110 @@ import TaskDetailsPanel from "@components/tasks/TaskDetailsPanel"
 import TaskViewSwitcher from "@components/tasks/TaskViewSwitcher"
 import ListView from "@components/tasks/ListView"
 import CalendarView from "@components/tasks/CalendarView"
-import GCalEventDetailsPanel from "@components/tasks/GCalEventCardDetailsPanel"
 import WelcomePanel from "@components/tasks/WelcomePanel"
 import CreateTaskInput from "@components/tasks/CreateTaskInput"
 import InteractiveNetworkBackground from "@components/ui/InteractiveNetworkBackground"
-import { IconSparkles } from "@tabler/icons-react"
 import DayDetailView from "@components/tasks/DayDetailView"
+import { usePlan } from "@hooks/usePlan"
+
+const proPlanFeatures = [
+	{ name: "Text Chat", limit: "100 messages per day" },
+	{ name: "Voice Chat", limit: "10 minutes per day" },
+	{ name: "One-Time Tasks", limit: "20 async tasks per day" },
+	{ name: "Recurring Tasks", limit: "10 active recurring workflows" },
+	{ name: "Triggered Tasks", limit: "10 triggered workflows" },
+	{
+		name: "Parallel Agents",
+		limit: "5 complex tasks per day with 50 sub agents"
+	},
+	{ name: "File Uploads", limit: "20 files per day" },
+	{ name: "Memories", limit: "Unlimited memories" },
+	{
+		name: "Other Integrations",
+		limit: "Notion, GitHub, Slack, Discord, Trello"
+	}
+]
+
+const UpgradeToProModal = ({ isOpen, onClose }) => {
+	if (!isOpen) return null
+
+	const handleUpgrade = () => {
+		const dashboardUrl = process.env.NEXT_PUBLIC_LANDING_PAGE_URL
+		if (dashboardUrl) {
+			window.location.href = `${dashboardUrl}/dashboard`
+		}
+		onClose()
+	}
+
+	return (
+		<AnimatePresence>
+			{isOpen && (
+				<motion.div
+					initial={{ opacity: 0 }}
+					animate={{ opacity: 1 }}
+					exit={{ opacity: 0 }}
+					className="fixed inset-0 bg-black/70 backdrop-blur-md z-[100] flex items-center justify-center p-4"
+					onClick={onClose}
+				>
+					<motion.div
+						initial={{ scale: 0.95, y: 20 }}
+						animate={{ scale: 1, y: 0 }}
+						exit={{ scale: 0.95, y: -20 }}
+						transition={{ duration: 0.2, ease: "easeInOut" }}
+						onClick={(e) => e.stopPropagation()}
+						className="relative bg-neutral-900/90 backdrop-blur-xl p-6 rounded-2xl shadow-2xl w-full max-w-lg border border-neutral-700 flex flex-col"
+					>
+						<header className="text-center mb-4">
+							<h2 className="text-2xl font-bold text-white flex items-center justify-center gap-2">
+								<IconSparkles className="text-brand-orange" />
+								Upgrade to Pro
+							</h2>
+							<p className="text-neutral-400 mt-2">
+								Unlock Parallel Agents and other powerful
+								features.
+							</p>
+						</header>
+						<main className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 my-4">
+							{proPlanFeatures.map((feature) => (
+								<div
+									key={feature.name}
+									className="flex items-start gap-2.5"
+								>
+									<IconCheck
+										size={18}
+										className="text-green-400 flex-shrink-0 mt-0.5"
+									/>
+									<div>
+										<p className="text-white text-sm font-medium">
+											{feature.name}
+										</p>
+										<p className="text-neutral-400 text-xs">
+											{feature.limit}
+										</p>
+									</div>
+								</div>
+							))}
+						</main>
+						<footer className="mt-4 flex flex-col gap-2">
+							<button
+								onClick={handleUpgrade}
+								className="w-full py-2.5 px-5 rounded-lg bg-brand-orange hover:bg-brand-orange/90 text-brand-black font-semibold transition-colors"
+							>
+								Upgrade to Pro - $9/month
+							</button>
+							<button
+								onClick={onClose}
+								className="w-full py-2 px-5 rounded-lg hover:bg-neutral-800 text-sm font-medium text-neutral-400"
+							>
+								Not now
+							</button>
+						</footer>
+					</motion.div>
+				</motion.div>
+			)}
+		</AnimatePresence>
+	)
+}
 
 function TasksPageContent() {
 	const router = useRouter()
@@ -42,11 +131,7 @@ function TasksPageContent() {
 	// Raw tasks from API
 	const [allTasks, setAllTasks] = useState([])
 	// Processed tasks for different views
-	const [oneTimeTasks, setOneTimeTasks] = useState([])
-	const [recurringTasks, setRecurringTasks] = useState([])
-	const [triggeredTasks, setTriggeredTasks] = useState([])
-	const [swarmTasks, setSwarmTasks] = useState([])
-	const [recurringInstances, setRecurringInstances] = useState([])
+
 	const [integrations, setIntegrations] = useState([])
 	const [allTools, setAllTools] = useState([])
 	const [isLoading, setIsLoading] = useState(true)
@@ -58,11 +143,84 @@ function TasksPageContent() {
 		type: "initial",
 		data: null
 	}) // { type: 'initial' | 'hidden' | 'welcome' | 'task' | 'day', data: any }
-	const [gcalEvents, setGcalEvents] = useState([])
-	const [isGcalConnected, setIsGcalConnected] = useState(false)
-	const [currentCalendarDate, setCurrentCalendarDate] = useState(new Date()) // To track calendar view range
+	const [currentCalendarDate, setCurrentCalendarDate] = useState(new Date())
 	const [searchQuery, setSearchQuery] = useState("")
 	const [createTaskPrompt, setCreateTaskPrompt] = useState("")
+	const [isUpgradeModalOpen, setUpgradeModalOpen] = useState(false)
+	const { isPro } = usePlan()
+
+	// Processed tasks for different views are derived from allTasks
+	const {
+		oneTimeTasks,
+		recurringTasks,
+		triggeredTasks,
+		swarmTasks,
+		recurringInstances
+	} = useMemo(() => {
+		const oneTime = []
+		const recurring = []
+		const triggered = []
+		const swarm = []
+		const instances = []
+
+		allTasks.forEach((task) => {
+			if (task.task_type === "swarm") {
+				swarm.push(task)
+			} else if (task.schedule?.type === "recurring") {
+				recurring.push(task)
+				// Process past runs from `runs` array
+				if (task.runs && Array.isArray(task.runs)) {
+					task.runs.forEach((run) => {
+						const runDate = run.execution_start_time
+							? parseISO(run.execution_start_time)
+							: null
+						if (runDate) {
+							instances.push({
+								...task,
+								status: run.status, // Use the run's specific status
+								scheduled_date: runDate,
+								instance_id: `${task.task_id}-${run.run_id}`
+							})
+						}
+					})
+				}
+				// Add next upcoming run
+				const nextRunDate = calculateNextRun(
+					task.schedule,
+					task.created_at,
+					task.runs
+				)
+				if (nextRunDate) {
+					instances.push({
+						...task,
+						status: "pending", // An upcoming run is pending
+						scheduled_date: nextRunDate,
+						instance_id: `${task.task_id}-next`
+					})
+				}
+			} else if (task.schedule?.type === "triggered") {
+				triggered.push(task)
+			} else {
+				// One-time tasks
+				const scheduledDate = task.schedule?.run_at
+					? parseISO(task.schedule.run_at)
+					: parseISO(task.created_at)
+				oneTime.push({
+					...task,
+					scheduled_date: scheduledDate,
+					instance_id: task.task_id
+				})
+			}
+		})
+
+		return {
+			oneTimeTasks: oneTime,
+			recurringTasks: recurring,
+			triggeredTasks: triggered,
+			swarmTasks: swarm,
+			recurringInstances: instances
+		}
+	}, [allTasks])
 
 	useEffect(() => {
 		// On initial client-side load, determine the default panel state.
@@ -107,69 +265,6 @@ function TasksPageContent() {
 				: []
 			setAllTasks(rawTasks)
 
-			// --- Process tasks for different views ---
-			const oneTime = []
-			const recurring = []
-			const triggered = []
-			const swarm = []
-			const instances = []
-
-			rawTasks.forEach((task) => {
-				if (task.task_type === "swarm") {
-					swarm.push(task)
-				} else if (task.schedule?.type === "recurring") {
-					recurring.push(task)
-					// Process past runs from `runs` array
-					if (task.runs && Array.isArray(task.runs)) {
-						task.runs.forEach((run) => {
-							const runDate = run.execution_start_time
-								? parseISO(run.execution_start_time)
-								: null
-							if (runDate) {
-								instances.push({
-									...task,
-									status: run.status, // Use the run's specific status
-									scheduled_date: runDate,
-									instance_id: `${task.task_id}-${run.run_id}`
-								})
-							}
-						})
-					}
-					// Add next upcoming run
-					const nextRunDate = calculateNextRun(
-						task.schedule,
-						task.created_at,
-						task.runs
-					)
-					if (nextRunDate) {
-						instances.push({
-							...task,
-							status: "pending", // An upcoming run is pending
-							scheduled_date: nextRunDate,
-							instance_id: `${task.task_id}-next`
-						})
-					}
-				} else if (task.schedule?.type === "triggered") {
-					triggered.push(task)
-				} else {
-					// One-time tasks
-					const scheduledDate = task.schedule?.run_at
-						? parseISO(task.schedule.run_at)
-						: parseISO(task.created_at)
-					oneTime.push({
-						...task,
-						scheduled_date: scheduledDate,
-						instance_id: task.task_id
-					})
-				}
-			})
-
-			setOneTimeTasks(oneTime)
-			setRecurringTasks(recurring)
-			setTriggeredTasks(triggered)
-			setSwarmTasks(swarm)
-			setRecurringInstances(instances)
-
 			const integrationsRes = await fetch("/api/settings/integrations")
 			if (!integrationsRes.ok)
 				throw new Error("Failed to fetch integrations")
@@ -186,51 +281,6 @@ function TasksPageContent() {
 			setIsLoading(false)
 		}
 	}, [])
-
-	useEffect(() => {
-		const gcal = integrations.find((i) => i.name === "gcalendar")
-		setIsGcalConnected(gcal?.connected || false)
-	}, [integrations])
-
-	// New useEffect for fetching GCal events
-	const fetchGcalEvents = useCallback(
-		async (date) => {
-			if (!isGcalConnected || view !== "calendar") return
-
-			// Calculate the visible date range for the calendar view
-			const monthStart = startOfMonth(date)
-			const monthEnd = endOfMonth(date)
-			const startDate = startOfWeek(monthStart)
-			const endDate = endOfWeek(monthEnd)
-
-			try {
-				const res = await fetch(
-					`/api/integrations/gcalendar/events?start_date=${startDate.toISOString()}&end_date=${endDate.toISOString()}`
-				)
-				if (!res.ok)
-					throw new Error("Failed to fetch Google Calendar events")
-				const data = await res.json()
-
-				// Add a type and parse dates
-				const formattedEvents = (data.events || []).map((event) => ({
-					...event,
-					type: "gcal",
-					scheduled_date: parseISO(event.start), // Use 'start' from GCal event
-					end_date: parseISO(event.end),
-					instance_id: `gcal-${event.id}` // Unique ID for React key
-				}))
-				setGcalEvents(formattedEvents)
-			} catch (error) {
-				toast.error(error.message)
-				setGcalEvents([]) // Clear on error
-			}
-		},
-		[isGcalConnected, view]
-	)
-
-	useEffect(() => {
-		fetchGcalEvents(currentCalendarDate)
-	}, [currentCalendarDate, fetchGcalEvents])
 
 	useEffect(() => {
 		fetchTasks()
@@ -270,6 +320,25 @@ function TasksPageContent() {
 		[fetchTasks]
 	)
 
+	const handleAnswerClarifications = async (taskId, answers) => {
+		await handleAction(
+			() =>
+				fetch("/api/tasks/answer-clarifications", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ taskId, answers })
+				}),
+			"Answers submitted successfully. The task will now resume."
+		)
+		// After submitting, close the panel to show the updated task list
+		handleCloseRightPanel()
+	}
+
+	const handleAddTask = (newTask) => {
+		// Optimistically add the new task to the state
+		setAllTasks((prevTasks) => [...prevTasks, newTask])
+	}
+
 	const handleUpdateTask = async (updatedTask) => {
 		await handleAction(
 			() =>
@@ -286,24 +355,16 @@ function TasksPageContent() {
 	}
 
 	const handleSelectItem = (item) => {
-		if (item.type === "gcal") {
-			setRightPanelContent({ type: "gcal", data: item })
-		} else {
-			setRightPanelContent({ type: "task", data: item })
-		}
+		setRightPanelContent({ type: "task", data: item })
 	}
 
 	const handleShowMoreClick = (date) => {
 		const tasksForDay = filteredCalendarTasks.filter(
 			(task) => isSameDay(task.scheduled_date, date) // prettier-ignore
 		)
-		const eventsForDay = gcalEvents.filter((event) =>
-			isSameDay(event.scheduled_date, date)
-		)
-		const allItemsForDay = [...tasksForDay, ...eventsForDay]
 		setRightPanelContent({
 			type: "day",
-			data: { date, tasks: allItemsForDay }
+			data: { date, tasks: tasksForDay }
 		})
 	}
 
@@ -399,6 +460,10 @@ Description: ${event.description || "No description."}`
 				place="right"
 				style={{ zIndex: 9999 }}
 			/>
+			<UpgradeToProModal
+				isOpen={isUpgradeModalOpen}
+				onClose={() => setUpgradeModalOpen(false)}
+			/>
 			<div className="flex-1 flex overflow-hidden relative">
 				<div className="absolute inset-0 z-[-1] network-grid-background">
 					<InteractiveNetworkBackground />
@@ -455,7 +520,6 @@ Description: ${event.description || "No description."}`
 									) : (
 										<CalendarView
 											tasks={filteredCalendarTasks} // prettier-ignore
-											gcalEvents={gcalEvents}
 											onSelectTask={handleSelectItem}
 											onDayClick={handleDayClick}
 											onShowMoreClick={
@@ -472,9 +536,11 @@ Description: ${event.description || "No description."}`
 					</div>
 
 					<CreateTaskInput
-						onTaskAdded={fetchTasks}
+						onTaskAdded={handleAddTask}
 						prompt={createTaskPrompt}
 						setPrompt={setCreateTaskPrompt}
+						isPro={isPro}
+						onUpgradeClick={() => setUpgradeModalOpen(true)}
 					/>
 				</main>
 
@@ -513,12 +579,16 @@ Description: ${event.description || "No description."}`
 											integrations={integrations}
 											onClose={handleCloseRightPanel}
 											onSave={handleUpdateTask}
+											onAnswerClarifications={
+												handleAnswerClarifications
+											}
 											onDelete={(taskId) =>
 												handleAction(
 													() =>
 														fetch(
 															`/api/tasks/delete`,
 															{
+																// prettier-ignore
 																method: "POST",
 																body: JSON.stringify(
 																	{
@@ -559,22 +629,19 @@ Description: ${event.description || "No description."}`
 												handleAction(
 													() =>
 														fetch(
-															`/api/tasks/answer-clarifications`,
+															"/api/tasks/rerun",
 															{
 																method: "POST",
-																body: JSON.stringify(
-																	{
-																		taskId,
-																		answers
-																	}
-																),
 																headers: {
 																	"Content-Type":
 																		"application/json"
-																}
+																},
+																body: JSON.stringify(
+																	{ taskId }
+																)
 															}
 														),
-													"Answers submitted."
+													"Task re-run initiated."
 												)
 											}
 											onArchiveTask={(taskId) =>
@@ -623,23 +690,6 @@ Description: ${event.description || "No description."}`
 														),
 													"Message sent."
 												)
-											}
-										/>
-									</motion.div>
-								) : rightPanelContent.type === "gcal" &&
-								  rightPanelContent.data ? (
-									<motion.div
-										key={`gcal-${rightPanelContent.data.id}`}
-										initial={{ opacity: 0 }}
-										animate={{ opacity: 1 }}
-										exit={{ opacity: 0 }}
-										className="h-full"
-									>
-										<GCalEventDetailsPanel
-											event={rightPanelContent.data}
-											onClose={handleCloseRightPanel}
-											onCreateTask={
-												handleCreateTaskFromEvent
 											}
 										/>
 									</motion.div>

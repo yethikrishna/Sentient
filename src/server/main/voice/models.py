@@ -7,3 +7,5 @@ class VoiceOfferRequest(BaseModel):
 class VoiceAnswerResponse(BaseModel):
     sdp: str
     type: str
+class VoiceUsageRequest(BaseModel):
+    duration_seconds: int

@@ -20,31 +20,6 @@ class GmailPollingService:
         self.service_name = "gmail"
         logger.info("GmailPollingService Initialized.")
 
-    def _calculate_next_poll_interval(self, user_profile: dict) -> int:
-        """Calculates the polling interval based on user activity."""
-        from workers.poller.gmail.config import (
-            ACTIVE_THRESHOLD_MINUTES_WORKER,
-            RECENTLY_ACTIVE_THRESHOLD_HOURS_WORKER,
-            PEAK_HOURS_START_WORKER,
-            PEAK_HOURS_END_WORKER
-        )
-        now = datetime.datetime.now(timezone.utc)
-        last_active_ts = user_profile.get("userData", {}).get("last_active_timestamp")
-
-        if last_active_ts:
-            minutes_since_active = (now - last_active_ts).total_seconds() / 60
-            if minutes_since_active <= ACTIVE_THRESHOLD_MINUTES_WORKER:
-                return POLL_CFG["ACTIVE_USER_SECONDS"]
-            if minutes_since_active <= RECENTLY_ACTIVE_THRESHOLD_HOURS_WORKER * 60:
-                return POLL_CFG["RECENTLY_ACTIVE_SECONDS"]
-
-        # Peak hours logic
-        current_hour = now.hour
-        if PEAK_HOURS_START_WORKER <= current_hour < PEAK_HOURS_END_WORKER:
-            return POLL_CFG["PEAK_HOURS_SECONDS"]
-        else:
-            return POLL_CFG["OFF_PEAK_SECONDS"]
-
     async def _handle_poll_failure(self, user_id: str, polling_state: dict, error_message: str):
         """Handles logic for when a poll fails."""
         failures = polling_state.get("consecutive_failure_count", 0) + 1
@@ -125,24 +100,9 @@ class GmailPollingService:
                     continue
 
                 if not await self.db_manager.is_item_processed(user_id, self.service_name, email_item_id, mode): # noqa
-                    from workers.tasks import cud_memory_task, proactive_reasoning_pipeline, execute_triggered_task # noqa
+                    from workers.tasks import execute_triggered_task # noqa
 
-                    if mode == 'proactivity':
-                        # Construct a representative text string from the email data
-                        source_text = f"Subject: {email.get('subject', '')}\n\n{email.get('body', '')}"
-                        # # 1. Send to memory
-                        # cud_memory_task.delay(
-                        #     user_id=user_id,
-                        #     information=source_text,
-                        #     source=self.service_name
-                        # ) NOT SENDING TO MEMORY FOR NOW
-                        # 2. Send to proactive reasoning
-                        proactive_reasoning_pipeline.delay(
-                            user_id=user_id,
-                            event_type=self.service_name,
-                            event_data=email
-                        )
-                    elif mode == 'triggers':
+                    if mode == 'triggers':
                         # 3. Check for and execute triggered tasks
                         execute_triggered_task.delay(
                             user_id=user_id, source=self.service_name,
@@ -183,10 +143,7 @@ class GmailPollingService:
                     updated_state["is_enabled"] = False # Disable after too many failures
                     updated_state["next_scheduled_poll_time"] = datetime.datetime.now(timezone.utc) + datetime.timedelta(days=1) # Check much later
             else:
-                if mode == 'triggers':
-                    next_interval = 60  # Always poll every 60 seconds for triggers
-                else: # proactivity
-                    next_interval = self._calculate_next_poll_interval(user_profile or {})
+                next_interval = 60  # Always poll every 60 seconds for triggers
                 updated_state["next_scheduled_poll_time"] = datetime.datetime.now(timezone.utc) + datetime.timedelta(seconds=next_interval)
             
             updated_state["is_currently_polling"] = False # Release lock
@@ -204,24 +161,23 @@ class GmailPollingService:
 
         while True:
             try:
-                due_tasks_states = await self.db_manager.get_due_polling_tasks_for_service(self.service_name, 'proactivity') # Hardcoded for now
+                due_tasks_states = await self.db_manager.get_due_polling_tasks_for_service(self.service_name, 'triggers')
                 
                 if not due_tasks_states:
                     # logger.debug("Scheduler: No due Gmail polling tasks.")
                     pass
                 else:
-                    logger.info(f"Scheduler: Found {len(due_tasks_states)} due Gmail polling tasks.")
+                    logger.info(f"Scheduler: Found {len(due_tasks_states)} due Gmail trigger polling tasks.")
 
                 for task_state in due_tasks_states:
                     user_id = task_state["user_id"]
                     
                     # Try to acquire a lock on the task
-                    locked_task_state = await self.db_manager.set_polling_status_and_get(user_id, self.service_name, 'proactivity')
+                    locked_task_state = await self.db_manager.set_polling_status_and_get(user_id, self.service_name, 'triggers')
                     
                     if locked_task_state:
                         logger.info(f"Scheduler: Acquired lock for {user_id}. Triggering poll cycle.")
-                        # Run the poll cycle in a new task to not block the scheduler loop
-                        asyncio.create_task(self._run_single_user_poll_cycle(user_id, locked_task_state, 'proactivity'))
+                        asyncio.create_task(self._run_single_user_poll_cycle(user_id, locked_task_state, 'triggers'))
                     else:
                         logger.debug(f"Scheduler: Could not acquire lock for {user_id} (already processing or no longer due).")
 

@@ -25,14 +25,17 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 		const data = await backendResponse.json()
 
 		if (!backendResponse.ok) {
-			throw new Error(data.detail || "Failed to upload file")
+			return NextResponse.json(
+				{ error: data.detail || "Failed to upload file" },
+				{ status: backendResponse.status }
+			)
 		}
 
 		return NextResponse.json(data)
 	} catch (error) {
 		console.error("API Error in /files/upload:", error)
 		return NextResponse.json(
-			{ message: "Internal Server Error", error: error.message },
+			{ error: "Internal Server Error", details: error.message },
 			{ status: 500 }
 		)
 	}

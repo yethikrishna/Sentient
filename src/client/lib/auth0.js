@@ -19,7 +19,11 @@ export const auth0 = isSelfHost
 				// Instead, we need to provide the values explicitly.
 				scope: process.env.AUTH0_SCOPE,
 				audience: process.env.AUTH0_AUDIENCE
-			}
+			},
+			// Preserve custom claims like roles from the ID token
+			async beforeSessionSaved(session, idToken) {
+				return session
+		},
 		})
 
 export async function getBackendAuthHeader() {

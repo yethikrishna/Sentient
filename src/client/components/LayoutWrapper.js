@@ -1,6 +1,14 @@
+// src/client/components/LayoutWrapper.js
 "use client"
-import React, { useState, useEffect, useCallback, useRef } from "react"
-import { usePathname, useRouter } from "next/navigation"
+import React, {
+	useState,
+	useEffect,
+	useCallback,
+	useRef,
+	createContext
+} from "react"
+// Import useSearchParams
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { AnimatePresence } from "framer-motion"
 import NotificationsOverlay from "@components/NotificationsOverlay"
 import { IconMenu2, IconLoader, IconX } from "@tabler/icons-react"
@@ -10,9 +18,18 @@ import GlobalSearch from "./GlobalSearch"
 import { useGlobalShortcuts } from "@hooks/useGlobalShortcuts"
 import { cn } from "@utils/cn"
 import toast from "react-hot-toast"
+import { useUser } from "@auth0/nextjs-auth0"
+import { usePostHog } from "posthog-js/react"
+
+// ... (keep the rest of your imports and context creation)
+export const PlanContext = createContext({
+	plan: "free",
+	isPro: false,
+	isLoading: true
+})
 import { subscribeUser } from "@app/actions"
 
-// Helper function to convert VAPID key
+// ... (keep your urlBase64ToUint8Array function)
 function urlBase64ToUint8Array(base64String) {
 	const padding = "=".repeat((4 - (base64String.length % 4)) % 4)
 	const base64 = (base64String + padding)
@@ -27,27 +44,109 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 export default function LayoutWrapper({ children }) {
+	// ... (keep all your existing state declarations)
 	const [isNotificationsOpen, setNotificationsOpen] = useState(false)
 	const [isSearchOpen, setSearchOpen] = useState(false)
 	const [isCommandPaletteOpen, setCommandPaletteOpen] = useState(false)
 	const [isSidebarCollapsed, setSidebarCollapsed] = useState(true)
 	const [isMobileNavOpen, setMobileNavOpen] = useState(false)
 	const [unreadCount, setUnreadCount] = useState(0)
+	const [notifRefreshKey, setNotifRefreshKey] = useState(0)
 	const [userDetails, setUserDetails] = useState(null)
 	const wsRef = useRef(null)
 	const pathname = usePathname()
 	const router = useRouter()
+	const searchParams = useSearchParams() // Hook to read URL query parameters
+	const posthog = usePostHog()
 
-	// State for onboarding check
+	const { user, error: authError, isLoading: isAuthLoading } = useUser()
+
 	const [isLoading, setIsLoading] = useState(true)
 	const [isAllowed, setIsAllowed] = useState(false)
 
 	const showNav = !["/", "/onboarding"].includes(pathname)
 
 	useEffect(() => {
+		if (user && posthog) {
+			posthog.identify(user.sub, {
+				name: user.name,
+				email: user.email
+			})
+		}
+	}, [user, posthog])
+
+	useEffect(() => {
+		const paymentStatus = searchParams.get("payment_status")
+		const needsRefresh = searchParams.get("refresh_session")
+
+		if (paymentStatus === "success" && posthog) {
+			posthog.capture("plan_upgraded", {
+				plan_name: "pro"
+				// MRR and billing_cycle are not available on the client
+			})
+		}
+		// Check for either trigger
+		if (paymentStatus === "success" || needsRefresh === "true") {
+			// CRITICAL FIX: Clean the URL synchronously *before* doing anything else.
+			// This prevents the refresh loop.
+			window.history.replaceState(null, "", pathname)
+			const toastId = toast.loading("Updating your session...", {
+				duration: 4000
+			})
+
+			// const refreshSession = async () => {
+			// 	const toastId = toast.loading("Updating your session...", {
+			// 		duration: 4000
+			// 	})
+			// 	try {
+			// 		// Call the API to get a new session cookie
+			// 		const res = await fetch("/api/auth/refresh-session")
+			// 		if (!res.ok) {
+			// 			const errorData = await res.json()
+			// 			throw new Error(
+			// 				errorData.error || "Session refresh failed."
+			// 			)
+			// 		}
+
+			// 		// Now that the cookie is updated and the URL is clean, reload the page.
+			// 		// This will re-run server components and hooks with the new session data.
+			// 		window.location.reload()
+			// 	} catch (error) {
+			// 		toast.error(
+			// 			`Failed to refresh session: ${error.message}. Please log in again to see your new plan.`,
+			// 			{ id: toastId }
+			// 		)
+			// 	}
+			// }
+			// refreshSession()
+
+			const logoutUrl = new URL("/auth/logout", window.location.origin)
+			logoutUrl.searchParams.set(
+				"returnTo",
+				process.env.NEXT_PUBLIC_APP_BASE_URL
+			)
+			window.location.assign(logoutUrl.toString())
+		}
+	}, [searchParams, router, pathname]) // Dependencies are correct
+
+	// ... (keep the rest of your useEffects and functions exactly as they were)
+	useEffect(() => {
 		if (!showNav) {
 			setIsLoading(false)
-			setIsAllowed(true) // Allow rendering for public pages like '/' and '/onboarding'
+			setIsAllowed(true)
+			return
+		}
+
+		if (isAuthLoading) return
+
+		if (authError) {
+			toast.error("Session error. Redirecting to login.")
+			router.push("/auth/login")
+			return
+		}
+
+		if (!user) {
+			router.push("/auth/login")
 			return
 		}
 
@@ -55,36 +154,28 @@ export default function LayoutWrapper({ children }) {
 			setIsLoading(true)
 			try {
 				const res = await fetch("/api/user/data")
-				if (!res.ok) {
-					throw new Error("Session error. Please log in again.")
-				}
+				if (!res.ok) throw new Error("Could not verify user status.")
 				const data = await res.json()
 				if (data?.data?.onboardingComplete) {
 					setIsAllowed(true)
 				} else {
 					toast.error("Please complete onboarding first.")
 					router.push("/onboarding")
-					// isAllowed remains false, content won't flash
 				}
 			} catch (error) {
-				toast.error(error.message || "Failed to verify user status.")
-				router.push("/") // Redirect to home on error
+				toast.error(error.message)
+				router.push("/")
 			} finally {
 				setIsLoading(false)
 			}
 		}
 
 		checkStatus()
-	}, [pathname, router, showNav])
+	}, [pathname, router, showNav, user, authError, isAuthLoading])
 
+	// ... (keep the rest of your useEffects and functions exactly as they were)
 	useEffect(() => {
-		fetch("/api/user/profile")
-			.then((res) => (res.ok ? res.json() : null))
-			.then((data) => setUserDetails(data))
-	}, [])
-
-	useEffect(() => {
-		if (!userDetails?.sub) return
+		if (!user?.sub) return
 
 		const connectWebSocket = async () => {
 			if (wsRef.current && wsRef.current.readyState < 2) return
@@ -116,6 +207,7 @@ export default function LayoutWrapper({ children }) {
 					const data = JSON.parse(event.data)
 					if (data.type === "new_notification") {
 						setUnreadCount((prev) => prev + 1)
+						setNotifRefreshKey((prev) => prev + 1)
 						toast(
 							(t) => (
 								<div className="flex items-center gap-3">
@@ -151,8 +243,6 @@ export default function LayoutWrapper({ children }) {
 							})
 						)
 					} else if (data.type === "task_list_updated") {
-						// This is a generic event telling the app that tasks have changed
-						// on the backend and the UI should refetch them.
 						window.dispatchEvent(
 							new CustomEvent("tasksUpdatedFromBackend")
 						)
@@ -178,14 +268,13 @@ export default function LayoutWrapper({ children }) {
 				wsRef.current = null
 			}
 		}
-	}, [userDetails?.sub])
+	}, [user?.sub])
 
 	const handleNotificationsOpen = useCallback(() => {
 		setNotificationsOpen(true)
 		setUnreadCount(0)
 	}, [])
 
-	// Use the new custom hook for shortcuts
 	useGlobalShortcuts(handleNotificationsOpen, () =>
 		setCommandPaletteOpen((prev) => !prev)
 	)
@@ -212,8 +301,6 @@ export default function LayoutWrapper({ children }) {
 			})
 		}
 	}, [])
-
-	// Removed duplicate subscribeToPushNotifications declaration
 
 	// PWA Update Handler
 	useEffect(() => {
@@ -317,7 +404,7 @@ export default function LayoutWrapper({ children }) {
 		if (showNav && userDetails?.sub) subscribeToPushNotifications()
 	}, [showNav, userDetails, subscribeToPushNotifications])
 
-	if (isLoading) {
+	if (isLoading || isAuthLoading) {
 		return (
 			<div className="flex-1 flex h-screen bg-black text-white overflow-hidden justify-center items-center">
 				<IconLoader className="w-10 h-10 animate-spin text-brand-orange" />
@@ -326,15 +413,34 @@ export default function LayoutWrapper({ children }) {
 	}
 
 	if (!isAllowed) {
-		// This will be shown briefly during the redirect to /onboarding
 		return (
 			<div className="flex-1 flex h-screen bg-black text-white overflow-hidden justify-center items-center">
 				<IconLoader className="w-10 h-10 animate-spin text-brand-orange" />
 			</div>
 		)
 	}
+
+	console.log(user?.[`${process.env.NEXT_PUBLIC_AUTH0_NAMESPACE}/roles`])
+
+	// ... (rest of the component is unchanged)
 	return (
-		<>
+		<PlanContext.Provider
+			value={{
+				plan: (
+					user?.[
+						`${process.env.NEXT_PUBLIC_AUTH0_NAMESPACE}/roles`
+					] || []
+				).includes("Pro")
+					? "pro"
+					: "free",
+				isPro: (
+					user?.[
+						`${process.env.NEXT_PUBLIC_AUTH0_NAMESPACE}/roles`
+					] || []
+				).includes("Pro"),
+				isLoading: isAuthLoading
+			}}
+		>
 			{showNav && (
 				<>
 					<Sidebar
@@ -347,6 +453,7 @@ export default function LayoutWrapper({ children }) {
 						unreadCount={unreadCount}
 						isMobileOpen={isMobileNavOpen}
 						onMobileClose={() => setMobileNavOpen(false)}
+						user={user}
 					/>
 					<button
 						onClick={() => setMobileNavOpen(true)}
@@ -374,6 +481,7 @@ export default function LayoutWrapper({ children }) {
 			<AnimatePresence>
 				{isNotificationsOpen && (
 					<NotificationsOverlay
+						notifRefreshKey={notifRefreshKey}
 						onClose={() => setNotificationsOpen(false)}
 					/>
 				)}
@@ -383,6 +491,6 @@ export default function LayoutWrapper({ children }) {
 					<GlobalSearch onClose={() => setSearchOpen(false)} />
 				)}
 			</AnimatePresence>
-		</>
+		</PlanContext.Provider>
 	)
 }

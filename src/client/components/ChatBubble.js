@@ -29,7 +29,7 @@ import {
 	IconBrandGoogleDrive,
 	IconBrandLinkedin
 } from "@tabler/icons-react"
-import { Tooltip } from "react-tooltip"
+import { AnimatePresence, motion } from "framer-motion"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import IconGoogleDocs from "./icons/IconGoogleDocs"
@@ -38,6 +38,7 @@ import IconGoogleCalendar from "./icons/IconGoogleCalendar"
 import IconGoogleSlides from "./icons/IconGoogleSlides" // This is a custom one, not from tabler
 import IconGoogleMail from "./icons/IconGoogleMail"
 import IconGoogleDrive from "./icons/IconGoogleMail"
+import { Tooltip } from "react-tooltip"
 import toast from "react-hot-toast"
 import FileCard from "./FileCard"
 
@@ -132,78 +133,6 @@ const LinkButton = ({ href, children }) => {
 	)
 }
 
-// ToolCodeBlock is no longer rendered, but we keep it for potential future use or debugging
-const ToolCodeBlock = ({ name, code, isExpanded, onToggle }) => {
-	let formattedCode = code
-	try {
-		const parsed = JSON.parse(code)
-		formattedCode = JSON.stringify(parsed, null, 2)
-	} catch (e) {
-		// Not JSON, leave as is
-	}
-
-	return (
-		<div className="mb-4 border-l-2 border-green-500 pl-3">
-			<button
-				onClick={onToggle}
-				className="flex w-full items-center justify-start gap-2 text-green-400 hover:text-green-300 text-sm font-semibold"
-				data-tooltip-id="chat-bubble-tooltip"
-				data-tooltip-content="Click to see the tool call details."
-			>
-				{isExpanded ? (
-					<IconChevronUp size={16} />
-				) : (
-					<IconChevronDown size={16} />
-				)}
-				Tool Call: {name}
-			</button>
-			{isExpanded && (
-				<div className="mt-2 p-3 bg-neutral-800/50 rounded-md">
-					<pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono">
-						<code>{formattedCode}</code>
-					</pre>
-				</div>
-			)}
-		</div>
-	)
-}
-
-// ToolResultBlock component to display tool results in a collapsible format
-const ToolResultBlock = ({ name, result, isExpanded, onToggle }) => {
-	let formattedResult = result
-	try {
-		const parsed = JSON.parse(result)
-		formattedResult = JSON.stringify(parsed, null, 2)
-	} catch (e) {
-		// Not a valid JSON, leave as is
-	}
-
-	return (
-		<div className="mb-4 border-l-2 border-purple-500 pl-3">
-			<button
-				onClick={onToggle}
-				className="flex w-full items-center justify-start gap-2 text-purple-400 hover:text-purple-300 text-sm font-semibold"
-				data-tooltip-id="chat-bubble-tooltip"
-				data-tooltip-content="Click to see the result from the tool."
-			>
-				{isExpanded ? (
-					<IconChevronUp size={16} />
-				) : (
-					<IconChevronDown size={16} />
-				)}
-				Tool Result: {name}
-			</button>
-			{isExpanded && (
-				<div className="mt-2 p-3 bg-neutral-800/50 rounded-md">
-					<pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono">
-						<code>{formattedResult}</code>
-					</pre>
-				</div>
-			)}
-		</div>
-	)
-}
-
 // Main ChatBubble component
 const ChatBubble = ({
 	role,
@@ -215,7 +144,8 @@ const ChatBubble = ({
 	onReply,
 	onDelete,
 	message,
-	allMessages = []
+	allMessages = [],
+	isStreaming = false
 }) => {
 	const [copied, setCopied] = useState(false)
 	const [expandedStates, setExpandedStates] = useState({})
@@ -320,6 +250,12 @@ const ChatBubble = ({
 			}
 		}, [processedContent.content, thoughts, tool_calls, tool_results])
 
+	const hasInternalMonologue =
+		parsedThoughts.length > 0 ||
+		parsedToolCalls.length > 0 ||
+		parsedToolResults.length > 0 ||
+		isStreaming
+
 	// Function to toggle expansion of collapsible sections
 	const toggleExpansion = (id) => {
 		setExpandedStates((prev) => ({ ...prev, [id]: !prev[id] }))
@@ -331,7 +267,7 @@ const ChatBubble = ({
 	const transformLinkUri = (uri) => {
 		return uri.startsWith("file:") ? uri : uri // Let ReactMarkdown handle its default security
 	}
-	const renderMessageContent = (contentToRender) => {
+	const renderedContent = React.useMemo(() => {
 		const markdownComponents = {
 			a: ({ href, children }) => {
 				if (href && href.startsWith("file:")) {
@@ -348,7 +284,7 @@ const ChatBubble = ({
 				<ReactMarkdown
 					className="prose prose-invert"
 					remarkPlugins={[remarkGfm]}
-					children={contentToRender || ""}
+					children={finalContent || ""}
 					urlTransform={transformLinkUri}
 					components={markdownComponents}
 				/>
@@ -358,75 +294,152 @@ const ChatBubble = ({
 		// Assistant message rendering now uses the structured props
 		return (
 			<>
-				{parsedThoughts.map((thought, index) => {
-					const partId = `thought_${index}`
-					return (
-						<div
-							key={partId}
-							className="mb-4 border-l-2 border-yellow-500 pl-3"
+				{hasInternalMonologue && (
+					<div className="mb-4 border-l-2 border-yellow-500 pl-3">
+						<button
+							onClick={() =>
+								toggleExpansion("agent_thought_process")
+							}
+							className="flex w-full items-center justify-start gap-2 text-yellow-400 hover:text-yellow-300 text-sm font-semibold"
 						>
-							<button
-								onClick={() => toggleExpansion(partId)}
-								className="flex items-center gap-2 text-yellow-400 hover:text-yellow-300 text-sm font-semibold"
-							>
-								{expandedStates[partId] ? (
-									<IconChevronUp size={16} />
-								) : (
-									<IconChevronDown size={16} />
-								)}
-								Agent's Thought Process
-							</button>
-							{expandedStates[partId] && (
-								<div className="mt-2 p-3 bg-neutral-800/50 rounded-md">
-									<ReactMarkdown className="prose prose-sm prose-invert text-gray-300 whitespace-pre-wrap">
-										{thought}
-									</ReactMarkdown>
-								</div>
+							{expandedStates["agent_thought_process"] ? (
+								<IconChevronUp size={16} />
+							) : (
+								<IconChevronDown size={16} />
 							)}
-						</div>
-					)
-				})}
-
-				{parsedToolCalls.map((call, index) => {
-					const partId = `tool_call_${index}`
-					return (
-						<ToolCodeBlock
-							key={partId}
-							name={call.tool_name}
-							code={call.parameters}
-							isExpanded={!!expandedStates[partId]}
-							onToggle={() => toggleExpansion(partId)}
-						/>
-					)
-				})}
-
-				{parsedToolResults.map((res, index) => {
-					const partId = `tool_result_${index}`
-					return (
-						<ToolResultBlock
-							key={partId}
-							name={res.tool_name}
-							result={res.result}
-							isExpanded={!!expandedStates[partId]}
-							onToggle={() => toggleExpansion(partId)}
-						/>
-					)
-				})}
+							Agent's Thought Process
+						</button>
+						<AnimatePresence>
+							{expandedStates["agent_thought_process"] && (
+								<motion.div
+									initial={{ height: 0, opacity: 0 }}
+									animate={{ height: "auto", opacity: 1 }}
+									exit={{ height: 0, opacity: 0 }}
+									transition={{
+										duration: 0.3,
+										ease: "easeInOut"
+									}}
+									className="overflow-hidden"
+								>
+									<div className="mt-2 p-3 bg-neutral-800/50 rounded-md space-y-4">
+										{isStreaming ? (
+											<pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono">
+												<code>
+													{processedContent.content}
+												</code>
+											</pre>
+										) : (
+											<>
+												{parsedThoughts.map(
+													(thought, index) => (
+														<div
+															key={`thought_${index}`}
+														>
+															<ReactMarkdown className="prose prose-sm prose-invert text-gray-300 whitespace-pre-wrap">
+																{thought}
+															</ReactMarkdown>
+														</div>
+													)
+												)}
+												{parsedToolCalls.map(
+													(call, index) => {
+														let formattedParams =
+															call.parameters
+														try {
+															const parsed =
+																JSON.parse(
+																	call.parameters
+																)
+															formattedParams =
+																JSON.stringify(
+																	parsed,
+																	null,
+																	2
+																)
+														} catch (e) {
+															// not json, leave as is
+														}
+														return (
+															<div
+																key={`tool_call_${index}`}
+															>
+																<p className="text-xs font-semibold text-green-400 mb-1">
+																	Tool Call:{" "}
+																	{
+																		call.tool_name
+																	}
+																</p>
+																<pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono">
+																	<code>
+																		{
+																			formattedParams
+																		}
+																	</code>
+																</pre>
+															</div>
+														)
+													}
+												)}
+												{parsedToolResults.map(
+													(res, index) => {
+														let formattedResult =
+															res.result
+														try {
+															const parsed =
+																JSON.parse(
+																	res.result
+																)
+															formattedResult =
+																JSON.stringify(
+																	parsed,
+																	null,
+																	2
+																)
+														} catch (e) {
+															// not json, leave as is
+														}
+														return (
+															<div
+																key={`tool_result_${index}`}
+															>
+																<p className="text-xs font-semibold text-purple-400 mb-1">
+																	Tool Result:{" "}
+																	{
+																		res.tool_name
+																	}
+																</p>
+																<pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono">
+																	<code>
+																		{
+																			formattedResult
+																		}
+																	</code>
+																</pre>
+															</div>
+														)
+													}
+												)}
+											</>
+										)}
+									</div>
+								</motion.div>
+							)}
+						</AnimatePresence>
+					</div>
+				)}
 
 				{/* Render the final, clean content */}
-				{contentToRender && (
+				{!isStreaming && finalContent && (
 					<div
-						className={
-							(parsedThoughts.length > 0 ||
-								parsedToolCalls.length > 0 ||
-								parsedToolResults.length > 0) &&
-							"mt-4 pt-4 border-t border-neutral-700/50"
-						}
+						className={cn(
+							hasInternalMonologue &&
+								"mt-4 pt-4 border-t border-neutral-700/50"
+						)}
 					>
 						<ReactMarkdown
 							className="prose prose-invert"
 							remarkPlugins={[remarkGfm]}
-							children={contentToRender}
+							children={finalContent}
 							urlTransform={transformLinkUri}
 							components={markdownComponents}
 						/>
@@ -434,19 +447,16 @@ const ChatBubble = ({
 				)}
 			</>
 		)
-	}
-
-	const renderedContent = React.useMemo(
-		() => renderMessageContent(finalContent),
-		[
-			finalContent,
-			expandedStates,
-			isUser,
-			parsedThoughts,
-			parsedToolCalls,
-			parsedToolResults
-		]
-	)
+	}, [
+		processedContent.content,
+		finalContent,
+		expandedStates,
+		isUser,
+		parsedThoughts,
+		parsedToolCalls,
+		parsedToolResults,
+		isStreaming
+	])
 
 	// Function to copy message content to clipboard
 	const handleCopyToClipboard = () => {

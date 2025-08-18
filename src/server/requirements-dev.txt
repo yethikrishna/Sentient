@@ -23,6 +23,7 @@ pgvector
 # --- AI & Machine Learning ---
 qwen-agent
 google-genai
+composio
 elevenlabs 
 deepgram-sdk
 librosa
@@ -32,8 +33,6 @@ snac
 torch
 fastrtc[vad, stt, tts]
 numpy
-crawl4ai
-playwright
 
 # --- Background Task Queue ---
 celery

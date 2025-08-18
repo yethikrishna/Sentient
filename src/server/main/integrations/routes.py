@@ -1,34 +1,42 @@
+import os
 import datetime
 import json
 import base64
 import asyncio
+import time
+import uuid
 import httpx
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from composio import Composio, types
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from fastapi.responses import JSONResponse
+from typing import Tuple
 
-from main.integrations.models import ManualConnectRequest, OAuthConnectRequest, DisconnectRequest
+from main.integrations.models import (ManualConnectRequest, OAuthConnectRequest, DisconnectRequest,
+                                      ComposioInitiateRequest, ComposioFinalizeRequest)
 from main.dependencies import mongo_manager, auth_helper
-from main.auth.utils import aes_encrypt
+from main.auth.utils import aes_encrypt, PermissionChecker
 from main.config import (
-    INTEGRATIONS_CONFIG, 
+    INTEGRATIONS_CONFIG,
     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
-    TODOIST_CLIENT_ID, TODOIST_CLIENT_SECRET,
     DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET,
-    TRELLO_CLIENT_ID,
+    TRELLO_CLIENT_ID, COMPOSIO_API_KEY,
     GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SLACK_CLIENT_ID,
-    SLACK_CLIENT_SECRET, NOTION_CLIENT_ID, NOTION_CLIENT_SECRET
+    SLACK_CLIENT_SECRET, NOTION_CLIENT_ID, NOTION_CLIENT_SECRET,
 )
+from workers.tasks import execute_triggered_task
+from workers.proactive.utils import event_pre_filter
+from main.plans import PRO_ONLY_INTEGRATIONS
 
 logger = logging.getLogger(__name__)
+
+# Initialize Composio SDK
+composio = Composio(api_key=COMPOSIO_API_KEY)
 
 router = APIRouter(
     prefix="/integrations",
     tags=["Integrations Management"]
 )
-
-from mcp_hub.gcal.auth import get_google_creds, authenticate_gcal
-from mcp_hub.gcal.utils import _simplify_event
 
 @router.get("/sources", summary="Get all available integration sources and their status")
 async def get_integration_sources(user_id: str = Depends(auth_helper.get_current_user_id)):
@@ -41,12 +49,21 @@ async def get_integration_sources(user_id: str = Depends(auth_helper.get_current
         source_info["name"] = name
         user_connection = user_integrations.get(name, {})
         source_info["connected"] = user_connection.get("connected", False)
-        
+
+        # Add Composio-specific config for the client
+        if source_info["auth_type"] == "composio":
+            # Use the explicitly defined environment variable name from the config
+            env_var_name = config.get("auth_config_env_var")
+            if env_var_name:
+                source_info["auth_config_id"] = os.getenv(env_var_name)
+            else:
+                source_info["auth_config_id"] = None
+
         # Add public config needed by the client for OAuth flow
         if source_info["auth_type"] == "oauth":
-            # Define a list of Google services to avoid matching 'github' with 'g'
-            google_services = ["gmail", "gcalendar", "gdrive", "gdocs", "gslides", "gsheets", "gmaps", "gshopping", "gpeople"]
-            if name in google_services:
+            # List of Google services that still use the standard OAuth flow
+            google_oauth_services = ["gpeople"]
+            if name in google_oauth_services:
                  source_info["client_id"] = GOOGLE_CLIENT_ID
             elif name == 'github':
                  source_info["client_id"] = GITHUB_CLIENT_ID
@@ -58,8 +75,6 @@ async def get_integration_sources(user_id: str = Depends(auth_helper.get_current
                 source_info["client_id"] = TRELLO_CLIENT_ID
             elif name == 'discord':
                 source_info["client_id"] = DISCORD_CLIENT_ID
-            elif name == 'todoist':
-                source_info["client_id"] = TODOIST_CLIENT_ID
 
         all_sources.append(source_info)
 
@@ -67,12 +82,23 @@ async def get_integration_sources(user_id: str = Depends(auth_helper.get_current
 
 
 @router.post("/connect/manual", summary="Connect an integration using manual credentials")
-async def connect_manual_integration(request: ManualConnectRequest, user_id: str = Depends(auth_helper.get_current_user_id)):
+async def connect_manual_integration(
+    request: ManualConnectRequest,
+    user_id_and_plan: Tuple[str, str] = Depends(auth_helper.get_current_user_id_and_plan)
+):
+    user_id, plan = user_id_and_plan
     service_name = request.service_name
     service_config = INTEGRATIONS_CONFIG.get(service_name)
 
     if not service_config:
         raise HTTPException(status_code=400, detail="Invalid service name.")
+
+    # --- Check Plan Limit ---
+    if service_name in PRO_ONLY_INTEGRATIONS and plan == "free":
+        raise HTTPException(
+            status_code=403,
+            detail=f"The {service_config.get('display_name', service_name)} integration is a Pro feature. Please upgrade your plan."
+        )
 
     # Allow Trello to use this endpoint despite being 'oauth' type, as its flow provides a token directly.
     if service_config["auth_type"] != "manual" and service_name != "trello":
@@ -93,50 +119,22 @@ async def connect_manual_integration(request: ManualConnectRequest, user_id: str
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-@router.get("/gcalendar/events", summary="Get Google Calendar events for a date range")
-async def get_gcalendar_events(
-    start_date: str = Query(..., description="Start date in ISO 8601 format"),
-    end_date: str = Query(..., description="End date in ISO 8601 format"),
-    user_id: str = Depends(auth_helper.get_current_user_id)
-):
-    user_profile = await mongo_manager.get_user_profile(user_id)
-    user_integrations = user_profile.get("userData", {}).get("integrations", {}) if user_profile else {}
-
-    gcal_integration = user_integrations.get("gcalendar", {})
-    if not gcal_integration.get("connected"):
-        return JSONResponse(content={"events": []})
-
-    try:
-        creds = await get_google_creds(user_id)
-        service = authenticate_gcal(creds)
-
-        def _fetch_events_sync():
-            events_result = service.events().list(
-                calendarId="primary",
-                timeMin=start_date,
-                timeMax=end_date,
-                maxResults=250,
-                singleEvents=True,
-                orderBy="startTime"
-            ).execute()
-            return events_result.get("items", [])
-
-        events = await asyncio.to_thread(_fetch_events_sync)
-
-        simplified_events = [_simplify_event(e) for e in events]
-
-        return JSONResponse(content={"events": simplified_events})
-
-    except Exception as e:
-        print(f"Error fetching GCal events for user {user_id}: {e}")
-        return JSONResponse(content={"events": []})
-
 @router.post("/connect/oauth", summary="Finalize OAuth2 connection by exchanging code for token")
-async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str = Depends(auth_helper.get_current_user_id)):
+async def connect_oauth_integration(
+    request: OAuthConnectRequest,
+    user_id_and_plan: Tuple[str, str] = Depends(auth_helper.get_current_user_id_and_plan)
+):
+    user_id, plan = user_id_and_plan
     service_name = request.service_name
     if service_name not in INTEGRATIONS_CONFIG or INTEGRATIONS_CONFIG[service_name]["auth_type"] != "oauth":
         raise HTTPException(status_code=400, detail="Invalid service name or auth type is not OAuth.")
+
+    # --- Check Plan Limit ---
+    if service_name in PRO_ONLY_INTEGRATIONS and plan == "free":
+        raise HTTPException(
+            status_code=403,
+            detail=f"The {INTEGRATIONS_CONFIG[service_name].get('display_name', service_name)} integration is a Pro feature. Please upgrade your plan."
+        )
 
     token_url = ""
     token_payload = {}
@@ -193,14 +191,6 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
             "code": request.code,
             "redirect_uri": request.redirect_uri,
         }
-    elif service_name == 'todoist':
-        token_url = "https://todoist.com/oauth/access_token"
-        token_payload = {
-            "client_id": TODOIST_CLIENT_ID,
-            "client_secret": TODOIST_CLIENT_SECRET,
-            "code": request.code,
-            "redirect_uri": request.redirect_uri
-        }
     elif service_name == 'discord':
         token_url = "https://discord.com/api/oauth2/token"
         token_payload = {
@@ -247,10 +237,6 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
              if "access_token" not in token_data:
                 raise HTTPException(status_code=400, detail=f"Notion OAuth error: {token_data.get('error_description', 'No access token in response.')}")
              creds_to_save = token_data # Store the whole object (access_token, workspace_id, etc.)
-        elif service_name == 'todoist':
-            if "access_token" not in token_data:
-                raise HTTPException(status_code=400, detail=f"Todoist OAuth error: {token_data.get('error', 'No access token in response.')}")
-            creds_to_save = token_data
         elif service_name == 'discord':
             if "access_token" not in token_data:
                 raise HTTPException(status_code=400, detail=f"Discord OAuth error: {token_data.get('error_description', 'No access token.')}")
@@ -267,24 +253,7 @@ async def connect_oauth_integration(request: OAuthConnectRequest, user_id: str =
         if not success:
             raise HTTPException(status_code=500, detail="Failed to save integration credentials.")
         
-        if service_name == 'gmail' or service_name == 'gcalendar':
-            # Check user's proactivity preference before enabling polling for PROACTIVITY ONLY
-            user_profile = await mongo_manager.get_user_profile(user_id)
-            is_proactivity_enabled = user_profile.get("userData", {}).get("preferences", {}).get("proactivityEnabled", False)
-
-            # Create a state for the proactivity poller (depends on user setting)
-            await mongo_manager.update_polling_state(
-                user_id,
-                service_name,
-                "proactivity",
-                {
-                    "is_enabled": is_proactivity_enabled,
-                    "is_currently_polling": False,
-                    "next_scheduled_poll_time": datetime.datetime.now(datetime.timezone.utc), # Poll immediately
-                    "last_successful_poll_timestamp_unix": None,
-                }
-            )
-            # Create a state for the triggered workflow poller (ALWAYS enabled on connect)
+        if service_name in ['gmail', 'gcalendar']:
             await mongo_manager.update_polling_state(
                 user_id,
                 service_name,
@@ -316,10 +285,6 @@ async def disconnect_integration(request: DisconnectRequest, user_id: str = Depe
         deleted_tasks_count = await mongo_manager.delete_tasks_by_tool(user_id, service_name)
         logger.info(f"Deleted {deleted_tasks_count} tasks for user {user_id} associated with disconnected tool '{service_name}'.")
 
-        # Delete polling state for this source
-        deleted_polling_states_count = await mongo_manager.delete_polling_state_by_service(user_id, service_name)
-        logger.info(f"Deleted {deleted_polling_states_count} polling states for user {user_id} associated with disconnected source '{service_name}'.")
-
         # Unset the specific integration object from the user profile
         update_payload = {f"userData.integrations.{service_name}": ""}
         result = await mongo_manager.user_profiles_collection.update_one(
@@ -327,7 +292,7 @@ async def disconnect_integration(request: DisconnectRequest, user_id: str = Depe
             {"$unset": update_payload}
         )
 
-        if result.modified_count == 0 and deleted_tasks_count == 0 and deleted_polling_states_count == 0:
+        if result.modified_count == 0 and deleted_tasks_count == 0:
             # This can happen if the field didn't exist, which is not an error.
             return JSONResponse(content={"message": f"{service_name} was not connected or already disconnected."})
 
@@ -335,3 +300,172 @@ async def disconnect_integration(request: DisconnectRequest, user_id: str = Depe
     except Exception as e:
         logger.error(f"Error disconnecting integration {service_name} for user {user_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/connect/composio/initiate", summary="Initiate Composio OAuth flow")
+async def initiate_composio_connection(
+    request: ComposioInitiateRequest,
+    user_id: str = Depends(auth_helper.get_current_user_id)
+):
+    service_name = request.service_name
+    service_config = INTEGRATIONS_CONFIG.get(service_name)
+    if not service_config or service_config.get("auth_type") != "composio":
+        raise HTTPException(status_code=400, detail="Invalid service for Composio connection.")
+
+    auth_config_id = os.getenv(f"{service_name.upper()}_AUTH_CONFIG_ID")
+    if not auth_config_id:
+        raise HTTPException(status_code=500, detail=f"Auth Config ID for {service_name} is not configured on the server.")
+
+    try:
+        logger.info(f"Initiating Composio for {service_name} with auth_config_id={auth_config_id}")
+        callback_url = f"{os.getenv('APP_BASE_URL', 'http://localhost:3000')}/integrations"
+        connection_request = composio.connected_accounts.initiate(
+            user_id=user_id,
+            auth_config_id=auth_config_id,
+            callback_url=callback_url,
+            config={
+                "authScheme": "OAUTH2"
+            }
+        )
+
+        return JSONResponse(content={"redirect_url": connection_request.redirect_url})
+    except Exception as e:
+        logger.error(f"Error initiating Composio connection for {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/connect/composio/finalize", summary="Finalize Composio OAuth flow")
+async def finalize_composio_connection(
+    request: ComposioFinalizeRequest,
+    user_id: str = Depends(auth_helper.get_current_user_id)
+):
+    service_name = request.service_name
+    connected_account_id = request.connectedAccountId
+
+    try:
+        logger.info(f"Waiting for Composio connection {connected_account_id} to become active...")
+
+        
+        # USING A MANUAL POLLING LOOP since the SDK's internal wait_for_connection method is broken.
+        start_time = time.time()
+        timeout = 120  # seconds
+        connected_account = None
+
+        while time.time() - start_time < timeout:
+            # Use asyncio.to_thread to run the synchronous SDK call in a separate thread
+            # The .get() method is an alias for .retrieve() and fetches the account by its ID.
+            connected_account = await asyncio.to_thread(
+                composio.connected_accounts.get, connected_account_id
+            )
+
+            if connected_account and connected_account.status == "ACTIVE":
+                break  # Success!
+
+            if connected_account and connected_account.status == "FAILED":
+                raise HTTPException(status_code=400, detail="Connection failed during authentication with the provider.")
+
+            await asyncio.sleep(2)  # Wait for 2 seconds before polling again
+        else:
+            # This block runs if the while loop finishes without a `break`
+            raise TimeoutError("Connection verification timed out.")
+
+        logger.info(f"Finalized Composio connection for {service_name}: ID {connected_account_id}")
+
+        trigger_id = None
+        if service_name in ["gcalendar", "gmail"]:
+            slug_map = {
+                "gcalendar": "GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_SYNC_TRIGGER",
+                "gmail": "GMAIL_NEW_GMAIL_MESSAGE"
+            }
+            trigger_config = {"calendarId": "primary"} if service_name == "gcalendar" else {}
+            try:
+                logger.info(f"Setting up Composio trigger for {service_name} for user {user_id}")
+                trigger = await asyncio.to_thread(
+                    composio.triggers.create,
+                    slug=slug_map[service_name],
+                    user_id=user_id,
+                    trigger_config=trigger_config
+                )
+                trigger_id = trigger.id
+                logger.info(f"Successfully created Composio trigger {trigger_id} for {service_name} for user {user_id}")
+            except Exception as e:
+                logger.error(f"Failed to create Composio trigger for {service_name} for user {user_id}: {e}", exc_info=True)
+                # Do not fail the entire connection if trigger creation fails, just log it.
+
+        update_payload = {
+            f"userData.integrations.{service_name}.connection_id": connected_account.id,
+            f"userData.integrations.{service_name}.connected": True,
+            f"userData.integrations.{service_name}.auth_type": "composio"
+        }
+        if trigger_id:
+            update_payload[f"userData.integrations.{service_name}.trigger_id"] = trigger_id
+
+        await mongo_manager.update_user_profile(user_id, update_payload)
+
+        return JSONResponse(content={"message": f"{service_name} connected successfully via Composio."})
+    except Exception as e:
+        logger.error(f"Error finalizing Composio connection for {user_id}: {e}", exc_info=True)
+        if isinstance(e, TimeoutError) or "timed out" in str(e).lower():
+            raise HTTPException(status_code=408, detail="Connection verification timed out. Please try again.")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/composio/webhook", summary="Webhook receiver for Composio triggers", include_in_schema=False)
+async def composio_webhook(request: Request):
+    """
+    Receives event payloads from Composio triggers, filters them, and dispatches them
+    to the appropriate Celery worker for processing.
+    """
+    try:
+        payload = await request.json()
+        user_id = payload.get("userId")
+        trigger_slug = payload.get("triggerSlug")
+        event_data = payload.get("payload")
+
+        if not all([user_id, trigger_slug, event_data]):
+            raise HTTPException(status_code=400, detail="Missing required fields in webhook payload.")
+
+        service_name_map = {
+            "GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_SYNC_TRIGGER": "gcalendar",
+            "GMAIL_NEW_GMAIL_MESSAGE": "gmail"
+        }
+        event_type_map = {
+            "GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_SYNC_TRIGGER": "new_event",
+            "GMAIL_NEW_GMAIL_MESSAGE": "new_email"
+        }
+
+        service_name = service_name_map.get(trigger_slug)
+        event_type = event_type_map.get(trigger_slug)
+
+        if not service_name:
+            logger.warning(f"Received webhook for unhandled trigger slug: {trigger_slug}")
+            return JSONResponse(content={"status": "ignored", "reason": "unhandled trigger"})
+
+        logger.info(f"Received Composio trigger for user '{user_id}' - Service: '{service_name}', Event: '{event_type}'")
+
+        # --- Filtering Logic (similar to old poller) ---
+        user_profile = await mongo_manager.get_user_profile(user_id)
+        if not user_profile:
+            logger.error(f"Webhook received for non-existent user '{user_id}'. Ignoring.")
+            return JSONResponse(content={"status": "ignored", "reason": "user not found"})
+
+        user_email = user_profile.get("userData", {}).get("personalInfo", {}).get("email")
+
+        # 1. Apply user-defined privacy filters
+        # (This logic would be similar to the one in the old poller service.py)
+
+        # 2. Apply system-wide pre-filter
+        if not event_pre_filter(event_data, service_name, user_email):
+            logger.info(f"Event for user '{user_id}' was discarded by the pre-filter.")
+            return JSONResponse(content={"status": "ignored", "reason": "pre-filter discard"})
+
+        # 3. Dispatch to Celery worker
+        execute_triggered_task.delay(
+            user_id=user_id,
+            source=service_name,
+            event_type=event_type,
+            event_data=event_data
+        )
+        logger.info(f"Dispatched event to triggered task worker for user '{user_id}'.")
+        return JSONResponse(content={"status": "received"})
+    except Exception as e:
+        logger.error(f"Error processing Composio webhook: {e}", exc_info=True)
+        # Return a 200 to Composio to prevent retries on our internal errors.
+        return JSONResponse(content={"status": "error", "detail": str(e)}, status_code=200)

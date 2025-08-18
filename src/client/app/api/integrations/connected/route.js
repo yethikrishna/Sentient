@@ -12,7 +12,8 @@ export const GET = withAuth(async function GET(request, { authHeader }) {
 		// This reuses the same backend endpoint but we will filter on the client
 		const response = await fetch(`${appServerUrl}/integrations/sources`, {
 			method: "GET",
-			headers: { "Content-Type": "application/json", ...authHeader }
+			headers: { "Content-Type": "application/json", ...authHeader },
+			cache: "no-store" // Prevent Next.js from caching this server-side fetch
 		})
 
 		const data = await response.json()

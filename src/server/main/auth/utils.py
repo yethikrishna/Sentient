@@ -18,7 +18,7 @@ from json_extractor import JsonExtractor
 
 from main.config import (
     ENVIRONMENT, SELF_HOST_AUTH_SECRET,
-    AES_SECRET_KEY, AES_IV, AUTH0_SCOPE,
+    AES_SECRET_KEY, AES_IV, AUTH0_SCOPE, AUTH0_NAMESPACE,
     AUTH0_DOMAIN, AUTH0_AUDIENCE, ALGORITHMS,
     AUTH0_MANAGEMENT_CLIENT_ID, AUTH0_MANAGEMENT_CLIENT_SECRET
 )
@@ -100,16 +100,27 @@ class AuthHelper:
             traceback.print_exc()
             raise credentials_exception
 
-    async def get_current_user_id_and_permissions(self, token: str = Depends(oauth2_scheme)) -> Tuple[str, List[str]]:
+    async def get_current_user_id_plan_and_permissions(self, token: str = Depends(oauth2_scheme)) -> Tuple[str, str, List[str]]:
         payload = await self._validate_token_and_get_payload(token)
         user_id = payload.get("sub")
         if user_id is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User ID (sub) not in token")
+
         permissions = payload.get("permissions", [])
-        return user_id, permissions
+
+        # Determine plan
+        plan = "free"
+        if ENVIRONMENT == "selfhost":
+            plan = "selfhost"
+        else:
+            roles = payload.get(f"{AUTH0_NAMESPACE}/roles", [])
+            if "Pro" in roles:
+                plan = "pro"
+
+        return user_id, plan, permissions
 
     async def get_current_user_id(self, token: str = Depends(oauth2_scheme)) -> str:
-        user_id, _ = await self.get_current_user_id_and_permissions(token=token)
+        user_id, _, _ = await self.get_current_user_id_plan_and_permissions(token=token)
         return user_id
     
     async def get_decoded_payload_with_claims(self, token: str = Depends(oauth2_scheme)) -> dict:
@@ -118,6 +129,12 @@ class AuthHelper:
         if user_id is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User ID (sub) not in token")
         payload["user_id"] = user_id 
+
+        # Add plan to payload for easy access in endpoints
+        plan = "free"
+        if ENVIRONMENT == "selfhost": plan = "selfhost"
+        elif "Pro" in payload.get(f"{AUTH0_NAMESPACE}/roles", []): plan = "pro"
+        payload["plan"] = plan
         return payload
 
     async def ws_authenticate_with_data(self, websocket: WebSocket) -> Optional[Dict]:
@@ -166,13 +183,17 @@ class AuthHelper:
         auth_data = await self.ws_authenticate_with_data(websocket)
         return auth_data.get("user_id") if auth_data else None
 
+    async def get_current_user_id_and_plan(self, token: str = Depends(oauth2_scheme)) -> Tuple[str, str]:
+        user_id, plan, _ = await self.get_current_user_id_plan_and_permissions(token=token)
+        return user_id, plan
+
 class PermissionChecker:
     def __init__(self, required_permissions: List[str]):
         self.required_permissions = set(required_permissions)
 
     async def __call__(self, token: str = Depends(oauth2_scheme)):
         from main.dependencies import auth_helper
-        user_id, token_permissions_list = await auth_helper.get_current_user_id_and_permissions(token=token)
+        user_id, _, token_permissions_list = await auth_helper.get_current_user_id_plan_and_permissions(token=token)
         token_permissions_set = set(token_permissions_list)
 
         if not self.required_permissions.issubset(token_permissions_set):

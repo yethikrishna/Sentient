@@ -8,10 +8,12 @@ const appServerUrl =
 
 export const POST = withAuth(async function POST(request, { authHeader }) {
 	try {
-		const { notification_id } = await request.json()
-		if (!notification_id) {
+		const body = await request.json()
+		if (!body.notification_id && !body.delete_all) {
 			return NextResponse.json(
-				{ error: "Notification ID is required" },
+				{
+					error: "Either 'notification_id' or 'delete_all' must be provided"
+				},
 				{ status: 400 }
 			)
 		}
@@ -19,12 +21,12 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 		const response = await fetch(`${appServerUrl}/notifications/delete`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json", ...authHeader },
-			body: JSON.stringify({ notification_id })
+			body: JSON.stringify(body)
 		})
 
 		const data = await response.json()
 		if (!response.ok) {
-			throw new Error(data.detail || "Failed to delete notification")
+			throw new Error(data.detail || "Failed to delete notification(s)")
 		}
 		return NextResponse.json(data)
 	} catch (error) {

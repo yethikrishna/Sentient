@@ -85,59 +85,46 @@ class PollerMongoManager:
     async def get_due_polling_tasks_for_service(self, service_name: str, poll_type: str) -> List[Dict[str, Any]]:
         now_utc = datetime.datetime.now(timezone.utc)
 
-        # For 'triggers', we only want to poll users who have active triggered tasks.
-        if poll_type == 'triggers':
-            pipeline = [
-                # Stage 1: Find due polling states
-                {
-                    "$match": {
-                        "service_name": service_name,
-                        "poll_type": poll_type,
-                        "is_enabled": True,
-                        "next_scheduled_poll_time": {"$lte": now_utc},
-                        "is_currently_polling": False,
-                        "$or": [
-                            {"error_backoff_until_timestamp": None},
-                            {"error_backoff_until_timestamp": {"$lte": now_utc}}
-                        ]
-                    }
-                },
-                # Stage 2: Join with tasks collection to check for active triggers
-                {
-                    "$lookup": {
-                        "from": "tasks", # The name of the tasks collection
-                        "localField": "user_id",
-                        "foreignField": "user_id",
-                        "as": "user_tasks"
-                    }
-                },
-                # Stage 3: Filter for users who have at least one active triggered task for this specific service
-                {
-                    "$match": {
-                        "user_tasks": {
-                            "$elemMatch": {
-                                "status": "active",
-                                "schedule.type": "triggered",
-                                "schedule.source": service_name
-                            }
+        pipeline = [
+            # Stage 1: Find due polling states for triggers
+            {
+                "$match": {
+                    "service_name": service_name,
+                    "poll_type": "triggers",
+                    "is_enabled": True,
+                    "next_scheduled_poll_time": {"$lte": now_utc},
+                    "is_currently_polling": False,
+                    "$or": [
+                        {"error_backoff_until_timestamp": None},
+                        {"error_backoff_until_timestamp": {"$lte": now_utc}}
+                    ]
+                }
+            },
+            # Stage 2: Join with tasks to find users with active triggered tasks
+            {
+                "$lookup": {
+                    "from": "tasks",
+                    "localField": "user_id",
+                    "foreignField": "user_id",
+                    "as": "user_tasks"
+                }
+            },
+            # Stage 3: Filter for users who have at least one active triggered task for this service
+            {
+                "$match": {
+                    "user_tasks": {
+                        "$elemMatch": {
+                            "status": "active",
+                            "schedule.type": "triggered",
+                            "schedule.source": service_name
                         }
                     }
-                },
-                {"$sort": {"next_scheduled_poll_time": ASCENDING}}
-            ]
-            cursor = self.polling_state_collection.aggregate(pipeline)
-            return await cursor.to_list(length=None)
-        else:
-            # Original logic for other poll types like 'proactivity'
-            query = {
-                "service_name": service_name, "poll_type": poll_type,
-                "is_enabled": True,
-                "next_scheduled_poll_time": {"$lte": now_utc},
-                "is_currently_polling": False,
-                "$or": [{"error_backoff_until_timestamp": None}, {"error_backoff_until_timestamp": {"$lte": now_utc}}]
-            }
-            cursor = self.polling_state_collection.find(query).sort("next_scheduled_poll_time", ASCENDING)
-            return await cursor.to_list(length=None)
+                }
+            },
+            {"$sort": {"next_scheduled_poll_time": ASCENDING}}
+        ]
+        cursor = self.polling_state_collection.aggregate(pipeline)
+        return await cursor.to_list(length=None)
 
     async def set_polling_status_and_get(self, user_id: str, service_name: str, poll_type: str) -> Optional[Dict[str, Any]]:
         now_utc = datetime.datetime.now(timezone.utc)

@@ -229,9 +229,11 @@ const WhatsAppSettings = () => {
 			<div className="bg-neutral-900/50 p-6 rounded-2xl border border-neutral-800">
 				<div className="space-y-4">
 					<p className="text-neutral-400 text-sm">
-						Receive important system notifications (e.g., task
-						completions) on WhatsApp. Enter your number including
-						the country code (e.g., +14155552671).
+						Receive important notifications on WhatsApp. We are in
+						the process of getting an official number for Sentient.
+						Until then, notifications will be sent via our
+						co-founder Sarthak's number (+91827507823). Please enter
+						your number with the country code.
 					</p>
 					{isNotifLoading ? (
 						<div className="flex justify-center mt-4">
@@ -1095,7 +1097,6 @@ export default function SettingsPage() {
 				</header>
 
 				<main className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-10 pb-4 sm:pb-6 md:pb-10 custom-scrollbar">
-					<tip content="Customize your experience here." />
 					<div className="w-full max-w-4xl mx-auto space-y-12 pt-8">
 						<ProfileSettings
 							initialData={profileData?.onboardingAnswers}
@@ -1105,9 +1106,9 @@ export default function SettingsPage() {
 						<WhatsAppSettings />
 						<ShortcutsSettings />
 						{process.env.NEXT_PUBLIC_ENVIRONMENT !== "prod" &&
-						process.env.NEXT_PUBLIC_ENVIRONMENT !== "stag" && (
-							<TestingTools />
-						)}
+							process.env.NEXT_PUBLIC_ENVIRONMENT !== "stag" && (
+								<TestingTools />
+							)}
 					</div>
 				</main>
 			</div>

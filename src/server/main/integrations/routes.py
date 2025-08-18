@@ -372,8 +372,8 @@ async def finalize_composio_connection(
         trigger_id = None
         if service_name in ["gcalendar", "gmail"]:
             slug_map = {
-                "gcalendar": "GOOGLECALENDAR_NEW_OR_UPDATED_EVENT",
-                "gmail": "GMAIL_NEW_EMAIL"
+                "gcalendar": "GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_SYNC_TRIGGER",
+                "gmail": "GMAIL_NEW_GMAIL_MESSAGE"
             }
             trigger_config = {"calendarId": "primary"} if service_name == "gcalendar" else {}
             try:

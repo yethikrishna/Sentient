@@ -303,7 +303,7 @@ export default function ChatPage() {
 	const fetchInitialMessages = useCallback(async () => {
 		setIsLoading(true)
 		try {
-			const res = await fetch("/api/chat/history?limit=50")
+			const res = await fetch("/api/chat/history?limit=50", { cache: "no-store" })
 			if (!res.ok) throw new Error("Failed to fetch messages")
 			const data = await res.json()
 			const fetchedMessages = (data.messages || []).map((m) => ({

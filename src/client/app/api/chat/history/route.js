@@ -7,13 +7,12 @@ const appServerUrl =
 		? process.env.INTERNAL_APP_SERVER_URL
 		: process.env.NEXT_PUBLIC_APP_SERVER_URL
 
-export const GET = withAuth(async function GET(request, { authHeader }) {
-	const { searchParams } = new URL(request.url)
-	const limit = searchParams.get("limit")
-	const before_timestamp = searchParams.get("before_timestamp")
+export const POST = withAuth(async function POST(request, { authHeader }) {
+	const body = await request.json().catch(() => ({}))
+	const { limit, before_timestamp } = body
 
 	const backendUrl = new URL(`${appServerUrl}/chat/history`)
-	if (limit) backendUrl.searchParams.append("limit", limit)
+	if (limit) backendUrl.searchParams.append("limit", String(limit))
 	if (before_timestamp)
 		backendUrl.searchParams.append("before_timestamp", before_timestamp)
 

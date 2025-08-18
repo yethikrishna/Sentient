@@ -1104,7 +1104,8 @@ export default function SettingsPage() {
 						/>
 						<WhatsAppSettings />
 						<ShortcutsSettings />
-						{process.env.NEXT_PUBLIC_ENVIRONMENT !== "prod" && (
+						{process.env.NEXT_PUBLIC_ENVIRONMENT !== "prod" &&
+						process.env.NEXT_PUBLIC_ENVIRONMENT !== "stag" && (
 							<TestingTools />
 						)}
 					</div>

@@ -258,17 +258,17 @@ async def task_action(
             "execution_start_time": now
         }
 
-        # Update the task in the DB with the new run and set top-level status
-        await mongo_manager.task_collection.update_one(
-            {"task_id": request.taskId},
-            {
-                "$push": {"runs": new_run},
-                "$set": {
-                    "status": "processing",
-                    "last_execution_at": now
-                }
-            }
-        )
+        current_runs = task.get("runs", [])
+        if not isinstance(current_runs, list):
+            current_runs = []
+        current_runs.append(new_run)
+
+        update_payload = {
+            "runs": current_runs,
+            "status": "processing",
+            "last_execution_at": now
+        }
+        await mongo_manager.update_task(request.taskId, update_payload)
         # Trigger the Celery task with the new run_id
         execute_task_plan.delay(request.taskId, user_id, new_run['run_id'])
         return JSONResponse(content={"message": "Task execution has been initiated."})
@@ -354,17 +354,18 @@ async def approve_task(
                 "execution_start_time": now
             }
 
-            await mongo_manager.task_collection.update_one(
-                {"task_id": task_id},
-                {
-                    "$push": {"runs": new_run},
-                    "$set": {
-                        "status": "processing",
-                        "last_execution_at": now,
-                        "next_execution_at": None
-                    }
-                }
-            )
+            current_runs = task_doc.get("runs", [])
+            if not isinstance(current_runs, list):
+                current_runs = []
+            current_runs.append(new_run)
+
+            update_payload = {
+                "runs": current_runs,
+                "status": "processing",
+                "last_execution_at": now,
+                "next_execution_at": None,
+            }
+            await mongo_manager.update_task(task_id, update_payload)
 
             execute_task_plan.delay(task_id, user_id, new_run['run_id'])
             return JSONResponse(content={"message": "Task approved and execution has been initiated."})

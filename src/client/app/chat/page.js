@@ -303,7 +303,11 @@ export default function ChatPage() {
 	const fetchInitialMessages = useCallback(async () => {
 		setIsLoading(true)
 		try {
-			const res = await fetch("/api/chat/history?limit=50", { cache: "no-store" })
+			const res = await fetch("/api/chat/history", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ limit: 50 })
+			})
 			if (!res.ok) throw new Error("Failed to fetch messages")
 			const data = await res.json()
 			const fetchedMessages = (data.messages || []).map((m) => ({
@@ -414,9 +418,14 @@ export default function ChatPage() {
 		const oldestMessageTimestamp = displayedMessages[0].timestamp
 
 		try {
-			const res = await fetch(
-				`/api/chat/history?limit=50&before_timestamp=${oldestMessageTimestamp}`
-			)
+			const res = await fetch(`/api/chat/history`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					limit: 50,
+					before_timestamp: oldestMessageTimestamp
+				})
+			})
 			if (!res.ok) throw new Error("Failed to fetch older messages")
 			const data = await res.json()
 

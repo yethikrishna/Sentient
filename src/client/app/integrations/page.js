@@ -453,7 +453,7 @@ const PrivacySettingsModal = ({ serviceName, onClose }) => {
 			initial={{ opacity: 0 }}
 			animate={{ opacity: 1 }}
 			exit={{ opacity: 0 }}
-			className="fixed inset-0 bg-black/70 backdrop-blur-md z-[60] flex items-center justify-center p-4"
+			className="fixed inset-0 bg-black/70 backdrop-blur-md z-[110] flex items-center justify-center p-4"
 			onClick={onClose}
 		>
 			<motion.div
@@ -933,13 +933,21 @@ const IntegrationsPage = () => {
 	}
 
 	useEffect(() => {
-		fetchIntegrations()
-
 		// --- Handle Composio OAuth Callback ---
 		const urlParams = new URLSearchParams(window.location.search)
 		const composioStatus = urlParams.get("status")
 		const connectedAccountId = urlParams.get("connectedAccountId")
 		const pendingService = localStorage.getItem("composio_pending_service")
+
+		// If it's not a callback from an integration attempt, fetch normally.
+		if (
+			!composioStatus &&
+			!urlParams.get("integration_success") &&
+			!urlParams.get("integration_error") &&
+			!window.location.hash.includes("#token=")
+		) {
+			fetchIntegrations()
+		}
 
 		if (
 			composioStatus === "success" &&
@@ -1059,6 +1067,7 @@ const IntegrationsPage = () => {
 		} else if (error && !composioStatus) {
 			// Avoid showing generic error on composio callback
 			toast.error(`Connection failed: ${error}`)
+			fetchIntegrations() // Fetch to show current state even on error
 			window.history.replaceState({}, document.title, "/integrations")
 		}
 	}, [fetchIntegrations, posthog, router])
@@ -1391,23 +1400,28 @@ const IntegrationsPage = () => {
 			</AnimatePresence>
 			<AnimatePresence>
 				{disconnectingIntegration && (
-					<ModalDialog
-						title={
-							<div className="flex items-center gap-2">
-								<IconAlertTriangle className="text-yellow-400" />
-								<span>{`Disconnect ${disconnectingIntegration.display_name}?`}</span>
-							</div>
-						}
-						description="This will permanently delete all tasks that use this tool and any related polling data. This action cannot be undone."
-						confirmButtonText="Disconnect"
-						confirmButtonType="danger"
-						onConfirm={handleDisconnect}
-						onCancel={() => setDisconnectingIntegration(null)}
-						confirmButtonLoading={
-							processingIntegration ===
-							disconnectingIntegration.name
-						}
-					/>
+					// The `isolate` class creates a new stacking context, and `z-[70]`
+					// ensures this context is rendered above the MorphingDialog
+					// and other modals.
+					<div className="isolate z-[120]">
+						<ModalDialog
+							title={
+								<div className="flex items-center gap-2">
+									<IconAlertTriangle className="text-yellow-400" />
+									<span>{`Disconnect ${disconnectingIntegration.display_name}?`}</span>
+								</div>
+							}
+							description="This will permanently delete all tasks that use this tool and any related polling data. This action cannot be undone."
+							confirmButtonText="Disconnect"
+							confirmButtonType="danger"
+							onConfirm={handleDisconnect}
+							onCancel={() => setDisconnectingIntegration(null)}
+							confirmButtonLoading={
+								processingIntegration ===
+								disconnectingIntegration.name
+							}
+						/>
+					</div>
 				)}
 			</AnimatePresence>
 			<SparkleEffect trigger={sparkleTrigger} />

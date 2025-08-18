@@ -16,10 +16,19 @@ export const POST = withAuth(async function POST(request, { authHeader }) {
 			body: JSON.stringify({ taskId: taskId })
 		})
 
-		const data = await response.json()
 		if (!response.ok) {
-			throw new Error(data.error || "Failed to approve task")
+			const errorText = await response.text()
+			let detail = "Failed to approve task"
+			try {
+				const errorJson = JSON.parse(errorText)
+				detail = errorJson.detail || errorJson.error || errorText
+			} catch (e) {}
+			return NextResponse.json(
+				{ error: detail },
+				{ status: response.status }
+			)
 		}
+		const data = await response.json()
 		return NextResponse.json(data)
 	} catch (error) {
 		console.error("API Error in /tasks/approve:", error)

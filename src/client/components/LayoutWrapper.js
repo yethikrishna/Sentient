@@ -90,6 +90,9 @@ export default function LayoutWrapper({ children }) {
 			// CRITICAL FIX: Clean the URL synchronously *before* doing anything else.
 			// This prevents the refresh loop.
 			window.history.replaceState(null, "", pathname)
+			const toastId = toast.loading("Updating your session...", {
+				duration: 4000
+			})
 
 			// const refreshSession = async () => {
 			// 	const toastId = toast.loading("Updating your session...", {
@@ -120,7 +123,7 @@ export default function LayoutWrapper({ children }) {
 			const logoutUrl = new URL("/auth/logout", window.location.origin)
 			logoutUrl.searchParams.set(
 				"returnTo",
-				`${process.env.NEXT_PUBLIC_APP_BASE_URL}`
+				process.env.NEXT_PUBLIC_APP_BASE_URL
 			)
 			window.location.assign(logoutUrl.toString())
 		}

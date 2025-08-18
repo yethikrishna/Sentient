@@ -273,16 +273,17 @@ async def async_orchestrate_swarm_task(task_id: str, user_id: str):
                 "timestamp": datetime.datetime.now(datetime.timezone.utc)
             }]
         }
-        await db_manager.task_collection.update_one(
-            {"task_id": task_id},
-            {
-                "$set": {
-                    "status": "processing",
-                    "swarm_details.total_agents": total_agents
-                },
-                "$push": {"runs": run_doc}
-            }
-        )
+        current_runs = task.get("runs", [])
+        if not isinstance(current_runs, list):
+            current_runs = []
+        current_runs.append(run_doc)
+
+        update_payload = {
+            "runs": current_runs,
+            "status": "processing",
+            "swarm_details.total_agents": total_agents,
+        }
+        await db_manager.update_task(task_id, update_payload)
         await push_task_list_update(user_id, task_id, "swarm_plan_created")
 
         header = group(all_worker_groups)
@@ -769,13 +770,15 @@ async def async_execute_triggered_task(user_id: str, source: str, event_type: st
                     "execution_start_time": datetime.datetime.now(datetime.timezone.utc)
                 }
 
-                await db_manager.task_collection.update_one(
-                    {"task_id": task_id},
-                    {
-                        "$push": {"runs": new_run},
-                        "$set": {"status": "processing"} # Set parent to processing
-                    }
-                )
+                current_runs = task.get("runs", [])
+                if not isinstance(current_runs, list):
+                    current_runs = []
+                current_runs.append(new_run)
+                update_payload = {
+                    "runs": current_runs,
+                    "status": "processing",
+                }
+                await db_manager.update_task(task_id, update_payload)
 
                 # Queue the executor with the new run_id
                 execute_task_plan.delay(task_id, user_id, new_run['run_id'])
@@ -930,10 +933,11 @@ async def async_run_due_tasks():
                 "created_at": now,
                 "execution_start_time": now
             }
-            await db_manager.tasks_collection.update_one(
-                {"_id": task["_id"]},
-                {"$push": {"runs": new_run}}
-            )
+            current_runs = task.get("runs", [])
+            if not isinstance(current_runs, list):
+                current_runs = []
+            current_runs.append(new_run)
+            await db_manager.update_task(task_id, {"runs": current_runs})
             execute_task_plan.delay(task_id, user_id, new_run['run_id'])
 
     except Exception as e:
